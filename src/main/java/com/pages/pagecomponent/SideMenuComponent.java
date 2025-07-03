@@ -14,7 +14,7 @@ public class SideMenuComponent {
   }
 
 public void clickAdmin(){
-    click(LNK_ADMIN, WaitType.CLICKABLE,"AdminModule");
+    click(LNK_ADMIN, WaitType.CLICKABLE,"Admin Module");
 }
 
 }

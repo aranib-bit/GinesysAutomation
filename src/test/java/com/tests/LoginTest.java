@@ -1,29 +1,25 @@
 package com.tests;
 
+import com.annotations.FrameworkAnnotation;
+import com.enums.TestAuthor;
 import com.pages.HomePage;
 import com.pages.LoginPage;
+import com.testdata.TestData;
 import org.testng.Assert;
 import org.testng.annotations.DataProvider;
 import org.testng.annotations.Test;
 
 public class LoginTest extends BaseTest{
 
-    @DataProvider
-    public Object[][] getData() {
-        return new Object[][]{
-                {"Admin","admin123","OrangeHRM"},
-                {"Admin","admin1234","OrangeHRM"}
-        };
-    }
+    @FrameworkAnnotation(TestAuthor.ARANI)
+    @Test(description = "To check whether the title of the orangehrm website homepage is displayed correctly", dataProvider = "getData",dataProviderClass = com.utils.dataprovider.DataProviderUtils.class)
 
-    @Test(description = "To check whether the title of the orangehrm website homepage is displayed correctly", dataProvider = "getData")
-
-    public void loginTest(String username,String password,String expectedTitle) throws InterruptedException {
+    public void loginTest(TestData testData) throws InterruptedException {
 
 
         LoginPage loginPage=new LoginPage();
-        String actualTitle =loginPage.loginToApplication(username,password).getHomePageTitle();
-        Assert.assertEquals(actualTitle, expectedTitle);
+        String actualTitle =loginPage.loginToApplication(testData.username,testData.password).getHomePageTitle();
+        Assert.assertEquals(actualTitle, testData.expectedTitle);
 
         HomePage homePage=new HomePage();
         homePage.clickOnAdmin();

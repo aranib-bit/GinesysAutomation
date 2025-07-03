@@ -27,4 +27,8 @@ public final class ExtentReport {
         ExtentManager.setExtentTest(extentTest);
     }
 
+    public static void assignAuthor (Enum author){
+        ExtentManager.getExtentTest().assignAuthor(author.toString());
+    }
+
 }

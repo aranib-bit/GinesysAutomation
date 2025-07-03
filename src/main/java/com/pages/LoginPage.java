@@ -24,7 +24,7 @@ public class LoginPage {
     }
 
     private HomePage setLogin() {
-        click(BTN_LOGIN, WaitType.CLICKABLE,"LoginButton");
+        click(BTN_LOGIN, WaitType.CLICKABLE,"Login Button");
         return new HomePage();
     }
 

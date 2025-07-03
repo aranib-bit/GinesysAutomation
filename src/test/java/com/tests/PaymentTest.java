@@ -1,5 +1,6 @@
 package com.tests;
 
+import com.annotations.FrameworkAnnotation;
 import com.driver.DriverManager;
 import org.openqa.selenium.By;
 import org.testng.Assert;
@@ -7,7 +8,7 @@ import org.testng.annotations.Test;
 
 public class PaymentTest extends BaseTest{
 
-
+    @FrameworkAnnotation()
     @Test(description = "To check whether the title of the orangehrm website homepage is displayed correctly")
     public void loginTest() throws InterruptedException {
 

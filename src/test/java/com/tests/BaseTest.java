@@ -17,28 +17,17 @@ import java.lang.reflect.Method;
 
 public class BaseTest {
 
-
-    @BeforeSuite
-    public void beforeSuite(){
-        ExtentReport.initReports();
-    }
-
-    @AfterSuite
-    public void afterSuite(){
-        ExtentReport.flushReports();
-    }
-
-
     protected FrameworkConfig config;
+
+    @BeforeMethod
+    public void setUp(){
+        Driver.initDriver();
+    }
 
     @AfterMethod
     public void tearDown(){
         Driver.quitDriver();
     }
 
-    @BeforeMethod
-    public void setUp(Method method ){
-        ExtentReport.createTest(method.getName());
-        Driver.initDriver();
-    }
+
 }
