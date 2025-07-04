@@ -27,9 +27,9 @@ public class TestListener implements ITestListener {
     public void onTestFailure(ITestResult result) {
         ExtentLogger.fail(result.getName() + " is failed");
         ExtentLogger.fail(result.getMethod().getDescription() + " is failed");
-        ExtentLogger.fail("Exception: "+ result.getThrowable().getClass().getSimpleName());
-        ExtentLogger.fail("Message " +result.getThrowable().getMessage());
-        ExtentLogger.fail("StackTrace " +Arrays.toString(result.getThrowable().getStackTrace()));
+        ExtentLogger.fail("Exception: " + result.getThrowable().getClass().getSimpleName());
+        ExtentLogger.fail("Message " + result.getThrowable().getMessage());
+        ExtentLogger.fail("StackTrace " + Arrays.toString(result.getThrowable().getStackTrace()));
     }
 
     @Override

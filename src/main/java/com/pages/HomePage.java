@@ -7,15 +7,15 @@ public class HomePage {
 
     private SideMenuComponent sideMenuComponent;
 
-    public String getHomePageTitle(){
+    public String getHomePageTitle() {
         return DriverManager.getDriver().getTitle();
     }
 
-    public HomePage(){
-        sideMenuComponent=new SideMenuComponent();
+    public HomePage() {
+        sideMenuComponent = new SideMenuComponent();
     }
 
-    public void clickOnAdmin(){
+    public void clickOnAdmin() {
         sideMenuComponent.clickAdmin();
     }
 }

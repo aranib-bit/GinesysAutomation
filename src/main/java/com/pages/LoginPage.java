@@ -1,10 +1,10 @@
 package com.pages;
 
 import com.enums.WaitType;
-import static com.utils.Selenium.SeleniumUtils.*;
-
-import com.reports.ExtentLogger;
 import org.openqa.selenium.By;
+
+import static com.utils.Selenium.SeleniumUtils.click;
+import static com.utils.Selenium.SeleniumUtils.sendKeys;
 
 public class LoginPage {
 
@@ -14,21 +14,21 @@ public class LoginPage {
 
 
     private LoginPage setUserName(String userName) {
-        sendKeys(TXTBOX_USERNAME,userName,"Username");
+        sendKeys(TXTBOX_USERNAME, userName, "Username");
         return this;
     }
 
     private LoginPage setPassword(String password) {
-        sendKeys(TXTBOX_PASSWORD,password,"Password");
+        sendKeys(TXTBOX_PASSWORD, password, "Password");
         return this;
     }
 
     private HomePage setLogin() {
-        click(BTN_LOGIN, WaitType.CLICKABLE,"Login Button");
+        click(BTN_LOGIN, WaitType.CLICKABLE, "Login Button");
         return new HomePage();
     }
 
-    public HomePage loginToApplication(String username, String password){
+    public HomePage loginToApplication(String username, String password) {
         return setUserName(username).setPassword(password).setLogin();
     }
 }

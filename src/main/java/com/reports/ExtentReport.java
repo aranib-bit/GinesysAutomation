@@ -7,27 +7,28 @@ import com.constants.FrameworkConstants;
 
 public final class ExtentReport {
 
-    private ExtentReport(){}
+    private ExtentReport() {
+    }
 
     public static ExtentReports extent;
     public static ExtentTest extentTest; //extentTest is not thread safe now
 
-    public static void initReports(){
-        extent=new ExtentReports();
-        ExtentSparkReporter sparkReporter=new ExtentSparkReporter(FrameworkConstants.getReportPath());
+    public static void initReports() {
+        extent = new ExtentReports();
+        ExtentSparkReporter sparkReporter = new ExtentSparkReporter(FrameworkConstants.getReportPath());
         extent.attachReporter(sparkReporter);
     }
 
-    public static void flushReports(){
+    public static void flushReports() {
         extent.flush();
     }
 
-    public static void createTest(String testCaseName){
-        extentTest=extent.createTest(testCaseName);
+    public static void createTest(String testCaseName) {
+        extentTest = extent.createTest(testCaseName);
         ExtentManager.setExtentTest(extentTest);
     }
 
-    public static void assignAuthor (Enum author){
+    public static void assignAuthor(Enum author) {
         ExtentManager.getExtentTest().assignAuthor(author.toString());
     }
 

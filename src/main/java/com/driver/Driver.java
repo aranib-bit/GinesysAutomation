@@ -3,23 +3,26 @@ package com.driver;
 import com.config.ConfigFactory;
 import org.openqa.selenium.WebDriver;
 
-import java.time.Duration;
+import java.net.MalformedURLException;
 import java.util.concurrent.TimeUnit;
 
 public final class Driver {
 
-    private Driver(){}
+    private Driver() {
+    }
 
 
     // Initializes WebDriver for the current thread
-    public static void initDriver() {
-        if (DriverManager.getDriver()==null) {
-            WebDriver driver = DriverFactory.getDriver(ConfigFactory.getConfig().browser());
+    public static void initDriver() throws MalformedURLException {
+        String browser = ConfigFactory.getConfig().browser();
+        String runmode = ConfigFactory.getConfig().runmode();
+        if (DriverManager.getDriver() == null) {
+            WebDriver driver = DriverFactory.getDriver(runmode, browser);
             DriverManager.setDriver(driver);
 
             // Logging for debugging
-            System.out.println("[Thread " + Thread.currentThread().getId() +
-                    "] Initialized driver with session ID: " +
+        System.out.println("[Thread " + Thread.currentThread().getId() +
+                   "] Initialized driver with session ID: " +
                     ((org.openqa.selenium.remote.RemoteWebDriver) driver).getSessionId());
         }
 
