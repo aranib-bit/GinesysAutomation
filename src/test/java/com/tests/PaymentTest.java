@@ -1,7 +1,7 @@
 package com.tests;
 
-import com.annotations.FrameworkAnnotation;
-import com.driver.DriverManager;
+import com.gsl.annotations.FrameworkAnnotation;
+import com.gsl.driver.DriverManager;
 import org.openqa.selenium.By;
 import org.testng.Assert;
 import org.testng.annotations.Test;

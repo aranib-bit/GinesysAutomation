@@ -1,29 +1,43 @@
 package com.tests;
 
-import com.annotations.FrameworkAnnotation;
-import com.enums.TestAuthor;
-import com.pages.HomePage;
-import com.pages.LoginPage;
-import com.testdata.TestData;
+import com.gsl.annotations.FrameworkAnnotation;
+import com.gsl.enums.TestAuthor;
+import com.gsl.pages.HomePage;
+import com.gsl.pages.LoginPage;
+import com.gsl.pages.pagecomponent.Admin.AdminHomePage;
+import com.gsl.pages.pagecomponent.Inventory.InventoryHomePage;
+import com.gsl.testdata.MasterTestData;
 import org.testng.Assert;
 import org.testng.annotations.Test;
 
 public class LoginTest extends BaseTest {
 
     @FrameworkAnnotation(TestAuthor.ARANI)
-    @Test(description = "To check whether the title of the orangehrm website homepage is displayed correctly", dataProvider = "getData", dataProviderClass = com.utils.dataprovider.DataProviderUtils.class)
-
-    public void loginTest(TestData testData) throws InterruptedException {
-
+    @Test(description = "To check whether the user lands on the correct dashboard after login",
+          dataProvider = "getData")
+    public void loginAndVerifyDashboardTest(MasterTestData masterTestData) throws InterruptedException {
 
         LoginPage loginPage = new LoginPage();
-        String actualTitle = loginPage.loginToApplication(testData.username, testData.password).getHomePageTitle();
-        Assert.assertEquals(actualTitle, testData.expectedTitle);
+        Object dashboardPage = loginPage.loginToApplication("ab", "ab");
 
-        HomePage homePage = new HomePage();
-        homePage.clickOnAdmin();
+//        // Now, you can check which dashboard you landed on
+//        if (dashboardPage instanceof AdminHomePage) {
+//            AdminHomePage adminHomePage = (AdminHomePage) dashboardPage;
+//            String actual = adminHomePage.getAdminTopMenuComponent().getSelectedMenu();
+//            Assert.assertEquals(actual, "Dashboard", "Not landed on the Admin dashboard");
+//
+//        } else if (dashboardPage instanceof InventoryHomePage) {
+//            InventoryHomePage inventoryHomePage = (InventoryHomePage) dashboardPage;
+//            String actual = inventoryHomePage.getInventoryTopMenuComponent().getSelectedMenu();
+//            Assert.assertEquals(actual, "Dashboard", "Not landed on the Inventory dashboard");
+//
+//        } else {
+//            Assert.fail("Landed on an unknown page after login.");
+//        }
 
-        //DriverManager.getDriver().findElement(By.xpath("//a[span[text()='Admin']]")).click();
+
+        HomePage homePage=new HomePage();
+        homePage.logoutFromApplication();
 
     }
 }

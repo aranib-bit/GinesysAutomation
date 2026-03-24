@@ -1,20 +1,26 @@
 package com.tests;
 
-import com.testdata.TestData;
+import com.gsl.testdata.MergedReceiptData;
+import com.gsl.testdata.MasterTestData;
+import com.gsl.utils.dataprovider.MergedReceiptDataSupplier;
 import org.testng.annotations.Test;
-
-import java.time.LocalDate;
-import java.time.format.DateTimeFormatter;
 
 public class DataSupplierTest {
 
-    @Test(dataProvider = "getData", dataProviderClass = com.utils.dataprovider.DataProviderUtils.class)
-    public void dataSupplierTest(TestData testData) {
-        System.out.println(testData.username);
-        System.out.println(testData.age);
-        LocalDate date = LocalDate.parse(testData.StartDate, DateTimeFormatter.ofPattern("M/d/yy"));
+    @Test(dataProvider = "getData", dataProviderClass = MergedReceiptDataSupplier.class)
+    public void dataSupplierTest(MasterTestData masterTestData) {
+        System.out.println(masterTestData.username);
+        System.out.println(masterTestData.age);
+//        LocalDate date = LocalDate.parse(testData.date, DateTimeFormatter.ofPattern("M/d/yy"));
+//
+//        System.out.println(testData.date);
+    }
 
-        System.out.println(testData.StartDate);
+    @Test(dataProvider = "receiptData", dataProviderClass = MergedReceiptDataSupplier.class)
+    public void receiptDataTest(MergedReceiptData mergedReceiptData) {
+        System.out.println(mergedReceiptData.getMasterTestData().getTestcasename());
+        System.out.println(mergedReceiptData.getReceiptHeader().getVendorName());
+        System.out.println(mergedReceiptData.getScanItems().get(0).getScanItem().getItemId());
     }
 
 
