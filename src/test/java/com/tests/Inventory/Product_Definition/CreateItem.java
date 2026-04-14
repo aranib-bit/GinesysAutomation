@@ -23,7 +23,7 @@ public class CreateItem extends BaseTest {
     @Test(description = "To create new item of Inventory Item from UI",
             dataProvider = "dataSupplier", dataProviderClass = MergedInvItemDataSupplier.class)
     public void CreateItem(MergedInventoryItemData ItemData) throws InterruptedException {
-        System.out.println("Running test for: " + ItemData.getMasterTestData().testcaseid);
+        System.out.println("Running test for: " + ItemData.getMasterTestData().getTestcaseid());
         System.out.println(ItemData.getItemGeneral().getTestCaseId());
         System.out.println(ItemData.getItemGeneral().getArticle());
         System.out.println(ItemData.getItemCategoryDescription().getCategory1());
@@ -39,8 +39,8 @@ public class CreateItem extends BaseTest {
         // 1. Login
         LoginPage loginPage = new LoginPage();
         HomePage homePage = loginPage.loginToApplication(
-                ItemData.getMasterTestData().username,
-                ItemData.getMasterTestData().password
+                ItemData.getMasterTestData().getUsername(),
+                ItemData.getMasterTestData().getPassword()
         );
 
 

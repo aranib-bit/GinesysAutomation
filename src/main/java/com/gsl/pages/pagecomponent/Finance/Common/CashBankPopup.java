@@ -1,14 +1,24 @@
 package com.gsl.pages.pagecomponent.Finance.Common;
 
+import com.google.common.util.concurrent.Uninterruptibles;
+import com.gsl.driver.DriverManager;
 import com.gsl.enums.WaitType;
 import com.gsl.pages.Finance.Operations.ArVoucherAdd;
 import com.gsl.pages.pagecomponent.Procurement.Operations.GoodsReceiveChallan.GoodsReceiveChallanGeneral;
+import com.gsl.reports.ExtentLogger;
 import com.gsl.utils.Selenium.SeleniumUtils;
 import org.openqa.selenium.By;
+import org.openqa.selenium.StaleElementReferenceException;
+import org.openqa.selenium.WebDriver;
+import org.openqa.selenium.support.ui.ExpectedConditions;
+import org.openqa.selenium.support.ui.WebDriverWait;
+
+import java.time.Duration;
+import java.util.concurrent.TimeUnit;
 
 public class CashBankPopup {
     private static final By CASHBANKSEARCHBOX=By.xpath("//span[normalize-space()='Search:']/ancestor::label/following-sibling::div//input[contains(@id,'textfield') and contains(@id,'-inputEl')]");
-    private static final String CASHBANKSELECTION="//div[@class='x-grid-cell-inner ' and normalize-space()='%s']";
+    private static final String CASHBANKSELECTION = "//div[contains(@class,'x-grid-item-container')]//tr//td[count(//div[@role='columnheader'][.//span[text()='Name']]/preceding-sibling::div)+1]//div[normalize-space()='%s']";
     private static final By CASHBANKPOPUPOKBUTTON=By.xpath("//span[contains(@id, 'button') and contains(@id, 'btnInnerEl') and text() = 'K']");
     private static final By CASHBANKPOPUPCANCELBUTTON=By.xpath("//span[contains(@id, 'button') and contains(@id, 'btnInnerEl') and text() = 'ancel']");
 
@@ -30,11 +40,40 @@ public class CashBankPopup {
     }
 
     public CashBankParent selectCashBank(String cashbankname) {
+        WebDriver driver = DriverManager.getDriver();
         SeleniumUtils.sendKeys(CASHBANKSEARCHBOX, cashbankname, "CASHBANKSEARCHBOX");
-        SeleniumUtils.click(getCashBankSelection(cashbankname), WaitType.CLICKABLE, "Selection");
-        SeleniumUtils.click(CASHBANKPOPUPOKBUTTON, WaitType.CLICKABLE, "OK");
 
-        return parentPage; // return back to whatever page started it
+        By selectionBy = getCashBankSelection(cashbankname);
+        WebDriverWait wait = new WebDriverWait(driver, Duration.ofSeconds(30));
+
+        // Wait for the grid row to appear after ExtJS search reload
+        wait.until(ExpectedConditions.presenceOfElementLocated(selectionBy));
+        // Allow grid to fully stabilize before clicking
+        Uninterruptibles.sleepUninterruptibly(1, TimeUnit.SECONDS);
+
+        // Retry click in case ExtJS re-renders the grid between find and click
+        for (int attempt = 0; attempt < 3; attempt++) {
+            try {
+                driver.findElement(selectionBy).click();
+                if (attempt > 0) {
+                    ExtentLogger.info("[CASHBANK SELECT] Retry succeeded on attempt " + (attempt + 1) + " | CashBank=" + cashbankname);
+                } else {
+                    ExtentLogger.info("[CASHBANK SELECT] Selected on first attempt | CashBank=" + cashbankname);
+                }
+                break;
+            } catch (StaleElementReferenceException e) {
+                ExtentLogger.info("[CASHBANK SELECT] StaleElementReferenceException on attempt " + (attempt + 1) + " | CashBank=" + cashbankname + " | Retrying...");
+                System.out.println("StaleElementReferenceException on cashbank click, attempt " + (attempt + 1));
+                if (attempt == 2) {
+                    ExtentLogger.info("[CASHBANK SELECT] All 3 attempts failed with StaleElementReferenceException | CashBank=" + cashbankname);
+                    throw e;
+                }
+                Uninterruptibles.sleepUninterruptibly(500, TimeUnit.MILLISECONDS);
+            }
+        }
+
+        SeleniumUtils.click(CASHBANKPOPUPOKBUTTON, WaitType.CLICKABLE, "OK");
+        return parentPage;
     }
 
     public CashBankParent cancel() {

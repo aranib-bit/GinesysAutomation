@@ -1,5 +1,7 @@
 package com.gsl.testdata.Finance.Operations.Vouchers.ARVoucher;
 
+import com.gsl.converter.PaymentModeConverter;
+import com.gsl.enums.PaymentSelectionType;
 import io.github.sskorol.data.Column;
 import io.github.sskorol.data.Sheet;
 import lombok.Getter;
@@ -12,8 +14,8 @@ public class PaymentInformation {
     private String testCaseID;
     @Column(name = "LineNo")
     private String lineNo;
-    @Column(name = "Payment Mode")
-    private String paymentMode;
+    @Column(name = "Payment Mode", converter = PaymentModeConverter.class)
+    private PaymentSelectionType paymentMode;
     @Column(name = "Instrument No")
     private String instrumentNo;
     @Column(name = "Instrument Date")

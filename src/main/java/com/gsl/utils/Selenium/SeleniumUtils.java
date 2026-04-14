@@ -108,6 +108,12 @@ public class SeleniumUtils {
         ExtentLogger.info(value + " is entered sucessfully in " + elementName);
     }
 
+    public static void pressTab(By by, String elementName) {
+        WebElement element = waitUntilElementPresent(by);
+        element.sendKeys(Keys.TAB);
+        ExtentLogger.info("Tab key pressed on element: " + elementName);
+    }
+
     public static void clear(By by,String elementName){
         WebElement element = waitUntilElementVisible(by);
         element.sendKeys(Keys.chord(Keys.CONTROL, "a"));
@@ -117,6 +123,13 @@ public class SeleniumUtils {
         WebElement element = waitUntilElementVisible(by);
         String value = element.getAttribute(attributeName);
         ExtentLogger.info("Attribute '" + attributeName + "' from " + elementName + " is: '" + value + "'");
+        return value;
+    }
+
+    public static String getDomProperty(By by, String propertyName, String elementName) {
+        WebElement element = waitUntilElementVisible(by);
+        String value = element.getDomProperty(propertyName);
+        ExtentLogger.info("Property '" + propertyName + "' from " + elementName + " is: '" + value + "'");
         return value;
     }
 
@@ -147,7 +160,7 @@ public class SeleniumUtils {
 
     public static String getText(By by, String elementName) {
         WebElement element = waitUntilElementVisible(by);
-        String text = element.getText();
+        String text = element.getAttribute("innerText");
         ExtentLogger.info("Text from " + elementName + " is: '" + text + "'");
         return text;
     }

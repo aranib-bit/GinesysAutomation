@@ -9,19 +9,19 @@ import lombok.Getter;
 public class MasterTestData {
 
     @Column(name = "testcasename")
-    public String testcasename;
+    private String testcasename;
     @Column(name = "username")
-    public String username;
+    private String username;
     @Column(name = "password")
-    public String password;
+    private String password;
     @Column(name = "expectedTitle")
-    public String expectedTitle;
+    private String expectedTitle;
     @Column(name = "age", converter = SafeIntegerConverter.class)
-    public Integer age;
+    private Integer age;
     @Column(name = "date")
-    public String date;
+    private String date;
     @Column(name = "TestCaseID")
-    public String testcaseid;
+    private String testcaseid;
     @Column(name= "InvocationCount",converter = SafeIntegerConverter.class)
-    public Integer invocationcount;
+    private Integer invocationcount;
 }

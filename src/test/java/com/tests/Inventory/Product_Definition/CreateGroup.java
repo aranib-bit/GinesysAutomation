@@ -3,7 +3,7 @@ package com.tests.Inventory.Product_Definition;
 import com.google.common.util.concurrent.Uninterruptibles;
 import com.gsl.annotations.FrameworkAnnotation;
 import com.gsl.database.DatabaseManager;
-import com.gsl.database.dao.InvGrpDao;
+import com.gsl.database.dao.inventory.InvGrpDao;
 import com.gsl.enums.TestAuthor;
 import com.gsl.pages.HomePage;
 import com.gsl.pages.LoginPage;
@@ -30,7 +30,7 @@ public class CreateGroup extends BaseTest {
         System.out.println("Running test for: " + groupData.getTestCaseId());
         // 1. Login to the application
         LoginPage loginPage = new LoginPage();
-        HomePage homePage = loginPage.loginToApplication(groupData.getMasterTestData().username, groupData.getMasterTestData().password);
+        HomePage homePage = loginPage.loginToApplication(groupData.getMasterTestData().getUsername(), groupData.getMasterTestData().getPassword());
 
         // 2. Use the navigation utility to get to the correct screen
         GroupListPage groupListPage = NavigationUtils.navigateToInventorySideMenu(homePage,
@@ -230,8 +230,8 @@ public class CreateGroup extends BaseTest {
         // 1. Login
         LoginPage loginPage = new LoginPage();
         HomePage homePage = loginPage.loginToApplication(
-                groupData.getMasterTestData().username,
-                groupData.getMasterTestData().password
+                groupData.getMasterTestData().getUsername(),
+                groupData.getMasterTestData().getPassword()
         );
 
         // 2. Navigate to Group List
@@ -322,8 +322,8 @@ public class CreateGroup extends BaseTest {
         // 1. Login
         LoginPage loginPage = new LoginPage();
         HomePage homePage = loginPage.loginToApplication(
-                groupData.getMasterTestData().username,
-                groupData.getMasterTestData().password
+                groupData.getMasterTestData().getUsername(),
+                groupData.getMasterTestData().getPassword()
         );
 
         // 2. Navigate to Group List

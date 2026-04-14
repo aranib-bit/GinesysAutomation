@@ -2,6 +2,7 @@ package com.gsl.utils.Selenium;
 
 import com.gsl.driver.DriverManager;
 import com.gsl.pages.enums.Inventory.Product_Definition.GroupHierarchyType;
+import com.gsl.reports.ExtentLogger;
 import org.openqa.selenium.*;
 import org.openqa.selenium.support.ui.WebDriverWait;
 
@@ -2159,7 +2160,7 @@ public final class JavascriptExecutorUtils {
         System.out.println("=== END: setSubLedger ===");
     }
 
-    public static void setSubLedger(WebDriver driver, String slName) {
+    public static void setSubLedgerold(WebDriver driver, String slName) {
         System.out.println("=== START: setSubLedger '" + slName + "' ===");
 
         // Step 1: Click the slCode cell in child grid to trigger combo rendering
@@ -2264,6 +2265,1078 @@ public final class JavascriptExecutorUtils {
     }
 
 
+    public static void setSubLedger2(WebDriver driver, String slName) {
+        System.out.println("=== START: setSubLedger '" + slName + "' ===");
+
+        String clickScript =
+                "try {"
+                        + "  var childGrid = Ext.ComponentQuery.query('gridpanel[itemId=arvch_grid]')[0];"
+                        + "  if (!childGrid) throw new Error('arvch_grid not found');"
+                        + "  var view = childGrid.getView();"
+                        + "  var rowEl = view.getNode(0);"
+                        + "  if (!rowEl) throw new Error('child grid row 0 DOM node not found');"
+                        + "  var cols = childGrid.getColumnManager().getColumns();"
+                        + "  var slColIndex = -1;"
+                        + "  for (var i=0; i<cols.length; i++) {"
+                        + "    if (cols[i].dataIndex === 'slCode') { slColIndex = i; break; }"
+                        + "  }"
+                        + "  if (slColIndex < 0) throw new Error('slCode column not found');"
+                        + "  var cells = rowEl.querySelectorAll('td.x-grid-cell');"
+                        + "  console.log('TD cells found: ' + cells.length + ', targeting index: ' + slColIndex);"
+                        + "  if (cells.length <= slColIndex) throw new Error('Not enough cells, found: ' + cells.length);"
+                        + "  cells[slColIndex].click();"
+                        + "  console.log('slCode cell clicked via DOM');"
+                        + "  return 'CLICKED';"
+                        + "} catch(e) { console.error('click ERROR: ' + e.message); throw e; }";
+
+        Object clickResult = ((JavascriptExecutor) driver).executeScript(clickScript);
+        System.out.println("=== Cell click result: " + clickResult + " ===");
+
+        try { Thread.sleep(600); } catch (InterruptedException e) { e.printStackTrace(); }
+
+        String selectScript =
+                "try {"
+                        + "  var childGrid = Ext.ComponentQuery.query('gridpanel[itemId=arvch_grid]')[0];"
+                        + "  var combo = Ext.ComponentQuery.query('combo[name=slCode]')[0];"
+                        + "  if (!combo) throw new Error('slCode combo still not found after cell click');"
+                        + "  console.log('combo found: ' + combo.id);"
+
+                        + "  combo.getStore().load({"
+                        + "    params: { query: '" + slName + "', page: 1, start: 0, limit: 25 },"
+                        + "    callback: function() {"
+                        + "      var store = combo.getStore();"
+                        + "      console.log('store loaded count=' + store.getCount());"
+
+                        + "      var slRec = null;"
+                        + "      store.each(function(r) {"
+                        + "        if (r.get('slName') === '" + slName + "') { slRec = r; return false; }"
+                        + "      });"
+                        + "      if (!slRec && store.getCount() > 0) {"
+                        + "        slRec = store.getAt(0);"
+                        + "        console.log('Using first record: ' + slRec.get('slName'));"
+                        + "      }"
+                        + "      if (!slRec) { console.error('No SL found: " + slName + "'); return; }"
+                        + "      console.log('SL combo ALL fields: ' + JSON.stringify(slRec.data));"
+
+                        + "      combo.select(slRec);"
+                        + "      combo.fireEvent('select', combo, slRec);"
+
+                        + "      setTimeout(function() {"
+                        + "        var rec = childGrid.getStore().getAt(0);"
+                        + "        if (!rec) { console.error('child grid rec not found'); return; }"
+
+                        + "        rec.set('slCode',             slRec.get('slCode'));"
+                        + "        rec.set('slName',             slRec.get('slName'));"
+                        + "        rec.set('slid',               slRec.get('slid'));"
+                        + "        rec.set('className',          slRec.get('className'));"
+                        + "        rec.set('ledgerCode',         slRec.get('glCode')                 || 0);"
+                        + "        rec.set('ledgerName',         slRec.get('glName')                 || '');"
+                        + "        rec.set('ledgerGroupName',    slRec.get('generalLedgerGroupName') || '');"
+                        + "        rec.set('ledgerAbbreviation', slRec.get('generalLedgerAbbre')     || '');"
+
+                        + "        var refSiteCode = slRec.get('referenceSiteCode') || 0;"
+                        + "        var refSiteName = slRec.get('referenceSiteName') || '';"
+                        + "        if (!refSiteCode || refSiteCode === 0) {"
+                        + "          var siteField = Ext.ComponentQuery.query('gslpicklistfieldextended[fieldLabel=Owner Site]')[0];"
+                        + "          if (siteField) {"
+                        + "            refSiteCode = siteField.getValue()    || 1;"
+                        + "            refSiteName = siteField.getRawValue() || '';"
+                        + "            console.log('refSite from Owner Site: ' + refSiteCode + ' / ' + refSiteName);"
+                        + "          }"
+                        + "        }"
+
+                        + "        rec.set('referenceSiteCode',   refSiteCode);"
+                        + "        rec.set('referenceSiteName',   refSiteName);"
+
+                        // ── NEW: set referenceSiteType and referenceSiteOUName ──
+                        + "        rec.set('referenceSiteType',   slRec.get('referenceSiteType')   || slRec.get('siteType')   || null);"
+                        + "        rec.set('referenceSiteOUName', slRec.get('referenceSiteOUName') || slRec.get('ouName')     || null);"
+
+                        + "        childGrid.getView().refreshNode(0);"
+
+                        + "        console.log('DONE slCode='          + rec.get('slCode'));"
+                        + "        console.log('DONE slid='            + rec.get('slid'));"
+                        + "        console.log('DONE className='       + rec.get('className'));"
+                        + "        console.log('DONE refSiteCode='     + rec.get('referenceSiteCode'));"
+                        + "        console.log('DONE refSiteName='     + rec.get('referenceSiteName'));"
+                        + "        console.log('DONE refSiteType='     + rec.get('referenceSiteType'));"
+                        + "        console.log('DONE refSiteOUName='   + rec.get('referenceSiteOUName'));"
+                        + "        console.log('DONE ledgerName='      + rec.get('ledgerName'));"
+                        + "      }, 600);"
+                        + "    }"
+                        + "  });"
+                        + "} catch(e) { console.error('select ERROR: ' + e.message); throw e; }";
+
+        ((JavascriptExecutor) driver).executeScript(selectScript);
+        System.out.println("=== JS select executed for SL '" + slName + "' ===");
+
+        try { Thread.sleep(3000); } catch (InterruptedException e) { e.printStackTrace(); }
+        System.out.println("=== END: setSubLedger ===");
+    }
+
+
+
+    public static void setSubLedgerVerify() {
+        JavascriptExecutor js = (JavascriptExecutor) DriverManager.getDriver();
+        String payload = (String) js.executeScript(
+                "try {" +
+                        "    var grids = Ext.ComponentQuery.query('grid');" +
+                        "    for (var i = 0; i < grids.length; i++) {" +
+                        "        var store = grids[i].getStore();" +
+                        "        if (store && store.getCount() > 0) {" +
+                        "            var rec = store.getAt(0);" +
+                        "            return JSON.stringify(rec.getData());" +
+                        "        }" +
+                        "    }" +
+                        "    return 'No record found';" +
+                        "} catch(e) { return 'ERROR: ' + e.message; }"
+        );
+        System.out.println("=== DETAIL RECORD BEFORE SAVE ===");
+        System.out.println(payload);
+        System.out.println("=== END DETAIL RECORD ===");
+    }
+
+    public static void debugSubLedgerRecords(WebDriver driver) {
+        JavascriptExecutor js = (JavascriptExecutor) driver;
+
+        String result = (String) js.executeScript(
+                "try {" +
+                        "    var result = {};" +
+                        "    var combo = Ext.ComponentQuery.query('combo[name=slCode]')[0];" +
+                        "    if (combo) {" +
+                        "        var comboStore = combo.getStore();" +
+                        "        result.comboRecord = comboStore && comboStore.getCount() > 0" +
+                        "            ? comboStore.getAt(0).data : 'store empty';" +
+                        "    } else {" +
+                        "        result.comboRecord = 'combo not found';" +
+                        "    }" +
+
+                        // ── FIX: always use arvch_grid, not first grid with records ──
+                        "    var childGrid = Ext.ComponentQuery.query('gridpanel[itemId=arvch_grid]')[0];" +
+                        "    if (childGrid) {" +
+                        "        var gridStore = childGrid.getStore();" +
+                        "        result.gridRecord = gridStore && gridStore.getCount() > 0" +
+                        "            ? gridStore.getAt(0).data : 'store empty';" +
+                        "    } else {" +
+                        "        result.gridRecord = 'arvch_grid not found';" +
+                        "    }" +
+
+                        "    return JSON.stringify(result);" +
+                        "} catch(e) {" +
+                        "    return 'ERROR: ' + e.message;" +
+                        "}"
+        );
+
+        System.out.println("=== DEBUG SUB LEDGER RECORDS ===");
+        System.out.println(result);
+        System.out.println("=== END DEBUG ===");
+    }
+
+
+
+
+    public static void setSubLedger5(WebDriver driver, String slName) {
+        System.out.println("=== START: setSubLedger '" + slName + "' ===");
+
+        String clickScript =
+                "try {"
+                        + "  var childGrid = Ext.ComponentQuery.query('gridpanel[itemId=arvch_grid]')[0];"
+                        + "  if (!childGrid) throw new Error('arvch_grid not found');"
+                        + "  var view = childGrid.getView();"
+                        + "  var rowEl = view.getNode(0);"
+                        + "  if (!rowEl) throw new Error('child grid row 0 DOM node not found');"
+                        + "  var cols = childGrid.getColumnManager().getColumns();"
+                        + "  var slColIndex = -1;"
+                        + "  for (var i=0; i<cols.length; i++) {"
+                        + "    if (cols[i].dataIndex === 'slCode') { slColIndex = i; break; }"
+                        + "  }"
+                        + "  if (slColIndex < 0) throw new Error('slCode column not found');"
+                        + "  var cells = rowEl.querySelectorAll('td.x-grid-cell');"
+                        + "  if (cells.length <= slColIndex) throw new Error('Not enough cells, found: ' + cells.length);"
+                        + "  cells[slColIndex].click();"
+                        + "  return 'CLICKED';"
+                        + "} catch(e) { throw e; }";
+
+        Object clickResult = ((JavascriptExecutor) driver).executeScript(clickScript);
+        System.out.println("=== Cell click result: " + clickResult + " ===");
+
+        try { Thread.sleep(600); } catch (InterruptedException e) { e.printStackTrace(); }
+
+        // Step 1: Load combo store and collect ALL data synchronously
+        String loadScript =
+                "try {"
+                        + "  var result = {};"
+                        + "  var combo = Ext.ComponentQuery.query('combo[name=slCode]')[0];"
+                        + "  if (!combo) return JSON.stringify({error: 'combo not found'});"
+                        + "  result.comboFound = combo.id;"
+
+                        + "  var store = combo.getStore();"
+                        + "  result.storeCount = store.getCount();"
+
+                        // Find matching record
+                        + "  var slRec = null;"
+                        + "  store.each(function(r) {"
+                        + "    if (r.get('slName') === '" + slName + "') { slRec = r; return false; }"
+                        + "  });"
+                        + "  if (!slRec && store.getCount() > 0) slRec = store.getAt(0);"
+                        + "  if (!slRec) return JSON.stringify({error: 'no SL record found'});"
+
+                        + "  result.comboRecord = slRec.data;"
+                        + "  return JSON.stringify(result);"
+                        + "} catch(e) { return JSON.stringify({error: e.message}); }";
+
+        String loadResult = (String) ((JavascriptExecutor) driver).executeScript(loadScript);
+        System.out.println("=== COMBO LOAD RESULT ===");
+        System.out.println(loadResult);
+        System.out.println("=== END COMBO LOAD RESULT ===");
+
+        // Step 2: Select and set all fields — return debug log as string
+        String selectScript =
+                "try {"
+                        + "  var logs = [];"
+                        + "  var childGrid = Ext.ComponentQuery.query('gridpanel[itemId=arvch_grid]')[0];"
+                        + "  var combo = Ext.ComponentQuery.query('combo[name=slCode]')[0];"
+                        + "  if (!combo) return 'ERROR: combo not found';"
+
+                        + "  var store = combo.getStore();"
+                        + "  var slRec = null;"
+                        + "  store.each(function(r) {"
+                        + "    if (r.get('slName') === '" + slName + "') { slRec = r; return false; }"
+                        + "  });"
+                        + "  if (!slRec && store.getCount() > 0) slRec = store.getAt(0);"
+                        + "  if (!slRec) return 'ERROR: no SL record';"
+
+                        + "  combo.select(slRec);"
+                        + "  combo.fireEvent('select', combo, slRec);"
+
+                        + "  var rec = childGrid.getStore().getAt(0);"
+                        + "  if (!rec) return 'ERROR: child grid rec not found';"
+
+                        + "  rec.set('slCode',             slRec.get('slCode'));"
+                        + "  rec.set('slName',             slRec.get('slName'));"
+                        + "  rec.set('slid',               slRec.get('slid'));"
+                        + "  rec.set('className',          slRec.get('className'));"
+                        + "  rec.set('ledgerCode',         slRec.get('glCode')                 || 0);"
+                        + "  rec.set('ledgerName',         slRec.get('glName')                 || '');"
+                        + "  rec.set('ledgerGroupName',    slRec.get('generalLedgerGroupName') || '');"
+                        + "  rec.set('ledgerAbbreviation', slRec.get('generalLedgerAbbre')     || '');"
+
+                        // referenceSiteCode — try multiple sources
+                        + "  var refSiteCode = slRec.get('referenceSiteCode') || 0;"
+                        + "  var refSiteName = slRec.get('referenceSiteName') || '';"
+                        + "  logs.push('refSiteCode from combo: ' + refSiteCode);"
+
+                        + "  if (!refSiteCode || refSiteCode === 0) {"
+                        + "    var siteField = Ext.ComponentQuery.query('gslpicklistfieldextended[fieldLabel=Owner Site]')[0];"
+                        + "    if (siteField) {"
+                        + "      refSiteCode = siteField.getValue() || 0;"
+                        + "      refSiteName = siteField.getRawValue() || refSiteName;"
+                        + "      logs.push('refSiteCode from Owner Site picklist: ' + refSiteCode + ' / ' + refSiteName);"
+                        + "    }"
+                        + "  }"
+
+                        + "  if (!refSiteCode || refSiteCode === 0) {"
+                        + "    var connSite = Ext.ComponentQuery.query('[name=connectedSiteCode]')[0]"
+                        + "                || Ext.ComponentQuery.query('[name=ownerSiteCode]')[0];"
+                        + "    if (connSite) {"
+                        + "      refSiteCode = connSite.getValue() || 0;"
+                        + "      logs.push('refSiteCode from field: ' + refSiteCode);"
+                        + "    }"
+                        + "  }"
+
+                        + "  if (!refSiteCode || refSiteCode === 0) {"
+                        + "    refSiteCode = 1;"
+                        + "    logs.push('refSiteCode FALLBACK to 1');"
+                        + "  }"
+
+                        // referenceSiteType and referenceSiteOUName
+                        + "  var refSiteType   = slRec.get('referenceSiteType')   || slRec.get('siteType')   || 'OU';"
+                        + "  var refSiteOUName = slRec.get('referenceSiteOUName') || slRec.get('ouName')     || refSiteName || '';"
+                        + "  logs.push('refSiteType initial: ' + refSiteType);"
+                        + "  logs.push('refSiteOUName initial: ' + refSiteOUName);"
+
+                        // Search StoreManager for better values
+                        + "  Ext.data.StoreManager.each(function(s) {"
+                        + "    if (s.getCount() > 0) {"
+                        + "      var r = s.findRecord('code', refSiteCode);"
+                        + "      if (!r) r = s.findRecord('siteCode', refSiteCode);"
+                        + "      if (r) {"
+                        + "        refSiteType   = r.get('siteType')   || r.get('type')   || refSiteType;"
+                        + "        refSiteOUName = r.get('ouName')     || r.get('OUName') || refSiteOUName;"
+                        + "        logs.push('Found in StoreManager: siteType=' + refSiteType + ' ouName=' + refSiteOUName);"
+                        + "        logs.push('StoreManager record ALL fields: ' + JSON.stringify(r.data));"
+                        + "      }"
+                        + "    }"
+                        + "  });"
+
+                        + "  rec.set('referenceSiteCode',   refSiteCode);"
+                        + "  rec.set('referenceSiteName',   refSiteName || 'Hena Embroidery');"
+                        + "  rec.set('referenceSiteType',   refSiteType);"
+                        + "  rec.set('referenceSiteOUName', refSiteOUName);"
+
+                        + "  childGrid.getView().refreshNode(0);"
+
+                        + "  logs.push('FINAL slCode='        + rec.get('slCode'));"
+                        + "  logs.push('FINAL slName='        + rec.get('slName'));"
+                        + "  logs.push('FINAL ledgerCode='    + rec.get('ledgerCode'));"
+                        + "  logs.push('FINAL ledgerName='    + rec.get('ledgerName'));"
+                        + "  logs.push('FINAL refSiteCode='   + rec.get('referenceSiteCode'));"
+                        + "  logs.push('FINAL refSiteName='   + rec.get('referenceSiteName'));"
+                        + "  logs.push('FINAL refSiteType='   + rec.get('referenceSiteType'));"
+                        + "  logs.push('FINAL refSiteOUName=' + rec.get('referenceSiteOUName'));"
+                        + "  logs.push('FULL GRID RECORD: '   + JSON.stringify(rec.getData()));"
+
+                        + "  return logs.join('\\n');"
+                        + "} catch(e) { return 'ERROR: ' + e.message; }";
+
+        String selectResult = (String) ((JavascriptExecutor) driver).executeScript(selectScript);
+        System.out.println("=== SELECT RESULT ===");
+        System.out.println(selectResult);
+        System.out.println("=== END SELECT RESULT ===");
+
+        try { Thread.sleep(2000); } catch (InterruptedException e) { e.printStackTrace(); }
+        System.out.println("=== END: setSubLedger ===");
+    }
+
+    public static void setSubLedger6(WebDriver driver, String slName) {
+        System.out.println("=== START: setSubLedger '" + slName + "' ===");
+
+        String clickScript =
+                "try {"
+                        + "  var childGrid = Ext.ComponentQuery.query('gridpanel[itemId=arvch_grid]')[0];"
+                        + "  if (!childGrid) throw new Error('arvch_grid not found');"
+                        + "  var view = childGrid.getView();"
+                        + "  var rowEl = view.getNode(0);"
+                        + "  if (!rowEl) throw new Error('child grid row 0 DOM node not found');"
+                        + "  var cols = childGrid.getColumnManager().getColumns();"
+                        + "  var slColIndex = -1;"
+                        + "  for (var i=0; i<cols.length; i++) {"
+                        + "    if (cols[i].dataIndex === 'slCode') { slColIndex = i; break; }"
+                        + "  }"
+                        + "  if (slColIndex < 0) throw new Error('slCode column not found');"
+                        + "  var cells = rowEl.querySelectorAll('td.x-grid-cell');"
+                        + "  if (cells.length <= slColIndex) throw new Error('Not enough cells: ' + cells.length);"
+                        + "  cells[slColIndex].click();"
+                        + "  return 'CLICKED';"
+                        + "} catch(e) { throw e; }";
+
+        Object clickResult = ((JavascriptExecutor) driver).executeScript(clickScript);
+        System.out.println("=== Cell click result: " + clickResult + " ===");
+
+        try { Thread.sleep(600); } catch (InterruptedException e) { e.printStackTrace(); }
+
+        String selectScript =
+                "try {"
+                        + "  window.__slDebugLog = [];"
+                        + "  var childGrid = Ext.ComponentQuery.query('gridpanel[itemId=arvch_grid]')[0];"
+                        + "  var combo = Ext.ComponentQuery.query('combo[name=slCode]')[0];"
+                        + "  if (!combo) throw new Error('slCode combo not found');"
+                        + "  window.__slDebugLog.push('combo found: ' + combo.id);"
+
+                        // ── MUST use store.load() — combo store is empty until loaded ──
+                        + "  combo.getStore().load({"
+                        + "    params: { query: '" + slName + "', page: 1, start: 0, limit: 25 },"
+                        + "    callback: function() {"
+                        + "      var store = combo.getStore();"
+                        + "      window.__slDebugLog.push('store loaded count=' + store.getCount());"
+
+                        + "      var slRec = null;"
+                        + "      store.each(function(r) {"
+                        + "        if (r.get('slName') === '" + slName + "') { slRec = r; return false; }"
+                        + "      });"
+                        + "      if (!slRec && store.getCount() > 0) {"
+                        + "        slRec = store.getAt(0);"
+                        + "        window.__slDebugLog.push('Using first record: ' + slRec.get('slName'));"
+                        + "      }"
+                        + "      if (!slRec) {"
+                        + "        window.__slDebugLog.push('ERROR: No SL found');"
+                        + "        return;"
+                        + "      }"
+                        + "      window.__slDebugLog.push('SL combo ALL fields: ' + JSON.stringify(slRec.data));"
+
+                        // combo.select fires app's own handler which sets slName in grid
+                        + "      combo.select(slRec);"
+                        + "      combo.fireEvent('select', combo, slRec);"
+
+                        + "      setTimeout(function() {"
+                        + "        var rec = childGrid.getStore().getAt(0);"
+                        + "        if (!rec) {"
+                        + "          window.__slDebugLog.push('ERROR: child grid rec not found');"
+                        + "          return;"
+                        + "        }"
+
+                        + "        window.__slDebugLog.push('slName after combo.select: ' + rec.get('slName'));"
+
+                        // Only set SL fields if app handler didn't set them
+                        + "        if (!rec.get('slName') || rec.get('slName') === '') {"
+                        + "          rec.set('slCode',             slRec.get('slCode'));"
+                        + "          rec.set('slName',             slRec.get('slName'));"
+                        + "          rec.set('slid',               slRec.get('slid'));"
+                        + "          rec.set('className',          slRec.get('className'));"
+                        + "          rec.set('ledgerCode',         slRec.get('glCode')                 || 0);"
+                        + "          rec.set('ledgerName',         slRec.get('glName')                 || '');"
+                        + "          rec.set('ledgerGroupName',    slRec.get('generalLedgerGroupName') || '');"
+                        + "          rec.set('ledgerAbbreviation', slRec.get('generalLedgerAbbre')     || '');"
+                        + "          window.__slDebugLog.push('SL fields set manually');"
+                        + "        } else {"
+                        + "          window.__slDebugLog.push('App handler set slName correctly');"
+                        + "        }"
+
+                        // Always set reference site fields — app never sets these
+                        + "        var refSiteCode = slRec.get('referenceSiteCode') || 0;"
+                        + "        var refSiteName = slRec.get('referenceSiteName') || '';"
+                        + "        window.__slDebugLog.push('refSiteCode from combo: ' + refSiteCode);"
+
+                        + "        if (!refSiteCode || refSiteCode === 0) {"
+                        + "          var siteField = Ext.ComponentQuery.query('gslpicklistfieldextended[fieldLabel=Owner Site]')[0];"
+                        + "          if (siteField) {"
+                        + "            refSiteCode = siteField.getValue() || 0;"
+                        + "            refSiteName = siteField.getRawValue() || refSiteName;"
+                        + "            window.__slDebugLog.push('refSiteCode from Owner Site: ' + refSiteCode + ' / ' + refSiteName);"
+                        + "          }"
+                        + "        }"
+
+                        + "        if (!refSiteCode || refSiteCode === 0) {"
+                        + "          var connSite = Ext.ComponentQuery.query('[name=connectedSiteCode]')[0]"
+                        + "                      || Ext.ComponentQuery.query('[name=ownerSiteCode]')[0];"
+                        + "          if (connSite) {"
+                        + "            refSiteCode = connSite.getValue() || 0;"
+                        + "            window.__slDebugLog.push('refSiteCode from field: ' + refSiteCode);"
+                        + "          }"
+                        + "        }"
+
+                        + "        if (!refSiteCode || refSiteCode === 0) {"
+                        + "          refSiteCode = 1;"
+                        + "          window.__slDebugLog.push('refSiteCode FALLBACK to 1');"
+                        + "        }"
+
+                        + "        var refSiteType   = slRec.get('referenceSiteType')   || slRec.get('siteType')   || 'OU';"
+                        + "        var refSiteOUName = slRec.get('referenceSiteOUName') || slRec.get('ouName')     || refSiteName || '';"
+
+                        + "        Ext.data.StoreManager.each(function(s) {"
+                        + "          if (s.getCount() > 0) {"
+                        + "            var r = s.findRecord('code', refSiteCode);"
+                        + "            if (!r) r = s.findRecord('siteCode', refSiteCode);"
+                        + "            if (r) {"
+                        + "              refSiteType   = r.get('siteType')   || r.get('type')   || refSiteType;"
+                        + "              refSiteOUName = r.get('ouName')     || r.get('OUName') || refSiteOUName;"
+                        + "              window.__slDebugLog.push('StoreManager site: type=' + refSiteType + ' ouName=' + refSiteOUName);"
+                        + "              window.__slDebugLog.push('Site ALL fields: ' + JSON.stringify(r.data));"
+                        + "            }"
+                        + "          }"
+                        + "        });"
+
+                        + "        rec.set('referenceSiteCode',   refSiteCode);"
+                        + "        rec.set('referenceSiteName',   refSiteName || '');"
+                        + "        rec.set('referenceSiteType',   refSiteType);"
+                        + "        rec.set('referenceSiteOUName', refSiteOUName);"
+
+                        + "        childGrid.getView().refreshNode(0);"
+
+                        + "        window.__slDebugLog.push('FINAL slCode='        + rec.get('slCode'));"
+                        + "        window.__slDebugLog.push('FINAL slName='        + rec.get('slName'));"
+                        + "        window.__slDebugLog.push('FINAL ledgerName='    + rec.get('ledgerName'));"
+                        + "        window.__slDebugLog.push('FINAL refSiteCode='   + rec.get('referenceSiteCode'));"
+                        + "        window.__slDebugLog.push('FINAL refSiteName='   + rec.get('referenceSiteName'));"
+                        + "        window.__slDebugLog.push('FINAL refSiteType='   + rec.get('referenceSiteType'));"
+                        + "        window.__slDebugLog.push('FINAL refSiteOUName=' + rec.get('referenceSiteOUName'));"
+                        + "        window.__slDebugLog.push('FULL GRID RECORD: '   + JSON.stringify(rec.getData()));"
+                        + "      }, 600);"
+                        + "    }"
+                        + "  });"
+                        + "} catch(e) { window.__slDebugLog.push('ERROR: ' + e.message); }";
+
+        ((JavascriptExecutor) driver).executeScript(selectScript);
+        System.out.println("=== JS select executed for SL '" + slName + "' ===");
+
+        // Wait for store.load callback + setTimeout(600) to fully complete
+        try { Thread.sleep(4000); } catch (InterruptedException e) { e.printStackTrace(); }
+
+        // Read all async logs synchronously from window variable
+        String debugLog = (String) ((JavascriptExecutor) driver).executeScript(
+                "return window.__slDebugLog ? window.__slDebugLog.join('\\n') : 'no logs captured';"
+        );
+        System.out.println("=== ASYNC DEBUG LOG ===");
+        System.out.println(debugLog);
+        System.out.println("=== END ASYNC DEBUG LOG ===");
+
+        System.out.println("=== END: setSubLedger ===");
+    }
+
+    public static void setSubLedger7(WebDriver driver, String slName) {
+        System.out.println("=== START: setSubLedger '" + slName + "' ===");
+
+        String clickScript =
+                "try {"
+                        + "  var childGrid = Ext.ComponentQuery.query('gridpanel[itemId=arvch_grid]')[0];"
+                        + "  if (!childGrid) throw new Error('arvch_grid not found');"
+                        + "  var view = childGrid.getView();"
+                        + "  var rowEl = view.getNode(0);"
+                        + "  if (!rowEl) throw new Error('child grid row 0 DOM node not found');"
+                        + "  var cols = childGrid.getColumnManager().getColumns();"
+                        + "  var slColIndex = -1;"
+                        + "  for (var i=0; i<cols.length; i++) {"
+                        + "    if (cols[i].dataIndex === 'slCode') { slColIndex = i; break; }"
+                        + "  }"
+                        + "  if (slColIndex < 0) throw new Error('slCode column not found');"
+                        + "  var cells = rowEl.querySelectorAll('td.x-grid-cell');"
+                        + "  console.log('TD cells found: ' + cells.length + ', targeting index: ' + slColIndex);"
+                        + "  if (cells.length <= slColIndex) throw new Error('Not enough cells, found: ' + cells.length);"
+                        + "  cells[slColIndex].click();"
+                        + "  console.log('slCode cell clicked via DOM');"
+                        + "  return 'CLICKED';"
+                        + "} catch(e) { console.error('click ERROR: ' + e.message); throw e; }";
+
+        Object clickResult = ((JavascriptExecutor) driver).executeScript(clickScript);
+        System.out.println("=== Cell click result: " + clickResult + " ===");
+
+        try { Thread.sleep(600); } catch (InterruptedException e) { e.printStackTrace(); }
+
+        String selectScript =
+                "try {"
+                        + "  var childGrid = Ext.ComponentQuery.query('gridpanel[itemId=arvch_grid]')[0];"
+                        + "  var combo = Ext.ComponentQuery.query('combo[name=slCode]')[0];"
+                        + "  if (!combo) throw new Error('slCode combo still not found after cell click');"
+                        + "  console.log('combo found: ' + combo.id);"
+
+                        + "  combo.getStore().load({"
+                        + "    params: { query: '" + slName + "', page: 1, start: 0, limit: 25 },"
+                        + "    callback: function() {"
+                        + "      var store = combo.getStore();"
+                        + "      console.log('store loaded count=' + store.getCount());"
+
+                        + "      var slRec = null;"
+                        + "      store.each(function(r) {"
+                        + "        if (r.get('slName') === '" + slName + "') { slRec = r; return false; }"
+                        + "      });"
+                        + "      if (!slRec && store.getCount() > 0) {"
+                        + "        slRec = store.getAt(0);"
+                        + "        console.log('Using first record: ' + slRec.get('slName'));"
+                        + "      }"
+                        + "      if (!slRec) { console.error('No SL found: " + slName + "'); return; }"
+                        + "      console.log('SL data: ' + JSON.stringify(slRec.data));"
+
+                        + "      combo.select(slRec);"
+                        + "      combo.fireEvent('select', combo, slRec);"
+
+                        + "      setTimeout(function() {"
+                        + "        var rec = childGrid.getStore().getAt(0);"
+                        + "        if (!rec) { console.error('child grid rec not found'); return; }"
+
+                        // ── ORIGINAL: always set ALL fields unconditionally ──
+                        + "        rec.set('slCode',             slRec.get('slCode'));"
+                        + "        rec.set('slName',             slRec.get('slName'));"
+                        + "        rec.set('slid',               slRec.get('slid'));"
+                        + "        rec.set('className',          slRec.get('className'));"
+                        + "        rec.set('ledgerCode',         slRec.get('glCode')                 || 0);"
+                        + "        rec.set('ledgerName',         slRec.get('glName')                 || '');"
+                        + "        rec.set('ledgerGroupName',    slRec.get('generalLedgerGroupName') || '');"
+                        + "        rec.set('ledgerAbbreviation', slRec.get('generalLedgerAbbre')     || '');"
+
+                        // ── ORIGINAL: refSiteCode using getValue() || 1 ──
+                        + "        var refSiteCode = slRec.get('referenceSiteCode') || 0;"
+                        + "        var refSiteName = slRec.get('referenceSiteName') || '';"
+                        + "        if (!refSiteCode || refSiteCode === 0) {"
+                        + "          var siteField = Ext.ComponentQuery.query('gslpicklistfieldextended[fieldLabel=Owner Site]')[0];"
+                        + "          if (siteField) {"
+                        + "            refSiteCode = siteField.getValue()    || 1;"
+                        + "            refSiteName = siteField.getRawValue() || '';"
+                        + "            console.log('refSite from Owner Site: ' + refSiteCode + ' / ' + refSiteName);"
+                        + "          }"
+                        + "        }"
+
+                        + "        rec.set('referenceSiteCode', refSiteCode);"
+                        + "        rec.set('referenceSiteName', refSiteName);"
+
+                        // ── NEW: only these two lines added to original ──
+                        + "        rec.set('referenceSiteType',   slRec.get('referenceSiteType')   || slRec.get('siteType')   || 'OU');"
+                        + "        rec.set('referenceSiteOUName', slRec.get('referenceSiteOUName') || slRec.get('ouName')     || refSiteName || '');"
+
+                        + "        childGrid.getView().refreshNode(0);"
+
+                        + "        console.log('DONE slCode='          + rec.get('slCode'));"
+                        + "        console.log('DONE slid='            + rec.get('slid'));"
+                        + "        console.log('DONE className='       + rec.get('className'));"
+                        + "        console.log('DONE refSiteCode='     + rec.get('referenceSiteCode'));"
+                        + "        console.log('DONE refSiteName='     + rec.get('referenceSiteName'));"
+                        + "        console.log('DONE refSiteType='     + rec.get('referenceSiteType'));"
+                        + "        console.log('DONE refSiteOUName='   + rec.get('referenceSiteOUName'));"
+                        + "        console.log('DONE ledgerName='      + rec.get('ledgerName'));"
+                        + "      }, 600);"
+                        + "    }"
+                        + "  });"
+                        + "} catch(e) { console.error('select ERROR: ' + e.message); throw e; }";
+
+        ((JavascriptExecutor) driver).executeScript(selectScript);
+        System.out.println("=== JS select executed for SL '" + slName + "' ===");
+
+        try { Thread.sleep(3000); } catch (InterruptedException e) { e.printStackTrace(); }
+        System.out.println("=== END: setSubLedger ===");
+    }
+
+
+    public static void setSubLedger(WebDriver driver, String slName, String slId, String referenceSite) {
+        System.out.println("=== START: setSubLedger '" + slName + "' id='" + slId + "' ===");
+        String mode = (slId == null || slId.isEmpty()) ? "NAME_ONLY" : "NAME_AND_ID";
+        String safeSlId = (slId == null) ? "" : slId;
+
+        String clickScript =
+                "try {"
+                        + "  var childGrid = Ext.ComponentQuery.query('gridpanel[itemId=arvch_grid]')[0];"
+                        + "  if (!childGrid) throw new Error('arvch_grid not found');"
+                        + "  var view = childGrid.getView();"
+                        + "  var rowEl = view.getNode(0);"
+                        + "  if (!rowEl) throw new Error('child grid row 0 DOM node not found');"
+                        + "  var cols = childGrid.getColumnManager().getColumns();"
+                        + "  var slColIndex = -1;"
+                        + "  for (var i=0; i<cols.length; i++) {"
+                        + "    if (cols[i].dataIndex === 'slCode') { slColIndex = i; break; }"
+                        + "  }"
+                        + "  if (slColIndex < 0) throw new Error('slCode column not found');"
+                        + "  var cells = rowEl.querySelectorAll('td.x-grid-cell');"
+                        + "  console.log('TD cells found: ' + cells.length + ', targeting index: ' + slColIndex);"
+                        + "  if (cells.length <= slColIndex) throw new Error('Not enough cells, found: ' + cells.length);"
+                        + "  cells[slColIndex].click();"
+                        + "  console.log('slCode cell clicked via DOM');"
+                        + "  return 'CLICKED';"
+                        + "} catch(e) { console.error('click ERROR: ' + e.message); throw e; }";
+
+        Object clickResult = ((JavascriptExecutor) driver).executeScript(clickScript);
+        System.out.println("=== Cell click result: " + clickResult + " ===");
+
+        try { Thread.sleep(600); } catch (InterruptedException e) { e.printStackTrace(); }
+
+        String selectScript =
+                "try {"
+                        + "  var childGrid = Ext.ComponentQuery.query('gridpanel[itemId=arvch_grid]')[0];"
+                        + "  var combo = Ext.ComponentQuery.query('combo[name=slCode]')[0];"
+                        + "  if (!combo) throw new Error('slCode combo still not found after cell click');"
+                        + "  console.log('combo found: ' + combo.id);"
+
+                        + "  combo.getStore().load({"
+                        + "    params: { query: '" + slName + "', page: 1, start: 0, limit: 25 },"
+                        + "    callback: function() {"
+                        + "      var store = combo.getStore();"
+                        + "      console.log('store loaded count=' + store.getCount());"
+
+                        + "      var slRec = null;"
+                        + "      if ('" + safeSlId + "' !== '') {"
+                        + "        store.each(function(r) {"
+                        + "          if (r.get('slName') === '" + slName + "' && String(r.get('slid')) === '" + safeSlId + "') { slRec = r; return false; }"
+                        + "        });"
+                        + "      }"
+                        + "      if (!slRec) {"
+                        + "        store.each(function(r) {"
+                        + "          if (r.get('slName') === '" + slName + "') { slRec = r; return false; }"
+                        + "        });"
+                        + "      }"
+                        + "      if (!slRec) { console.error('No SL found: " + slName + "'); return; }"
+
+                        + "      combo.select(slRec);"
+                        + "      combo.fireEvent('select', combo, slRec);"
+
+                        + "      setTimeout(function() {"
+                        + "        var rec = childGrid.getStore().getAt(0);"
+                        + "        if (!rec) { console.error('child grid rec not found'); return; }"
+
+                        // ── Always set ALL fields unconditionally ──
+                        + "        rec.set('slCode',             slRec.get('slCode'));"
+                        + "        rec.set('slName',             slRec.get('slName'));"
+                        + "        rec.set('slid',               slRec.get('slid'));"
+                        + "        rec.set('className',          slRec.get('className'));"
+                        + "        rec.set('ledgerCode',         slRec.get('glCode')                 || 0);"
+                        + "        rec.set('ledgerName',         slRec.get('glName')                 || '');"
+                        + "        rec.set('ledgerGroupName',    slRec.get('generalLedgerGroupName') || '');"
+                        + "        rec.set('ledgerAbbreviation', slRec.get('generalLedgerAbbre')     || '');"
+
+                        + "        childGrid.getView().refreshNode(0);"
+
+                        + "        console.log('DONE slCode='       + rec.get('slCode'));"
+                        + "        console.log('DONE slid='         + rec.get('slid'));"
+                        + "        console.log('DONE className='    + rec.get('className'));"
+                        + "        console.log('DONE ledgerName='   + rec.get('ledgerName'));"
+                        + "        console.log('FULL GRID RECORD: ' + JSON.stringify(rec.getData()));"
+                        + "      }, 600);"
+                        + "    }"
+                        + "  });"
+                        + "} catch(e) { console.error('select ERROR: ' + e.message); throw e; }";
+
+        ((JavascriptExecutor) driver).executeScript(selectScript);
+        System.out.println("=== JS select executed for SL '" + slName + "' ===");
+
+        try { Thread.sleep(3000); } catch (InterruptedException e) { e.printStackTrace(); }
+        String verifyResult = verifySelectedSubLedgerRecord(driver, 0);
+        logSubLedgerSelection(mode, slName, safeSlId, verifyResult, 0);
+        String safeRefSite = (referenceSite == null) ? "" : referenceSite;
+        if (!safeRefSite.isEmpty()) {
+            ExtentLogger.info("[SL SELECT] ReferenceSite will be set via setSubLedgerReferenceSite | Row=0 | Value=" + safeRefSite);
+            setSubLedgerReferenceSite(driver, 0, safeRefSite);
+        } else {
+            ExtentLogger.info("[SL SELECT] ReferenceSite not provided, no Reference Site change | Row=0");
+        }
+        System.out.println("=== END: setSubLedger ===");
+    }
+
+    private static String verifySelectedSubLedgerRecord(WebDriver driver, int rowIndex) {
+        String script =
+                "try {" +
+                "  var childGrid = Ext.ComponentQuery.query('gridpanel[itemId=arvch_grid]')[0];" +
+                "  if (!childGrid) return 'ERROR: arvch_grid not found';" +
+                "  var rec = childGrid.getStore().getAt(" + rowIndex + ");" +
+                "  if (!rec) return 'ERROR: record not found at row " + rowIndex + "';" +
+                "  return rec.get('slName') + '|' + rec.get('slid') + '|' + rec.get('slCode');" +
+                "} catch(e) { return 'ERROR: ' + e.message; }";
+        return (String) ((JavascriptExecutor) driver).executeScript(script);
+    }
+
+    private static void logSubLedgerSelection(String mode, String slName, String slId,
+                                               String verifyResult, int rowIndex) {
+        if (verifyResult == null || verifyResult.startsWith("ERROR")) {
+            ExtentLogger.info("[SL SELECT] WARNING=Could not verify selected record | Row=" + rowIndex
+                    + " | verifyResult=" + verifyResult);
+            return;
+        }
+        String[] parts = verifyResult.split("\\|", -1);
+        String actualSlName = parts.length > 0 ? parts[0] : "";
+        String actualSlId   = parts.length > 1 ? parts[1] : "";
+        String actualSlCode = parts.length > 2 ? parts[2] : "";
+
+        if ("NAME_ONLY".equals(mode)) {
+            ExtentLogger.info("[SL SELECT] Mode=NAME_ONLY | Row=" + rowIndex
+                    + " | SlName=" + actualSlName
+                    + " | SlId=" + actualSlId
+                    + " | SlCode=" + actualSlCode
+                    + " | Reason=Id not provided in Excel, matched by name alone");
+        } else {
+            if (actualSlId.equals(slId)) {
+                ExtentLogger.info("[SL SELECT] Mode=NAME_AND_ID | Row=" + rowIndex
+                        + " | SlName=" + actualSlName
+                        + " | SlId=" + actualSlId
+                        + " | SlCode=" + actualSlCode
+                        + " | ExcelId=" + slId
+                        + " | Reason=Matched by name and id");
+            } else {
+                ExtentLogger.info("[SL SELECT] Mode=NAME_AND_ID | WARNING=Id match failed, fell back to name-only | Row=" + rowIndex
+                        + " | SlName=" + actualSlName
+                        + " | SlId=" + actualSlId
+                        + " | SlCode=" + actualSlCode
+                        + " | ExcelId=" + slId);
+            }
+        }
+    }
+
+    /**
+     * Adds a new empty row to the arvch_grid subledger store.
+     * Call this before setSubLedgerForRow() for any row index > 0.
+     */
+    public static void addSubLedgerRow(WebDriver driver) {
+        String script =
+                "try {"
+                        + "  var childGrid = Ext.ComponentQuery.query('gridpanel[itemId=arvch_grid]')[0];"
+                        + "  if (!childGrid) throw new Error('arvch_grid not found');"
+                        + "  var store = childGrid.getStore();"
+                        + "  store.add({});"
+                        + "  console.log('Added new subledger row, total=' + store.getCount());"
+                        + "  return 'SUCCESS: rows=' + store.getCount();"
+                        + "} catch(e) { return 'ERROR: ' + e.message; }";
+        Object result = ((JavascriptExecutor) driver).executeScript(script);
+        System.out.println("addSubLedgerRow result: " + result);
+        try { Thread.sleep(500); } catch (InterruptedException e) { e.printStackTrace(); }
+    }
+
+    /**
+     * Sets the subledger name on a specific row (rowIndex) in arvch_grid.
+     * For row 0 use setSubLedger(); for subsequent rows use this method after addSubLedgerRow().
+     */
+    public static void setSubLedgerForRow(WebDriver driver, int rowIndex, String slName, String slId, String referenceSite) {
+        System.out.println("=== START: setSubLedgerForRow row=" + rowIndex + " sl='" + slName + "' id='" + slId + "' ===");
+        String mode = (slId == null || slId.isEmpty()) ? "NAME_ONLY" : "NAME_AND_ID";
+        String safeSlId = (slId == null) ? "" : slId;
+
+        String clickScript =
+                "try {"
+                        + "  var childGrid = Ext.ComponentQuery.query('gridpanel[itemId=arvch_grid]')[0];"
+                        + "  if (!childGrid) throw new Error('arvch_grid not found');"
+                        + "  var view = childGrid.getView();"
+                        + "  var rowEl = view.getNode(" + rowIndex + ");"
+                        + "  if (!rowEl) throw new Error('child grid row " + rowIndex + " DOM node not found');"
+                        + "  var cols = childGrid.getColumnManager().getColumns();"
+                        + "  var slColIndex = -1;"
+                        + "  for (var i=0; i<cols.length; i++) {"
+                        + "    if (cols[i].dataIndex === 'slCode') { slColIndex = i; break; }"
+                        + "  }"
+                        + "  if (slColIndex < 0) throw new Error('slCode column not found');"
+                        + "  var cells = rowEl.querySelectorAll('td.x-grid-cell');"
+                        + "  if (cells.length <= slColIndex) throw new Error('Not enough cells, found: ' + cells.length);"
+                        + "  cells[slColIndex].click();"
+                        + "  return 'CLICKED';"
+                        + "} catch(e) { console.error('click ERROR: ' + e.message); throw e; }";
+
+        Object clickResult = ((JavascriptExecutor) driver).executeScript(clickScript);
+        System.out.println("=== Cell click result: " + clickResult + " ===");
+
+        try { Thread.sleep(600); } catch (InterruptedException e) { e.printStackTrace(); }
+
+        String selectScript =
+                "try {"
+                        + "  var childGrid = Ext.ComponentQuery.query('gridpanel[itemId=arvch_grid]')[0];"
+                        + "  var combo = Ext.ComponentQuery.query('combo[name=slCode]')[0];"
+                        + "  if (!combo) throw new Error('slCode combo not found after cell click');"
+
+                        + "  combo.getStore().load({"
+                        + "    params: { query: '" + slName + "', page: 1, start: 0, limit: 25 },"
+                        + "    callback: function() {"
+                        + "      var store = combo.getStore();"
+                        + "      var slRec = null;"
+                        + "      if ('" + safeSlId + "' !== '') {"
+                        + "        store.each(function(r) {"
+                        + "          if (r.get('slName') === '" + slName + "' && String(r.get('slid')) === '" + safeSlId + "') { slRec = r; return false; }"
+                        + "        });"
+                        + "      }"
+                        + "      if (!slRec) {"
+                        + "        store.each(function(r) {"
+                        + "          if (r.get('slName') === '" + slName + "') { slRec = r; return false; }"
+                        + "        });"
+                        + "      }"
+                        + "      if (!slRec) { console.error('No SL found: " + slName + "'); return; }"
+
+                        + "      combo.select(slRec);"
+                        + "      combo.fireEvent('select', combo, slRec);"
+
+                        + "      setTimeout(function() {"
+                        + "        var rec = childGrid.getStore().getAt(" + rowIndex + ");"
+                        + "        if (!rec) { console.error('child grid rec at row " + rowIndex + " not found'); return; }"
+
+                        + "        rec.set('slCode',             slRec.get('slCode'));"
+                        + "        rec.set('slName',             slRec.get('slName'));"
+                        + "        rec.set('slid',               slRec.get('slid'));"
+                        + "        rec.set('className',          slRec.get('className'));"
+                        + "        rec.set('ledgerCode',         slRec.get('glCode')                 || 0);"
+                        + "        rec.set('ledgerName',         slRec.get('glName')                 || '');"
+                        + "        rec.set('ledgerGroupName',    slRec.get('generalLedgerGroupName') || '');"
+                        + "        rec.set('ledgerAbbreviation', slRec.get('generalLedgerAbbre')     || '');"
+
+                        + "        childGrid.getView().refreshNode(" + rowIndex + ");"
+                        + "        console.log('DONE row=" + rowIndex + " slCode=' + rec.get('slCode'));"
+                        + "      }, 600);"
+                        + "    }"
+                        + "  });"
+                        + "} catch(e) { console.error('select ERROR: ' + e.message); throw e; }";
+
+        ((JavascriptExecutor) driver).executeScript(selectScript);
+        System.out.println("=== JS select executed for row=" + rowIndex + " SL='" + slName + "' ===");
+
+        try { Thread.sleep(3000); } catch (InterruptedException e) { e.printStackTrace(); }
+        String verifyResult = verifySelectedSubLedgerRecord(driver, rowIndex);
+        logSubLedgerSelection(mode, slName, safeSlId, verifyResult, rowIndex);
+        String safeRefSite = (referenceSite == null) ? "" : referenceSite;
+        if (!safeRefSite.isEmpty()) {
+            ExtentLogger.info("[SL SELECT] ReferenceSite will be set via setSubLedgerReferenceSite | Row=" + rowIndex + " | Value=" + safeRefSite);
+            setSubLedgerReferenceSite(driver, rowIndex, safeRefSite);
+        } else {
+            ExtentLogger.info("[SL SELECT] ReferenceSite not provided, no Reference Site change | Row=" + rowIndex);
+        }
+        System.out.println("=== END: setSubLedgerForRow ===");
+    }
+
+    public static void setSubLedgerReferenceSite(WebDriver driver, int rowIndex, String referenceSiteName) {
+        System.out.println("=== START: setSubLedgerReferenceSite row=" + rowIndex + " site='" + referenceSiteName + "' ===");
+
+        // ── setSubLedgerReferenceSite — JavaScript Strategy ──────────────────────────
+        // 1. plugin.startEdit() opens the cell editor so the app configures the combo's
+        //    store with SL-specific extraParams (filtered to only valid sites for this SL).
+        // 2. We capture those extraParams BEFORE cancelling, then use them in our own load.
+        //    This prevents loading ALL reference sites globally and accidentally picking a
+        //    site that is not valid for the current SL — which causes the server error
+        //    "ReferenceSiteCode doesn't exist".
+        // 3. plugin.cancelEdit() is called SYNCHRONOUSLY, ensuring the app's 'canceledit'
+        //    event handler (and any setTimeout(fn,0) it schedules) fires and completes
+        //    BEFORE the async AJAX callback that calls rec.set(). This prevents the app
+        //    from clearing the value we write.
+        // 4. When target is blank, we use store.getAt(0) from the SL-filtered load.
+        // 5. When target is named, we use two-pass matching (name first, then secondary
+        //    fields) to avoid false positives (e.g. picking "AFFIFA 1" whose ouName is
+        //    "Hena Embroidery" before the actual "Hena Embroidery" record).
+        // 6. If the store is empty on first load (first-ever access to this column), a
+        //    single automatic retry fires after 800 ms.
+        // ─────────────────────────────────────────────────────────────────────────────────
+        String selectScript =
+                "try {"
+                        + "  var childGrid = Ext.ComponentQuery.query('gridpanel[itemId=arvch_grid]')[0];"
+                        + "  if (!childGrid) throw new Error('arvch_grid not found');"
+
+                        + "  var cols = childGrid.getColumnManager().getColumns();"
+                        + "  var refSiteCol = null;"
+                        + "  for (var i=0; i<cols.length; i++) {"
+                        + "    if (cols[i].dataIndex === 'referenceSiteCode') { refSiteCol = cols[i]; break; }"
+                        + "  }"
+                        + "  if (!refSiteCol) throw new Error('referenceSiteCode column not found');"
+
+                        + "  var plugin = childGrid.editingPlugin;"
+                        + "  if (!plugin) throw new Error('editingPlugin not found on arvch_grid');"
+
+                        // Open the editor so the app configures the store with SL-specific params.
+                        + "  plugin.startEdit(" + rowIndex + ", refSiteCol);"
+                        + "  var siteCombo = plugin.activeEditor && plugin.activeEditor.field;"
+                        + "  if (!siteCombo) throw new Error('Reference Site combo not active after startEdit');"
+                        + "  console.log('RefSite combo found, name=' + siteCombo.name);"
+
+                        // Get the store reference from the active combo.
+                        + "  var store = siteCombo.getStore();"
+
+                        + "  window.__refSiteDebug = { status:'loading', storeCount:0, allRecords:[], matchedName:'', matchedCode:0, error:'' };"
+                        + "  var __target = '" + referenceSiteName + "';"
+                        + "  var __rowIndex = " + rowIndex + ";"
+                        + "  var __retried = false;"
+
+                        // ── __applyRefSite: matching + rec.set + refreshNode ──────────────────────
+                        + "  function __applyRefSite(s) {"
+                        + "    var allRecs = [];"
+                        + "    s.each(function(r) { allRecs.push(JSON.stringify(r.getData())); });"
+                        + "    window.__refSiteDebug.storeCount = s.getCount();"
+                        + "    window.__refSiteDebug.allRecords = allRecs;"
+                        + "    var siteRec = null;"
+
+                        // Case 1 — blank target: pick first available site.
+                        + "    if (!__target || __target.trim() === '') {"
+                        + "      if (s.getCount() > 0) { siteRec = s.getAt(0); window.__refSiteDebug.status = 'AUTO_FIRST_AVAILABLE'; }"
+                        // Case 2 — named target: two-pass match (name fields first, then secondary).
+                        + "    } else {"
+                        // Pass A: primary identity fields only (siteName, name).
+                        + "      s.each(function(r) {"
+                        + "        var pf = [r.get('siteName'), r.get('name')];"
+                        + "        for (var fi=0; fi<pf.length; fi++) {"
+                        + "          if (pf[fi] && String(pf[fi]).toLowerCase() === __target.toLowerCase()) { siteRec = r; return false; }"
+                        + "        }"
+                        + "      });"
+                        // Pass B: secondary fields only if Pass A found nothing.
+                        + "      if (!siteRec) {"
+                        + "        s.each(function(r) {"
+                        + "          var sf = [r.get('ouName'), r.get('siteCode'), r.get('code'), r.get('shortName')];"
+                        + "          for (var fi=0; fi<sf.length; fi++) {"
+                        + "            if (sf[fi] && String(sf[fi]).toLowerCase() === __target.toLowerCase()) { siteRec = r; return false; }"
+                        + "          }"
+                        + "        });"
+                        + "      }"
+                        + "      if (!siteRec && s.getCount() > 0) { window.__refSiteDebug.status = 'FALLBACK_FIRST_NO_MATCH'; siteRec = s.getAt(0); }"
+                        + "    }"
+
+                        + "    if (!siteRec) { window.__refSiteDebug.status = 'NO_RECORD_EMPTY_STORE'; return; }"
+
+                        + "    var rec = childGrid.getStore().getAt(__rowIndex);"
+                        + "    if (!rec) { window.__refSiteDebug.status = 'ERROR_NO_GRID_REC'; return; }"
+                        + "    var refSiteCode = siteRec.get('code') || siteRec.get('siteCode') || siteRec.get('id') || 0;"
+                        + "    var refSiteName = siteRec.get('siteName') || siteRec.get('name') || siteRec.get('ouName') || '';"
+                        + "    var refSiteType   = siteRec.get('siteType') || siteRec.get('type') || 'OU';"
+                        + "    var refSiteOUName = siteRec.get('ouName') || '';"
+                        + "    rec.set('referenceSiteCode',   refSiteCode);"
+                        + "    rec.set('referenceSiteName',   refSiteName);"
+                        + "    rec.set('referenceSiteType',   refSiteType);"
+                        + "    rec.set('referenceSiteOUName', refSiteOUName);"
+                        // Pass the record object (not integer) to refreshNode — avoids the falsy-0
+                        // bug in some ExtJS versions that silently skips row 0 when given 0.
+                        + "    childGrid.getView().refreshNode(childGrid.getStore().getAt(__rowIndex));"
+                        + "    window.__refSiteDebug.status      = 'DONE';"
+                        + "    window.__refSiteDebug.matchedName = refSiteName;"
+                        + "    window.__refSiteDebug.matchedCode = refSiteCode;"
+                        + "  }"  // end __applyRefSite
+
+                        // ── KEY ORDERING CHANGE ───────────────────────────────────────────────────
+                        // PROBLEM: calling plugin.cancelEdit() BEFORE store.load() causes the
+                        // app's beforeedit-configured proxy URL/params to be reset by canceledit
+                        // handlers. On first-ever access to this column (single-row vouchers, or
+                        // any row where this editor was never opened before), the proxy has no URL
+                        // yet and the load returns 0 records regardless of params.
+                        //
+                        // FIX: load the store while the editor is still OPEN (proxy URL is active).
+                        // Inside the load callback:
+                        //   1. plugin.cancelEdit() → app's canceledit handler fires and schedules
+                        //      its field-clearing cleanup via setTimeout(cleanup, 0).
+                        //   2. setTimeout(fn, 150) → fn fires AFTER cleanup(0) runs.
+                        //   3. Inside fn: __applyRefSite() calls rec.set() — this is the final
+                        //      write, safely AFTER the app's cleanup has already completed.
+                        // ─────────────────────────────────────────────────────────────────────────
+                        + "  function __cancelThenApply(s) {"
+                        + "    plugin.cancelEdit();"                  // fires canceledit → cleanup scheduled
+                        + "    setTimeout(function() { __applyRefSite(s); }, 150);"  // fires AFTER cleanup
+                        + "  }"
+
+                        + "  var loadParams = { page:1, start:0, limit:100 };"
+                        + "  store.load({"
+                        + "    params: loadParams,"
+                        + "    callback: function() {"
+                        + "      if (store.getCount() === 0 && !__retried) {"
+                        + "        __retried = true;"
+                        + "        window.__refSiteDebug.status = 'RETRYING';"
+                        + "        setTimeout(function() {"
+                        + "          store.load({ params: loadParams, callback: function() { __cancelThenApply(store); } });"
+                        + "        }, 800);"
+                        + "      } else {"
+                        + "        __cancelThenApply(store);"
+                        + "      }"
+                        + "    }"
+                        + "  });"
+                        + "} catch(e) { if (!window.__refSiteDebug) window.__refSiteDebug = {}; window.__refSiteDebug.error = e.message; throw e; }";
+
+        ((JavascriptExecutor) driver).executeScript(selectScript);
+        System.out.println("=== RefSite JS executed for row=" + rowIndex + " site='" + referenceSiteName + "' ===");
+
+        // 4500 ms covers the retry path: 800 ms setTimeout + AJAX round trip inside retry.
+        // Normal (no-retry) path completes well within this window.
+        try { Thread.sleep(4500); } catch (InterruptedException e) { e.printStackTrace(); }
+
+        // Read debug info written by the async callback back to Java
+        String debugScript =
+                "var d = window.__refSiteDebug || {};"
+                + "return JSON.stringify({"
+                + "  status:      d.status      || 'NOT_SET',"
+                + "  storeCount:  d.storeCount  || 0,"
+                + "  matchedName: d.matchedName || '',"
+                + "  matchedCode: d.matchedCode || 0,"
+                + "  allRecords:  d.allRecords  || []"
+                + "});";
+        String debugJson = (String) ((JavascriptExecutor) driver).executeScript(debugScript);
+        System.out.println("=== RefSite DEBUG row=" + rowIndex + " target='" + referenceSiteName + "' => " + debugJson + " ===");
+
+        String verifyResult = verifySelectedReferenceSite(driver, rowIndex);
+        logReferenceSiteSelection(referenceSiteName, verifyResult, rowIndex);
+        System.out.println("=== END: setSubLedgerReferenceSite ===");
+    }
+
+    private static String verifySelectedReferenceSite(WebDriver driver, int rowIndex) {
+        String script =
+                "try {" +
+                "  var childGrid = Ext.ComponentQuery.query('gridpanel[itemId=arvch_grid]')[0];" +
+                "  if (!childGrid) return 'ERROR: arvch_grid not found';" +
+                "  var rec = childGrid.getStore().getAt(" + rowIndex + ");" +
+                "  if (!rec) return 'ERROR: record not found at row " + rowIndex + "';" +
+                "  return rec.get('referenceSiteName') + '|' + rec.get('referenceSiteCode');" +
+                "} catch(e) { return 'ERROR: ' + e.message; }";
+        return (String) ((JavascriptExecutor) driver).executeScript(script);
+    }
+
+    private static void logReferenceSiteSelection(String excelValue, String verifyResult, int rowIndex) {
+        if (verifyResult == null || verifyResult.startsWith("ERROR")) {
+            ExtentLogger.info("[REF_SITE SET] WARNING=Could not verify selected record | Row=" + rowIndex
+                    + " | verifyResult=" + verifyResult);
+            return;
+        }
+        String[] parts = verifyResult.split("\\|", -1);
+        String actualName = parts.length > 0 ? parts[0] : "";
+        String actualCode = parts.length > 1 ? parts[1] : "";
+
+        if (actualName.equals(excelValue)) {
+            ExtentLogger.info("[REF_SITE SET] Row=" + rowIndex
+                    + " | ReferenceSiteName=" + actualName
+                    + " | ReferenceSiteCode=" + actualCode
+                    + " | ExcelValue=" + excelValue);
+        } else {
+            ExtentLogger.info("[REF_SITE SET] WARNING=Name match failed, used first record | Row=" + rowIndex
+                    + " | ReferenceSiteName=" + actualName
+                    + " | ReferenceSiteCode=" + actualCode
+                    + " | ExcelValue=" + excelValue);
+        }
+    }
 
 
 

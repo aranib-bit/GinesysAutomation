@@ -65,7 +65,14 @@ public class SeleniumActions {
 
     public static String getText(By by) {
         WebDriver driver = DriverManager.getDriver();
-        return driver.findElement(by).getText();
+        WebElement element = driver.findElement(by);
+        String text = element.getAttribute("textContent");
+        if (text == null || text.isBlank()) {
+            text = (String) ((JavascriptExecutor) driver).executeScript("return arguments[0].textContent;", element);
+        }
+        System.out.println("Extracted text: " + text);
+        return text == null ? "" : text.trim();
+
     }
 
 

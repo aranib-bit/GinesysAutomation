@@ -2,14 +2,9 @@ package com.gsl.pages.pagecomponent.Procurement.Operations.GoodsReceiveChallan;
 
 import com.gsl.enums.WaitType;
 import com.gsl.pages.Common.DocumentMessageBox;
-import com.gsl.pages.Procurement.Operations.GoodsReceiveChallanAdd;
 import com.gsl.utils.Selenium.JavascriptExecutorUtils;
-import com.gsl.utils.Selenium.SeleniumActions;
 import com.gsl.utils.Selenium.SeleniumUtils;
 import org.openqa.selenium.By;
-import org.openqa.selenium.Keys;
-
-import java.sql.SQLOutput;
 
 public class GoodsReceiveChallanGeneral {
 

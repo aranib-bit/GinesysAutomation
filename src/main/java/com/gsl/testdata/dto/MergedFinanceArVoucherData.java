@@ -28,6 +28,7 @@ public class MergedFinanceArVoucherData implements InvocationData {
 
     // Derived flags
     private boolean paymentProvided;
+    private boolean needsIgnoreProceed;
 
     // Invocation metadata
     private int invocationIndex;

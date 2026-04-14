@@ -9,8 +9,8 @@ public class DataSupplierTest {
 
     @Test(dataProvider = "getData", dataProviderClass = MergedReceiptDataSupplier.class)
     public void dataSupplierTest(MasterTestData masterTestData) {
-        System.out.println(masterTestData.username);
-        System.out.println(masterTestData.age);
+        System.out.println(masterTestData.getUsername());
+        System.out.println(masterTestData.getAge());
 //        LocalDate date = LocalDate.parse(testData.date, DateTimeFormatter.ofPattern("M/d/yy"));
 //
 //        System.out.println(testData.date);

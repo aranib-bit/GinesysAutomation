@@ -30,6 +30,7 @@ public class DocumentMessageBox {
      * Get the full message text from the popup
      */
     public String getMessageText() {
+        System.out.println("Inside getMessageText");
         return SeleniumActions.getText(MESSAGE_TEXT);
     }
 
@@ -71,6 +72,7 @@ public class DocumentMessageBox {
         JavascriptExecutorUtils.waitForPageLoad();
         JavascriptExecutorUtils.waitForExtJS();
         String status = getHeaderStatus();
+        System.out.println("status is"+status );
         Assert.assertNotNull(status, "Header status was not found");
         Assert.assertTrue(isSuccess(), "Document save was not successful. Header: " + status);
 

@@ -18,18 +18,18 @@ import java.time.LocalDate;
     public class DocumentInformation {
         @Mandatory
         @Column(name = "TestCaseID")
-        public String testCaseId;
+        private String testCaseId;
         @Column(name="Owner Site")
-        public String ownersite;
+        private String ownersite;
         @Column(name ="Voucher No")
-        public String voucherno;
+        private String voucherno;
         @Column(name="Cash/Bank")
-        public String cashbank;
+        private String cashbank;
         @Column(name = "Remarks")
-        public String remarks;
+        private String remarks;
         @Mandatory
         @Column(name="Date",converter = SafeDateConverter.class)
-        public LocalDate documentdate;
+        private LocalDate documentdate;
         @Column(name = "Reference")
-        public String reference;
+        private String reference;
 }

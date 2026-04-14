@@ -38,7 +38,7 @@ public class Receipts extends BaseTest {
     public void CreateReceipts(MasterTestData masterTestData) throws InterruptedException {
         // 1. Login to the application
         LoginPage loginPage = new LoginPage();
-        HomePage homePage = loginPage.loginToApplication(masterTestData.username, masterTestData.password);
+        HomePage homePage = loginPage.loginToApplication(masterTestData.getUsername(), masterTestData.getPassword());
 
         // 2. Use the navigation utility to get to the correct screen
         ReceiptsListPage receiptsListPage = NavigationUtils.navigateToProcurementSideMenu(homePage,

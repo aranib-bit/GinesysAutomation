@@ -1,6 +1,10 @@
 package com.gsl.utils.dataprovider;
 
 import com.gsl.config.ConfigFactory;
+import com.gsl.database.DatabaseManager;
+import com.gsl.database.dao.finance.FinGlDao;
+import com.gsl.enums.AdjustmentType;
+import com.gsl.model.finance.FinGl;
 import com.gsl.testdata.Finance.Operations.Vouchers.ARVoucher.*;
 import com.gsl.testdata.MasterTestData;
 import com.gsl.testdata.dto.MergedFinanceArVoucherData;
@@ -11,6 +15,7 @@ import one.util.streamex.StreamEx;
 
 import java.lang.reflect.Method;
 import java.util.List;
+import java.util.Set;
 import java.util.stream.Collectors;
 
 import static io.github.sskorol.data.TestDataReader.use;
@@ -74,24 +79,24 @@ public class MergedFinArVoucherDataSupplier {
                             .filter(s -> s.getTestCaseID().equalsIgnoreCase(tcId))
                             .collect(Collectors.toList());
 
-                    String adjustmentType = subLedgers.stream()
-                            .findFirst()
-                            .map(SubLedgerInformation::getAdjustmentType)
-                            .orElse("");
+                    boolean hasSelectDocument = subLedgers.stream()
+                            .anyMatch(s -> s.getAdjustmentType() == AdjustmentType.SELECT_DOCUMENT);
 
-                    List<SelectDocument> selectedDocs =
-                            "SelectDocument".equalsIgnoreCase(adjustmentType)
-                                    ? selectDocList.stream()
+                    boolean hasFifo = subLedgers.stream()
+                            .anyMatch(s -> s.getAdjustmentType() == AdjustmentType.FIFO_SETOFF
+                                       || s.getAdjustmentType() == AdjustmentType.REFERENCE_SITEWISE_FIFO_SETOFF);
+
+                    List<SelectDocument> selectedDocs = hasSelectDocument
+                            ? selectDocList.stream()
                                     .filter(s -> s.getTestCaseID().equalsIgnoreCase(tcId))
                                     .collect(Collectors.toList())
-                                    : List.of();
+                            : List.of();
 
-                    List<ReferenceSitewiseFIFOsetoff> fifoSet =
-                            "Reference Sitewise FIFO set-off".equalsIgnoreCase(adjustmentType)
-                                    ? refFifoList.stream()
+                    List<ReferenceSitewiseFIFOsetoff> fifoSet = hasFifo
+                            ? refFifoList.stream()
                                     .filter(r -> r.getLineNo().equalsIgnoreCase(tcId))
                                     .collect(Collectors.toList())
-                                    : List.of();
+                            : List.of();
 
                     List<PaymentInformation> payments = paymentList.stream()
                             .filter(p -> p.getTestCaseID().equalsIgnoreCase(tcId))
@@ -103,6 +108,29 @@ public class MergedFinArVoucherDataSupplier {
 
                     boolean paymentProvided = !payments.isEmpty();
 
+                    Set<String> subLedgerLineNos = subLedgers.stream()
+                            .map(SubLedgerInformation::getLineNo)
+                            .filter(ln -> ln != null && !ln.isBlank())
+                            .collect(Collectors.toSet());
+
+                    Set<String> paymentLineNos = payments.stream()
+                            .map(PaymentInformation::getLineNo)
+                            .filter(ln -> ln != null && !ln.isBlank())
+                            .collect(Collectors.toSet());
+
+                    boolean allLinesHavePayment = !subLedgerLineNos.isEmpty()
+                            && paymentLineNos.containsAll(subLedgerLineNos);
+
+                    boolean anyInstrumentNoMissing = payments.stream()
+                            .anyMatch(p -> p.getInstrumentNo() == null || p.getInstrumentNo().isBlank());
+
+                    FinGlDao glDao = DatabaseManager.getJdbi().onDemand(FinGlDao.class);
+                    FinGl cashBankGl = (doc.getCashbank() != null && !doc.getCashbank().isBlank())
+                            ? glDao.findByGlName(doc.getCashbank()) : null;
+                    boolean isBank = cashBankGl != null && "B".equalsIgnoreCase(cashBankGl.getSrctype());
+
+                    boolean needsIgnoreProceed = isBank && (!allLinesHavePayment || anyInstrumentNoMissing);
+
                     return IntStreamEx.range(1, totalInvocations + 1)
                             .mapToObj(invIdx ->
                                     MergedFinanceArVoucherData.builder()
@@ -113,6 +141,7 @@ public class MergedFinArVoucherDataSupplier {
                                             .referenceSitewiseFIFOList(fifoSet)
                                             .paymentInformationList(payments)
                                             .paymentProvided(paymentProvided)
+                                            .needsIgnoreProceed(needsIgnoreProceed)
                                             .invocationIndex(invIdx)
                                             .totalInvocations(totalInvocations)
                                             .build()

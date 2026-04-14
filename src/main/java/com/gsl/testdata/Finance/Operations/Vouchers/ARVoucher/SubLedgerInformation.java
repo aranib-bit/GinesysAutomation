@@ -1,6 +1,10 @@
 package com.gsl.testdata.Finance.Operations.Vouchers.ARVoucher;
 
+import com.gsl.converter.AdjustmentTypeConverter;
 import com.gsl.converter.BigDecimalConverter;
+import com.gsl.converter.PaymentSelectionConverter;
+import com.gsl.enums.AdjustmentType;
+import com.gsl.enums.PaymentSelectionType;
 import com.gsl.testdata.annotations.Mandatory;
 import com.gsl.testdata.annotations.MandatoryType;
 import io.github.sskorol.data.Column;
@@ -15,6 +19,8 @@ public class SubLedgerInformation {
 
     @Column(name = "TestCaseID")
     private String testCaseID;
+    @Column(name = "LineNo")
+    private String lineNo;
     @Column(name="Sub Ledger")
     private String subLedger;
     @Column(name = "Id")
@@ -29,6 +35,8 @@ public class SubLedgerInformation {
     private String isReversal;
     @Column(name="Amount(Cr)",converter =  BigDecimalConverter.class)
     private BigDecimal amountCr;
-    @Column(name = "AdjustmentType")
-    private String adjustmentType;
+    @Column(name = "AdjustmentType", converter = AdjustmentTypeConverter.class)
+    private AdjustmentType adjustmentType;
+    @Column(name = "PaymentSelection", converter = PaymentSelectionConverter.class)
+    private PaymentSelectionType paymentSelection;
 }

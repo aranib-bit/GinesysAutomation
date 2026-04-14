@@ -6,7 +6,7 @@
     </listeners>
     <test name="SeleniumFramework">
         <classes>
-            <class name="com.tests.Finance.Operations.Vouchers.createArVoucher"></class>
+            <class name="com.tests.Finance.Operations.Vouchers.CreateArVoucher"></class>
         </classes>
     </test>
 </suite>
