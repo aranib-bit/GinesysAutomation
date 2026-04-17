@@ -2,6 +2,7 @@ package com.gsl.pages.Finance.Operations;
 
 import com.gsl.driver.DriverManager;
 import com.gsl.pages.Finance.Operations.Common.AdjustmentEntry;
+import com.gsl.pages.Common.DocumentMessageBox;
 import com.gsl.pages.Finance.Operations.Common.DocumentPopup;
 import com.gsl.pages.Procurement.Operations.GoodsReceiveChallanAdd;
 import com.gsl.pages.pagecomponent.Finance.Common.CashBankParent;
@@ -79,6 +80,10 @@ public class ArVoucherAdd implements CashBankParent {
         return this;
     }
 
+    public String getSubLedgerReferenceSite(int rowIndex) {
+        return arVoucherSubLedgerInformation.getSubLedgerReferenceSite(rowIndex);
+    }
+
     /**
      * Adds a new empty row to the subledger grid.
      * Call this before setsubledgername/setSubLedgerAmount for each row after the first.
@@ -121,7 +126,8 @@ public class ArVoucherAdd implements CashBankParent {
         return new DocumentPopup();
     }
 
-
-
-
+    /** Clicks the X to close the AR Voucher form; returns the discard-confirmation dialog */
+    public DocumentMessageBox close() {
+        return arVoucherFooter.clickClose();
+    }
 }

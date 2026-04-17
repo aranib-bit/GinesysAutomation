@@ -24,11 +24,25 @@ public class TestListener implements ITestListener {
 
         if (params.length > 0 && params[0] instanceof InvocationData data) {
 
-            ExtentReport.createTest(
-                    result.getMethod().getDescription() +
-                            " [" + data.getInvocationIndex() +
-                            "/" + data.getTotalInvocations() + "]"
-            );
+            // For DB-mode AR Voucher variants, masterTestData.testcasename holds the rich
+            // variant label built by buildDynamicTestCaseName() (e.g.
+            // "SEL_DOC | Ref:Finance-Dup | 1SL-1Doc | Amt:FULL | Grid:EQUAL | Pmt:CHEQUE | Date:TODAY").
+            // Use that as the title instead of the static @Test description.
+            // Basic scenarios (FIFO, REF_SITEWISE_FIFO) set testcasename = method name
+            // ("createArVoucher") — fall back to the annotation description for those.
+            String richName = null;
+            if (params[0] instanceof com.gsl.testdata.dto.MergedFinanceArVoucherData arData
+                    && arData.getMasterTestData() != null) {
+                String tcName = arData.getMasterTestData().getTestcasename();
+                if (tcName != null && !tcName.isBlank()
+                        && !tcName.equalsIgnoreCase("createArVoucher")) {
+                    richName = tcName;
+                }
+            }
+
+            String title = (richName != null ? richName : result.getMethod().getDescription())
+                    + " [" + data.getInvocationIndex() + "/" + data.getTotalInvocations() + "]";
+            ExtentReport.createTest(title);
 
         }
 

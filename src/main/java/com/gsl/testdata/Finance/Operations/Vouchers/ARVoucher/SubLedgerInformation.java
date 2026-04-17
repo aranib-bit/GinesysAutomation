@@ -9,11 +9,15 @@ import com.gsl.testdata.annotations.Mandatory;
 import com.gsl.testdata.annotations.MandatoryType;
 import io.github.sskorol.data.Column;
 import io.github.sskorol.data.Sheet;
+import lombok.AllArgsConstructor;
 import lombok.Getter;
+import lombok.NoArgsConstructor;
 
 import java.math.BigDecimal;
 
 @Getter
+@NoArgsConstructor
+@AllArgsConstructor
 @Sheet(name= "SubLedgerInformation")
 public class SubLedgerInformation {
 
@@ -28,6 +32,7 @@ public class SubLedgerInformation {
     @Column(name="General Ledger")
     private String generalLedger;
     @Column(name = "Reference Site")
+    @lombok.Setter
     private String referenceSite;
     @Column(name = "Ledger Narration")
     private String ledgerNarration;
@@ -39,4 +44,13 @@ public class SubLedgerInformation {
     private AdjustmentType adjustmentType;
     @Column(name = "PaymentSelection", converter = PaymentSelectionConverter.class)
     private PaymentSelectionType paymentSelection;
+
+    /**
+     * Sub-ledger classification name resolved at runtime from admcls.clsname
+     * (e.g. "Customer", "Supplier"). Populated in DB mode only; null in Excel mode.
+     * Not an Excel column — set via setter after construction.
+     */
+    @lombok.Getter
+    @lombok.Setter
+    private String slType;
 }

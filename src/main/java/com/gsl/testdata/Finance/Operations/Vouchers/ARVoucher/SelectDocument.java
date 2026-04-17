@@ -4,12 +4,16 @@ import com.gsl.converter.BigDecimalConverter;
 import com.gsl.converter.SafeDateConverter;
 import io.github.sskorol.data.Column;
 import io.github.sskorol.data.Sheet;
+import lombok.AllArgsConstructor;
 import lombok.Getter;
+import lombok.NoArgsConstructor;
 
 import java.math.BigDecimal;
 import java.time.LocalDate;
 
 @Getter
+@NoArgsConstructor
+@AllArgsConstructor
 @Sheet(name = "SelectDocument")
 public class SelectDocument {
     @Column(name="TestCaseID")

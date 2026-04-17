@@ -221,6 +221,10 @@ public class ARVoucherSubLedgerInformation {
         return this;
     }
 
+    public String getSubLedgerReferenceSite(int rowIndex) {
+        return JavascriptExecutorUtils.getSubLedgerReferenceSiteName(DriverManager.getDriver(), rowIndex);
+    }
+
     /**
      * Sets the subledger amount on the specified row index.
      */
@@ -275,18 +279,31 @@ public class ARVoucherSubLedgerInformation {
             List<PaymentInformation> paymentList) {
 
         for (SubLedgerInformation subLedger : subLedgerList) {
-            if (subLedger.getPaymentSelection() == null) continue;
-            // Cash GL shows a validation message when the button is clicked — no popup to fill
-            if (subLedger.getPaymentSelection() == PaymentSelectionType.CASH) continue;
-
             String lineNo = subLedger.getLineNo();
+            if (lineNo == null || lineNo.isBlank()) continue;
+
+            // Match by lineNo; also filter by testCaseID when both sides have it (Excel mode).
+            // In DB mode sub-ledger testCaseID is null, so match by lineNo alone.
             PaymentInformation payment = paymentList.stream()
-                    .filter(p -> p.getTestCaseID().equalsIgnoreCase(subLedger.getTestCaseID())
-                              && p.getLineNo().equalsIgnoreCase(lineNo))
+                    .filter(p -> p.getLineNo() != null
+                            && p.getLineNo().equalsIgnoreCase(lineNo)
+                            && (subLedger.getTestCaseID() == null || p.getTestCaseID() == null
+                                || p.getTestCaseID().equalsIgnoreCase(subLedger.getTestCaseID())))
                     .findFirst()
-                    .orElseThrow(() -> new IllegalStateException(
-                            "❌ No PaymentInformation row found for TestCaseID="
-                            + subLedger.getTestCaseID() + " LineNo=" + lineNo));
+                    .orElse(null);
+
+            if (payment == null) continue;
+
+            // Prefer paymentSelection set on the sub-ledger row (Excel mode, via @Column).
+            // Fall back to paymentMode from the PaymentInformation row (DB mode, where
+            // sub-ledger rows are built programmatically with paymentSelection=null).
+            PaymentSelectionType effectiveType = subLedger.getPaymentSelection() != null
+                    ? subLedger.getPaymentSelection()
+                    : payment.getPaymentMode();
+
+            if (effectiveType == null) continue;
+            // Cash GL shows a validation message when the button is clicked — no popup to fill
+            if (effectiveType == PaymentSelectionType.CASH) continue;
 
             String refSite = subLedger.getReferenceSite() != null ? subLedger.getReferenceSite() : "";
             clickPaymentButton(subLedger.getSubLedger(), refSite)

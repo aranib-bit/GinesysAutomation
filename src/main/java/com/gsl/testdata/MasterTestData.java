@@ -3,9 +3,13 @@ package com.gsl.testdata;
 
 import com.gsl.converter.SafeIntegerConverter;
 import io.github.sskorol.data.Column;
+import lombok.AllArgsConstructor;
 import lombok.Getter;
+import lombok.NoArgsConstructor;
 
 @Getter
+@NoArgsConstructor
+@AllArgsConstructor
 public class MasterTestData {
 
     @Column(name = "testcasename")

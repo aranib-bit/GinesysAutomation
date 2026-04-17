@@ -24,8 +24,12 @@ public class ExtJsUtils {
 
                         "store.load({" +
                         "  callback: function() {" +
-                        "    var r = store.findRecord(c.displayField, '" + displayValue + "', 0, false, true, true);" +
-                        "    if (!r) { throw 'Value not in store: ' + '" + displayValue + "'; }" +
+                        "    var r = null;" +
+                        "    var targetVal = '" + displayValue + "';" +
+                        "    store.each(function(record) {" +
+                        "      if (record.get(c.displayField) === targetVal) { r = record; return false; }" +
+                        "    });" +
+                        "    if (!r) { throw 'Value not in store: ' + targetVal; }" +
 
                         // select properly
                         "    c.select(r);" +
@@ -76,11 +80,13 @@ public class ExtJsUtils {
 
                         "store.load({" +
                         "  callback: function() {" +
-                        "    var r = store.findRecord(" +
-                        "      c.displayField, '" + displayValue + "', 0, false, true, true" +
-                        "    );" +
+                        "    var r = null;" +
+                        "    var targetVal = '" + displayValue + "';" +
+                        "    store.each(function(record) {" +
+                        "      if (record.get(c.displayField) === targetVal) { r = record; return false; }" +
+                        "    });" +
 
-                        "    if (!r) throw 'Value not found: " + displayValue + "';" +
+                        "    if (!r) throw 'Value not found: ' + targetVal;" +
 
                         "    c.select(r);" +
                         "    c.fireEvent('select', c, r);" +

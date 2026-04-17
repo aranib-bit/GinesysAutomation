@@ -1,6 +1,7 @@
 package com.gsl.pages.Common;
 
 import com.gsl.enums.WaitType;
+import com.gsl.pages.Finance.Operations.ArVoucherListPage;
 import com.gsl.pages.Inventory.Product_Definition.ItemListPage;
 import com.gsl.pages.Procurement.Operations.ReceiptsListPage;
 import com.gsl.reports.ExtentLogger;
@@ -147,6 +148,13 @@ public class DocumentMessageBox {
         SeleniumUtils.click(DISCARD_YES_BUTTON, WaitType.CLICKABLE, "DISCARD_YES_BUTTON");
         JavascriptExecutorUtils.waitForPageLoad();
         JavascriptExecutorUtils.waitForExtJS();
+    }
+
+    public ArVoucherListPage clickYes() {
+        SeleniumUtils.click(DISCARD_YES_BUTTON, WaitType.CLICKABLE, "DISCARD_YES_BUTTON");
+        JavascriptExecutorUtils.waitForPageLoad();
+        JavascriptExecutorUtils.waitForExtJS();
+        return new ArVoucherListPage();
     }
 
     public ItemListPage closeItem(){

@@ -3176,7 +3176,12 @@ public final class JavascriptExecutorUtils {
                         + "  if (!plugin) throw new Error('editingPlugin not found on arvch_grid');"
 
                         // Open the editor so the app configures the store with SL-specific params.
-                        + "  plugin.startEdit(" + rowIndex + ", refSiteCol);"
+                        // Pass the record object instead of the integer rowIndex to avoid the
+                        // ExtJS falsy-zero bug: startEdit(0, col) treats 0 as falsy and silently
+                        // skips the edit, leaving row 0's Reference Site combo unopened.
+                        + "  var gridRec = childGrid.getStore().getAt(" + rowIndex + ");"
+                        + "  if (!gridRec) throw new Error('No grid record at row " + rowIndex + "');"
+                        + "  plugin.startEdit(gridRec, refSiteCol);"
                         + "  var siteCombo = plugin.activeEditor && plugin.activeEditor.field;"
                         + "  if (!siteCombo) throw new Error('Reference Site combo not active after startEdit');"
                         + "  console.log('RefSite combo found, name=' + siteCombo.name);"
@@ -3313,6 +3318,24 @@ public final class JavascriptExecutorUtils {
                 "  return rec.get('referenceSiteName') + '|' + rec.get('referenceSiteCode');" +
                 "} catch(e) { return 'ERROR: ' + e.message; }";
         return (String) ((JavascriptExecutor) driver).executeScript(script);
+    }
+
+    /**
+     * Reads the Reference Site name currently stored in the arvch_grid record at the given row.
+     * Used after Pass 2 (setSubLedgerReferenceSite) in DB mode to capture the UI-auto-set value
+     * so subsequent clickAdjust / clickPaymentButton calls use the correct XPath discriminator.
+     */
+    public static String getSubLedgerReferenceSiteName(WebDriver driver, int rowIndex) {
+        String script =
+                "try {" +
+                "  var grid = Ext.ComponentQuery.query('gridpanel[itemId=arvch_grid]')[0];" +
+                "  if (!grid) return '';" +
+                "  var rec = grid.getStore().getAt(" + rowIndex + ");" +
+                "  if (!rec) return '';" +
+                "  return rec.get('referenceSiteName') || '';" +
+                "} catch(e) { return ''; }";
+        Object result = ((JavascriptExecutor) driver).executeScript(script);
+        return result != null ? result.toString() : "";
     }
 
     private static void logReferenceSiteSelection(String excelValue, String verifyResult, int rowIndex) {

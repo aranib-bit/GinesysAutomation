@@ -51,10 +51,11 @@ public class DocumentPopup {
     }
 
     /**
-     * Post-save path for Case 1 (Cash) and Case 3 (Bank with payment info for all lines).
-     * No "Ignore & Proceed" popup is expected — waits directly for the save-confirmation message box.
-     * Also handles the intermediate "proceed without instrument number" Yes/No dialog, which
-     * uses the same messagebox element but must be confirmed before the success message appears.
+     * Post-save path for Cash GLs or Bank GLs where all sub-ledger lines have complete
+     * payment info with instrument numbers. No "Ignore & Proceed" popup is expected —
+     * waits directly for the save-confirmation message box.
+     * Also handles an unexpected "Ignore & Proceed" dialog if the instrument number
+     * warning appears on this path.
      */
     public DocumentMessageBox waitForMessageBox() {
         WebDriver driver = DriverManager.getDriver();
@@ -64,16 +65,16 @@ public class DocumentPopup {
         wait.until(ExpectedConditions.visibilityOfElementLocated(MESSAGE_TEXT));
         System.out.println("Messagebox is now visible");
 
-        // If the app shows an "instrument number" confirmation dialog before saving,
-        // click Yes to proceed, then wait for the actual save-result messagebox.
+        // If the app unexpectedly shows the "instrument number" warning dialog,
+        // click Ignore & Proceed, then wait for the actual save-result messagebox.
         try {
             String msgText = driver.findElement(MESSAGE_TEXT).getText();
             if (msgText != null && msgText.contains("instrument number")) {
-                System.out.println("Instrument number confirmation dialog detected — clicking Yes to proceed");
-                SeleniumUtils.click(YES_BUTTON, WaitType.CLICKABLE, "YES_BUTTON");
-                wait.until(ExpectedConditions.invisibilityOfElementLocated(MESSAGE_TEXT));
+                System.out.println("Instrument number warning detected — clicking Ignore & Proceed");
+                SeleniumUtils.click(IGNOREPROCEED, WaitType.CLICKABLE, "IGNOREPROCEED");
+                wait.until(ExpectedConditions.invisibilityOfElementLocated(IGNOREPROCEED));
                 wait.until(ExpectedConditions.visibilityOfElementLocated(MESSAGE_TEXT));
-                System.out.println("Success messagebox is now visible after instrument number confirmation");
+                System.out.println("Success messagebox is now visible after Ignore & Proceed");
             }
         } catch (Exception e) {
             System.out.println("Instrument number dialog check skipped (non-fatal): " + e.getMessage());

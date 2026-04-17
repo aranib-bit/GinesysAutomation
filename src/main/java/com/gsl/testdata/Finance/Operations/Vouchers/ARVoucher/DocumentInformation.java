@@ -8,12 +8,16 @@ import com.gsl.testdata.annotations.Mandatory;
 import com.gsl.testdata.annotations.MandatoryType;
 import io.github.sskorol.data.Column;
 import io.github.sskorol.data.Sheet;
+import lombok.AllArgsConstructor;
 import lombok.Getter;
+import lombok.NoArgsConstructor;
 
 import java.time.LocalDate;
 
 
 @Getter
+@NoArgsConstructor
+@AllArgsConstructor
     @Sheet(name= "DocumentInformation")
     public class DocumentInformation {
         @Mandatory

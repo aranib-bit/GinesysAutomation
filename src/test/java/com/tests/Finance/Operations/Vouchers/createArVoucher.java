@@ -16,8 +16,10 @@ import com.gsl.pages.Finance.Operations.Common.AdjustmentEntry;
 import com.gsl.pages.Finance.Operations.Common.SelectDocumentPopup;
 import com.gsl.testdata.Finance.Operations.Vouchers.ARVoucher.SelectDocument;
 import com.gsl.pages.Finance.Operations.Common.DocumentPopup;
+import com.gsl.reports.ArVoucherExtentDescriptionLogger;
 import com.gsl.utils.NavigationUtils;
 import com.gsl.utils.dataprovider.MergedFinArVoucherDataSupplier;
+import com.gsl.utils.dataprovider.source.finance.DbArVoucherDataSource;
 import com.gsl.validation.db.finance.ARVoucherDbValidator;
 import com.gsl.validation.db.finance.StateCapture;
 import com.gsl.validation.db.finance.VoucherDbContext;
@@ -41,6 +43,29 @@ public class CreateArVoucher extends BaseTest {
     public void createArVoucher(MergedFinanceArVoucherData data) throws InterruptedException {
         System.out.println("Create AR Voucher of Finance from UI");
         System.out.println("Running test for: " + data.getMasterTestData().getTestcaseid());
+
+        // ── Point 1: Lazy data generation ────────────────────────────────────────
+        // In DB mode the DataSupplier emits lightweight placeholders (subLedgerInformationList
+        // is empty). Fetch fresh DB data NOW — at test-execution time — so each scenario
+        // sees the current state of the database, not a snapshot taken before all tests ran.
+        if (data.getScenarioType() != null
+                && (data.getSubLedgerInformationList() == null
+                    || data.getSubLedgerInformationList().isEmpty())) {
+            System.out.println("[DB mode] Placeholder detected for scenario="
+                    + data.getScenarioType() + ". Fetching fresh data from DB…");
+            data = DbArVoucherDataSource.loadFreshForScenario(
+                    data, "createArVoucher");
+        }
+
+        if (data.getScenarioType() != null) {
+            System.out.println("[DB mode] Scenario type: " + data.getScenarioType()
+                    + " | testCaseId: " + data.getMasterTestData().getTestcaseid());
+        }
+
+        // ── Log rich test data description to Extent Report ──────────────────
+        // Full data is available here (lazy loading complete). Reference, Remarks,
+        // Sub-Ledgers, Select Docs, and Payment Info are all live runtime values.
+        ArVoucherExtentDescriptionLogger.log(data);
 
         // 1. Login to the application
         LoginPage loginPage = new LoginPage();
@@ -90,11 +115,31 @@ public class CreateArVoucher extends BaseTest {
         //   • If Excel leaves Reference Site blank      → set the 1st available site from
         //     the store (JS falls back to store.getAt(0) when target is empty).
         // We therefore call setSubLedgerReferenceSite for EVERY row, not just non-empty ones.
+        // Pass 2 — normal order.
         for (int i = 0; i < subLedgers.size(); i++) {
             String refSite = subLedgers.get(i).getReferenceSite() != null
                     ? subLedgers.get(i).getReferenceSite() : "";
             // Always call — empty refSite triggers the "first available" fallback in JS.
             addPage.setSubLedgerReferenceSite(refSite, i);
+        }
+        // Retry row 0: the first setSubLedgerReferenceSite call initialises the Reference
+        // Site combo's store proxy; the initial load may return 0 records (proxy URL just
+        // configured).  After rows 1+ are processed the proxy is warm; re-applying row 0
+        // guarantees it gets the correct value.
+        {
+            String refSite = subLedgers.get(0).getReferenceSite() != null
+                    ? subLedgers.get(0).getReferenceSite() : "";
+            addPage.setSubLedgerReferenceSite(refSite, 0);
+        }
+
+        // Read back actual Reference Site values set by the UI.
+        // If a row's site was blank (DB mode or blank Excel), the JS auto-picked the first
+        // available site. Capture the actual value so clickAdjust uses the correct XPath discriminator.
+        for (int i = 0; i < subLedgers.size(); i++) {
+            String actual = addPage.getSubLedgerReferenceSite(i);
+            if (actual != null && !actual.isEmpty()) {
+                subLedgers.get(i).setReferenceSite(actual);
+            }
         }
 
         // Adjustment: process ALL rows that have AdjustmentType set, not just the first one.
@@ -170,9 +215,10 @@ public class CreateArVoucher extends BaseTest {
         Map<String, FinPost> preState = stateCapture.captureInvoiceState(invoiceNos);
 
         DocumentPopup savePopup = addPage.clickSave();
-        String docNo = data.isNeedsIgnoreProceed()
-                ? savePopup.verifyWarningMessage().clickIgnoreProceed().extractDocumentNo()
-                : savePopup.waitForMessageBox().extractDocumentNo();
+        com.gsl.pages.Common.DocumentMessageBox messageBox = data.isNeedsIgnoreProceed()
+                ? savePopup.verifyWarningMessage().clickIgnoreProceed()
+                : savePopup.waitForMessageBox();
+        String docNo = messageBox.extractDocumentNo();
 
         System.out.println("Extracted Document No: " + docNo);
 
@@ -188,7 +234,13 @@ public class CreateArVoucher extends BaseTest {
                         .postState(postState)
                         .build());
 
+        // Dismiss success popup → close AR Voucher form → confirm discard → logout
+        messageBox.clickOk();
+        addPage.close()
+               .clickYes();
 
+        HomePage homePage1 = new HomePage();
+        homePage1.logoutFromApplication();
     }
 
 }

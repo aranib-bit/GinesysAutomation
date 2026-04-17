@@ -16,4 +16,16 @@ public interface FrameworkConfig extends Config {
 
     long itemscanmaxtimeout();
 
+    /** EXCEL | DB — selects which DataSource implementation loads AR Voucher test data. */
+    @Key("testdata.source")
+    @DefaultValue("EXCEL")
+    String testDataSource();
+
+    /** App login username used in DB mode (must match hrdemp.abbre in the database). */
+    @Key("appusername")
+    String username();
+
+    /** App login password used in DB mode. */
+    @Key("apppassword")
+    String password();
 }

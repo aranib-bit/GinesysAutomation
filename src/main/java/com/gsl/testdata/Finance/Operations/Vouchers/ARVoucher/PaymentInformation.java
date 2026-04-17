@@ -4,9 +4,13 @@ import com.gsl.converter.PaymentModeConverter;
 import com.gsl.enums.PaymentSelectionType;
 import io.github.sskorol.data.Column;
 import io.github.sskorol.data.Sheet;
+import lombok.AllArgsConstructor;
 import lombok.Getter;
+import lombok.NoArgsConstructor;
 
 @Getter
+@NoArgsConstructor
+@AllArgsConstructor
 @Sheet(name= "PaymentInformation")
 public class PaymentInformation {
 
