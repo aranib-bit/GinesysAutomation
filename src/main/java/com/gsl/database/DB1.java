@@ -35,6 +35,7 @@ public class DB1{
             //Optional tuning parameters (recommended for test automation)
             config.setMaximumPoolSize(ConfigFactory.getDataBaseConfig().MaximumPoolSize());
             config.setMinimumIdle(ConfigFactory.getDataBaseConfig().MinimumIdle());
+            config.setMaxLifetime(ConfigFactory.getDataBaseConfig().MaxLifetime());
             config.setIdleTimeout(ConfigFactory.getDataBaseConfig().IdleTimeout());
             config.setConnectionTimeout(ConfigFactory.getDataBaseConfig().ConnectionTimeout());
             config.setLeakDetectionThreshold(ConfigFactory.getDataBaseConfig().LeakDetectionThreashold());

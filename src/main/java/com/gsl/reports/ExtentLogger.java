@@ -11,19 +11,30 @@ public final class ExtentLogger {
     }
 
     public static void pass(String message) {
-        ExtentManager.getExtentTest().pass(message);
+        if (ExtentManager.getExtentTest() != null) ExtentManager.getExtentTest().pass(message);
     }
 
     public static void fail(String message) {
+        if (ExtentManager.getExtentTest() == null) return;
         if (DriverManager.getDriver() != null) {
-            ExtentManager.getExtentTest().fail(message, MediaEntityBuilder.createScreenCaptureFromBase64String(ScreenshotUtils.getScreenshot()).build());
+            try {
+                ExtentManager.getExtentTest().fail(message,
+                        MediaEntityBuilder.createScreenCaptureFromBase64String(ScreenshotUtils.getScreenshot()).build());
+            } catch (org.openqa.selenium.WebDriverException wde) {
+                // Session is dead — fall back to text-only to prevent AOP infinite loop
+                ExtentManager.getExtentTest().fail(message + " [screenshot unavailable: " + wde.getMessage().split("\n")[0] + "]");
+            }
         } else {
             ExtentManager.getExtentTest().fail(message);
         }
     }
 
     public static void info(String message) {
-        ExtentManager.getExtentTest().info(message);
+        if (ExtentManager.getExtentTest() != null) ExtentManager.getExtentTest().info(message);
+    }
+
+    public static void warning(String message) {
+        if (ExtentManager.getExtentTest() != null) ExtentManager.getExtentTest().warning(message);
     }
 
     public static void infoTable(String[][] table) {

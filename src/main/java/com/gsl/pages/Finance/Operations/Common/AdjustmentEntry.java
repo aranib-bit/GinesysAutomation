@@ -3,6 +3,7 @@ package com.gsl.pages.Finance.Operations.Common;
 import org.openqa.selenium.By;
 import org.openqa.selenium.WebDriver;
 import com.gsl.utils.Selenium.ActionUtils;
+import com.gsl.utils.Selenium.JavascriptExecutorUtils;
 import com.gsl.utils.Selenium.SeleniumUtils;
 import com.gsl.enums.WaitType;
 
@@ -74,6 +75,7 @@ public class AdjustmentEntry {
 
     public SelectDocumentPopup selectDocument() {
         SeleniumUtils.click(SELECT_DOCUMENT_OPTION, WaitType.CLICKABLE, "Select Document Option");
+        JavascriptExecutorUtils.waitForExtJS();
         return new SelectDocumentPopup();
     }
 

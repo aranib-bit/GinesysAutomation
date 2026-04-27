@@ -7,6 +7,7 @@ import com.gsl.pages.Common.DocumentMessageBox;
 import com.gsl.utils.Selenium.SeleniumUtils;
 import org.openqa.selenium.By;
 import org.openqa.selenium.WebDriver;
+import org.openqa.selenium.WebElement;
 import org.openqa.selenium.support.ui.ExpectedConditions;
 import org.openqa.selenium.support.ui.WebDriverWait;
 import java.time.Duration;
@@ -36,13 +37,29 @@ public class DocumentPopup {
         // app's actual DOM structure the click must still proceed, so no assertion
         // is made here. The presence of the "Ignore & Proceed" button is sufficient
         // proof that the expected warning popup appeared.
+        //
+        // IMPORTANT: do NOT call SeleniumUtils.getText() here. That method is
+        // AOP-intercepted; a TimeoutException inside it causes LoggingAspect to call
+        // ExtentLogger.fail() and mark the test FAIL before the local catch fires.
+        // Using WebDriverWait directly keeps the exception inside this try-catch.
         try {
             By warningMsgLocator = By.xpath(
                     "//span[normalize-space()='Ignore & Proceed']"
                     + "/ancestor::div[contains(@class,'x-message-box')]"
                     + "//div[contains(@class,'x-component-default')]");
-            String actualMsg = SeleniumUtils.getText(warningMsgLocator, "WARNING_MSG");
-            System.out.println("Warning popup message: " + actualMsg);
+            int maxRetries = ConfigFactory.getConfig().warningMsgMaxRetries();
+            WebElement msgEl = null;
+            for (int attempt = 0; attempt < maxRetries && msgEl == null; attempt++) {
+                try {
+                    msgEl = new WebDriverWait(driver, Duration.ofSeconds(3))
+                            .until(ExpectedConditions.visibilityOfElementLocated(warningMsgLocator));
+                } catch (Exception ignored) {
+                    // retry
+                }
+            }
+            if (msgEl != null) {
+                System.out.println("Warning popup message: " + msgEl.getAttribute("innerText"));
+            }
         } catch (Exception e) {
             System.out.println("Could not read warning message text (non-fatal): " + e.getMessage());
         }

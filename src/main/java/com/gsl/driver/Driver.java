@@ -1,6 +1,7 @@
 package com.gsl.driver;
 
 import com.gsl.config.ConfigFactory;
+import com.gsl.utils.Log;
 import org.openqa.selenium.WebDriver;
 
 import java.net.MalformedURLException;
@@ -21,9 +22,8 @@ public final class Driver {
             WebDriver driver = DriverFactory.getDriver(runmode, browser);
             DriverManager.setDriver(driver);
 
-            // Logging for debugging
-        System.out.println("[Thread " + Thread.currentThread().getId() +
-                   "] Initialized driver with session ID: " +
+            Log.info("Initialized driver — thread={}, sessionId={}",
+                    Thread.currentThread().getId(),
                     ((org.openqa.selenium.remote.RemoteWebDriver) driver).getSessionId());
         }
 
@@ -40,7 +40,7 @@ public final class Driver {
             DriverManager.getDriver().quit();
             DriverManager.unloadDriver();
 
-            System.out.println("[Thread " + Thread.currentThread().getId() + "] Driver quit.");
+            Log.info("Driver quit — thread={}", Thread.currentThread().getId());
         }
     }
 }

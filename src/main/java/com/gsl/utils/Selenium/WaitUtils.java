@@ -38,4 +38,33 @@ public final class WaitUtils {
         // Wait for the element to be clickable
         return wait.until(ExpectedConditions.elementToBeClickable(by));
     }
+
+    public static void waitForExtMask() {
+        new WebDriverWait(DriverManager.getDriver(), Duration.ofSeconds(extJsTimeout()))
+                .until(ExpectedConditions.invisibilityOfElementLocated(
+                        By.cssSelector(".x-mask, .x-mask-msg")
+                ));
+    }
+
+    public static void waitForExtJsApp() {
+        JavascriptExecutorUtils.waitForExtJS();
+        waitForExtMask();
+        JavascriptExecutorUtils.waitForExtLayout();
+    }
+
+    public static void extSafeClick(By locator) {
+        JavascriptExecutorUtils.waitForExtJS();
+        waitForExtMask();
+        WebElement element = new WebDriverWait(DriverManager.getDriver(), Duration.ofSeconds(extJsTimeout()))
+                .until(ExpectedConditions.elementToBeClickable(locator));
+        element.click();
+        waitForExtMask();
+        JavascriptExecutorUtils.waitForExtJS();
+    }
+
+    private static long extJsTimeout() {
+        long configured = ConfigFactory.getConfig().extjsTimeout();
+        long min        = ConfigFactory.getConfig().extjsMinTimeout();
+        return Math.max(min, configured);
+    }
 }

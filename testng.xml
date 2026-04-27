@@ -4,6 +4,31 @@
     <listeners>
         <listener class-name="com.gsl.listeners.TestListener"/>
     </listeners>
+
+    <test name="AR Voucher Validation">
+        <parameter name="voucherDomain" value="AR"/>
+        <parameter name="executionType" value="MANDATORY"/>
+        <classes>
+            <class name="com.tests.Validation.RuleTest"/>
+        </classes>
+    </test>
+
+    <test name="AP Voucher Validation">
+        <parameter name="voucherDomain" value="AP"/>
+        <parameter name="executionType" value="GROUP_2"/>
+        <classes>
+            <class name="com.tests.Validation.RuleTest"/>
+        </classes>
+    </test>
+
+    <test name="Contra Voucher Validation">
+        <parameter name="voucherDomain" value="CONTRA"/>
+        <parameter name="executionType" value="ALL"/>
+        <classes>
+            <class name="com.tests.Validation.RuleTest"/>
+        </classes>
+    </test>
+
     <test name="SeleniumFramework">
         <classes>
             <class name="com.tests.Finance.Operations.Vouchers.CreateArVoucher"></class>

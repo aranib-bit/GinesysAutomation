@@ -19,7 +19,7 @@ import java.math.BigDecimal;
 @NoArgsConstructor
 @AllArgsConstructor
 @Sheet(name= "SubLedgerInformation")
-public class SubLedgerInformation {
+public class SubLedgerInformation extends SubLedgerInformationBase {
 
     @Column(name = "TestCaseID")
     private String testCaseID;
@@ -45,12 +45,4 @@ public class SubLedgerInformation {
     @Column(name = "PaymentSelection", converter = PaymentSelectionConverter.class)
     private PaymentSelectionType paymentSelection;
 
-    /**
-     * Sub-ledger classification name resolved at runtime from admcls.clsname
-     * (e.g. "Customer", "Supplier"). Populated in DB mode only; null in Excel mode.
-     * Not an Excel column — set via setter after construction.
-     */
-    @lombok.Getter
-    @lombok.Setter
-    private String slType;
 }

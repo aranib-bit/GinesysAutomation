@@ -42,7 +42,19 @@ public class MergedReceiptDataSupplier {
 
     /* ---------- DataSupplier ---------- */
 
-    @DataSupplier(name = "dataSupplier", flatMap = true)
+    @DataSupplier(name = "getData")
+    public StreamEx<MasterTestData> getData(Method method) {
+        String methodName = method.getName();
+        List<MasterTestData> allTestCases = use(XlsxReader.class)
+                .withTarget(MasterTestData.class)
+                .withSource(ConfigFactory.getExcelDataConfig().MasterTestData())
+                .read()
+                .toList();
+        return StreamEx.of(allTestCases)
+                .filter(tc -> methodName.equalsIgnoreCase(tc.getTestcasename()));
+    }
+
+    @DataSupplier(name = "receiptData", flatMap = true)
     public StreamEx<MergedReceiptData> dataSupplier(Method method) {
 
         String methodName = method.getName();

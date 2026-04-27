@@ -8,74 +8,83 @@ import org.jdbi.v3.sqlobject.SqlObjectPlugin; // ✅ Added import
 
 public class DatabaseManager {
 
-    private static Jdbi jdbi;
-    private static HikariDataSource dataSource;
+    private DatabaseManager() {}
 
-    static {
-        try {
-            // Step 1: Configure HikariConfig
-            HikariConfig config = new HikariConfig();
+    private static class Holder {
+        static final HikariDataSource DATA_SOURCE;
+        static final Jdbi JDBI;
 
-            var dbConfig = ConfigFactory.getDataBaseConfig(); // existing method
-
-            String jdbcUrl = buildJdbcUrl(
-                    dbConfig.databaseType(),
-                    dbConfig.databaseHost(),
-                    dbConfig.databasePort(),
-                    dbConfig.databasename()
-            );
-            config.setJdbcUrl(jdbcUrl);
-            config.setUsername(dbConfig.databaseUsername());
-            config.setPassword(dbConfig.databasePassword());
-
-            // Optional tuning parameters
-            config.setMaximumPoolSize(dbConfig.MaximumPoolSize());
-            config.setMinimumIdle(dbConfig.MinimumIdle());
-            config.setIdleTimeout(dbConfig.IdleTimeout());
-            config.setConnectionTimeout(dbConfig.ConnectionTimeout());
-            config.setLeakDetectionThreshold(dbConfig.LeakDetectionThreashold());
-
-            // Set driver class
-            switch (dbConfig.databaseType().toLowerCase()) {
-                case "postgres" -> config.setDriverClassName("org.postgresql.Driver");
-                case "oracle" -> config.setDriverClassName("oracle.jdbc.OracleDriver");
-                case "sqlserver" -> config.setDriverClassName("com.microsoft.sqlserver.jdbc.SQLServerDriver");
-                default -> throw new IllegalArgumentException("Unsupported database type: " + dbConfig.databaseType());
-            }
-
-            // Step 2: Initialize datasource and Jdbi
-            dataSource = new HikariDataSource(config);
-            jdbi = Jdbi.create(dataSource);
-
-            // ✅ Step 3: Install plugin for DAO interface support
-            jdbi.installPlugin(new SqlObjectPlugin());
-
-            System.out.println("✅ DatabaseManager initialized successfully (JDBI + HikariCP)");
-            System.out.println("Connected to: " + jdbcUrl);
-
-            // ✅ Step 4: Log current schema for verification
+        static {
             try {
-                String currentSchema = jdbi.withHandle(handle ->
-                        handle.createQuery("SELECT current_schema()")
-                                .mapTo(String.class)
-                                .one()
-                );
-                System.out.println("🟢 Current schema: " + currentSchema);
+                HikariConfig config = new HikariConfig();
+                var dbConfig = ConfigFactory.getDataBaseConfig();
 
-                String searchPath = jdbi.withHandle(handle ->
-                        handle.createQuery("SHOW search_path")
-                                .mapTo(String.class)
-                                .one()
+                String jdbcUrl = buildJdbcUrl(
+                        dbConfig.databaseType(),
+                        dbConfig.databaseHost(),
+                        dbConfig.databasePort(),
+                        dbConfig.databasename()
                 );
-                System.out.println("🔍 Search path: " + searchPath);
+                config.setJdbcUrl(jdbcUrl);
+                config.setUsername(dbConfig.databaseUsername());
+                config.setPassword(dbConfig.databasePassword());
 
-            } catch (Exception schemaEx) {
-                System.err.println("⚠️ Could not determine current schema: " + schemaEx.getMessage());
+                config.setMaximumPoolSize(dbConfig.MaximumPoolSize());
+                config.setMinimumIdle(dbConfig.MinimumIdle());
+                config.setMaxLifetime(dbConfig.MaxLifetime());
+                config.setIdleTimeout(dbConfig.IdleTimeout());
+                config.setConnectionTimeout(dbConfig.ConnectionTimeout());
+                config.setLeakDetectionThreshold(dbConfig.LeakDetectionThreashold());
+
+                switch (dbConfig.databaseType().toLowerCase()) {
+                    case "postgres" -> config.setDriverClassName("org.postgresql.Driver");
+                    case "oracle" -> config.setDriverClassName("oracle.jdbc.OracleDriver");
+                    case "sqlserver" -> config.setDriverClassName("com.microsoft.sqlserver.jdbc.SQLServerDriver");
+                    default -> throw new IllegalArgumentException("Unsupported database type: " + dbConfig.databaseType());
+                }
+
+                DATA_SOURCE = new HikariDataSource(config);
+                JDBI = Jdbi.create(DATA_SOURCE);
+                JDBI.installPlugin(new SqlObjectPlugin());
+
+                System.out.println("DatabaseManager initialized successfully (JDBI + HikariCP)");
+                System.out.println("Connected to: " + jdbcUrl);
+
+                try {
+                    String currentSchema = JDBI.withHandle(handle ->
+                            handle.createQuery("SELECT current_schema()").mapTo(String.class).one());
+                    System.out.println("Current schema: " + currentSchema);
+
+                    String searchPath = JDBI.withHandle(handle ->
+                            handle.createQuery("SHOW search_path").mapTo(String.class).one());
+                    System.out.println("Search path: " + searchPath);
+                } catch (Exception schemaEx) {
+                    System.err.println("Could not determine current schema: " + schemaEx.getMessage());
+                }
+
+            } catch (Exception e) {
+                var dbConfig = ConfigFactory.getDataBaseConfig();
+                String diagMsg = String.format(
+                        "%n[DatabaseManager] INITIALIZATION FAILED%n" +
+                        "  Host     : %s%n" +
+                        "  Port     : %s%n" +
+                        "  Database : %s%n" +
+                        "  User     : %s%n" +
+                        "  Type     : %s%n" +
+                        "  Root cause: %s%n" +
+                        "Checklist:%n" +
+                        "  1. Is the DB host reachable? Run: ping %s%n" +
+                        "  2. Is PostgreSQL running on port %s?%n" +
+                        "  3. Are credentials correct in databaseconfig.properties?%n" +
+                        "  4. Is VPN/network access required to reach the DB host?%n" +
+                        "  5. Is the database name '%s' correct?",
+                        dbConfig.databaseHost(), dbConfig.databasePort(), dbConfig.databasename(),
+                        dbConfig.databaseUsername(), dbConfig.databaseType(),
+                        e.getMessage(),
+                        dbConfig.databaseHost(), dbConfig.databasePort(), dbConfig.databasename()
+                );
+                throw new RuntimeException(diagMsg, e);
             }
-
-        } catch (Exception e) {
-            e.printStackTrace();
-            throw new RuntimeException("Failed to initialize DatabaseManager: " + e.getMessage());
         }
     }
 
@@ -89,16 +98,16 @@ public class DatabaseManager {
     }
 
     public static Jdbi getJdbi() {
-        return jdbi;
+        return Holder.JDBI;
     }
 
     public static HikariDataSource getDataSource() {
-        return dataSource;
+        return Holder.DATA_SOURCE;
     }
 
     public static void close() {
-        if (dataSource != null && !dataSource.isClosed()) {
-            dataSource.close();
+        if (Holder.DATA_SOURCE != null && !Holder.DATA_SOURCE.isClosed()) {
+            Holder.DATA_SOURCE.close();
             System.out.println("Database connection closed.");
         }
     }

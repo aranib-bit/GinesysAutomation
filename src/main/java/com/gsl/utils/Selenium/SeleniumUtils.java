@@ -4,6 +4,8 @@ import com.gsl.config.ConfigFactory;
 import com.gsl.driver.DriverManager;
 import com.gsl.enums.WaitType;
 import com.gsl.reports.ExtentLogger;
+import com.gsl.utils.ElementMeta;
+import com.gsl.utils.Log;
 import org.openqa.selenium.By;
 import org.openqa.selenium.Keys;
 import org.openqa.selenium.WebElement;
@@ -70,12 +72,12 @@ public class SeleniumUtils {
         return wait.until(ExpectedConditions.presenceOfNestedElementLocatedBy(parentLocator, childLocator));
     }
 
-    public static boolean elementDisappear(By by,String elementName){
+    public static boolean elementDisappear(By by, String elementName) {
         boolean state = waitUntilElementInVisible(by);
-        if (state==true){
-        ExtentLogger.info(elementName + " is checked that now it is invisible");
-        }else{
-            ExtentLogger.info(elementName + " is checked that now it is still visible");
+        if (state) {
+            Log.debug("{} is now invisible", elementName);
+        } else {
+            Log.debug("{} is still visible", elementName);
         }
         return state;
     }
@@ -153,6 +155,16 @@ public class SeleniumUtils {
         return wait.until(ExpectedConditions.visibilityOfElementLocated(by));
     }
 
+    public static boolean isElementPresent(By by, int timeoutInSeconds) {
+        try {
+            new WebDriverWait(DriverManager.getDriver(), Duration.ofSeconds(timeoutInSeconds))
+                    .until(ExpectedConditions.visibilityOfElementLocated(by));
+            return true;
+        } catch (Exception e) {
+            return false;
+        }
+    }
+
     private static  boolean waitUntilElementInVisible(By by) {
         WebDriverWait wait = new WebDriverWait(DriverManager.getDriver(), Duration.ofSeconds(ConfigFactory.getConfig().timeout()));
         return wait.until(ExpectedConditions.invisibilityOfElementLocated(by));
@@ -164,6 +176,30 @@ public class SeleniumUtils {
         ExtentLogger.info("Text from " + elementName + " is: '" + text + "'");
         return text;
     }
+
+    // --- ElementMeta overloads (delegate to existing String elementName methods) ---
+
+    public static void click(By by, ElementMeta meta) {
+        click(by, meta.getName());
+    }
+
+    public static void click(By by, WaitType waitType, ElementMeta meta) {
+        click(by, waitType, meta.getName());
+    }
+
+    public static void click(WebElement element, WaitType waitType, ElementMeta meta) {
+        click(element, waitType, meta.getName());
+    }
+
+    public static void sendKeys(By by, String value, ElementMeta meta) {
+        sendKeys(by, value, meta.getName());
+    }
+
+    public static void sendKeys(By by, WaitType waitType, String value, ElementMeta meta) {
+        sendKeys(by, waitType, value, meta.getName());
+    }
+
+    // -------------------------------------------------------------------------
 
     public static void waitForInputReady(By locator) {
         WebDriverWait wait = new WebDriverWait(DriverManager.getDriver(), Duration.ofSeconds(10));

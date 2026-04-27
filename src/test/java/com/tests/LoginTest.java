@@ -7,6 +7,7 @@ import com.gsl.pages.LoginPage;
 import com.gsl.pages.pagecomponent.Admin.AdminHomePage;
 import com.gsl.pages.pagecomponent.Inventory.InventoryHomePage;
 import com.gsl.testdata.MasterTestData;
+import com.gsl.utils.dataprovider.MergedReceiptDataSupplier;
 import org.testng.Assert;
 import org.testng.annotations.Test;
 
@@ -14,7 +15,7 @@ public class LoginTest extends BaseTest {
 
     @FrameworkAnnotation(TestAuthor.ARANI)
     @Test(description = "To check whether the user lands on the correct dashboard after login",
-          dataProvider = "getData")
+          dataProvider = "getData", dataProviderClass = MergedReceiptDataSupplier.class)
     public void loginAndVerifyDashboardTest(MasterTestData masterTestData) throws InterruptedException {
 
         LoginPage loginPage = new LoginPage();

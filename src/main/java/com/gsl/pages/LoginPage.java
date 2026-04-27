@@ -1,5 +1,6 @@
 package com.gsl.pages;
 
+import com.gsl.annotations.LogStep;
 import com.gsl.enums.WaitType;
 import org.openqa.selenium.By;
 
@@ -14,6 +15,8 @@ public class LoginPage {
     private static final By AUTHENTICATOR_LOADER=By.xpath("//*[@class='x-window vport x-layer x-window-default x-border-box x-window-maximized']");
     //For time being addeing OK
     private static final By OK_BUTTON=By.xpath("//span[text()='OK']");
+    private static final By BTN_CONCURRENT_SESSION_YES =
+            By.xpath("//div[contains(@class,'x-message-box')]//span[text()='Yes']");
 
     private LoginPage clickOk(){
         click(OK_BUTTON,WaitType.CLICKABLE,"OK_BUTTON");
@@ -36,6 +39,13 @@ public class LoginPage {
         return this;
     }
 
+    private LoginPage handleConcurrentSessionPopup() {
+        if (isElementPresent(BTN_CONCURRENT_SESSION_YES, 3)) {
+            click(BTN_CONCURRENT_SESSION_YES, WaitType.CLICKABLE, "Concurrent Session Yes Button");
+        }
+        return this;
+    }
+
     private HomePage checkAuthenticationLoader(){
         elementDisappear(AUTHENTICATOR_LOADER,"Authentication Loader");
         return new HomePage();
@@ -47,11 +57,13 @@ public class LoginPage {
     }
 
 
+    @LogStep("Login to Application")
     public HomePage loginToApplication(String username, String password) {
         return checkSplashScreenLoader()
                 .setUserName(username)
                 .setPassword(password)
                 .setLogin()
+                .handleConcurrentSessionPopup()
                 .checkAuthenticationLoader();
     }
 }

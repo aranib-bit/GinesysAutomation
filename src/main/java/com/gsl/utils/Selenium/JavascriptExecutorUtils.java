@@ -1,8 +1,11 @@
 package com.gsl.utils.Selenium;
 
+import com.gsl.config.ConfigFactory;
 import com.gsl.driver.DriverManager;
+import com.gsl.exceptions.SubLedgerNotFoundException;
 import com.gsl.pages.enums.Inventory.Product_Definition.GroupHierarchyType;
 import com.gsl.reports.ExtentLogger;
+import com.gsl.reports.ReportLogger;
 import org.openqa.selenium.*;
 import org.openqa.selenium.support.ui.WebDriverWait;
 
@@ -30,6 +33,106 @@ public final class JavascriptExecutorUtils {
 
     public static void scrollToElement(By by) {
         scrollToElement(findElement(by));
+    }
+
+    public static void scrollIntoViewForced(WebElement element) {
+        getJsExecutor().executeScript("arguments[0].scrollIntoView(true);", element);
+    }
+
+    /**
+     * Resets the SelectDocument popup grid scroll position back to the top
+     * and fires the 'scroll' event so ExtJS re-renders the first set of rows.
+     * Called at the start of every selectDocument() call so that:
+     *   - 1st document  : grid is already at top — harmless no-op in effect.
+     *   - 2nd+ document : grid was left at the previous document's position;
+     *                     this resets it so the search always starts fresh
+     *                     from row 0 regardless of prior selections.
+     */
+    public static void resetGridScrollToTop() {
+        String script =
+            "var views = document.querySelectorAll('.x-grid-view');" +
+            "for (var i = 0; i < views.length; i++) {" +
+            "  var v = views[i];" +
+            "  if (v.offsetHeight > 0) {" +
+            "    v.scrollTop = 0;" +
+            "    v.dispatchEvent(new Event('scroll', { bubbles: true }));" +
+            "    return;" +
+            "  }" +
+            "}";
+        getJsExecutor().executeScript(script);
+    }
+
+    /**
+     * PRIMARY scroll strategy for SelectDocument popup.
+     *
+     * Searches all visible ExtJS gridpanel stores for a record whose any
+     * field value equals documentNumber.  When found it calculates the exact
+     * scrollTop (rowIndex × rowHeight) and jumps there in ONE step — so the
+     * same code works correctly whether the grid has 50 rows or 60,000+.
+     *
+     * Returns the scrollTop position that was set, or -1 if the record was
+     * not found in any loaded store (e.g. a BufferedStore whose target page
+     * has not been fetched yet).
+     */
+    public static long jumpGridToDocument(String documentNumber) {
+        String script =
+            "try {" +
+            "  var docNum = arguments[0];" +
+            "  var views = document.querySelectorAll('.x-grid-view');" +
+            "  for (var vi = 0; vi < views.length; vi++) {" +
+            "    var v = views[vi];" +
+            "    if (v.offsetHeight === 0) continue;" +
+            "    var grids = Ext.ComponentQuery.query('gridpanel');" +
+            "    for (var g = 0; g < grids.length; g++) {" +
+            "      var store = grids[g].getStore();" +
+            "      if (!store || store.getCount() === 0) continue;" +
+            "      var idx = store.findBy(function(rec) {" +
+            "        var d = rec.getData();" +
+            "        for (var k in d) {" +
+            "          if (d[k] !== null && d[k] !== undefined &&" +
+            "              String(d[k]).trim() === docNum) return true;" +
+            "        }" +
+            "        return false;" +
+            "      });" +
+            "      if (idx < 0) continue;" +
+            "      var rows = v.querySelectorAll('tr.x-grid-row');" +
+            "      var rowH = rows.length > 0 ? rows[0].offsetHeight : 26;" +
+            "      var target = idx * rowH;" +
+            "      v.scrollTop = target;" +
+            "      v.dispatchEvent(new Event('scroll', { bubbles: true }));" +
+            "      return target;" +
+            "    }" +
+            "  }" +
+            "  return -1;" +
+            "} catch(e) { return -1; }";
+        Object result = getJsExecutor().executeScript(script, documentNumber);
+        return result != null ? ((Number) result).longValue() : -1;
+    }
+
+    /**
+     * FALLBACK scroll strategy — used when jumpGridToDocument() returns -1
+     * (BufferedStore: target record page not yet loaded in memory).
+     *
+     * Scrolls the grid view by a PROPORTIONAL step (scrollHeight / 15) so
+     * the same number of iterations covers the full height regardless of
+     * record count — 500 rows or 60,000 rows both complete in ≤ 15 steps.
+     *
+     * Returns the new scrollTop, or -1 if no scrollable grid view was found.
+     */
+    public static long scrollSelectDocumentGridDown() {
+        String script =
+            "var views = document.querySelectorAll('.x-grid-view');" +
+            "for (var i = 0; i < views.length; i++) {" +
+            "  var v = views[i];" +
+            "  if (v.offsetHeight === 0) continue;" +
+            "  var step = Math.max(300, Math.ceil(v.scrollHeight / 15));" +
+            "  v.scrollTop = Math.min(v.scrollTop + step, v.scrollHeight);" +
+            "  v.dispatchEvent(new Event('scroll', { bubbles: true }));" +
+            "  return v.scrollTop;" +
+            "}" +
+            "return -1;";
+        Object result = getJsExecutor().executeScript(script);
+        return result != null ? ((Number) result).longValue() : -1;
     }
 
     public static void click(WebElement element) {
@@ -61,11 +164,28 @@ public final class JavascriptExecutorUtils {
     }
 
     public static void waitForExtJS() {
-        new WebDriverWait(DriverManager.getDriver(), Duration.ofSeconds(10)).until(
+        new WebDriverWait(DriverManager.getDriver(), Duration.ofSeconds(extJsTimeout())).until(
                 driver -> (Boolean) ((JavascriptExecutor) driver).executeScript(
                         "return !!(window.Ext && window.Ext.isReady && " +
                                 "!window.Ext.Ajax.isLoading() && " +
                                 "window.Ext.ComponentQuery.query('[isMasked=true]').length === 0);"
+                )
+        );
+    }
+
+    public static void waitForExtLayout() {
+        new WebDriverWait(DriverManager.getDriver(), Duration.ofSeconds(extJsTimeout())).until(
+                driver -> (Boolean) ((JavascriptExecutor) driver).executeScript(
+                        "return window.Ext !== undefined && Ext.ComponentManager.all.getCount() > 0;"
+                )
+        );
+    }
+
+    public static void waitForStoreLoad(String storeId) {
+        new WebDriverWait(DriverManager.getDriver(), Duration.ofSeconds(extJsTimeout())).until(
+                driver -> (Boolean) ((JavascriptExecutor) driver).executeScript(
+                        "var store = Ext.getStore('" + storeId + "');" +
+                        "return store ? !store.isLoading() : true;"
                 )
         );
     }
@@ -2876,9 +2996,17 @@ public final class JavascriptExecutorUtils {
 
 
     public static void setSubLedger(WebDriver driver, String slName, String slId, String referenceSite) {
+        slName = (slName != null) ? slName.trim() : "";
+        slId   = (slId   != null) ? slId.trim()   : "";
+        if (slName.isEmpty()) {
+            throw new IllegalArgumentException(
+                "setSubLedger called with null/empty slName (slId='" + slId + "'). "
+                + "Check that the data source (Excel or DB) is providing a non-empty Sub Ledger name."
+            );
+        }
         System.out.println("=== START: setSubLedger '" + slName + "' id='" + slId + "' ===");
-        String mode = (slId == null || slId.isEmpty()) ? "NAME_ONLY" : "NAME_AND_ID";
-        String safeSlId = (slId == null) ? "" : slId;
+        String mode = slId.isEmpty() ? "NAME_ONLY" : "NAME_AND_ID";
+        String safeSlId = slId;
 
         String clickScript =
                 "try {"
@@ -2907,66 +3035,85 @@ public final class JavascriptExecutorUtils {
         try { Thread.sleep(600); } catch (InterruptedException e) { e.printStackTrace(); }
 
         String selectScript =
-                "try {"
+                "window.__slSearchDone = false; window.__slSearchFound = false;"
+                        + "try {"
                         + "  var childGrid = Ext.ComponentQuery.query('gridpanel[itemId=arvch_grid]')[0];"
                         + "  var combo = Ext.ComponentQuery.query('combo[name=slCode]')[0];"
                         + "  if (!combo) throw new Error('slCode combo still not found after cell click');"
                         + "  console.log('combo found: ' + combo.id);"
-
-                        + "  combo.getStore().load({"
-                        + "    params: { query: '" + slName + "', page: 1, start: 0, limit: 25 },"
-                        + "    callback: function() {"
-                        + "      var store = combo.getStore();"
-                        + "      console.log('store loaded count=' + store.getCount());"
-
-                        + "      var slRec = null;"
-                        + "      if ('" + safeSlId + "' !== '') {"
-                        + "        store.each(function(r) {"
-                        + "          if (r.get('slName') === '" + slName + "' && String(r.get('slid')) === '" + safeSlId + "') { slRec = r; return false; }"
-                        + "        });"
+                        + "  var PAGE_SIZE = 25;"
+                        + "  function loadAndSearch(pageStart) {"
+                        + "    combo.getStore().load({"
+                        + "      params: { queryFieldName: ['slName','className'], query: '" + slName + "', page: Math.floor(pageStart / PAGE_SIZE) + 1, start: pageStart, limit: PAGE_SIZE },"
+                        + "      callback: function() {"
+                        + "        var store = combo.getStore();"
+                        + "        console.log('Page walk: page=' + (Math.floor(pageStart / PAGE_SIZE) + 1) + ' start=' + pageStart + ' loaded=' + store.getCount() + ' total=' + store.getTotalCount());"
+                        + "        var slRec = null;"
+                        + "        if ('" + safeSlId + "' !== '') {"
+                        + "          store.each(function(r) {"
+                        + "            if (r.get('slName') === '" + slName + "' && String(r.get('slid')) === '" + safeSlId + "') { slRec = r; return false; }"
+                        + "          });"
+                        + "        }"
+                        + "        if (!slRec) {"
+                        + "          store.each(function(r) {"
+                        + "            if (r.get('slName') === '" + slName + "') { slRec = r; return false; }"
+                        + "          });"
+                        + "        }"
+                        + "        if (!slRec) {"
+                        + "          var nextStart = pageStart + PAGE_SIZE;"
+                        + "          if (nextStart < store.getTotalCount()) {"
+                        + "            console.log('SL not on this page, trying next: start=' + nextStart);"
+                        + "            loadAndSearch(nextStart);"
+                        + "          } else {"
+                        + "            console.error('SL not found after all pages: " + slName + " | totalCount=' + store.getTotalCount());"
+                        + "            window.__slSearchTotalCount = store.getTotalCount();"
+                        + "            window.__slSearchDone = true; window.__slSearchFound = false;"
+                        + "          }"
+                        + "          return;"
+                        + "        }"
+                        + "        combo.select(slRec);"
+                        + "        combo.fireEvent('select', combo, slRec);"
+                        + "        setTimeout(function() {"
+                        + "          var rec = childGrid.getStore().getAt(0);"
+                        + "          if (!rec) { console.error('child grid rec not found'); window.__slSearchDone = true; window.__slSearchFound = false; return; }"
+                        + "          rec.set('slCode',             slRec.get('slCode'));"
+                        + "          rec.set('slName',             slRec.get('slName'));"
+                        + "          rec.set('slid',               slRec.get('slid'));"
+                        + "          rec.set('className',          slRec.get('className'));"
+                        + "          rec.set('ledgerCode',         slRec.get('glCode')                 || 0);"
+                        + "          rec.set('ledgerName',         slRec.get('glName')                 || '');"
+                        + "          rec.set('ledgerGroupName',    slRec.get('generalLedgerGroupName') || '');"
+                        + "          rec.set('ledgerAbbreviation', slRec.get('generalLedgerAbbre')     || '');"
+                        + "          childGrid.getView().refreshNode(0);"
+                        + "          console.log('DONE slCode=' + rec.get('slCode') + ' slid=' + rec.get('slid') + ' className=' + rec.get('className'));"
+                        + "          console.log('FULL GRID RECORD: ' + JSON.stringify(rec.getData()));"
+                        + "          window.__slSearchDone = true; window.__slSearchFound = true;"
+                        + "        }, 600);"
                         + "      }"
-                        + "      if (!slRec) {"
-                        + "        store.each(function(r) {"
-                        + "          if (r.get('slName') === '" + slName + "') { slRec = r; return false; }"
-                        + "        });"
-                        + "      }"
-                        + "      if (!slRec) { console.error('No SL found: " + slName + "'); return; }"
-
-                        + "      combo.select(slRec);"
-                        + "      combo.fireEvent('select', combo, slRec);"
-
-                        + "      setTimeout(function() {"
-                        + "        var rec = childGrid.getStore().getAt(0);"
-                        + "        if (!rec) { console.error('child grid rec not found'); return; }"
-
-                        // ── Always set ALL fields unconditionally ──
-                        + "        rec.set('slCode',             slRec.get('slCode'));"
-                        + "        rec.set('slName',             slRec.get('slName'));"
-                        + "        rec.set('slid',               slRec.get('slid'));"
-                        + "        rec.set('className',          slRec.get('className'));"
-                        + "        rec.set('ledgerCode',         slRec.get('glCode')                 || 0);"
-                        + "        rec.set('ledgerName',         slRec.get('glName')                 || '');"
-                        + "        rec.set('ledgerGroupName',    slRec.get('generalLedgerGroupName') || '');"
-                        + "        rec.set('ledgerAbbreviation', slRec.get('generalLedgerAbbre')     || '');"
-
-                        + "        childGrid.getView().refreshNode(0);"
-
-                        + "        console.log('DONE slCode='       + rec.get('slCode'));"
-                        + "        console.log('DONE slid='         + rec.get('slid'));"
-                        + "        console.log('DONE className='    + rec.get('className'));"
-                        + "        console.log('DONE ledgerName='   + rec.get('ledgerName'));"
-                        + "        console.log('FULL GRID RECORD: ' + JSON.stringify(rec.getData()));"
-                        + "      }, 600);"
-                        + "    }"
-                        + "  });"
-                        + "} catch(e) { console.error('select ERROR: ' + e.message); throw e; }";
+                        + "    });"
+                        + "  }"
+                        + "  loadAndSearch(0);"
+                        + "} catch(e) { console.error('select ERROR: ' + e.message); window.__slSearchDone = true; window.__slSearchFound = false; throw e; }";
 
         ((JavascriptExecutor) driver).executeScript(selectScript);
-        System.out.println("=== JS select executed for SL '" + slName + "' ===");
+        System.out.println("=== JS page-walk started for SL '" + slName + "' ===");
 
-        try { Thread.sleep(3000); } catch (InterruptedException e) { e.printStackTrace(); }
+        long deadline = System.currentTimeMillis() + 30_000;
+        while (System.currentTimeMillis() < deadline) {
+            Boolean done = (Boolean) ((JavascriptExecutor) driver)
+                    .executeScript("return window.__slSearchDone === true;");
+            if (Boolean.TRUE.equals(done)) break;
+            try { Thread.sleep(500); } catch (InterruptedException e) { Thread.currentThread().interrupt(); }
+        }
+        Boolean pageWalkFound = (Boolean) ((JavascriptExecutor) driver)
+                .executeScript("return window.__slSearchFound === true;");
+        Long slSearchTotalCount = (Long) ((JavascriptExecutor) driver)
+                .executeScript("return window.__slSearchTotalCount !== undefined ? window.__slSearchTotalCount : -1;");
+        System.out.println("=== Page-walk complete for SL '" + slName + "' | found=" + pageWalkFound
+                + (Boolean.FALSE.equals(pageWalkFound) ? " | storeTotal=" + slSearchTotalCount : "") + " ===");
+
         String verifyResult = verifySelectedSubLedgerRecord(driver, 0);
-        logSubLedgerSelection(mode, slName, safeSlId, verifyResult, 0);
+        assertSubLedgerSelected(mode, slName, safeSlId, verifyResult, 0, Boolean.TRUE.equals(pageWalkFound));
         String safeRefSite = (referenceSite == null) ? "" : referenceSite;
         if (!safeRefSite.isEmpty()) {
             ExtentLogger.info("[SL SELECT] ReferenceSite will be set via setSubLedgerReferenceSite | Row=0 | Value=" + safeRefSite);
@@ -2984,43 +3131,52 @@ public final class JavascriptExecutorUtils {
                 "  if (!childGrid) return 'ERROR: arvch_grid not found';" +
                 "  var rec = childGrid.getStore().getAt(" + rowIndex + ");" +
                 "  if (!rec) return 'ERROR: record not found at row " + rowIndex + "';" +
-                "  return rec.get('slName') + '|' + rec.get('slid') + '|' + rec.get('slCode');" +
+                "  return rec.get('slName') + '|' + rec.get('slid') + '|' + rec.get('slCode')" +
+                "       + '|' + (rec.get('className') || '') + '|' + (rec.get('ledgerName') || '');" +
                 "} catch(e) { return 'ERROR: ' + e.message; }";
         return (String) ((JavascriptExecutor) driver).executeScript(script);
     }
 
-    private static void logSubLedgerSelection(String mode, String slName, String slId,
-                                               String verifyResult, int rowIndex) {
+    private static void assertSubLedgerSelected(String mode, String expectedSlName, String slId,
+                                                String verifyResult, int rowIndex, boolean pageWalkFound) {
+        if (!pageWalkFound) {
+            throw new SubLedgerNotFoundException(expectedSlName, rowIndex, "");
+        }
         if (verifyResult == null || verifyResult.startsWith("ERROR")) {
-            ExtentLogger.info("[SL SELECT] WARNING=Could not verify selected record | Row=" + rowIndex
-                    + " | verifyResult=" + verifyResult);
-            return;
+            throw new SubLedgerNotFoundException(expectedSlName, rowIndex,
+                    "JS verification error: " + verifyResult);
         }
         String[] parts = verifyResult.split("\\|", -1);
-        String actualSlName = parts.length > 0 ? parts[0] : "";
-        String actualSlId   = parts.length > 1 ? parts[1] : "";
-        String actualSlCode = parts.length > 2 ? parts[2] : "";
+        String actualSlName     = parts.length > 0 ? parts[0] : "";
+        String actualSlId       = parts.length > 1 ? parts[1] : "";
+        String actualSlCode     = parts.length > 2 ? parts[2] : "";
+        String actualClassName  = parts.length > 3 ? parts[3] : "";
+        String actualLedgerName = parts.length > 4 ? parts[4] : "";
+
+        if (actualSlName == null || actualSlName.isBlank()) {
+            throw new SubLedgerNotFoundException(expectedSlName, rowIndex, "");
+        }
+        if (!actualSlName.equals(expectedSlName)) {
+            throw new SubLedgerNotFoundException(expectedSlName, rowIndex, actualSlName);
+        }
+
+        String base = " | Row=" + rowIndex
+                + " | SlName="  + actualSlName
+                + " | SlId="    + actualSlId
+                + " | SlCode="  + actualSlCode
+                + " | SlType="  + actualClassName
+                + " | GL="      + actualLedgerName;
 
         if ("NAME_ONLY".equals(mode)) {
-            ExtentLogger.info("[SL SELECT] Mode=NAME_ONLY | Row=" + rowIndex
-                    + " | SlName=" + actualSlName
-                    + " | SlId=" + actualSlId
-                    + " | SlCode=" + actualSlCode
+            ReportLogger.info("[SL SELECT] Mode=NAME_ONLY" + base
                     + " | Reason=Id not provided in Excel, matched by name alone");
         } else {
             if (actualSlId.equals(slId)) {
-                ExtentLogger.info("[SL SELECT] Mode=NAME_AND_ID | Row=" + rowIndex
-                        + " | SlName=" + actualSlName
-                        + " | SlId=" + actualSlId
-                        + " | SlCode=" + actualSlCode
-                        + " | ExcelId=" + slId
-                        + " | Reason=Matched by name and id");
+                ReportLogger.info("[SL SELECT] Mode=NAME_AND_ID" + base
+                        + " | ExcelId=" + slId + " | Reason=Matched by name and id");
             } else {
-                ExtentLogger.info("[SL SELECT] Mode=NAME_AND_ID | WARNING=Id match failed, fell back to name-only | Row=" + rowIndex
-                        + " | SlName=" + actualSlName
-                        + " | SlId=" + actualSlId
-                        + " | SlCode=" + actualSlCode
-                        + " | ExcelId=" + slId);
+                ReportLogger.info("[SL SELECT] Mode=NAME_AND_ID | WARNING=Id match failed, fell back to name-only"
+                        + base + " | ExcelId=" + slId);
             }
         }
     }
@@ -3049,9 +3205,18 @@ public final class JavascriptExecutorUtils {
      * For row 0 use setSubLedger(); for subsequent rows use this method after addSubLedgerRow().
      */
     public static void setSubLedgerForRow(WebDriver driver, int rowIndex, String slName, String slId, String referenceSite) {
+        slName = (slName != null) ? slName.trim() : "";
+        slId   = (slId   != null) ? slId.trim()   : "";
+        if (slName.isEmpty()) {
+            throw new IllegalArgumentException(
+                "setSubLedgerForRow called with null/empty slName at rowIndex=" + rowIndex
+                + " (slId='" + slId + "'). "
+                + "Check that the data source (Excel or DB) is providing a non-empty Sub Ledger name."
+            );
+        }
         System.out.println("=== START: setSubLedgerForRow row=" + rowIndex + " sl='" + slName + "' id='" + slId + "' ===");
-        String mode = (slId == null || slId.isEmpty()) ? "NAME_ONLY" : "NAME_AND_ID";
-        String safeSlId = (slId == null) ? "" : slId;
+        String mode = slId.isEmpty() ? "NAME_ONLY" : "NAME_AND_ID";
+        String safeSlId = slId;
 
         String clickScript =
                 "try {"
@@ -3078,57 +3243,84 @@ public final class JavascriptExecutorUtils {
         try { Thread.sleep(600); } catch (InterruptedException e) { e.printStackTrace(); }
 
         String selectScript =
-                "try {"
+                "window.__slSearchDone = false; window.__slSearchFound = false;"
+                        + "try {"
                         + "  var childGrid = Ext.ComponentQuery.query('gridpanel[itemId=arvch_grid]')[0];"
                         + "  var combo = Ext.ComponentQuery.query('combo[name=slCode]')[0];"
                         + "  if (!combo) throw new Error('slCode combo not found after cell click');"
-
-                        + "  combo.getStore().load({"
-                        + "    params: { query: '" + slName + "', page: 1, start: 0, limit: 25 },"
-                        + "    callback: function() {"
-                        + "      var store = combo.getStore();"
-                        + "      var slRec = null;"
-                        + "      if ('" + safeSlId + "' !== '') {"
-                        + "        store.each(function(r) {"
-                        + "          if (r.get('slName') === '" + slName + "' && String(r.get('slid')) === '" + safeSlId + "') { slRec = r; return false; }"
-                        + "        });"
+                        + "  var PAGE_SIZE = 25;"
+                        + "  var targetRow = " + rowIndex + ";"
+                        + "  function loadAndSearch(pageStart) {"
+                        + "    combo.getStore().load({"
+                        + "      params: { queryFieldName: ['slName','className'], query: '" + slName + "', page: Math.floor(pageStart / PAGE_SIZE) + 1, start: pageStart, limit: PAGE_SIZE },"
+                        + "      callback: function() {"
+                        + "        var store = combo.getStore();"
+                        + "        console.log('Row ' + targetRow + ' page walk: page=' + (Math.floor(pageStart / PAGE_SIZE) + 1) + ' start=' + pageStart + ' loaded=' + store.getCount() + ' total=' + store.getTotalCount());"
+                        + "        var slRec = null;"
+                        + "        if ('" + safeSlId + "' !== '') {"
+                        + "          store.each(function(r) {"
+                        + "            if (r.get('slName') === '" + slName + "' && String(r.get('slid')) === '" + safeSlId + "') { slRec = r; return false; }"
+                        + "          });"
+                        + "        }"
+                        + "        if (!slRec) {"
+                        + "          store.each(function(r) {"
+                        + "            if (r.get('slName') === '" + slName + "') { slRec = r; return false; }"
+                        + "          });"
+                        + "        }"
+                        + "        if (!slRec) {"
+                        + "          var nextStart = pageStart + PAGE_SIZE;"
+                        + "          if (nextStart < store.getTotalCount()) {"
+                        + "            console.log('SL not on this page, trying next: start=' + nextStart);"
+                        + "            loadAndSearch(nextStart);"
+                        + "          } else {"
+                        + "            console.error('SL not found after all pages: " + slName + " | totalCount=' + store.getTotalCount());"
+                        + "            window.__slSearchTotalCount = store.getTotalCount();"
+                        + "            window.__slSearchDone = true; window.__slSearchFound = false;"
+                        + "          }"
+                        + "          return;"
+                        + "        }"
+                        + "        combo.select(slRec);"
+                        + "        combo.fireEvent('select', combo, slRec);"
+                        + "        setTimeout(function() {"
+                        + "          var rec = childGrid.getStore().getAt(targetRow);"
+                        + "          if (!rec) { console.error('child grid rec at row ' + targetRow + ' not found'); window.__slSearchDone = true; window.__slSearchFound = false; return; }"
+                        + "          rec.set('slCode',             slRec.get('slCode'));"
+                        + "          rec.set('slName',             slRec.get('slName'));"
+                        + "          rec.set('slid',               slRec.get('slid'));"
+                        + "          rec.set('className',          slRec.get('className'));"
+                        + "          rec.set('ledgerCode',         slRec.get('glCode')                 || 0);"
+                        + "          rec.set('ledgerName',         slRec.get('glName')                 || '');"
+                        + "          rec.set('ledgerGroupName',    slRec.get('generalLedgerGroupName') || '');"
+                        + "          rec.set('ledgerAbbreviation', slRec.get('generalLedgerAbbre')     || '');"
+                        + "          childGrid.getView().refreshNode(targetRow);"
+                        + "          console.log('DONE row=' + targetRow + ' slCode=' + rec.get('slCode'));"
+                        + "          window.__slSearchDone = true; window.__slSearchFound = true;"
+                        + "        }, 600);"
                         + "      }"
-                        + "      if (!slRec) {"
-                        + "        store.each(function(r) {"
-                        + "          if (r.get('slName') === '" + slName + "') { slRec = r; return false; }"
-                        + "        });"
-                        + "      }"
-                        + "      if (!slRec) { console.error('No SL found: " + slName + "'); return; }"
-
-                        + "      combo.select(slRec);"
-                        + "      combo.fireEvent('select', combo, slRec);"
-
-                        + "      setTimeout(function() {"
-                        + "        var rec = childGrid.getStore().getAt(" + rowIndex + ");"
-                        + "        if (!rec) { console.error('child grid rec at row " + rowIndex + " not found'); return; }"
-
-                        + "        rec.set('slCode',             slRec.get('slCode'));"
-                        + "        rec.set('slName',             slRec.get('slName'));"
-                        + "        rec.set('slid',               slRec.get('slid'));"
-                        + "        rec.set('className',          slRec.get('className'));"
-                        + "        rec.set('ledgerCode',         slRec.get('glCode')                 || 0);"
-                        + "        rec.set('ledgerName',         slRec.get('glName')                 || '');"
-                        + "        rec.set('ledgerGroupName',    slRec.get('generalLedgerGroupName') || '');"
-                        + "        rec.set('ledgerAbbreviation', slRec.get('generalLedgerAbbre')     || '');"
-
-                        + "        childGrid.getView().refreshNode(" + rowIndex + ");"
-                        + "        console.log('DONE row=" + rowIndex + " slCode=' + rec.get('slCode'));"
-                        + "      }, 600);"
-                        + "    }"
-                        + "  });"
-                        + "} catch(e) { console.error('select ERROR: ' + e.message); throw e; }";
+                        + "    });"
+                        + "  }"
+                        + "  loadAndSearch(0);"
+                        + "} catch(e) { console.error('select ERROR: ' + e.message); window.__slSearchDone = true; window.__slSearchFound = false; throw e; }";
 
         ((JavascriptExecutor) driver).executeScript(selectScript);
-        System.out.println("=== JS select executed for row=" + rowIndex + " SL='" + slName + "' ===");
+        System.out.println("=== JS page-walk started for row=" + rowIndex + " SL='" + slName + "' ===");
 
-        try { Thread.sleep(3000); } catch (InterruptedException e) { e.printStackTrace(); }
+        long deadline = System.currentTimeMillis() + 30_000;
+        while (System.currentTimeMillis() < deadline) {
+            Boolean done = (Boolean) ((JavascriptExecutor) driver)
+                    .executeScript("return window.__slSearchDone === true;");
+            if (Boolean.TRUE.equals(done)) break;
+            try { Thread.sleep(500); } catch (InterruptedException e) { Thread.currentThread().interrupt(); }
+        }
+        Boolean pageWalkFound = (Boolean) ((JavascriptExecutor) driver)
+                .executeScript("return window.__slSearchFound === true;");
+        Long slSearchTotalCount = (Long) ((JavascriptExecutor) driver)
+                .executeScript("return window.__slSearchTotalCount !== undefined ? window.__slSearchTotalCount : -1;");
+        System.out.println("=== Page-walk complete for row=" + rowIndex + " SL='" + slName + "' | found=" + pageWalkFound
+                + (Boolean.FALSE.equals(pageWalkFound) ? " | storeTotal=" + slSearchTotalCount : "") + " ===");
+
         String verifyResult = verifySelectedSubLedgerRecord(driver, rowIndex);
-        logSubLedgerSelection(mode, slName, safeSlId, verifyResult, rowIndex);
+        assertSubLedgerSelected(mode, slName, safeSlId, verifyResult, rowIndex, Boolean.TRUE.equals(pageWalkFound));
         String safeRefSite = (referenceSite == null) ? "" : referenceSite;
         if (!safeRefSite.isEmpty()) {
             ExtentLogger.info("[SL SELECT] ReferenceSite will be set via setSubLedgerReferenceSite | Row=" + rowIndex + " | Value=" + safeRefSite);
@@ -3361,7 +3553,11 @@ public final class JavascriptExecutorUtils {
         }
     }
 
-
+    private static long extJsTimeout() {
+        long configured = ConfigFactory.getConfig().extjsTimeout();
+        long min        = ConfigFactory.getConfig().extjsMinTimeout();
+        return Math.max(min, configured);
+    }
 
 }
 
