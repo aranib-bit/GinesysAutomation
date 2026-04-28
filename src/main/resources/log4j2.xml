@@ -1,0 +1,100 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<Configuration status="WARN" monitorInterval="30">
+
+    <Properties>
+        <Property name="LOG_DIR">logs</Property>
+        <Property name="LOG_PATTERN">%d{yyyy-MM-dd HH:mm:ss.SSS} [%t] %-5level [%X{testName}][%X{testCaseId}][%X{testId}] %logger{36} - %msg%n</Property>
+    </Properties>
+
+    <Appenders>
+
+        <Console name="ConsoleAppender" target="SYSTEM_OUT">
+            <PatternLayout pattern="${LOG_PATTERN}"/>
+        </Console>
+
+        <RollingFile name="RollingFileAppender"
+                     fileName="${LOG_DIR}/framework.log"
+                     filePattern="${LOG_DIR}/framework-%d{yyyy-MM-dd}-%i.log.gz">
+            <PatternLayout pattern="${LOG_PATTERN}"/>
+            <Policies>
+                <TimeBasedTriggeringPolicy interval="1" modulate="true"/>
+                <SizeBasedTriggeringPolicy size="10 MB"/>
+            </Policies>
+            <DefaultRolloverStrategy max="30">
+                <Delete basePath="${LOG_DIR}" maxDepth="1">
+                    <IfFileName glob="framework-*.log.gz"/>
+                    <IfLastModified age="30d"/>
+                </Delete>
+            </DefaultRolloverStrategy>
+        </RollingFile>
+
+        <!-- Async wrapper: file writes are non-blocking; console stays synchronous -->
+        <Async name="AsyncRollingFile" bufferSize="512" blocking="false">
+            <AppenderRef ref="RollingFileAppender"/>
+        </Async>
+
+        <!-- Dedicated rolling appender for indented method-flow traces (AOP) -->
+        <RollingFile name="TraceFileAppender"
+                     fileName="${LOG_DIR}/trace.log"
+                     filePattern="${LOG_DIR}/trace-%d{yyyy-MM-dd}-%i.log.gz">
+            <!-- Timestamps are embedded in the message itself — no prefix needed -->
+            <PatternLayout pattern="%msg%n"/>
+            <Policies>
+                <TimeBasedTriggeringPolicy interval="1" modulate="true"/>
+                <SizeBasedTriggeringPolicy size="20 MB"/>
+            </Policies>
+            <DefaultRolloverStrategy max="10">
+                <Delete basePath="${LOG_DIR}" maxDepth="1">
+                    <IfFileName glob="trace-*.log.gz"/>
+                    <IfLastModified age="7d"/>
+                </Delete>
+            </DefaultRolloverStrategy>
+        </RollingFile>
+
+        <!-- Non-blocking async wrapper for trace writes -->
+        <Async name="AsyncTraceFile" bufferSize="1024" blocking="false">
+            <AppenderRef ref="TraceFileAppender"/>
+        </Async>
+
+    </Appenders>
+
+    <Loggers>
+        <!-- Framework packages at DEBUG so all internal detail is captured -->
+        <Logger name="com.gsl" level="DEBUG" additivity="false">
+            <AppenderRef ref="ConsoleAppender"/>
+            <AppenderRef ref="AsyncRollingFile"/>
+        </Logger>
+        <Logger name="com.tests" level="DEBUG" additivity="false">
+            <AppenderRef ref="ConsoleAppender"/>
+            <AppenderRef ref="AsyncRollingFile"/>
+        </Logger>
+
+        <!--
+            AOP method-flow traces → framework.log (for flow analysis) AND trace.log (pure skeleton).
+            additivity=false: prevents double-write via root logger.
+            Having both means:
+              - framework.log = complete picture (method trace + business logs interleaved)
+              - trace.log     = pure indented call tree with no noise, for quick skeleton review
+        -->
+        <Logger name="MethodTrace" level="DEBUG" additivity="false">
+            <AppenderRef ref="AsyncRollingFile"/>   <!-- framework.log: full flow analysis -->
+            <AppenderRef ref="AsyncTraceFile"/>     <!-- trace.log: pure skeleton view -->
+        </Logger>
+
+        <!--
+            System.out.println redirect (via log4j-iostreams + IoBuilder in TestListener).
+            Captured into framework.log at DEBUG level; no manual file changes needed.
+            additivity=false: avoids double-logging to root.
+        -->
+        <Logger name="SystemOut" level="DEBUG" additivity="false">
+            <AppenderRef ref="AsyncRollingFile"/>
+        </Logger>
+
+        <!-- Root at INFO to suppress third-party noise (Selenium, HikariCP, etc.) -->
+        <Root level="INFO">
+            <AppenderRef ref="ConsoleAppender"/>
+            <AppenderRef ref="AsyncRollingFile"/>
+        </Root>
+    </Loggers>
+
+</Configuration>
