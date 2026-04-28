@@ -90,4 +90,9 @@ public interface FrameworkConfig extends Config {
     @Key("selectdoc.loader.max.retries")
     @DefaultValue("3")
     int selectDocLoaderMaxRetries();
+
+    /** Cheque generation strategy: INDIA | USA_3 | USA_4 | USA_5 | USA_6 | ALPHANUMERIC | ROTATE */
+    @Key("cheque.country")
+    @DefaultValue("ROTATE")
+    String chequeCountry();
 }

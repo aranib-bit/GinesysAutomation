@@ -1,9 +1,12 @@
 package com.gsl.listeners;
 
 import com.gsl.annotations.FrameworkAnnotation;
+import com.gsl.annotations.FrameworkValidation;
 import com.gsl.annotations.TestCaseId;
 import com.gsl.reports.ExtentLogger;
+import com.gsl.reports.ExtentManager;
 import com.gsl.reports.ExtentReport;
+import com.gsl.reports.PreSuiteHealthCheck;
 import com.gsl.testdata.InvocationData;
 import com.gsl.testdata.dto.MergedFinanceArVoucherData;
 import com.gsl.utils.Log;
@@ -31,6 +34,10 @@ public class TestListener implements ITestListener, ISuiteListener {
                 .buildPrintStream());
     }
 
+    // Carries the domain label (e.g. "AR") for @FrameworkValidation methods across
+    // onTestStart → onTestSuccess/onTestFailure without creating an ExtentTest node.
+    private static final ThreadLocal<String> frameworkCheckLabel = new ThreadLocal<>();
+
     // ── Suite-level lifecycle — fires ONCE per <suite>, not once per <test> ──────
     // RC1 fix: initReports/flushReports moved here so the static `extent` object
     // is created once and the final flush writes all four <test> contexts' results.
@@ -38,6 +45,17 @@ public class TestListener implements ITestListener, ISuiteListener {
     @Override
     public void onStart(ISuite suite) {
         ExtentReport.initReports();
+        boolean healthy;
+        try {
+            healthy = PreSuiteHealthCheck.run(ExtentReport.extent);
+        } finally {
+            // Always flush so index.html exists even when run() throws or returns false.
+            ExtentReport.flushReports();
+        }
+        if (!healthy) {
+            throw new RuntimeException(
+                    "Pre-execution health check failed — suite aborted. Open index.html for details.");
+        }
     }
 
     @Override
@@ -66,6 +84,20 @@ public class TestListener implements ITestListener, ISuiteListener {
         TestContextManager.setTestName(methodName);
         TestContextManager.setTestId();
         Log.info("TEST STARTED: {}", methodName);
+
+        // @FrameworkValidation methods (e.g. executeRules) are pre-execution checks,
+        // not test cases. Skip ExtentTest creation so they don't inflate the pass count.
+        // Their outcome is recorded in the report's Environment panel via onTestSuccess/Failure.
+        boolean isFrameworkValidation = result.getMethod()
+                .getConstructorOrMethod().getMethod()
+                .isAnnotationPresent(FrameworkValidation.class);
+
+        if (isFrameworkValidation) {
+            Object[] p = result.getParameters();
+            String domain = (p.length > 0) ? String.valueOf(p[0]) : methodName;
+            frameworkCheckLabel.set(domain);
+            return;
+        }
 
         Object[] params = result.getParameters();
 
@@ -128,6 +160,13 @@ public class TestListener implements ITestListener, ISuiteListener {
 
     @Override
     public void onTestSuccess(ITestResult result) {
+        String label = frameworkCheckLabel.get();
+        if (label != null) {
+            ExtentReport.extent.setSystemInfo("Rule Validation [" + label + "]", "PASSED");
+            frameworkCheckLabel.remove();
+            Log.info("FRAMEWORK CHECK PASSED: {}", label);
+            return;
+        }
         Log.info("TEST PASSED: {}", result.getName());
         ExtentLogger.pass(result.getName() + " is passed");
         ExtentReport.flushReports();
@@ -136,6 +175,14 @@ public class TestListener implements ITestListener, ISuiteListener {
 
     @Override
     public void onTestFailure(ITestResult result) {
+        String label = frameworkCheckLabel.get();
+        if (label != null) {
+            String msg = result.getThrowable() != null ? result.getThrowable().getMessage() : "unknown";
+            ExtentReport.extent.setSystemInfo("Rule Validation [" + label + "]", "FAILED: " + msg);
+            frameworkCheckLabel.remove();
+            Log.error("FRAMEWORK CHECK FAILED [{}]: {}", label, msg);
+            return;
+        }
         Log.error("TEST FAILED: {}", result.getName());
         Log.error("Failure cause: {}",
                 result.getThrowable() != null ? result.getThrowable().getMessage() : "no throwable");
@@ -144,6 +191,27 @@ public class TestListener implements ITestListener, ISuiteListener {
         ExtentLogger.fail("Exception: " + result.getThrowable().getClass().getSimpleName());
         ExtentLogger.fail("Message " + result.getThrowable().getMessage());
         ExtentLogger.fail("StackTrace " + Arrays.toString(result.getThrowable().getStackTrace()));
+        ExtentReport.flushReports();
+        TestContextManager.clear();
+    }
+
+    @Override
+    public void onTestSkipped(ITestResult result) {
+        Log.warn("TEST SKIPPED: {}", result.getName());
+
+        if (!ExtentManager.hasTest()) {
+            // DataProvider threw before onTestStart — no ExtentTest exists yet.
+            // Create a visible failure node so the error is not silent in the report.
+            String title = "DATA PROVIDER FAILURE — " + result.getMethod().getMethodName();
+            ExtentReport.createTest(title);
+            Throwable t = result.getThrowable();
+            String detail = (t != null) ? t.getMessage() : "DataProvider returned no data";
+            ExtentLogger.fail(detail);
+        } else {
+            // @BeforeMethod or other config failure after onTestStart already created a node.
+            Throwable t = result.getThrowable();
+            ExtentLogger.warning("Test skipped" + (t != null ? ": " + t.getMessage() : ""));
+        }
         ExtentReport.flushReports();
         TestContextManager.clear();
     }
