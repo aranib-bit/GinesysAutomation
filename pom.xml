@@ -198,7 +198,7 @@
                     <suiteXmlFiles>
                         <suiteXmlFile>testng.xml</suiteXmlFile>
                     </suiteXmlFiles>
-                    <argLine>-javaagent:${settings.localRepository}/org/aspectj/aspectjweaver/1.9.21/aspectjweaver-1.9.21.jar --add-opens java.base/java.lang=ALL-UNNAMED</argLine>
+                    <argLine>--add-opens java.base/java.lang=ALL-UNNAMED</argLine>
                 </configuration>
             </plugin>
 
@@ -272,7 +272,7 @@
                             <suiteXmlFiles>
                                 <suiteXmlFile>testng.xml</suiteXmlFile>
                             </suiteXmlFiles>
-                            <argLine>-javaagent:${settings.localRepository}/org/aspectj/aspectjweaver/1.9.21/aspectjweaver-1.9.21.jar --add-opens java.base/java.lang=ALL-UNNAMED</argLine>
+                            <argLine>--add-opens java.base/java.lang=ALL-UNNAMED</argLine>
                         </configuration>
                     </plugin>
                 </plugins>

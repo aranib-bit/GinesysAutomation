@@ -50,6 +50,21 @@ public final class JavascriptExecutorUtils {
      */
     public static void resetGridScrollToTop() {
         String script =
+            // Primary: scope to the active ExtJS popup window so the background
+            // page's grid view is never picked up by mistake.
+            "try {" +
+            "  var win = Ext.WindowManager.getActive();" +
+            "  if (win) {" +
+            "    var g = win.down('gridpanel') || win.down('grid');" +
+            "    if (g) {" +
+            "      var v = g.getView().el.dom;" +
+            "      v.scrollTop = 0;" +
+            "      v.dispatchEvent(new Event('scroll', { bubbles: true }));" +
+            "      return;" +
+            "    }" +
+            "  }" +
+            "} catch(e) {}" +
+            // Fallback: original behaviour when no active window is found.
             "var views = document.querySelectorAll('.x-grid-view');" +
             "for (var i = 0; i < views.length; i++) {" +
             "  var v = views[i];" +
@@ -78,30 +93,38 @@ public final class JavascriptExecutorUtils {
         String script =
             "try {" +
             "  var docNum = arguments[0];" +
-            "  var views = document.querySelectorAll('.x-grid-view');" +
-            "  for (var vi = 0; vi < views.length; vi++) {" +
-            "    var v = views[vi];" +
-            "    if (v.offsetHeight === 0) continue;" +
-            "    var grids = Ext.ComponentQuery.query('gridpanel');" +
-            "    for (var g = 0; g < grids.length; g++) {" +
-            "      var store = grids[g].getStore();" +
-            "      if (!store || store.getCount() === 0) continue;" +
-            "      var idx = store.findBy(function(rec) {" +
-            "        var d = rec.getData();" +
-            "        for (var k in d) {" +
-            "          if (d[k] !== null && d[k] !== undefined &&" +
-            "              String(d[k]).trim() === docNum) return true;" +
-            "        }" +
-            "        return false;" +
-            "      });" +
-            "      if (idx < 0) continue;" +
-            "      var rows = v.querySelectorAll('tr.x-grid-row');" +
-            "      var rowH = rows.length > 0 ? rows[0].offsetHeight : 26;" +
-            "      var target = idx * rowH;" +
-            "      v.scrollTop = target;" +
-            "      v.dispatchEvent(new Event('scroll', { bubbles: true }));" +
-            "      return target;" +
-            "    }" +
+
+            // Primary: use the active ExtJS popup window to get the correct grid.
+            "  var win = Ext.WindowManager.getActive();" +
+            "  var grids = [];" +
+            "  if (win) {" +
+            "    grids = win.query('gridpanel');" +
+            "    if (!grids.length) grids = win.query('grid');" +
+            "  }" +
+            // Fallback: search all gridpanels (original behaviour).
+            "  if (!grids.length) grids = Ext.ComponentQuery.query('gridpanel');" +
+
+            "  for (var g = 0; g < grids.length; g++) {" +
+            "    var store = grids[g].getStore();" +
+            "    if (!store || store.getCount() === 0) continue;" +
+            "    var idx = store.findBy(function(rec) {" +
+            "      var d = rec.getData();" +
+            "      for (var k in d) {" +
+            "        if (d[k] !== null && d[k] !== undefined &&" +
+            "            String(d[k]).trim() === docNum) return true;" +
+            "      }" +
+            "      return false;" +
+            "    });" +
+            "    if (idx < 0) continue;" +
+
+            // Scroll the correct view: active-window grid view preferred.
+            "    var v = grids[g].getView().el.dom;" +
+            "    var rows = v.querySelectorAll('tr.x-grid-row');" +
+            "    var rowH = rows.length > 0 ? rows[0].offsetHeight : 26;" +
+            "    var target = idx * rowH;" +
+            "    v.scrollTop = target;" +
+            "    v.dispatchEvent(new Event('scroll', { bubbles: true }));" +
+            "    return target;" +
             "  }" +
             "  return -1;" +
             "} catch(e) { return -1; }";
@@ -121,6 +144,21 @@ public final class JavascriptExecutorUtils {
      */
     public static long scrollSelectDocumentGridDown() {
         String script =
+            // Primary: scope to the active ExtJS popup window.
+            "try {" +
+            "  var win = Ext.WindowManager.getActive();" +
+            "  if (win) {" +
+            "    var g = win.down('gridpanel') || win.down('grid');" +
+            "    if (g) {" +
+            "      var v = g.getView().el.dom;" +
+            "      var step = Math.max(300, Math.ceil(v.scrollHeight / 15));" +
+            "      v.scrollTop = Math.min(v.scrollTop + step, v.scrollHeight);" +
+            "      v.dispatchEvent(new Event('scroll', { bubbles: true }));" +
+            "      return v.scrollTop;" +
+            "    }" +
+            "  }" +
+            "} catch(e) {}" +
+            // Fallback: original behaviour.
             "var views = document.querySelectorAll('.x-grid-view');" +
             "for (var i = 0; i < views.length; i++) {" +
             "  var v = views[i];" +
@@ -133,6 +171,92 @@ public final class JavascriptExecutorUtils {
             "return -1;";
         Object result = getJsExecutor().executeScript(script);
         return result != null ? ((Number) result).longValue() : -1;
+    }
+
+    /**
+     * LAST-RESORT strategy for SelectDocument popup.
+     *
+     * Uses the ExtJS public API view.focusRow(index) to scroll the virtualized
+     * grid to the target record. Unlike jumpGridToDocument() which uses manual
+     * scrollTop math (rowIndex x rowHeight), focusRow() handles variable row
+     * heights and triggers proper ExtJS row rendering internally.
+     *
+     * Returns the record index (>= 0) if found and focused, or -1 if not found.
+     * Called only when the three existing strategies (direct find, jumpGrid,
+     * proportional scroll) have all been exhausted.
+     */
+    public static long focusGridRowByDocument(String documentNumber) {
+        String script =
+            "try {" +
+            "  var docNum = arguments[0];" +
+
+            // Primary: use the active ExtJS popup window.
+            "  var win = Ext.WindowManager.getActive();" +
+            "  var grids = [];" +
+            "  if (win) {" +
+            "    grids = win.query('gridpanel');" +
+            "    if (!grids.length) grids = win.query('grid');" +
+            "  }" +
+            // Fallback: all visible gridpanels (original behaviour).
+            "  if (!grids.length) grids = Ext.ComponentQuery.query('gridpanel');" +
+
+            "  for (var g = 0; g < grids.length; g++) {" +
+            "    var grid = grids[g];" +
+            "    if (!grid.isVisible()) continue;" +
+            "    var store = grid.getStore();" +
+            "    if (!store || store.getCount() === 0) continue;" +
+            "    var idx = store.findBy(function(rec) {" +
+            "      var d = rec.getData();" +
+            "      for (var k in d) {" +
+            "        if (d[k] !== null && d[k] !== undefined &&" +
+            "            String(d[k]).trim() === docNum) return true;" +
+            "      }" +
+            "      return false;" +
+            "    });" +
+            "    if (idx < 0) continue;" +
+            "    grid.getView().focusRow(idx);" +
+            "    return idx;" +
+            "  }" +
+            "  return -1;" +
+            "} catch(e) { return -1; }";
+        Object result = getJsExecutor().executeScript(script, documentNumber);
+        return result != null ? ((Number) result).longValue() : -1;
+    }
+
+    /**
+     * Returns a diagnostic string for the active window's grid:
+     * active-window title, store.getCount(), store.getTotalCount(),
+     * store.isLoading(), scrollHeight, scrollTop, and visible mask classes.
+     * Used purely for WARN-level logging to diagnose loader/scroll issues.
+     */
+    public static String getGridDiagnostics() {
+        String script =
+            "try {" +
+            "  var result = {};" +
+            "  var win = Ext.WindowManager.getActive();" +
+            "  result.activeWin = win ? (win.title || win.id || 'untitled') : 'none';" +
+            "  if (win) {" +
+            "    var g = win.down('gridpanel') || win.down('grid');" +
+            "    if (g) {" +
+            "      var store = g.getStore();" +
+            "      result.storeCount    = store ? store.getCount() : -1;" +
+            "      result.storeTotalCount = store ? (store.getTotalCount ? store.getTotalCount() : -1) : -1;" +
+            "      result.storeLoading  = store ? store.isLoading() : 'n/a';" +
+            "      var v = g.getView().el.dom;" +
+            "      result.scrollHeight  = v.scrollHeight;" +
+            "      result.scrollTop     = v.scrollTop;" +
+            "    } else { result.grid = 'not found'; }" +
+            "  }" +
+            "  var masks = document.querySelectorAll('.x-mask,.x-mask-fixed,.x-mask-loading,.x-mask-msg');" +
+            "  var visibleMasks = [];" +
+            "  for (var i = 0; i < masks.length; i++) {" +
+            "    if (masks[i].offsetHeight > 0) visibleMasks.push(masks[i].className);" +
+            "  }" +
+            "  result.visibleMasks = visibleMasks;" +
+            "  return JSON.stringify(result);" +
+            "} catch(e) { return 'diagnostics-error: ' + e.message; }";
+        Object result = getJsExecutor().executeScript(script);
+        return result != null ? result.toString() : "null";
     }
 
     public static void click(WebElement element) {

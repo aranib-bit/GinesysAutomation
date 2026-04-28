@@ -1,11 +1,20 @@
 package com.gsl.pages.Finance.Operations.Common;
 
 import org.openqa.selenium.By;
+import org.openqa.selenium.TimeoutException;
 import org.openqa.selenium.WebDriver;
+import org.openqa.selenium.support.ui.ExpectedConditions;
+import org.openqa.selenium.support.ui.WebDriverWait;
+import com.gsl.config.ConfigFactory;
+import com.gsl.constants.FrameworkConstants;
+import com.gsl.driver.DriverManager;
+import com.gsl.utils.Log;
 import com.gsl.utils.Selenium.ActionUtils;
 import com.gsl.utils.Selenium.JavascriptExecutorUtils;
 import com.gsl.utils.Selenium.SeleniumUtils;
 import com.gsl.enums.WaitType;
+
+import java.time.Duration;
 
 public class AdjustmentEntry {
 
@@ -76,6 +85,29 @@ public class AdjustmentEntry {
     public SelectDocumentPopup selectDocument() {
         SeleniumUtils.click(SELECT_DOCUMENT_OPTION, WaitType.CLICKABLE, "Select Document Option");
         JavascriptExecutorUtils.waitForExtJS();
+        Log.warn("AdjustmentEntry.selectDocument: waitForExtJS done — checking loader mask [{}]",
+                FrameworkConstants.getSelectDocGridLoader());
+        boolean loaderFoundInitially = !DriverManager.getDriver()
+                .findElements(FrameworkConstants.getSelectDocGridLoader()).isEmpty();
+        Log.warn("AdjustmentEntry.selectDocument: loader mask present={}", loaderFoundInitially);
+        Log.warn("AdjustmentEntry.selectDocument: grid diagnostics BEFORE loader wait — {}",
+                JavascriptExecutorUtils.getGridDiagnostics());
+        int maxRetries = ConfigFactory.getConfig().selectDocLoaderMaxRetries();
+        for (int attempt = 1; attempt <= maxRetries; attempt++) {
+            try {
+                new WebDriverWait(DriverManager.getDriver(),
+                        Duration.ofSeconds(ConfigFactory.getConfig().extjsTimeout()))
+                    .until(ExpectedConditions.invisibilityOfElementLocated(
+                        FrameworkConstants.getSelectDocGridLoader()));
+                Log.warn("AdjustmentEntry.selectDocument: loader gone at attempt [{}]", attempt);
+                break;
+            } catch (TimeoutException te) {
+                if (attempt == maxRetries) throw te;
+                Log.warn("AdjustmentEntry.selectDocument: loader still visible after attempt [{}], retrying...", attempt);
+            }
+        }
+        Log.warn("AdjustmentEntry.selectDocument: grid diagnostics AFTER loader wait — {}",
+                JavascriptExecutorUtils.getGridDiagnostics());
         return new SelectDocumentPopup();
     }
 
