@@ -27,6 +27,7 @@ import com.gsl.utils.dataprovider.fixture.finance.ArVoucherScenarioType;
 import com.gsl.utils.dataprovider.fixture.finance.ArVoucherTemplateLoader;
 import com.gsl.utils.dataprovider.fixture.finance.SelectDocumentCombinations;
 import com.gsl.utils.dataprovider.fixture.finance.SelectDocumentVariant;
+import com.gsl.database.DocumentReservationRegistry;
 import com.gsl.utils.dataprovider.source.TestDataSource;
 import org.jdbi.v3.core.Jdbi;
 
@@ -362,9 +363,11 @@ public class DbArVoucherDataSource implements TestDataSource<MergedFinanceArVouc
             }
         }
 
-        // 6. Open documents per (slName, slId) — scoped to owner site via ReferenceSiteCode
+        // 6. Open documents per (slName, slId) — scoped to owner site via ReferenceSiteCode.
+        //    Then filter to only documents not already claimed by another parallel thread.
         Map<String, List<PendingSlDocument>> pendingDocsBySlName =
-                PendingAdjQuery.findDocumentsForSlNames(jdbi, ouCodes, ownerSiteCodes, pendingSlNames, opts.getDocumentCount());
+                DocumentReservationRegistry.filterAndReserve(
+                        PendingAdjQuery.findDocumentsForSlNames(jdbi, ouCodes, ownerSiteCodes, pendingSlNames, opts.getDocumentCount()));
 
         // 7. AR Voucher doc scheme verified for user's site
         String docSchemeName = findArVoucherDocSchemeName(jdbi, d, siteCodes);

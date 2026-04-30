@@ -45,6 +45,25 @@ public class MergedFinanceArVoucherData implements InvocationData {
     private ArVoucherScenarioType scenarioType;
 
     /**
+     * The {@code scheme_docno} of an existing AR Voucher to operate on.
+     * Populated by Edit and Delete DataSources; null in Create mode.
+     * Used by test classes to locate the voucher in the list page.
+     */
+    private String existingVoucherNo;
+
+    /**
+     * {@code release_status} of the voucher as read from {@code finvchmain}.
+     * <ul>
+     *   <li>{@code 'N'} — never posted → directly editable/deletable</li>
+     *   <li>{@code 'U'} — unposted     → directly editable/deletable</li>
+     *   <li>{@code 'P'} — posted       → test class must unpost, then check
+     *       {@code fintag}; if tagged, remove via Document Adjustment first</li>
+     * </ul>
+     * Null in Create mode (not relevant).
+     */
+    private String releaseStatus;
+
+    /**
      * DB query limits carried from placeholder to Phase 2 lazy loading.
      * Non-null in DB mode; null in Excel mode (not used by Excel path).
      */

@@ -24,4 +24,11 @@ public interface FinSlDao {
      */
     @SqlQuery("SELECT slcode, slid, slname, glcode FROM finsl WHERE slname = :slname")
     List<FinSl> findBySlname(@Bind("slname") String slname);
+
+    /**
+     * Reverse lookup — used by Edit/Delete DataSources to resolve slname + slid
+     * from a finvchdet.slcode value.
+     */
+    @SqlQuery("SELECT slcode, slid, slname, glcode FROM finsl WHERE slcode = :slcode")
+    FinSl findBySlcode(@Bind("slcode") long slcode);
 }

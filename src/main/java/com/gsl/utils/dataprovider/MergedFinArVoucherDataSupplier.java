@@ -5,6 +5,8 @@ import com.gsl.testdata.dto.MergedFinanceArVoucherData;
 import com.gsl.utils.Log;
 import com.gsl.utils.dataprovider.source.TestDataSource;
 import com.gsl.utils.dataprovider.source.finance.DbArVoucherDataSource;
+import com.gsl.utils.dataprovider.source.finance.DbArVoucherDeleteDataSource;
+import com.gsl.utils.dataprovider.source.finance.DbArVoucherEditDataSource;
 import com.gsl.utils.dataprovider.source.finance.ExcelArVoucherDataSource;
 import io.github.sskorol.core.DataSupplier;
 import one.util.streamex.StreamEx;
@@ -29,7 +31,11 @@ public class MergedFinArVoucherDataSupplier {
 
         TestDataSource<MergedFinanceArVoucherData> loader =
                 "DB".equalsIgnoreCase(source)
-                        ? new DbArVoucherDataSource()
+                        ? switch (method.getName()) {
+                            case "editArVoucher"   -> new DbArVoucherEditDataSource();
+                            case "deleteArVoucher" -> new DbArVoucherDeleteDataSource();
+                            default                -> new DbArVoucherDataSource();
+                          }
                         : new ExcelArVoucherDataSource();
 
         try {

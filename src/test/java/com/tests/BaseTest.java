@@ -1,6 +1,7 @@
 package com.tests;
 
 import com.gsl.config.FrameworkConfig;
+import com.gsl.database.DocumentReservationRegistry;
 import com.gsl.driver.Driver;
 import com.gsl.utils.TestContextManager;
 import org.testng.annotations.AfterMethod;
@@ -22,6 +23,7 @@ public class BaseTest {
 
     @AfterMethod
     public void tearDown() {
+        DocumentReservationRegistry.releaseCurrentThread();
         Driver.quitDriver();
         TestContextManager.clear();
     }

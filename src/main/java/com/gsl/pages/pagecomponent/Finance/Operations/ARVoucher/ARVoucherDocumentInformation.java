@@ -5,6 +5,7 @@ import com.gsl.pages.Finance.Operations.ArVoucherAdd;
 import com.gsl.pages.pagecomponent.Finance.Common.CashBankParent;
 import com.gsl.pages.pagecomponent.Finance.Common.CashBankPopup;
 import com.gsl.testdata.Finance.Operations.Vouchers.ARVoucher.DocumentInformation;
+import com.gsl.utils.Log;
 import com.gsl.utils.Selenium.JavascriptExecutorUtils;
 import com.gsl.utils.Selenium.SeleniumUtils;
 import org.openqa.selenium.By;
@@ -39,8 +40,18 @@ public class ARVoucherDocumentInformation {
         return this;
     }
 
+    public String getDocumentDate() {
+        return SeleniumUtils.getAttribute(DOCUMENT_DATE, "value", "DOCUMENT_DATE");
+    }
+
     private ARVoucherDocumentInformation setDocumentDate(String date) {
-        SeleniumUtils.clear(DOCUMENT_DATE,"DOCUMENT_DATE");
+        String current = getDocumentDate();
+        if (current != null && current.equalsIgnoreCase(date)) {
+            Log.info("DOCUMENT_DATE is already '{}' — skipping update", date);
+            return this;
+        }
+        Log.info("DOCUMENT_DATE current='{}', setting to '{}'", current, date);
+        SeleniumUtils.clear(DOCUMENT_DATE, "DOCUMENT_DATE");
         SeleniumUtils.sendKeys(DOCUMENT_DATE, WaitType.CLICKABLE, date, "DOCUMENT_DATE");
         return this;
     }
