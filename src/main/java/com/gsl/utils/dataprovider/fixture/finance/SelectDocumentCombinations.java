@@ -419,7 +419,7 @@ public final class SelectDocumentCombinations {
                 .paymentMode(PaymentMode.NONE)
                 .dateMode(DateMode.CURRENT_DATE)
                 .allowDuplicateReference(false)
-                .expectValidationError(true)
+                .expectValidationError(false)
                 .build(),
 
             SelectDocumentVariant.builder()
@@ -432,7 +432,7 @@ public final class SelectDocumentCombinations {
                 .paymentMode(PaymentMode.NONE)
                 .dateMode(DateMode.CURRENT_DATE)
                 .allowDuplicateReference(false)
-                .expectValidationError(true)
+                .expectValidationError(false)
                 .build(),
 
             // ─── Group 7: Payment modes (Bank GL) ────────────────────────────────────

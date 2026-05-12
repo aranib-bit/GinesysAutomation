@@ -41,19 +41,35 @@ public final class StepExecutor {
         } catch (Exception e) {
             failNode(node, stepName, e);
             throw new RuntimeException("Step failed: " + stepName, e);
+        } catch (Throwable t) {
+            // Catches Errors (e.g. AssertionError, SoftAssertionError) that are not Exception subclasses
+            failNode(node, stepName, t);
+            if (t instanceof Error) throw (Error) t;
+            throw new RuntimeException("Step failed: " + stepName, t);
         } finally {
             ExtentManager.setExtentTest(parent);
         }
     }
 
-    private static void failNode(ExtentTest node, String stepName, Exception e) {
+    /**
+     * Logs exception details inside the child node so they appear inline with the step,
+     * then attaches a screenshot if a live browser session is available.
+     * Accepts Throwable to also handle AssertionError / SoftAssertionError (not Exception subclasses).
+     */
+    private static void failNode(ExtentTest node, String stepName, Throwable e) {
         Log.error("[STEP FAIL] {} — {}", stepName, e.getMessage());
+        // Log exception type and message as separate fail entries inside the step node
+        // so they appear at the correct position (not at the top of the test report)
+        node.fail("Exception  : " + e.getClass().getSimpleName());
+        node.fail("Message    : " + e.getMessage());
         if (DriverManager.getDriver() != null) {
-            node.fail("Step failed: " + e.getMessage(),
-                    MediaEntityBuilder.createScreenCaptureFromBase64String(
-                            ScreenshotUtils.getScreenshot()).build());
-        } else {
-            node.fail("Step failed: " + e.getMessage());
+            try {
+                node.fail("Screenshot at failure",
+                        MediaEntityBuilder.createScreenCaptureFromBase64String(
+                                ScreenshotUtils.getScreenshot()).build());
+            } catch (Exception screenshotEx) {
+                node.fail("Screenshot unavailable: " + screenshotEx.getMessage());
+            }
         }
     }
 }

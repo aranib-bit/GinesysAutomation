@@ -263,6 +263,73 @@ public class AdmClsQuery {
         );
     }
 
+    // ─── Distinct slcode count helpers (used by DocumentSelector for dynamic retry bound) ──
+
+    /**
+     * Returns the count of distinct {@code slcode} values in {@code v_pending_adj}
+     * filtered to sub-ledgers whose classification matches {@code clsCode}.
+     *
+     * <p>Applies the same filters as {@link #findSlNamesWithPendingARByClsCode} so the
+     * count is consistent with the SL discovery query used by that routing branch.
+     */
+    public static long countDistinctSlCodesByClsCode(
+            Jdbi jdbi, List<Long> ouCodes, List<Long> ownerSiteCodes, long clsCode) {
+
+        DbDialect d = DbDialectFactory.current();
+        String sql =
+            "SELECT COUNT(DISTINCT pa.slcode) " +
+            "FROM v_pending_adj pa " +
+            "JOIN finsl fs ON fs.slname = pa.slname AND fs.slid = pa.slid " +
+            "WHERE pa.admou_code IN (<ouCodes>) " +
+            "  AND pa.ReferenceSiteCode IN (<ownerSiteCodes>) " +
+            "  AND pa.debit_credit = 'D' " +
+            "  AND pa.pending > 0 " +
+            "  AND " + d.castToDate("pa.document_date") + " <= " + d.currentDate() + " " +
+            "  AND fs.clscode = :clsCode " +
+            "  AND fs.ext = 'N'";
+
+        return jdbi.withHandle(h ->
+            h.createQuery(sql)
+                .bindList("ouCodes", ouCodes)
+                .bindList("ownerSiteCodes", ownerSiteCodes)
+                .bind("clsCode", clsCode)
+                .mapTo(Long.class)
+                .one()
+        );
+    }
+
+    /**
+     * Returns the count of distinct {@code slcode} values in {@code v_pending_adj}
+     * filtered to sub-ledgers whose classification matches {@code cmpCode}.
+     *
+     * <p>Applies the same filters as {@link #findSlNamesWithPendingARByCmpCode} so the
+     * count is consistent with the SL discovery query used by that routing branch.
+     */
+    public static long countDistinctSlCodesByCmpCode(
+            Jdbi jdbi, List<Long> ouCodes, int cmpCode) {
+
+        DbDialect d = DbDialectFactory.current();
+        String sql =
+            "SELECT COUNT(DISTINCT pa.slcode) " +
+            "FROM v_pending_adj pa " +
+            "JOIN finsl fs ON fs.slname = pa.slname AND fs.slid = pa.slid " +
+            "JOIN admcls ac ON ac.clscode = fs.clscode " +
+            "WHERE pa.admou_code IN (<ouCodes>) " +
+            "  AND pa.debit_credit = 'D' " +
+            "  AND pa.pending > 0 " +
+            "  AND " + d.castToDate("pa.document_date") + " <= " + d.currentDate() + " " +
+            "  AND ac.cmpcode = :cmpCode " +
+            "  AND ac.ext = 'N'";
+
+        return jdbi.withHandle(h ->
+            h.createQuery(sql)
+                .bindList("ouCodes", ouCodes)
+                .bind("cmpCode", cmpCode)
+                .mapTo(Long.class)
+                .one()
+        );
+    }
+
     // ─── Fixture-factory query: SL names filtered by admcls.cmpcode ──────────
 
     /**

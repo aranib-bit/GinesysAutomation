@@ -10,10 +10,10 @@ import com.gsl.pages.enums.Inventory.Product_Definition.Product_DefintionMenuTyp
 import com.gsl.testdata.Inventory.MergedInventoryItemData;
 import com.gsl.utils.NavigationUtils;
 import com.gsl.utils.dataprovider.MergedInvItemDataSupplier;
-import com.tests.BaseTest;
+import com.tests.WebTest;
 import org.testng.annotations.Test;
 
-public class CreateCategory extends BaseTest {
+public class CreateCategory extends WebTest {
     @FrameworkAnnotation(TestAuthor.ARANI)
     @Test(description = "To create new category of Inventory Item from UI")
     public void createCategory(){

@@ -8,10 +8,12 @@ import com.gsl.enums.WaitType;
 import com.gsl.pages.Finance.Operations.Common.AdjustmentEntry;
 import com.gsl.pages.Finance.Operations.Common.PaymentInformationPopup;
 import com.gsl.pages.Finance.Operations.Common.SelectDocumentPopup;
+import com.gsl.pages.pagecomponent.Finance.Common.AdjustmentEntryParent;
 import com.gsl.testdata.Finance.Operations.Vouchers.ARVoucher.PaymentInformation;
 import com.gsl.testdata.Finance.Operations.Vouchers.ARVoucher.SelectDocument;
 import com.gsl.testdata.Finance.Operations.Vouchers.ARVoucher.SubLedgerInformation;
 import com.gsl.testdata.dto.MergedFinanceArVoucherData;
+import com.gsl.utils.dataprovider.fixture.finance.SelectDocumentVariant;
 import com.gsl.utils.BigDecimalUtils;
 import com.gsl.utils.Log;
 import com.gsl.utils.Selenium.ActionUtils;
@@ -31,7 +33,7 @@ import java.util.stream.Collectors;
 
 import static com.gsl.utils.Selenium.ExtJsUtils.setExtJsComboByName;
 
-public class ARVoucherSubLedgerInformation {
+public class ARVoucherSubLedgerInformation implements AdjustmentEntryParent {
     private static final By SUBLEDGERNAMEBLANK=By.xpath("(//div[contains(@class,'x-window')]//table[contains(@class,'x-grid-item')])[last()]//tr[last()]//td[3]");
     private static final String SUBLEDGERSELECTION_XPATH="//span[text()='%s']";
     private static final By SUBLEDGERAMOUNTCR = By.xpath("//tr[.//td/div[normalize-space()='ABUL KASHEM MOLLHA'] and .//td/div[normalize-space()='Hena Embroidery']]//td[contains(@data-columnid,'numbercolumn')]//div");
@@ -119,7 +121,9 @@ public class ARVoucherSubLedgerInformation {
             String slId    = row.getId()            != null ? row.getId()            : "";
             AdjustmentEntry adjustmentEntry = openAdjustmentEntry(row.getSubLedger(), refSite, slId);
             AdjustmentType adjType = row.getAdjustmentType();
-            Log.debug("AdjType: {}", adjType);
+            boolean needsConfirmation = data.getGridRelation() == SelectDocumentVariant.GridRelation.GREATER
+                    || data.getGridRelation() == SelectDocumentVariant.GridRelation.LESS;
+            Log.debug("AdjType: {} | GridRelation: {} | needsConfirmation: {}", adjType, data.getGridRelation(), needsConfirmation);
 
             if (adjType == AdjustmentType.SELECT_DOCUMENT) {
                 SelectDocumentPopup popup = adjustmentEntry.selectDocument();
@@ -136,6 +140,13 @@ public class ARVoucherSubLedgerInformation {
                 for (SelectDocument doc : docs) {
                     BigDecimal excelAmount = doc.getAdjustmentAmount();
                     if (excelAmount == null || excelAmount.compareTo(BigDecimal.ZERO) == 0) continue;
+                    // P1: Reject negative adjustment amounts before touching the UI
+                    if (excelAmount.compareTo(BigDecimal.ZERO) < 0) {
+                        throw new IllegalArgumentException(
+                            "Adjustment amount cannot be negative for document ["
+                            + doc.getDocumentNumber() + "]. Got: " + excelAmount.toPlainString()
+                            + ". Fix the test data (Excel/DB) for this document.");
+                    }
                     String uiStr = adjustmentEntry.getAdjustedAmountForDocument(doc.getDocumentNumber());
                     BigDecimal uiAmount = BigDecimalUtils.safeParse(uiStr);
                     Log.debug("Doc {} — UI: {} | Excel: {}", doc.getDocumentNumber(), uiAmount, excelAmount);
@@ -145,13 +156,26 @@ public class ARVoucherSubLedgerInformation {
                                 doc.getDocumentNumber(), excelAmount.toPlainString());
                     }
                 }
-                adjustmentEntry.clickOK();
+                if (needsConfirmation) {
+                    adjustmentEntry.clickOKExpectingConfirmation().clickProceedAnyway();
+                } else {
+                    adjustmentEntry.clickOK();
+                }
 
             } else if (adjType == AdjustmentType.REFERENCE_SITEWISE_FIFO_SETOFF) {
-                adjustmentEntry.referenceSiteWiseFIFO().showReferenceSiteSummary().clickOK();
+                if (needsConfirmation) {
+                    adjustmentEntry.referenceSiteWiseFIFO().showReferenceSiteSummary()
+                            .clickOKExpectingConfirmation().clickProceedAnyway();
+                } else {
+                    adjustmentEntry.referenceSiteWiseFIFO().showReferenceSiteSummary().clickOK();
+                }
 
             } else if (adjType == AdjustmentType.FIFO_SETOFF) {
-                adjustmentEntry.fifoSetOff().clickOK();
+                if (needsConfirmation) {
+                    adjustmentEntry.fifoSetOff().clickOKExpectingConfirmation().clickProceedAnyway();
+                } else {
+                    adjustmentEntry.fifoSetOff().clickOK();
+                }
             }
         }
 
@@ -172,7 +196,7 @@ public class ARVoucherSubLedgerInformation {
     private AdjustmentEntry openAdjustmentEntry(String subLedgerName,
                                                  String referenceSite, String slid) {
         clickAdjust(subLedgerName, referenceSite, slid);
-        AdjustmentEntry entry = new AdjustmentEntry(DriverManager.getDriver());
+        AdjustmentEntry entry = new AdjustmentEntry(this);
         entry.openAdjustedDocumentMenu();
         return entry;
     }

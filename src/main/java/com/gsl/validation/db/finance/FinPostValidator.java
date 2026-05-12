@@ -4,10 +4,9 @@ import com.gsl.database.DatabaseManager;
 import com.gsl.database.dao.finance.FinPostDao;
 import com.gsl.model.finance.FinPost;
 import com.gsl.model.finance.FinVchMain;
-import com.gsl.reports.DbQueryLogger;
 import com.gsl.reports.ReportLogger;
+import org.assertj.core.api.SoftAssertions;
 import org.testng.Assert;
-import org.testng.asserts.SoftAssert;
 
 import java.math.BigDecimal;
 import java.util.List;
@@ -36,7 +35,6 @@ public class FinPostValidator {
         ReportLogger.info("Level 3 — finpost GL validation for entcode [" + entcode + "]");
 
         // Existence — BLOCKING
-        DbQueryLogger.log("SELECT * FROM finpost WHERE entcode = :entcode", "entcode", entcode);
         List<FinPost> entries = dao.findByEntCode(entcode);
         Assert.assertFalse(entries.isEmpty(),
                 "[Level 3] No finpost rows for entcode [" + entcode
@@ -47,11 +45,7 @@ public class FinPostValidator {
                         + entcode + "]. Minimum 2 required (debit + credit).");
 
         // Golden Rule — BLOCKING
-        DbQueryLogger.log("SELECT COALESCE(SUM(damount), 0) FROM finpost WHERE entcode = :entcode",
-                "entcode", entcode);
         BigDecimal totalDebit  = dao.sumDebitByEntCode(entcode);
-        DbQueryLogger.log("SELECT COALESCE(SUM(camount), 0) FROM finpost WHERE entcode = :entcode",
-                "entcode", entcode);
         BigDecimal totalCredit = dao.sumCreditByEntCode(entcode);
 
         Assert.assertEquals(totalDebit.compareTo(totalCredit), 0,
@@ -59,32 +53,35 @@ public class FinPostValidator {
                         + "]: SUM(damount)=" + totalDebit
                         + " SUM(camount)=" + totalCredit);
 
-        SoftAssert soft = new SoftAssert();
-
         // Per-entry column checks
-        for (FinPost e : entries) {
-            soft.assertTrue(e.getPostcode() > 0, "[Level 3] finpost.postcode invalid");
-            soft.assertTrue(e.getGlcode()  > 0,
-                    "[Level 3] finpost.glcode invalid for postcode [" + e.getPostcode() + "]");
-
-            boolean hasDebit  = e.getDamount() != null
-                                && e.getDamount().compareTo(BigDecimal.ZERO) > 0;
-            boolean hasCredit = e.getCamount() != null
-                                && e.getCamount().compareTo(BigDecimal.ZERO) > 0;
-            soft.assertTrue(hasDebit || hasCredit,
-                    "[Level 3] postcode [" + e.getPostcode() + "] has zero on both sides");
-
-            if (e.getAdjamt() != null)
-                soft.assertTrue(e.getAdjamt().compareTo(BigDecimal.ZERO) >= 0,
-                        "[Level 3] finpost.adjamt negative for postcode [" + e.getPostcode() + "]");
-        }
+        SoftAssertions.assertSoftly(soft ->
+                entries.forEach(e -> validatePostEntry(soft, e)));
 
         ReportLogger.info("<b>finpost rows:</b>");
         ReportLogger.infoTable(buildPostTable(entries));
-
-        soft.assertAll();
         ReportLogger.info("Level 3 — PASSED: entcode [" + entcode + "] voucherNo [" + voucherNo + "] " + entries.size() + " GL entries balanced at " + totalDebit);
         return entries;
+    }
+
+    private void validatePostEntry(SoftAssertions soft, FinPost e) {
+        soft.assertThat(e.getPostcode())
+                .as("[Level 3] finpost.postcode invalid")
+                .isGreaterThan(0L);
+
+        soft.assertThat(e.getGlcode())
+                .as("[Level 3] finpost.glcode invalid for postcode [" + e.getPostcode() + "]")
+                .isGreaterThan(0L);
+
+        boolean hasDebit  = e.getDamount() != null && e.getDamount().compareTo(BigDecimal.ZERO) > 0;
+        boolean hasCredit = e.getCamount() != null && e.getCamount().compareTo(BigDecimal.ZERO) > 0;
+        soft.assertThat(hasDebit || hasCredit)
+                .as("[Level 3] postcode [" + e.getPostcode() + "] has zero on both sides")
+                .isTrue();
+
+        if (e.getAdjamt() != null)
+            soft.assertThat(e.getAdjamt())
+                    .as("[Level 3] finpost.adjamt negative for postcode [" + e.getPostcode() + "]")
+                    .isGreaterThanOrEqualTo(BigDecimal.ZERO);
     }
 
     private static String[][] buildPostTable(List<FinPost> rows) {

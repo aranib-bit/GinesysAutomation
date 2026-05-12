@@ -59,11 +59,19 @@ public class ArVoucherFixtureOptions {
     @Builder.Default
     private final long slClsCode = 0L;
 
-    /** Returns an instance with the default limits (1 SL, 1 document, no variant, no GL type). */
+    /**
+     * Returns an instance with the default limits.
+     *
+     * <p>{@code documentCount} reads {@code doc.selector.documentcount.default} from
+     * config (default {@code 3}). A hard-coded {@code 1} is unsafe under parallel —
+     * multiple threads compete for the only doc per SL, and the loser sees
+     * "no sub-ledger with pending AR" even though docs exist.
+     */
     public static ArVoucherFixtureOptions defaults() {
+        int floor = com.gsl.config.ConfigFactory.getConfig().docSelectorDocumentCountDefault();
         return ArVoucherFixtureOptions.builder()
                 .subLedgerCount(1)
-                .documentCount(1)
+                .documentCount(Math.max(1, floor))
                 .build();
     }
 
@@ -72,9 +80,10 @@ public class ArVoucherFixtureOptions {
      * Cash GL placeholders that do not require SL-classification filtering).
      */
     public static ArVoucherFixtureOptions forCashBankType(CashBankType type) {
+        int floor = com.gsl.config.ConfigFactory.getConfig().docSelectorDocumentCountDefault();
         return ArVoucherFixtureOptions.builder()
                 .subLedgerCount(1)
-                .documentCount(1)
+                .documentCount(Math.max(1, floor))
                 .glType(type)
                 .build();
     }
@@ -88,9 +97,10 @@ public class ArVoucherFixtureOptions {
      * @param clsCode  admcls.clscode to filter pending SLs (0 = no filter)
      */
     public static ArVoucherFixtureOptions forCashBankTypeAndClsCode(CashBankType type, long clsCode) {
+        int floor = com.gsl.config.ConfigFactory.getConfig().docSelectorDocumentCountDefault();
         return ArVoucherFixtureOptions.builder()
                 .subLedgerCount(1)
-                .documentCount(1)
+                .documentCount(Math.max(1, floor))
                 .glType(type)
                 .slClsCode(clsCode)
                 .build();

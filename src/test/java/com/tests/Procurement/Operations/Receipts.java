@@ -2,6 +2,7 @@ package com.tests.Procurement.Operations;
 
 import com.gsl.annotations.FrameworkAnnotation;
 import com.gsl.constants.FrameworkConstants;
+import com.gsl.testdata.UserCredential;
 import com.gsl.driver.DriverManager;
 import com.gsl.enums.TestAuthor;
 import com.gsl.enums.WaitType;
@@ -18,7 +19,7 @@ import com.gsl.utils.Selenium.SeleniumUtils;
 import com.gsl.utils.Selenium.SeleniumActions;
 import com.gsl.utils.Selenium.WaitUtils;
 import com.gsl.utils.dataprovider.MergedReceiptDataSupplier;
-import com.tests.BaseTest;
+import com.tests.WebTest;
 import org.openqa.selenium.By;
 import org.openqa.selenium.Keys;
 import org.openqa.selenium.WebDriver;
@@ -31,14 +32,15 @@ import java.time.Duration;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
-public class Receipts extends BaseTest {
+public class Receipts extends WebTest {
 
     @FrameworkAnnotation(TestAuthor.ARANI)
     @Test(description = "To check the creation of Receipts from UI", dataProvider = "getData", dataProviderClass = MergedReceiptDataSupplier.class)
     public void CreateReceipts(MasterTestData masterTestData) throws InterruptedException {
         // 1. Login to the application
+        UserCredential u = DriverManager.getCurrentUser();
         LoginPage loginPage = new LoginPage();
-        HomePage homePage = loginPage.loginToApplication(masterTestData.getUsername(), masterTestData.getPassword());
+        HomePage homePage = loginPage.loginToApplication(u.username(), u.password());
 
         // 2. Use the navigation utility to get to the correct screen
         ReceiptsListPage receiptsListPage = NavigationUtils.navigateToProcurementSideMenu(homePage,

@@ -2,7 +2,9 @@ package com.tests.Inventory.Product_Definition;
 
 import com.gsl.annotations.FrameworkAnnotation;
 import com.gsl.annotations.InvocationEnabled;
+import com.gsl.driver.DriverManager;
 import com.gsl.enums.TestAuthor;
+import com.gsl.testdata.UserCredential;
 import com.gsl.pages.HomePage;
 import com.gsl.pages.LoginPage;
 import com.gsl.pages.enums.Inventory.MainMenuType;
@@ -14,10 +16,10 @@ import com.gsl.utils.Faker.FakerUtils;
 import com.gsl.utils.NavigationUtils;
 import com.gsl.utils.dataprovider.MergedInvGroupDataSupplier;
 import com.gsl.utils.dataprovider.MergedInvItemDataSupplier;
-import com.tests.BaseTest;
+import com.tests.WebTest;
 import org.testng.annotations.Test;
 
-public class CreateItem extends BaseTest {
+public class CreateItem extends WebTest {
 
     @FrameworkAnnotation(TestAuthor.ARANI)
     @Test(description = "To create new item of Inventory Item from UI",
@@ -37,11 +39,9 @@ public class CreateItem extends BaseTest {
         System.out.println("Start Test");
 
         // 1. Login
+        UserCredential u = DriverManager.getCurrentUser();
         LoginPage loginPage = new LoginPage();
-        HomePage homePage = loginPage.loginToApplication(
-                ItemData.getMasterTestData().getUsername(),
-                ItemData.getMasterTestData().getPassword()
-        );
+        HomePage homePage = loginPage.loginToApplication(u.username(), u.password());
 
 
 

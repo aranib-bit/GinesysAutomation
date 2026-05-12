@@ -9,13 +9,12 @@ import com.gsl.model.finance.FinGl;
 import com.gsl.model.finance.FinSl;
 import com.gsl.model.finance.FinVchDet;
 import com.gsl.model.finance.FinVchMain;
-import com.gsl.reports.DbQueryLogger;
 import com.gsl.reports.ReportLogger;
 import com.gsl.testdata.Finance.Operations.Vouchers.ARVoucher.PaymentInformation;
 import com.gsl.testdata.Finance.Operations.Vouchers.ARVoucher.SubLedgerInformation;
 import com.gsl.testdata.dto.MergedFinanceArVoucherData;
+import org.assertj.core.api.SoftAssertions;
 import org.testng.Assert;
-import org.testng.asserts.SoftAssert;
 
 import java.math.BigDecimal;
 import java.time.LocalDate;
@@ -61,32 +60,9 @@ public class FinVchDetValidator {
         ReportLogger.info("Level 2 — finvchdet for vchcode [" + vchcode + "]");
 
         // Existence — BLOCKING
-        DbQueryLogger.log("SELECT * FROM finvchdet WHERE vchcode = :vchcode",
-                "vchcode", vchcode);
         List<FinVchDet> rows = dao.findByVoucherCode(vchcode);
         Assert.assertFalse(rows.isEmpty(),
                 "[Level 2] No finvchdet rows for vchcode [" + vchcode + "]");
-
-        SoftAssert soft = new SoftAssert();
-
-        // Cardinality
-        if (inputLines != null && !inputLines.isEmpty())
-            soft.assertEquals(rows.size(), inputLines.size(),
-                    "[Level 2] finvchdet count: expected " + inputLines.size()
-                            + " found " + rows.size());
-
-        // Cross-table balance: for AR Voucher, finvchmain.damount must equal SUM(finvchdet.camount)
-        DbQueryLogger.log("SELECT COALESCE(SUM(camount), 0) FROM finvchdet WHERE vchcode = :vchcode",
-                "vchcode", vchcode);
-        BigDecimal detCredit = dao.sumCreditByVoucherCode(vchcode);
-        soft.assertEquals(detCredit.compareTo(header.getDamount()), 0,
-                "[Level 2] SUM(finvchdet.camount)=" + detCredit
-                        + " != finvchmain.damount=" + header.getDamount());
-
-        // Per-row amount + narration checks against SubLedgerInformation
-        if (inputLines != null)
-            for (SubLedgerInformation line : inputLines)
-                validateSubLedgerLine(soft, line, rows, vchcode);
 
         // Payment-mode + instrument detail validation (per-line, keyed by vchcode+slcode+glcode)
         String cashBankName = data.getDocumentInformation() != null
@@ -95,13 +71,34 @@ public class FinVchDetValidator {
         // Maps populated during validatePaymentDetails — used to enrich the display table
         Map<Long, String> slNames = new HashMap<>();
         Map<Long, String> glNames = new HashMap<>();
-        validatePaymentDetails(soft, vchcode, inputLines, data.getPaymentInformationList(),
-                cashBankName, slNames, glNames);
+
+        BigDecimal detCredit = dao.sumCreditByVoucherCode(vchcode);
+
+        SoftAssertions.assertSoftly(soft -> {
+            // Cardinality
+            if (inputLines != null && !inputLines.isEmpty())
+                soft.assertThat(rows.size())
+                        .as("[Level 2] finvchdet count: expected " + inputLines.size()
+                                + " found " + rows.size())
+                        .isEqualTo(inputLines.size());
+
+            // Cross-table balance: for AR Voucher, finvchmain.damount must equal SUM(finvchdet.camount)
+            soft.assertThat(detCredit)
+                    .as("[Level 2] SUM(finvchdet.camount)=" + detCredit
+                            + " != finvchmain.damount=" + header.getDamount())
+                    .isEqualByComparingTo(header.getDamount());
+
+            // Per-row amount + narration checks against SubLedgerInformation
+            if (inputLines != null)
+                for (SubLedgerInformation line : inputLines)
+                    validateSubLedgerLine(soft, line, rows, vchcode);
+
+            validatePaymentDetails(soft, vchcode, inputLines, data.getPaymentInformationList(),
+                    cashBankName, slNames, glNames);
+        });
 
         ReportLogger.info("<b>finvchdet rows:</b>");
         ReportLogger.infoTable(buildDetTable(rows, slNames, glNames));
-
-        soft.assertAll();
         ReportLogger.info("Level 2 — PASSED: vchcode [" + vchcode + "] " + rows.size() + " line(s)");
     }
 
@@ -109,7 +106,7 @@ public class FinVchDetValidator {
     // Payment-mode validation
     // -------------------------------------------------------------------------
 
-    private void validatePaymentDetails(SoftAssert soft, long vchcode,
+    private void validatePaymentDetails(SoftAssertions soft, long vchcode,
                                          List<SubLedgerInformation> inputLines,
                                          List<PaymentInformation> paymentList,
                                          String cashBankName,
@@ -120,8 +117,6 @@ public class FinVchDetValidator {
         // Resolve Cash/Bank GL srctype  (fingl.srctype: 'C' = Cash, 'B' = Bank)
         FinGl cashBankGl = null;
         if (cashBankName != null && !cashBankName.isBlank()) {
-            DbQueryLogger.log("SELECT glcode, glname, srctype FROM fingl WHERE glname = :glname",
-                    "glname", cashBankName);
             cashBankGl = glDao.findByGlName(cashBankName);
         }
         String cashBankSrctype = cashBankGl != null ? cashBankGl.getSrctype() : null;
@@ -152,8 +147,6 @@ public class FinVchDetValidator {
                 soft.fail("[Level 2] GeneralLedger is blank for SubLedger='" + line.getSubLedger() + "'");
                 continue;
             }
-            DbQueryLogger.log("SELECT glcode, glname, srctype FROM fingl WHERE glname = :glname",
-                    "glname", line.getGeneralLedger());
             FinGl finGl = glDao.findByGlName(line.getGeneralLedger());
             if (finGl == null) {
                 soft.fail("[Level 2] Cannot resolve glcode for GL='" + line.getGeneralLedger() + "'");
@@ -163,9 +156,6 @@ public class FinVchDetValidator {
             glNames.put(finGl.getGlcode(), finGl.getGlname());
 
             // Step 3: fetch the specific finvchdet row
-            DbQueryLogger.log(
-                    "SELECT * FROM finvchdet WHERE vchcode = :vchcode AND slcode = :slcode AND glcode = :glcode",
-                    "vchcode", vchcode, "slcode", finSl.getSlcode(), "glcode", finGl.getGlcode());
             FinVchDet row = dao.findByVchcodeSlcodeGlcode(
                     vchcode, finSl.getSlcode(), finGl.getGlcode());
             if (row == null) {
@@ -184,11 +174,12 @@ public class FinVchDetValidator {
             String expectedCode = resolveExpectedPaymentCode(cashBankSrctype, paymentInfo);
 
             // Step 6: assert payment mode
-            soft.assertEquals(row.getPaymentMode(), expectedCode,
-                    "[Level 2] finvchdet.payment_mode expected [" + expectedCode + "]"
-                    + " but was [" + row.getPaymentMode() + "]"
-                    + " for slname=" + finSl.getSlname() + "(slcode=" + finSl.getSlcode() + ")"
-                    + " glname=" + finGl.getGlname() + "(glcode=" + finGl.getGlcode() + ")");
+            soft.assertThat(row.getPaymentMode())
+                    .as("[Level 2] finvchdet.payment_mode expected [" + expectedCode + "]"
+                            + " but was [" + row.getPaymentMode() + "]"
+                            + " for slname=" + finSl.getSlname() + "(slcode=" + finSl.getSlcode() + ")"
+                            + " glname=" + finGl.getGlname() + "(glcode=" + finGl.getGlcode() + ")")
+                    .isEqualTo(expectedCode);
 
             // Step 7: validate instrument details for rows with explicit PaymentInformation
             validateInstrumentDetails(soft, row, paymentInfo, finSl, finGl);
@@ -229,7 +220,7 @@ public class FinVchDetValidator {
      * slname(slcode) and glname(glcode) are included in all log and assert messages for easy
      * correlation with the Extent Report and log file.
      */
-    private void validateInstrumentDetails(SoftAssert soft, FinVchDet row,
+    private void validateInstrumentDetails(SoftAssertions soft, FinVchDet row,
                                             PaymentInformation paymentInfo,
                                             FinSl finSl, FinGl finGl) {
         // No explicit payment info for this line → skip instrument validation
@@ -259,31 +250,36 @@ public class FinVchDetValidator {
 
         // --- Instrument Number (chqno) ---
         if (instrNo != null && !instrNo.isBlank()) {
-            soft.assertNotNull(row.getChqno(),
-                    "[Level 2] Instrument No expected [" + instrNo.trim() + "]"
-                    + " but finvchdet.chqno is null" + context);
-            soft.assertEquals(row.getChqno(), instrNo.trim(),
-                    "[Level 2] finvchdet.chqno [" + row.getChqno() + "]"
-                    + " != instrumentNo [" + instrNo.trim() + "]" + context);
+            soft.assertThat(row.getChqno())
+                    .as("[Level 2] Instrument No expected [" + instrNo.trim() + "]"
+                            + " but finvchdet.chqno is null" + context)
+                    .isNotNull();
+            soft.assertThat(row.getChqno())
+                    .as("[Level 2] finvchdet.chqno [" + row.getChqno() + "]"
+                            + " != instrumentNo [" + instrNo.trim() + "]" + context)
+                    .isEqualTo(instrNo.trim());
         }
 
         // --- Instrument Date (chqdt) ---
         if (instrDate != null && !instrDate.isBlank()) {
-            soft.assertNotNull(row.getChqdt(),
-                    "[Level 2] Instrument Date expected [" + instrDate.trim() + "]"
-                    + " but finvchdet.chqdt is null" + context);
+            soft.assertThat(row.getChqdt())
+                    .as("[Level 2] Instrument Date expected [" + instrDate.trim() + "]"
+                            + " but finvchdet.chqdt is null" + context)
+                    .isNotNull();
             if (row.getChqdt() != null) {
                 LocalDate expectedDate = parseInstrDate(instrDate);
 
                 // Date part must match the supplied instrument date
-                soft.assertEquals(row.getChqdt().toLocalDate(), expectedDate,
-                        "[Level 2] finvchdet.chqdt date [" + row.getChqdt().toLocalDate() + "]"
-                        + " != instrumentDate [" + expectedDate + "]" + context);
+                soft.assertThat(row.getChqdt().toLocalDate())
+                        .as("[Level 2] finvchdet.chqdt date [" + row.getChqdt().toLocalDate() + "]"
+                                + " != instrumentDate [" + expectedDate + "]" + context)
+                        .isEqualTo(expectedDate);
 
                 // Time part must be midnight — chqdt is a date-only value stored as TIMESTAMP
-                soft.assertEquals(row.getChqdt().toLocalTime(), LocalTime.MIDNIGHT,
-                        "[Level 2] finvchdet.chqdt has unexpected time component ["
-                        + row.getChqdt().toLocalTime() + "] — expected 00:00:00" + context);
+                soft.assertThat(row.getChqdt().toLocalTime())
+                        .as("[Level 2] finvchdet.chqdt has unexpected time component ["
+                                + row.getChqdt().toLocalTime() + "] — expected 00:00:00" + context)
+                        .isEqualTo(LocalTime.MIDNIGHT);
             }
         }
     }
@@ -300,31 +296,27 @@ public class FinVchDetValidator {
     private FinSl resolveFinSl(SubLedgerInformation line) {
         if (line.getSubLedger() == null || line.getSubLedger().isBlank()) return null;
         if (line.getId() != null && !line.getId().isBlank()) {
-            DbQueryLogger.log(
-                    "SELECT slcode, slid, slname, glcode FROM finsl WHERE slname = :slname AND slid = :slid",
-                    "slname", line.getSubLedger(), "slid", line.getId());
             return slDao.findBySlnameAndSlid(line.getSubLedger(), line.getId());
         }
-        DbQueryLogger.log(
-                "SELECT slcode, slid, slname, glcode FROM finsl WHERE slname = :slname",
-                "slname", line.getSubLedger());
         List<FinSl> matches = slDao.findBySlname(line.getSubLedger());
         return matches.size() == 1 ? matches.get(0) : null;
     }
 
-    private void validateSubLedgerLine(SoftAssert soft, SubLedgerInformation line,
+    private void validateSubLedgerLine(SoftAssertions soft, SubLedgerInformation line,
                                         List<FinVchDet> rows, long vchcode) {
         BigDecimal cr = line.getAmountCr();
         if (cr == null) return;
         FinVchDet match = rows.stream()
                 .filter(d -> d.getCamount() != null && d.getCamount().compareTo(cr) == 0)
                 .findFirst().orElse(null);
-        soft.assertNotNull(match,
-                "[Level 2] No finvchdet row with camount=" + cr + " for vchcode [" + vchcode + "]");
+        soft.assertThat(match)
+                .as("[Level 2] No finvchdet row with camount=" + cr + " for vchcode [" + vchcode + "]")
+                .isNotNull();
         if (match != null && line.getLedgerNarration() != null
                 && !line.getLedgerNarration().isBlank())
-            soft.assertEquals(match.getNarration(), line.getLedgerNarration(),
-                    "[Level 2] finvchdet.narration mismatch");
+            soft.assertThat(match.getNarration())
+                    .as("[Level 2] finvchdet.narration mismatch")
+                    .isEqualTo(line.getLedgerNarration());
     }
 
     /**

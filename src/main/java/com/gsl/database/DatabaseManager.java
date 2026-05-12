@@ -46,6 +46,7 @@ public class DatabaseManager {
                 DATA_SOURCE = new HikariDataSource(config);
                 JDBI = Jdbi.create(DATA_SOURCE);
                 JDBI.installPlugin(new SqlObjectPlugin());
+                JDBI.setSqlLogger(new JdbiSqlLogger());
 
                 System.out.println("DatabaseManager initialized successfully (JDBI + HikariCP)");
                 System.out.println("Connected to: " + jdbcUrl);

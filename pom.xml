@@ -157,6 +157,46 @@
             <artifactId>aspectjweaver</artifactId>
             <version>1.9.21</version>
         </dependency>
+        <dependency>
+            <groupId>org.assertj</groupId>
+            <artifactId>assertj-core</artifactId>
+            <version>3.24.2</version>
+        </dependency>
+
+        <!-- RestAssured for APITest base class -->
+        <dependency>
+            <groupId>io.rest-assured</groupId>
+            <artifactId>rest-assured</artifactId>
+            <version>5.4.0</version>
+        </dependency>
+
+        <!-- Appium Java client for MobileTest base class -->
+        <dependency>
+            <groupId>io.appium</groupId>
+            <artifactId>java-client</artifactId>
+            <version>9.2.3</version>
+        </dependency>
+
+        <!-- SSHJ for remote log collection over SSH (Phase 1) -->
+        <dependency>
+            <groupId>com.hierynomus</groupId>
+            <artifactId>sshj</artifactId>
+            <version>0.38.0</version>
+        </dependency>
+
+        <!-- WinRM client for Windows remote log collection (Phase 4) -->
+        <dependency>
+            <groupId>io.cloudsoft.windows</groupId>
+            <artifactId>winrm4j</artifactId>
+            <version>0.12.3</version>
+        </dependency>
+
+        <!-- Apache Commons Pool2 for SSH connection pooling (Phase 4) -->
+        <dependency>
+            <groupId>org.apache.commons</groupId>
+            <artifactId>commons-pool2</artifactId>
+            <version>2.12.0</version>
+        </dependency>
     </dependencies>
     <build>
         <plugins>

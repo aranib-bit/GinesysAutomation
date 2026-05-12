@@ -14,10 +14,6 @@ public class MasterTestData {
 
     @Column(name = "testcasename")
     private String testcasename;
-    @Column(name = "username")
-    private String username;
-    @Column(name = "password")
-    private String password;
     @Column(name = "expectedTitle")
     private String expectedTitle;
     @Column(name = "age", converter = SafeIntegerConverter.class)

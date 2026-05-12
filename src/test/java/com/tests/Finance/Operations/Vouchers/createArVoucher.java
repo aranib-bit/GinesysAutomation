@@ -11,9 +11,12 @@ import com.gsl.pages.enums.Finance.MainMenuType;
 import com.gsl.pages.enums.Finance.Operations.OperationsMenuType;
 import com.gsl.pages.Finance.Operations.ArVoucherAdd;
 import com.gsl.testdata.dto.MergedFinanceArVoucherData;
+import com.gsl.driver.DriverManager;
 import com.gsl.pages.Finance.Operations.Common.DocumentPopup;
 import com.gsl.testdata.Finance.Operations.Vouchers.ARVoucher.SelectDocument;
+import com.gsl.testdata.UserCredential;
 import com.gsl.reports.ArVoucherExtentDescriptionLogger;
+import com.gsl.reports.DbGatheringExtentLogger;
 import com.gsl.reports.ReportLogger;
 import com.gsl.reports.StepExecutor;
 import com.gsl.utils.Log;
@@ -23,7 +26,7 @@ import com.gsl.utils.dataprovider.source.finance.DbArVoucherDataSource;
 import com.gsl.validation.db.finance.ARVoucherDbValidator;
 import com.gsl.validation.db.finance.StateCapture;
 import com.gsl.validation.db.finance.VoucherDbContext;
-import com.tests.BaseTest;
+import com.tests.WebTest;
 import org.testng.annotations.Test;
 
 import java.time.LocalDateTime;
@@ -33,13 +36,13 @@ import java.util.Map;
 import java.util.stream.Collectors;
 
 
-public class CreateArVoucher extends BaseTest {
+public class CreateArVoucher extends WebTest {
 
     @FrameworkAnnotation(TestAuthor.ARANI)
     @TestCaseId("FIN-AR-ADD")
-    @Test(description = "To create new AR Voucher of Finance from UI",
+    @Test(description = "Create AR Voucher",   // P2: human-readable sentence set dynamically in TestListener
             dataProvider = "dataSupplier", dataProviderClass = MergedFinArVoucherDataSupplier.class)
-    public void createArVoucher(MergedFinanceArVoucherData data) {
+    public void createArVoucher(UserCredential user, MergedFinanceArVoucherData data) {
 
         Log.info("Create AR Voucher of Finance from UI");
         Log.info("Running test for: {}", data.getMasterTestData().getTestcaseid());
@@ -50,13 +53,25 @@ public class CreateArVoucher extends BaseTest {
                     || data.getSubLedgerInformationList().isEmpty())) {
             Log.debug("[DB mode] Placeholder detected for scenario={}, fetching fresh data from DB",
                     data.getScenarioType());
-            data = DbArVoucherDataSource.loadFreshForScenario(data, "createArVoucher");
+            try {
+                data = DbArVoucherDataSource.loadFreshForScenario(data, "createArVoucher");
+            } catch (IllegalStateException e) {
+                // No pending documents or SL data available for this variant — skip cleanly
+                // rather than failing with a misleading error. The DB needs more test data.
+                throw new org.testng.SkipException(
+                        "[CreateArVoucher] Skipping — insufficient test data for scenario '"
+                        + data.getScenarioType() + "' / variant '"
+                        + data.getMasterTestData().getTestcaseid() + "': " + e.getMessage());
+            }
         }
 
         if (data.getScenarioType() != null) {
             Log.debug("[DB mode] Scenario type: {} | testCaseId: {}",
                     data.getScenarioType(), data.getMasterTestData().getTestcaseid());
         }
+
+        // ── P3: Log DB data-gathering section (DB mode only; no-op in Excel mode) ─
+        DbGatheringExtentLogger.log(data);
 
         // ── Log rich test data to Extent Report (must be before first step) ─────
         ArVoucherExtentDescriptionLogger.log(data);
@@ -76,11 +91,9 @@ public class CreateArVoucher extends BaseTest {
 
         // ── Step 1: Login ─────────────────────────────────────────────────────────
         StepExecutor.step("Login to Application", () -> {
-            homeRef[0] = new LoginPage()
-                    .loginToApplication(
-                            testData.getMasterTestData().getUsername(),
-                            testData.getMasterTestData().getPassword());
-            ReportLogger.info("Logged in as: " + testData.getMasterTestData().getUsername());
+            UserCredential u = DriverManager.getCurrentUser();
+            homeRef[0] = new LoginPage().loginToApplication(u.username(), u.password());
+            ReportLogger.info("Logged in as: " + u.username());
         });
 
         // ── Step 2: Navigate ──────────────────────────────────────────────────────

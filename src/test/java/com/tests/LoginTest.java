@@ -11,7 +11,7 @@ import com.gsl.utils.dataprovider.MergedReceiptDataSupplier;
 import org.testng.Assert;
 import org.testng.annotations.Test;
 
-public class LoginTest extends BaseTest {
+public class LoginTest extends WebTest {
 
     @FrameworkAnnotation(TestAuthor.ARANI)
     @Test(description = "To check whether the user lands on the correct dashboard after login",

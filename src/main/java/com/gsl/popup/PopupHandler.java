@@ -1,0 +1,109 @@
+package com.gsl.popup;
+
+import com.gsl.config.ConfigFactory;
+import com.gsl.driver.DriverManager;
+import com.gsl.enums.PopupType;
+import com.gsl.utils.Selenium.ScreenshotUtils;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
+import org.openqa.selenium.TimeoutException;
+import org.openqa.selenium.WebElement;
+import org.openqa.selenium.support.ui.ExpectedConditions;
+import org.openqa.selenium.support.ui.WebDriverWait;
+
+import java.time.Duration;
+import java.time.LocalDateTime;
+
+/**
+ * Low-level popup detection engine.
+ * Checks whether the application's ExtJS messagebox is currently visible,
+ * captures its content, and returns a typed PopupResult.
+ * Does NOT contain any business logic — classification is delegated to PopupType.
+ */
+public final class PopupHandler {
+
+    private static final Logger LOG = LogManager.getLogger(PopupHandler.class);
+
+    private PopupHandler() {}
+
+    /**
+     * Probes for a visible ExtJS messagebox.
+     *
+     * @return PopupResult if a messagebox is visible; null if no popup within the configured timeout.
+     */
+    public static PopupResult detectPopup() {
+        try {
+            int timeoutMs = ConfigFactory.getConfig().popupDetectionTimeoutMs();
+            WebDriverWait wait = new WebDriverWait(
+                    DriverManager.getDriver(), Duration.ofMillis(timeoutMs));
+            WebElement container = wait.until(
+                    ExpectedConditions.visibilityOfElementLocated(AppPopupLocators.MESSAGEBOX_CONTAINER));
+
+            if (container == null) return null;
+
+            String    header  = safeText(AppPopupLocators.MESSAGEBOX_HEADER);
+            String    message = safeText(AppPopupLocators.MESSAGEBOX_BODY);
+            String    url     = safeUrl();
+            String    title   = safeTitle();   // P7: capture page title before dismissal
+            String    shot    = safeScreenshot();
+            PopupType type    = PopupType.fromHeader(header);
+
+            LOG.warn("[PopupHandler] Unexpected popup detected — type={} header='{}' message='{}' pageTitle='{}'",
+                    type, header, message, title);
+
+            dismissPopup();
+
+            return new PopupResult(header, message, type, url, title, LocalDateTime.now(), shot);
+
+        } catch (TimeoutException e) {
+            // Expected path — no popup visible within detection window
+            return null;
+        } catch (Exception e) {
+            LOG.warn("[PopupHandler] Detection error (ignored): {}", e.getMessage());
+            return null;
+        }
+    }
+
+    // ── Helpers ───────────────────────────────────────────────────────────────
+
+    private static void dismissPopup() {
+        try {
+            WebElement btn = DriverManager.getDriver()
+                    .findElement(AppPopupLocators.MESSAGEBOX_DISMISS_BTN);
+            btn.click();
+        } catch (Exception ignored) {}
+    }
+
+    private static String safeText(org.openqa.selenium.By locator) {
+        try {
+            return DriverManager.getDriver().findElement(locator).getText();
+        } catch (Exception e) {
+            return "";
+        }
+    }
+
+    private static String safeUrl() {
+        try {
+            return DriverManager.getDriver().getCurrentUrl();
+        } catch (Exception e) {
+            return "";
+        }
+    }
+
+    // P7: Capture the browser page title for richer popup diagnostics
+    private static String safeTitle() {
+        try {
+            return DriverManager.getDriver().getTitle();
+        } catch (Exception e) {
+            return "";
+        }
+    }
+
+    private static String safeScreenshot() {
+        try {
+            return ScreenshotUtils.getScreenshot();
+        } catch (Exception e) {
+            return null;
+        }
+    }
+}

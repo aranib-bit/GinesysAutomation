@@ -4,6 +4,7 @@ import com.gsl.config.ConfigFactory;
 import com.gsl.driver.DriverManager;
 import com.gsl.enums.WaitType;
 import com.gsl.pages.Common.DocumentMessageBox;
+import com.gsl.pages.pagecomponent.Finance.Common.AdjustmentEntryParent;
 import com.gsl.utils.Selenium.SeleniumUtils;
 import org.openqa.selenium.By;
 import org.openqa.selenium.WebDriver;
@@ -14,14 +15,52 @@ import java.time.Duration;
 
 public class DocumentPopup {
 
-    private static final By IGNOREPROCEED = By.xpath("//span[normalize-space()='Ignore & Proceed']");
-    private static final By MESSAGE_TEXT  = By.xpath("//*[@id='messagebox-1001-msg']");
-    private static final By YES_BUTTON    = By.xpath("//span[text()='Yes']");
+    // ── Button text registry ─────────────────────────────────────────────────
+
+    public enum ButtonText {
+        IGNORE_AND_PROCEED("Ignore & Proceed"),
+        PROCEED_ANYWAY     ("Proceed Anyway"),
+        STAY               ("Stay");
+
+        private final String label;
+        ButtonText(String label) { this.label = label; }
+        public String getLabel() { return label; }
+
+        public By locator() {
+            return By.xpath("//span[normalize-space()='" + label + "']");
+        }
+    }
+
+    // ── Fields for Grid>Adj confirmation path ────────────────────────────────
+
+    private final AdjustmentEntryParent gridParent;
+    private final AdjustmentEntry       adjustmentEntry;
+
+    // ── Constructors ─────────────────────────────────────────────────────────
+
+    /** Default constructor — used by the save-confirmation path (Ignore & Proceed / message box). */
+    public DocumentPopup() {
+        this.gridParent      = null;
+        this.adjustmentEntry = null;
+    }
+
+    /** Constructor for the Grid>Adj confirmation path (Proceed Anyway / Stay). */
+    public DocumentPopup(AdjustmentEntryParent gridParent, AdjustmentEntry adjustmentEntry) {
+        this.gridParent      = gridParent;
+        this.adjustmentEntry = adjustmentEntry;
+    }
+
+    // ── Locators ─────────────────────────────────────────────────────────────
+
+    private static final By MESSAGE_TEXT = By.xpath("//*[@id='messagebox-1001-msg']");
+    private static final By YES_BUTTON   = By.xpath("//span[text()='Yes']");
+
+    // ── Save-confirmation path ────────────────────────────────────────────────
 
     /**
      * Verifies the warning popup message before acting on it.
      * Waits for the "Ignore & Proceed" button to be visible (confirming the warning is shown),
-     * then reads the message text and asserts it matches the expected receipt-voucher warning.
+     * then reads the message text for diagnostic purposes.
      * Returns {@code this} for fluent chaining with {@link #clickIgnoreProceed()}.
      */
     public DocumentPopup verifyWarningMessage() {
@@ -29,7 +68,7 @@ public class DocumentPopup {
         WebDriverWait wait = new WebDriverWait(driver, Duration.ofSeconds(ConfigFactory.getConfig().timeout()));
 
         System.out.println("Waiting for warning popup (Ignore & Proceed) to appear...");
-        wait.until(ExpectedConditions.visibilityOfElementLocated(IGNOREPROCEED));
+        wait.until(ExpectedConditions.visibilityOfElementLocated(ButtonText.IGNORE_AND_PROCEED.locator()));
         System.out.println("Warning popup confirmed visible — 'Ignore & Proceed' button is present.");
 
         // Attempt to log the warning message text for diagnostic purposes.
@@ -88,8 +127,8 @@ public class DocumentPopup {
             String msgText = driver.findElement(MESSAGE_TEXT).getText();
             if (msgText != null && msgText.contains("instrument number")) {
                 System.out.println("Instrument number warning detected — clicking Ignore & Proceed");
-                SeleniumUtils.click(IGNOREPROCEED, WaitType.CLICKABLE, "IGNOREPROCEED");
-                wait.until(ExpectedConditions.invisibilityOfElementLocated(IGNOREPROCEED));
+                SeleniumUtils.click(ButtonText.IGNORE_AND_PROCEED.locator(), WaitType.CLICKABLE, "IGNOREPROCEED");
+                wait.until(ExpectedConditions.invisibilityOfElementLocated(ButtonText.IGNORE_AND_PROCEED.locator()));
                 wait.until(ExpectedConditions.visibilityOfElementLocated(MESSAGE_TEXT));
                 System.out.println("Success messagebox is now visible after Ignore & Proceed");
             }
@@ -109,7 +148,7 @@ public class DocumentPopup {
         WebDriverWait wait = new WebDriverWait(driver, Duration.ofSeconds(ConfigFactory.getConfig().timeout()));
 
         System.out.println("Inside ignore & proceed");
-        SeleniumUtils.click(IGNOREPROCEED, WaitType.CLICKABLE, "IGNOREPROCEED");
+        SeleniumUtils.click(ButtonText.IGNORE_AND_PROCEED.locator(), WaitType.CLICKABLE, "IGNOREPROCEED");
 
         // messagebox-1001-msg does not exist during Ignore & Proceed dialog
         // Wait for it to appear as the Save confirmation dialog
@@ -117,5 +156,26 @@ public class DocumentPopup {
         System.out.println("Messagebox is now visible");
 
         return new DocumentMessageBox();
+    }
+
+    // ── Grid>Adj confirmation path (Proceed Anyway / Stay) ───────────────────
+
+    /**
+     * Clicks "Proceed Anyway" on the Grid>Adj confirmation popup.
+     * Appears when Grid Amount Cr > total Adjustment Entry amount after clicking OK.
+     * Closes the popup and returns to the sub-ledger grid.
+     */
+    public AdjustmentEntryParent clickProceedAnyway() {
+        SeleniumUtils.click(ButtonText.PROCEED_ANYWAY.locator(), WaitType.CLICKABLE, "Proceed Anyway");
+        return gridParent;
+    }
+
+    /**
+     * Clicks "Stay" on the Grid>Adj confirmation popup.
+     * Dismisses the confirmation and returns to the Adjustment Entry popup.
+     */
+    public AdjustmentEntry clickStay() {
+        SeleniumUtils.click(ButtonText.STAY.locator(), WaitType.CLICKABLE, "Stay");
+        return adjustmentEntry;
     }
 }

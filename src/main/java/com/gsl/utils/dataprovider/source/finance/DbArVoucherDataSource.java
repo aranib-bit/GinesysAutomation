@@ -27,7 +27,11 @@ import com.gsl.utils.dataprovider.fixture.finance.ArVoucherScenarioType;
 import com.gsl.utils.dataprovider.fixture.finance.ArVoucherTemplateLoader;
 import com.gsl.utils.dataprovider.fixture.finance.SelectDocumentCombinations;
 import com.gsl.utils.dataprovider.fixture.finance.SelectDocumentVariant;
-import com.gsl.database.DocumentReservationRegistry;
+import com.gsl.database.DocumentSelectionResult;
+import com.gsl.database.DocumentSelector;
+import com.gsl.database.SelectorRequest;
+import com.gsl.enums.DocumentSelectionMode;
+import com.gsl.config.FrameworkConfig;
 import com.gsl.utils.dataprovider.source.TestDataSource;
 import org.jdbi.v3.core.Jdbi;
 
@@ -217,7 +221,7 @@ public class DbArVoucherDataSource implements TestDataSource<MergedFinanceArVouc
             String testCaseId, String testCaseName) {
 
         com.gsl.testdata.MasterTestData master = new com.gsl.testdata.MasterTestData(
-                testCaseName, loginName, loginPwd, null, null, null, testCaseId, 1);
+                testCaseName, null, null, null, testCaseId, 1);
 
         return MergedFinanceArVoucherData.builder()
                 .scenarioType(scenario)
@@ -264,7 +268,11 @@ public class DbArVoucherDataSource implements TestDataSource<MergedFinanceArVouc
         DbDialect d = DbDialectFactory.current();
 
         // 1. Resolve login user → ecode
-        String loginName = ConfigFactory.getConfig().username();
+        //    Use the per-thread user when running in parallel; fall back to config for single-user mode.
+        com.gsl.testdata.UserCredential threadUser = com.gsl.driver.DriverManager.getCurrentUser();
+        String loginName = (threadUser != null)
+                ? threadUser.username()
+                : ConfigFactory.getConfig().username();
         HrEmpDao hrEmpDao = jdbi.onDemand(HrEmpDao.class);
         long ecode = hrEmpDao.findEcodeByAbbre(loginName)
                 .orElseThrow(() -> new IllegalStateException(
@@ -292,65 +300,40 @@ public class DbArVoucherDataSource implements TestDataSource<MergedFinanceArVouc
         String cashBankName = pickGlByType(jdbi, d, ownerSiteCodes, targetCashBankType);
         Log.info("[DB] Picked GL: {} ({})", cashBankName, targetCashBankType.label());
 
-        // 5. (slName, slId) pairs with pending AR — scoped to ownerSiteCodes via ReferenceSiteCode.
-        //    The UI's Select Document popup filters by ReferenceSiteCode = ANY(:siteCodes) where
-        //    siteCodes = owner site codes; mirroring that here ensures only documents that will
-        //    actually appear in the popup are selected as test data.
-        //    Priority: variant.slClsCode > opts.slClsCode > no filter (any pending SL)
+        // 5 + 6. Atomic SL + document selection — over-fetch, reserve, retry, trim to size.
+        //   Replaces the previous two-step fetch (findSlNamesWithPendingAR → filterAndReserve)
+        //   which had a read-modify-write race: SLs returned by the first query could be fully
+        //   reserved by other threads before the second query, leaving the fixture builder with
+        //   an SL list that did not match the reserved-document map. The DocumentSelector
+        //   returns a self-consistent (pendingSlNames, pendingDocsBySlName) pair.
+        //   Priority for clsCode filter: variant.slClsCode > opts.slClsCode > no filter.
         long effectiveClsCode = (variant != null && variant.getSlClsCode() > 0)
                 ? variant.getSlClsCode()
                 : opts.getSlClsCode();
 
-        List<SlNameWithId> pendingSlNames = (effectiveClsCode > 0)
-                ? AdmClsQuery.findSlNamesWithPendingARByClsCode(
-                        jdbi, ouCodes, ownerSiteCodes, effectiveClsCode, opts.getSubLedgerCount())
-                : PendingAdjQuery.findSlNamesWithPendingAR(jdbi, ouCodes, ownerSiteCodes, opts.getSubLedgerCount());
+        FrameworkConfig fcfg = ConfigFactory.getConfig();
+        SelectorRequest selReq = SelectorRequest.builder()
+                .jdbi(jdbi)
+                .ouCodes(ouCodes)
+                .ownerSiteCodes(ownerSiteCodes)
+                .clsCode(effectiveClsCode > 0 ? effectiveClsCode : null)
+                .cmpCode(null)
+                .subLedgerCount(opts.getSubLedgerCount())
+                .documentCount(opts.getDocumentCount())
+                .overfetchMultiplier(fcfg.docSelectorOverfetchMultiplier())
+                .retryBackoffMs(fcfg.docSelectorRetryBackoffMs())
+                .mode(DocumentSelectionMode.fromString(fcfg.docSelectorMode()))
+                .build();
 
-        Log.info("[DB] SL filter: clsCode={} (0=any), ownerSite='{}' (code={}), found={} SL(s)",
-                effectiveClsCode, ownerSite.name, ownerSite.code, pendingSlNames.size());
-        if (pendingSlNames.isEmpty()) {
-            String slFilterDesc;
-            String diagQuery;
-            if (effectiveClsCode > 0) {
-                java.util.Optional<com.gsl.model.finance.AdmCls> admCls =
-                        AdmClsQuery.findByClsCode(jdbi, effectiveClsCode);
-                slFilterDesc = admCls
-                        .map(ac -> "clsname='" + ac.getClsname() + "' (" + ac.cmpLabel() + " type, clscode=" + ac.getClscode() + ")")
-                        .orElse("clscode=" + effectiveClsCode + " (not found in admcls)");
-                diagQuery =
-                    "SELECT DISTINCT pa.slname, pa.slid, ac.clsname, ac.cmpcode" +
-                    " FROM v_pending_adj pa" +
-                    " JOIN finsl fs ON fs.slname = pa.slname AND fs.slid = pa.slid" +
-                    " JOIN admcls ac ON ac.clscode = fs.clscode" +
-                    " WHERE pa.admou_code IN (" + ouCodes + ")" +
-                    " AND pa.ReferenceSiteCode IN (" + ownerSiteCodes + ")" +
-                    " AND pa.debit_credit = 'D'" +
-                    " AND pa.pending > 0" +
-                    " AND fs.clscode = " + effectiveClsCode +
-                    " AND fs.ext = 'N'" +
-                    " ORDER BY pa.slname;";
-            } else {
-                slFilterDesc = "any (no clscode filter applied)";
-                diagQuery =
-                    "SELECT DISTINCT pa.slname, pa.slid" +
-                    " FROM v_pending_adj pa" +
-                    " JOIN finsl fs ON fs.slname = pa.slname AND fs.slid = pa.slid" +
-                    " WHERE pa.admou_code IN (" + ouCodes + ")" +
-                    " AND pa.ReferenceSiteCode IN (" + ownerSiteCodes + ")" +
-                    " AND pa.debit_credit = 'D'" +
-                    " AND pa.pending > 0" +
-                    " AND fs.ext = 'N'" +
-                    " ORDER BY pa.slname;";
-            }
-            throw new IllegalStateException(
-                    "No sub-ledger with pending AR (debit_credit='D', pending>0, ReferenceSiteCode=" +
-                    ownerSite.code + ") found in v_pending_adj for owner site '" + ownerSite.name + "'." +
-                    " Sub-ledger filter: " + slFilterDesc + "." +
-                    " Ensure open AR documents exist for this sub-ledger type at this site." +
-                    "\nDiagnostic query (run in DB to verify data):\n" + diagQuery);
-        }
+        DocumentSelectionResult selection = DocumentSelector.selectAtomic(selReq);
+        List<SlNameWithId> pendingSlNames = selection.getSelectedSls();
+        Map<String, List<PendingSlDocument>> pendingDocsBySlName = selection.getDocsBySlKey();
 
-        // 5b. Resolve GL (AR/AP ledger) name for each pending SL via finsl → fingl
+        Log.info("[DB] Selection ok | clsCode={} ownerSite='{}' (code={}) sls={} attemptsUsed={} overfetched={} mode={}",
+                effectiveClsCode, ownerSite.name, ownerSite.code, pendingSlNames.size(),
+                selection.getAttemptsUsed(), selection.getTotalOverfetched(), selReq.getMode());
+
+        // 5b. Resolve GL (AR/AP ledger) name for each selected SL via finsl → fingl
         FinSlDao finSlDao = jdbi.onDemand(FinSlDao.class);
         FinGlDao finGlDao = jdbi.onDemand(FinGlDao.class);
         Map<String, String> slToArApName = new java.util.LinkedHashMap<>();
@@ -362,12 +345,6 @@ public class DbArVoucherDataSource implements TestDataSource<MergedFinanceArVouc
                 if (finGl != null) slToArApName.put(key, finGl.getGlname());
             }
         }
-
-        // 6. Open documents per (slName, slId) — scoped to owner site via ReferenceSiteCode.
-        //    Then filter to only documents not already claimed by another parallel thread.
-        Map<String, List<PendingSlDocument>> pendingDocsBySlName =
-                DocumentReservationRegistry.filterAndReserve(
-                        PendingAdjQuery.findDocumentsForSlNames(jdbi, ouCodes, ownerSiteCodes, pendingSlNames, opts.getDocumentCount()));
 
         // 7. AR Voucher doc scheme verified for user's site
         String docSchemeName = findArVoucherDocSchemeName(jdbi, d, siteCodes);
@@ -401,6 +378,9 @@ public class DbArVoucherDataSource implements TestDataSource<MergedFinanceArVouc
         }
 
         printGeneratedData(data);
+
+        // P3: Store gathering log in the data object so the test can render it in the report
+        buildAndSetGatheringLog(loginName, ecode, refs, pendingDocsBySlName, data);
 
         return data;
     }
@@ -543,6 +523,97 @@ public class DbArVoucherDataSource implements TestDataSource<MergedFinanceArVouc
 
     // ─── Logging helpers ──────────────────────────────────────────────────────
 
+    /**
+     * P3: Builds a structured log of the DB data-gathering phase and stores it
+     * in {@link MergedFinanceArVoucherData#getDbGatheringLog()} for report rendering.
+     */
+    private static void buildAndSetGatheringLog(
+            String loginName, long ecode,
+            LiveDbRefs refs,
+            java.util.Map<String, List<com.gsl.model.finance.PendingSlDocument>> pendingDocsBySlName,
+            MergedFinanceArVoucherData data) {
+
+        List<String> log = new java.util.ArrayList<>();
+
+        // ── Resolved References ───────────────────────────────────────────
+        log.add("═══════════════════════════════════════════════════════════");
+        log.add("  DB DATA GATHERING — RESOLVED REFERENCES");
+        log.add("═══════════════════════════════════════════════════════════");
+        log.add("  Login User   : " + loginName + "  (ecode=" + ecode + ")");
+        log.add("  Owner Site   : " + refs.getOwnerSiteName());
+        log.add("  Cash/Bank GL : " + refs.getCashBankName() + "  (" + refs.getCashBankType().label() + ")");
+        log.add("  Doc Scheme   : " + refs.getDocSchemeName());
+        log.add("  Pending SLs  : " + refs.getPendingSlNames());
+
+        if (!pendingDocsBySlName.isEmpty()) {
+            log.add("  Open Docs / SL:");
+            pendingDocsBySlName.forEach((key, docs) -> {
+                log.add("    [" + key + "]");
+                docs.forEach(doc -> log.add(
+                    "      → DocNo=" + doc.getDocumentNo()
+                    + "  Date=" + doc.getDocumentDate()
+                    + "  Type=" + doc.getEntype()
+                    + "  Pending=" + doc.getPending()
+                ));
+            });
+        }
+
+        // ── Diagnostic SQL (pending SL lookup) ────────────────────────────
+        log.add("");
+        log.add("───────────────────────────────────────────────────────────");
+        log.add("  KEY QUERY — Pending SL / Open Document lookup");
+        log.add("───────────────────────────────────────────────────────────");
+        log.add("  SELECT DISTINCT pa.slname, pa.slid, ac.clsname, ac.cmpcode");
+        log.add("  FROM   v_pending_adj pa");
+        log.add("  JOIN   finsl fs  ON fs.slname = pa.slname AND fs.slid = pa.slid");
+        log.add("  JOIN   admcls ac ON ac.clscode = fs.clscode");
+        log.add("  WHERE  pa.admou_code IN (ouCodes)");
+        log.add("    AND  pa.ReferenceSiteCode IN (ownerSiteCodes)");
+        log.add("    AND  pa.debit_credit = 'D'");
+        log.add("    AND  pa.pending > 0");
+        log.add("    AND  fs.ext = 'N'");
+        log.add("  ORDER BY pa.slname;");
+
+        // ── Generated Data Summary ────────────────────────────────────────
+        log.add("");
+        log.add("───────────────────────────────────────────────────────────");
+        log.add("  GENERATED TEST DATA SUMMARY");
+        log.add("───────────────────────────────────────────────────────────");
+        log.add("  Scenario   : " + data.getScenarioType());
+        if (data.getMasterTestData() != null) {
+            log.add("  TestCaseId : " + data.getMasterTestData().getTestcaseid());
+            log.add("  TestCase   : " + data.getMasterTestData().getTestcasename());
+        }
+        if (data.getDocumentInformation() != null) {
+            log.add("  Owner Site : " + data.getDocumentInformation().getOwnersite());
+            log.add("  Cash/Bank  : " + data.getDocumentInformation().getCashbank());
+            log.add("  Doc Scheme : " + data.getDocumentInformation().getVoucherno());
+            log.add("  Doc Date   : " + data.getDocumentInformation().getDocumentdate());
+            log.add("  Reference  : " + data.getDocumentInformation().getReference());
+            log.add("  Remarks    : " + data.getDocumentInformation().getRemarks());
+        }
+        if (data.getSubLedgerInformationList() != null) {
+            log.add("  Sub Ledgers:");
+            data.getSubLedgerInformationList().forEach(sl ->
+                log.add("    [" + sl.getLineNo() + "] " + sl.getSubLedger()
+                    + "  (id=" + sl.getId() + ")"
+                    + "  adjType=" + sl.getAdjustmentType()
+                    + "  amount=" + sl.getAmountCr()
+                    + (sl.getSlType() != null ? "  slType=" + sl.getSlType() : "")));
+        }
+        if (data.getSelectDocumentList() != null && !data.getSelectDocumentList().isEmpty()) {
+            log.add("  Select Documents:");
+            data.getSelectDocumentList().forEach(sd ->
+                log.add("    lineNo=" + sd.getLineNo()
+                    + "  docNo=" + sd.getDocumentNumber()
+                    + "  date=" + sd.getDocumentDate()
+                    + "  adjAmt=" + sd.getAdjustmentAmount()));
+        }
+        log.add("═══════════════════════════════════════════════════════════");
+
+        data.setDbGatheringLog(log);
+    }
+
     private static void printRefs(String loginName, long ecode,
                                   LiveDbRefs refs,
                                   Map<String, List<PendingSlDocument>> pendingDocsBySlName) {
@@ -568,7 +639,7 @@ public class DbArVoucherDataSource implements TestDataSource<MergedFinanceArVouc
         Log.info("[DB] ------------------------------------------------------------");
         Log.info("[DB]   Scenario   = {}", row.getScenarioType());
         Log.info("[DB]   TestCaseId = {}", row.getMasterTestData().getTestcaseid());
-        Log.info("[DB]   Username   = {}", row.getMasterTestData().getUsername());
+        Log.info("[DB]   TestCase   = {}", row.getMasterTestData().getTestcasename());
         Log.info("[DB]   Owner Site = {}", row.getDocumentInformation().getOwnersite());
         Log.info("[DB]   Cash/Bank  = {}", row.getDocumentInformation().getCashbank());
         Log.info("[DB]   Doc Scheme = {}", row.getDocumentInformation().getVoucherno());

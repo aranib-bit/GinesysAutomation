@@ -5,10 +5,12 @@ import com.gsl.testdata.InvocationData;
 import com.gsl.testdata.MasterTestData;
 import com.gsl.utils.dataprovider.fixture.finance.ArVoucherFixtureOptions;
 import com.gsl.utils.dataprovider.fixture.finance.ArVoucherScenarioType;
+import com.gsl.utils.dataprovider.fixture.finance.SelectDocumentVariant;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Data;
 
+import java.util.ArrayList;
 import java.util.List;
 
 @Data
@@ -31,6 +33,14 @@ public class MergedFinanceArVoucherData implements InvocationData {
     // Derived flags
     private boolean paymentProvided;
     private boolean needsIgnoreProceed;
+
+    /** Grid Amount Cr vs total adjustment entry amount relationship.
+     *  DB mode: set from SelectDocumentVariant.gridRelation.
+     *  Excel mode: set from DocumentInformation gridRelation column (blank = EQUAL).
+     *  Defaults to EQUAL so existing tests without this field are unaffected.
+     */
+    @Builder.Default
+    private SelectDocumentVariant.GridRelation gridRelation = SelectDocumentVariant.GridRelation.EQUAL;
 
     // Invocation metadata
     private int invocationIndex;
@@ -68,6 +78,14 @@ public class MergedFinanceArVoucherData implements InvocationData {
      * Non-null in DB mode; null in Excel mode (not used by Excel path).
      */
     private ArVoucherFixtureOptions fixtureOptions;
+
+    /**
+     * P3: Structured log lines from the DB data-gathering phase (populated by
+     * {@code DbArVoucherDataSource.loadFreshForScenario()}). Empty for Excel-mode tests.
+     * Rendered by {@code DbGatheringExtentLogger} in the report before Test Data tables.
+     */
+    @Builder.Default
+    private List<String> dbGatheringLog = new ArrayList<>();
 
     @Override
     public int getInvocationIndex() {

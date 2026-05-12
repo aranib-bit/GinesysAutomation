@@ -58,7 +58,7 @@ public final class ArVoucherExtentDescriptionLogger {
         sb.append("------------------------------------------------------------\n");
         sb.append(String.format("  Scenario        = %s%n", nullSafe(data.getScenarioType())));
         sb.append(String.format("  TestCase ID     = %s%n", nullSafe(master.getTestcaseid())));
-        sb.append(String.format("  Username        = %s%n", nullSafe(master.getUsername())));
+        sb.append(String.format("  TestCase Name   = %s%n", nullSafe(master.getTestcasename())));
         sb.append(String.format("  Owner Site      = %s%n", nullSafe(doc.getOwnersite())));
         sb.append(String.format("  Cash/Bank GL    = %s%n", nullSafe(doc.getCashbank())));
         sb.append(String.format("  Doc Scheme      = %s%n", nullSafe(doc.getVoucherno())));
@@ -135,7 +135,7 @@ public final class ArVoucherExtentDescriptionLogger {
             { "Field",            "Value" },
             { "Scenario",         nullSafe(data.getScenarioType()) },
             { "TestCase ID",      nullSafe(master.getTestcaseid()) },
-            { "Username",         nullSafe(master.getUsername()) },
+            { "TestCase Name",    nullSafe(master.getTestcasename()) },
             { "Owner Site",       nullSafe(doc.getOwnersite()) },
             { "Cash/Bank GL",     nullSafe(doc.getCashbank()) },
             { "Doc Scheme",       nullSafe(doc.getVoucherno()) },

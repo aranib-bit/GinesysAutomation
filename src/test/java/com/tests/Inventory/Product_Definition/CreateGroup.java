@@ -3,6 +3,8 @@ package com.tests.Inventory.Product_Definition;
 import com.google.common.util.concurrent.Uninterruptibles;
 import com.gsl.annotations.FrameworkAnnotation;
 import com.gsl.database.DatabaseManager;
+import com.gsl.driver.DriverManager;
+import com.gsl.testdata.UserCredential;
 import com.gsl.database.dao.inventory.InvGrpDao;
 import com.gsl.enums.TestAuthor;
 import com.gsl.pages.HomePage;
@@ -15,13 +17,13 @@ import com.gsl.testdata.dto.MergedInventoryGroupData;
 import com.gsl.utils.NavigationUtils;
 import com.gsl.utils.Selenium.JavascriptExecutorUtils;
 import com.gsl.utils.dataprovider.MergedInvGroupDataSupplier;
-import com.tests.BaseTest;
+import com.tests.WebTest;
 import org.testng.annotations.Test;
 
 import java.util.List;
 import java.util.concurrent.TimeUnit;
 
-public class CreateGroup extends BaseTest {
+public class CreateGroup extends WebTest {
 
     @FrameworkAnnotation(TestAuthor.ARANI)
     @Test(description = "To create new division of Inventory Group from UI",
@@ -29,8 +31,9 @@ public class CreateGroup extends BaseTest {
     public void CreateDivision(MergedInventoryGroupData groupData) throws InterruptedException {
         System.out.println("Running test for: " + groupData.getTestCaseId());
         // 1. Login to the application
+        UserCredential u = DriverManager.getCurrentUser();
         LoginPage loginPage = new LoginPage();
-        HomePage homePage = loginPage.loginToApplication(groupData.getMasterTestData().getUsername(), groupData.getMasterTestData().getPassword());
+        HomePage homePage = loginPage.loginToApplication(u.username(), u.password());
 
         // 2. Use the navigation utility to get to the correct screen
         GroupListPage groupListPage = NavigationUtils.navigateToInventorySideMenu(homePage,
@@ -228,11 +231,9 @@ public class CreateGroup extends BaseTest {
         System.out.println("Running test for: " + groupData.getTestCaseId());
 
         // 1. Login
+        UserCredential u = DriverManager.getCurrentUser();
         LoginPage loginPage = new LoginPage();
-        HomePage homePage = loginPage.loginToApplication(
-                groupData.getMasterTestData().getUsername(),
-                groupData.getMasterTestData().getPassword()
-        );
+        HomePage homePage = loginPage.loginToApplication(u.username(), u.password());
 
         // 2. Navigate to Group List
         GroupListPage groupListPage = NavigationUtils.navigateToInventorySideMenu(
@@ -320,11 +321,9 @@ public class CreateGroup extends BaseTest {
         System.out.println("Running test for: " + groupData.getTestCaseId());
         System.out.println("Inside department creation");
         // 1. Login
+        UserCredential u = DriverManager.getCurrentUser();
         LoginPage loginPage = new LoginPage();
-        HomePage homePage = loginPage.loginToApplication(
-                groupData.getMasterTestData().getUsername(),
-                groupData.getMasterTestData().getPassword()
-        );
+        HomePage homePage = loginPage.loginToApplication(u.username(), u.password());
 
         // 2. Navigate to Group List
         GroupListPage groupListPage = NavigationUtils.navigateToInventorySideMenu(

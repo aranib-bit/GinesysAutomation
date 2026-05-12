@@ -4,9 +4,14 @@ import com.gsl.config.ConfigFactory;
 import com.gsl.database.DatabaseManager;
 import com.gsl.database.DbIdQueue;
 import com.gsl.database.MenuOperationKey;
+import com.gsl.testdata.UserCredentialLoader;
+import com.gsl.testdata.UserPool;
+import com.gsl.testdata.UserType;
 import com.gsl.utils.Log;
 import org.testng.ISuite;
 import org.testng.ISuiteListener;
+import org.testng.xml.XmlSuite;
+import org.testng.xml.XmlTest;
 
 import java.util.List;
 
@@ -55,6 +60,16 @@ public class SuiteDataLoader implements ISuiteListener {
 
     @Override
     public void onStart(ISuite suite) {
+        Log.info("[SuiteDataLoader] Initializing UserPool from UsersList.xlsx...");
+        try {
+            UserPool.initialize(UserCredentialLoader.loadAll());
+        } catch (Exception e) {
+            Log.warn("[SuiteDataLoader] UserPool init failed: {}. Tests needing user pool will fail.", e.getMessage());
+        }
+
+        // ── Suite-start validation (Plan 1 rule 11.1-11.2 / Plan 2 rule 13.1) ──
+        validateUserPoolAgainstThreadCount(suite);
+
         String source = ConfigFactory.getConfig().testDataSource();
         if (!"DB".equalsIgnoreCase(source)) {
             Log.info("[SuiteDataLoader] testdata.source='{}' — skipping DB queue load.", source);
@@ -123,5 +138,74 @@ public class SuiteDataLoader implements ISuiteListener {
     @Override
     public void onFinish(ISuite suite) {
         // No-op — queues are GC'd with the JVM after the suite.
+    }
+
+    // ─── Validation ───────────────────────────────────────────────────────────
+
+    /**
+     * Validates that the configured user counts are compatible with each {@code <test>}
+     * block's {@code thread-count}.
+     *
+     * <ul>
+     *   <li><b>UI users = 0</b>: ERROR — all WebDriver tests will skip immediately.</li>
+     *   <li><b>thread-count > UI user count</b>: WARN — extra threads will block on
+     *       {@code acquireSet1User()} until a user is released.  Parallelism is capped
+     *       at user count.  This is safe but users should be aware.</li>
+     *   <li><b>API users = 0</b>: INFO — API acquire is skipped in setUp; UI-only tests
+     *       are unaffected.</li>
+     * </ul>
+     */
+    private static void validateUserPoolAgainstThreadCount(ISuite suite) {
+        int uiCount  = UserPool.initialCountOf(UserType.UI);
+        int apiCount = UserPool.initialCountOf(UserType.API);
+
+        // ── UI user count check ───────────────────────────────────────────────
+        if (uiCount == 0) {
+            Log.error("[UserPool] VALIDATION ERROR: 0 UI users loaded from UsersList.xlsx. " +
+                      "All WebDriver tests will be skipped. " +
+                      "Add rows with userType=UI and executionSet=SET1.");
+        } else {
+            Log.info("[UserPool] Validation — UI users available: {}", uiCount);
+        }
+
+        // ── API user count check ──────────────────────────────────────────────
+        if (apiCount == 0) {
+            Log.info("[UserPool] Validation — No API users configured. " +
+                     "API user acquire will be skipped in setUp (UI-only tests unaffected).");
+        } else {
+            Log.info("[UserPool] Validation — API users available: {}", apiCount);
+        }
+
+        // ── Per-test thread-count check ───────────────────────────────────────
+        XmlSuite xmlSuite = suite.getXmlSuite();
+        int suiteThreadCount = xmlSuite.getThreadCount();
+
+        for (XmlTest xmlTest : xmlSuite.getTests()) {
+            // XmlTest.getThreadCount() returns the suite default when not overridden
+            int testThreadCount = xmlTest.getThreadCount() > 0
+                    ? xmlTest.getThreadCount()
+                    : suiteThreadCount;
+
+            if (uiCount > 0 && testThreadCount > uiCount) {
+                Log.warn("[UserPool] VALIDATION WARN — <test name=\"{}\">: " +
+                         "thread-count={} exceeds UI user count={}. " +
+                         "Effective parallelism = {}. " +
+                         "Extra {} thread(s) will queue at acquireSet1User() until a user is released. " +
+                         "Increase UsersList.xlsx UI users to {} if full parallelism is required.",
+                        xmlTest.getName(), testThreadCount, uiCount,
+                        uiCount, (testThreadCount - uiCount), testThreadCount);
+            } else if (uiCount > 0) {
+                Log.info("[UserPool] Validation OK — <test name=\"{}\">: " +
+                         "thread-count={} <= UI users={}. Full parallelism achievable.",
+                        xmlTest.getName(), testThreadCount, uiCount);
+            }
+
+            if (apiCount > 0 && testThreadCount > apiCount) {
+                Log.warn("[UserPool] VALIDATION WARN — <test name=\"{}\">: " +
+                         "thread-count={} exceeds API user count={}. " +
+                         "API user acquire may block if all API users are busy.",
+                        xmlTest.getName(), testThreadCount, apiCount);
+            }
+        }
     }
 }

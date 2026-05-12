@@ -6,6 +6,7 @@ import com.gsl.model.finance.PendingSlDocument;
 import com.gsl.model.finance.SlNameWithId;
 import org.jdbi.v3.core.Jdbi;
 
+import java.math.BigDecimal;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -140,9 +141,12 @@ public class PendingAdjQuery {
         );
 
         // Post-filter: keep only rows whose (slName, slId) pair is in our input list
-        // then group by composite key, capping at docsPerSl per group
+        // AND whose pending amount is strictly positive (belt-and-suspenders guard against
+        // reversal/credit documents that share debit_credit='D' but carry a negative pending
+        // value in v_pending_adj, which the SQL `pending > 0` clause may not catch for all dialects).
         return rows.stream()
                 .filter(doc -> validKeys.contains(compositeKey(doc.getSlName(), doc.getSlId())))
+                .filter(doc -> doc.getPending() != null && doc.getPending().compareTo(BigDecimal.ZERO) > 0)
                 .collect(
                     Collectors.groupingBy(
                         doc -> compositeKey(doc.getSlName(), doc.getSlId()),
@@ -152,6 +156,40 @@ public class PendingAdjQuery {
                         )
                     )
                 );
+    }
+
+    /**
+     * Returns the count of distinct {@code slcode} values in {@code v_pending_adj} that
+     * have at least one pending debit document, scoped to the given OU and owner site codes.
+     *
+     * <p>Used by {@link com.gsl.database.DocumentSelector} to derive a dynamic retry bound:
+     * the selector retries at most as many times as there are distinct SLs in the data pool,
+     * ensuring the loop is bounded by actual data rather than a static config value.
+     *
+     * <p>Applies the same filters as {@link #findSlNamesWithPendingAR} so the count is
+     * consistent with the SL discovery query.
+     */
+    public static long countDistinctSlCodes(
+            Jdbi jdbi, List<Long> ouCodes, List<Long> ownerSiteCodes) {
+
+        DbDialect d = DbDialectFactory.current();
+        String sql =
+            "SELECT COUNT(DISTINCT pa.slcode) " +
+            "FROM v_pending_adj pa " +
+            "JOIN finsl fs ON fs.slname = pa.slname AND fs.slid = pa.slid AND fs.ext = 'N' " +
+            "WHERE pa.admou_code IN (<ouCodes>) " +
+            "  AND pa.ReferenceSiteCode IN (<ownerSiteCodes>) " +
+            "  AND pa.debit_credit = 'D' " +
+            "  AND pa.pending > 0 " +
+            "  AND " + d.castToDate("pa.document_date") + " <= " + d.currentDate();
+
+        return jdbi.withHandle(h ->
+            h.createQuery(sql)
+                .bindList("ouCodes", ouCodes)
+                .bindList("ownerSiteCodes", ownerSiteCodes)
+                .mapTo(Long.class)
+                .one()
+        );
     }
 
     /**

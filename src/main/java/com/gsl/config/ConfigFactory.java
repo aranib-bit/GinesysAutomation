@@ -6,14 +6,14 @@ public final class ConfigFactory {
     }
 
     public static FrameworkConfig getConfig() {
-        return org.aeonbits.owner.ConfigFactory.create(FrameworkConfig.class);
+        return ConfigCache.getOrCreate(FrameworkConfig.class);
     }
 
     public static ExcelDataConfig getExcelDataConfig() {
-        return org.aeonbits.owner.ConfigFactory.create(ExcelDataConfig.class);
+        return ConfigCache.getOrCreate(ExcelDataConfig.class);
     }
 
     public static DataBaseConfig getDataBaseConfig() {
-        return org.aeonbits.owner.ConfigFactory.create(DataBaseConfig.class);
+        return ConfigCache.getOrCreate(DataBaseConfig.class);
     }
 }

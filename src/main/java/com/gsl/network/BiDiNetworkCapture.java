@@ -1,0 +1,118 @@
+package com.gsl.network;
+
+import com.gsl.config.ConfigFactory;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
+import org.openqa.selenium.WebDriver;
+import org.openqa.selenium.bidi.module.Network;
+import org.openqa.selenium.bidi.network.Header;
+
+import java.util.*;
+import java.util.concurrent.CopyOnWriteArrayList;
+
+/**
+ * WebDriver BiDi-based network capture for Firefox (and any other BiDi-capable driver).
+ * One instance is created per browser session (via NetworkCaptureManager ThreadLocal).
+ *
+ * Firefox must have webSocketUrl=true in its options (already set in BrowserOptions.firefox()).
+ *
+ * Captures: URL, method, status, request headers, response headers.
+ * Request/response body is NOT available via the Selenium 4.x BiDi Network API —
+ * ResponseData.getContent() returns only the byte size, not the body text.
+ * Body capture for BiDi requires a future Selenium version that exposes buffer data.
+ *
+ * URL filtering: if network.capture.url.filter is set, only matching URLs are stored.
+ */
+public final class BiDiNetworkCapture implements NetworkCapture {
+
+    private static final Logger LOG = LogManager.getLogger(BiDiNetworkCapture.class);
+
+    private final WebDriver              driver;
+    private final List<NetworkLogRecord> logs = new CopyOnWriteArrayList<>();
+    private Network                      network;
+
+    public BiDiNetworkCapture(WebDriver driver) {
+        this.driver = driver;
+    }
+
+    @Override
+    public void start() {
+        try {
+            network = new Network(driver);
+
+            // ── Capture completed responses ───────────────────────────────────
+            network.onResponseCompleted(params -> {
+                String url    = params.getRequest().getUrl();
+                if (!matchesFilter(url)) return;
+
+                String              method          = params.getRequest().getMethod();
+                int                 status          = params.getResponseData().getStatus();
+                Map<String, String> requestHeaders  = headersFromBiDi(params.getRequest().getHeaders());
+                Map<String, String> responseHeaders = headersFromBiDi(params.getResponseData().getHeaders());
+
+                if (!ConfigFactory.getConfig().networkCaptureFailedOnly() || status >= 400) {
+                    logs.add(new NetworkLogRecord(
+                            url, method, status,
+                            requestHeaders, responseHeaders,
+                            null, null,                          // body unavailable in Selenium 4.x BiDi
+                            System.currentTimeMillis(), 0L,
+                            status >= 400 ? NetworkLogType.FAILED : NetworkLogType.RESPONSE));
+                }
+            });
+
+            // ── Capture failed requests ───────────────────────────────────────
+            network.onFetchError(params -> {
+                String url = params.getRequest().getUrl();
+                if (!matchesFilter(url)) return;
+
+                String              method         = params.getRequest().getMethod();
+                Map<String, String> requestHeaders = headersFromBiDi(params.getRequest().getHeaders());
+
+                logs.add(new NetworkLogRecord(
+                        url, method, 0,
+                        requestHeaders, Map.of(),
+                        null, null,
+                        System.currentTimeMillis(), 0L,
+                        NetworkLogType.FAILED));
+            });
+
+            LOG.debug("[BiDiNetworkCapture] BiDi network capture started.");
+        } catch (Exception ex) {
+            LOG.warn("[BiDiNetworkCapture] Failed to start: {}", ex.getMessage());
+        }
+    }
+
+    @Override
+    public void stop() {
+        try {
+            if (network != null) network.close();
+        } catch (Exception ignored) {}
+    }
+
+    @Override
+    public void clear() { logs.clear(); }
+
+    @Override
+    public List<NetworkLogRecord> getLogs() { return List.copyOf(logs); }
+
+    @Override
+    public String protocolName() { return "BiDi"; }
+
+    // ── Helpers ───────────────────────────────────────────────────────────────
+
+    private static boolean matchesFilter(String url) {
+        String raw = ConfigFactory.getConfig().networkCaptureUrlFilter();
+        if (raw == null || raw.isBlank()) return true;
+        return Arrays.stream(raw.split(","))
+                .map(String::trim)
+                .filter(p -> !p.isEmpty())
+                .anyMatch(url::contains);
+    }
+
+    private static Map<String, String> headersFromBiDi(List<Header> headers) {
+        if (headers == null) return Map.of();
+        Map<String, String> out = new LinkedHashMap<>();
+        headers.forEach(h -> out.put(h.getName(), h.getValue().getValue()));
+        return Collections.unmodifiableMap(out);
+    }
+}

@@ -8,13 +8,15 @@ import com.gsl.pages.HomePage;
 import com.gsl.pages.LoginPage;
 import com.gsl.pages.enums.Finance.MainMenuType;
 import com.gsl.pages.enums.Finance.Operations.OperationsMenuType;
+import com.gsl.driver.DriverManager;
 import com.gsl.reports.ReportLogger;
 import com.gsl.reports.StepExecutor;
+import com.gsl.testdata.UserCredential;
 import com.gsl.testdata.dto.MergedFinanceArVoucherData;
 import com.gsl.utils.Log;
 import com.gsl.utils.NavigationUtils;
 import com.gsl.utils.dataprovider.MergedFinArVoucherDataSupplier;
-import com.tests.BaseTest;
+import com.tests.WebTest;
 import org.testng.annotations.Test;
 
 /**
@@ -33,7 +35,7 @@ import org.testng.annotations.Test;
  * must remove the tag before deleting — that step is marked TODO until the
  * Document Adjustment page object is available.
  */
-public class DeleteArVoucher extends BaseTest {
+public class DeleteArVoucher extends WebTest {
 
     @FrameworkAnnotation(TestAuthor.ARANI)
     @TestCaseId("FIN-AR-DELETE")
@@ -52,11 +54,9 @@ public class DeleteArVoucher extends BaseTest {
 
         // ── Step 1: Login ─────────────────────────────────────────────────────────
         StepExecutor.step("Login to Application", () -> {
-            homeRef[0] = new LoginPage()
-                    .loginToApplication(
-                            testData.getMasterTestData().getUsername(),
-                            testData.getMasterTestData().getPassword());
-            ReportLogger.info("Logged in as: " + testData.getMasterTestData().getUsername());
+            UserCredential u = DriverManager.getCurrentUser();
+            homeRef[0] = new LoginPage().loginToApplication(u.username(), u.password());
+            ReportLogger.info("Logged in as: " + u.username());
         });
 
         // ── Step 2: Navigate ──────────────────────────────────────────────────────

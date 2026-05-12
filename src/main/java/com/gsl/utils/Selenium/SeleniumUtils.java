@@ -3,10 +3,12 @@ package com.gsl.utils.Selenium;
 import com.gsl.config.ConfigFactory;
 import com.gsl.driver.DriverManager;
 import com.gsl.enums.WaitType;
+import com.gsl.popup.PopupMonitor;
 import com.gsl.reports.ExtentLogger;
 import com.gsl.utils.ElementMeta;
 import com.gsl.utils.Log;
 import org.openqa.selenium.By;
+import org.openqa.selenium.ElementClickInterceptedException;
 import org.openqa.selenium.Keys;
 import org.openqa.selenium.WebElement;
 import org.openqa.selenium.support.ui.ExpectedConditions;
@@ -20,7 +22,7 @@ public class SeleniumUtils {
 
     public static void click(By by, String elementName) {
         WebElement element = waitUntilElementPresent(by);
-        element.click();
+        clickWithOverlayRetry(element, elementName);
         ExtentLogger.info(elementName + " is clicked successfully");
     }
 
@@ -30,15 +32,15 @@ public class SeleniumUtils {
         WebElement element;
         if (waitType == WaitType.PRESENCE) {
             element = waitUntilElementPresent(by);
-            element.click();
+            clickWithOverlayRetry(element, elementName);
             ExtentLogger.info(elementName + " is clicked successfully");
         } else if (waitType == WaitType.CLICKABLE) {
             element = waitUntilElementClickable(by);
-            element.click();
+            clickWithOverlayRetry(element, elementName);
             ExtentLogger.info(elementName + " is clicked successfully");
         } else if (waitType == WaitType.VISIBLE) {
             element = waitUntilElementVisible(by);
-            element.click();
+            clickWithOverlayRetry(element, elementName);
             ExtentLogger.info(elementName + " is clicked successfully");
         }
     }
@@ -46,15 +48,16 @@ public class SeleniumUtils {
     public static void click(WebElement element, WaitType waitType, String elementName) {
         JavascriptExecutorUtils.waitForPageLoad();
         JavascriptExecutorUtils.waitForExtJS();
+        WebElement ready;
+        WebDriverWait wait = new WebDriverWait(DriverManager.getDriver(), Duration.ofSeconds(ConfigFactory.getConfig().timeout()));
         if (waitType == WaitType.CLICKABLE) {
-            WebDriverWait wait = new WebDriverWait(DriverManager.getDriver(), Duration.ofSeconds(ConfigFactory.getConfig().timeout()));
-            wait.until(ExpectedConditions.elementToBeClickable(element)).click();
+            ready = wait.until(ExpectedConditions.elementToBeClickable(element));
         } else if (waitType == WaitType.VISIBLE) {
-            WebDriverWait wait = new WebDriverWait(DriverManager.getDriver(), Duration.ofSeconds(ConfigFactory.getConfig().timeout()));
-            wait.until(ExpectedConditions.visibilityOf(element)).click();
+            ready = wait.until(ExpectedConditions.visibilityOf(element));
         } else {
-            element.click();
+            ready = element;
         }
+        clickWithOverlayRetry(ready, elementName);
         ExtentLogger.info(elementName + " is clicked successfully");
     }
 
@@ -201,6 +204,21 @@ public class SeleniumUtils {
 
     // -------------------------------------------------------------------------
 
+    /**
+     * Clicks a business-triggering element and immediately checks for unexpected popups.
+     * Use for Save, Submit, Delete, Post, Approve, and other backend-invoking actions.
+     * Do NOT use for field focus, typing, checkbox ticks, or scroll actions.
+     *
+     * @param by         locator of the button/element to click
+     * @param actionName human-readable description used in failure messages and reports
+     * @throws com.gsl.exceptions.UnexpectedPopupException if the action triggers an unexpected popup
+     */
+    public static void clickAndCheckPopup(By by, String actionName) {
+        click(by, WaitType.CLICKABLE, actionName);
+        WaitUtils.waitForExtMask();
+        PopupMonitor.checkAfterAction(actionName);
+    }
+
     public static void waitForInputReady(By locator) {
         WebDriverWait wait = new WebDriverWait(DriverManager.getDriver(), Duration.ofSeconds(10));
         wait.until(driver -> {
@@ -211,7 +229,69 @@ public class SeleniumUtils {
         });
     }
 
+    // ── Overlay-retry click ───────────────────────────────────────────────────
 
+    /**
+     * Attempts to click {@code element}, retrying up to {@code click.overlay.retry.max} times
+     * (default 3) whenever an {@link ElementClickInterceptedException} is thrown.
+     *
+     * <p>The most common cause is the transient {@code ext-element-*} modal backdrop that
+     * ExtJS renders while a dialog is opening.  On each interception the method:
+     * <ol>
+     *   <li>Logs a WARN to Log4j and a WARNING entry on the current ExtentReport node so
+     *       testers can see that a retry occurred and what overlay caused it.</li>
+     *   <li>Calls {@link WaitUtils#waitForClickOverlay()} to wait for ExtJS masks,
+     *       {@code ext-element-*} backdrops, and the AJAX queue to clear.</li>
+     *   <li>Re-attempts the click.</li>
+     * </ol>
+     * After exhausting all retries the original exception is re-thrown.
+     *
+     * <p><b>Note:</b> The {@code info("… is clicked successfully")} log is written by the
+     * caller, not here, so it only appears once on actual success.
+     */
+    private static void clickWithOverlayRetry(WebElement element, String elementName) {
+        int maxRetries = ConfigFactory.getConfig().clickOverlayRetryMax();
 
+        for (int attempt = 1; attempt <= maxRetries + 1; attempt++) {
+            try {
+                element.click();
+                return; // clicked successfully
+            } catch (ElementClickInterceptedException e) {
+                if (attempt > maxRetries) {
+                    Log.error("[OVERLAY-RETRY] '{}' still intercepted after {} retr{}. Giving up.",
+                            elementName, maxRetries, maxRetries == 1 ? "y" : "ies");
+                    throw e;
+                }
+                String overlayTag = detectInterceptingOverlay(e.getMessage());
+                Log.warn("[OVERLAY-RETRY] Click on '{}' intercepted{} — attempt {}/{}. Waiting for overlay to clear…",
+                        elementName, overlayTag, attempt, maxRetries);
+                ExtentLogger.warning(String.format(
+                        "[Overlay Retry %d/%d] Click on '%s' was intercepted%s — waiting for overlay to clear",
+                        attempt, maxRetries, elementName, overlayTag));
+                WaitUtils.waitForClickOverlay();
+            }
+        }
+    }
 
+    /**
+     * Extracts a short human-readable overlay label from the {@link ElementClickInterceptedException}
+     * message for use in log and report entries.
+     *
+     * <p>The message from ChromeDriver / GeckoDriver typically contains a fragment like:
+     * {@code "Other element would receive the click: <div id="ext-element-6" …>"}
+     * from which we pull the ID token.
+     */
+    private static String detectInterceptingOverlay(String msg) {
+        if (msg == null || msg.isBlank()) return "";
+        // Match ext-element-* IDs (e.g. ext-element-6)
+        if (msg.contains("ext-element")) {
+            int idx = msg.indexOf("ext-element");
+            String token = msg.substring(idx).split("[\\s\"'<>]")[0]; // first word-boundary character
+            return " (by #" + token + ")";
+        }
+        if (msg.contains("x-mask"))        return " (by .x-mask)";
+        if (msg.contains("x-mask-msg"))    return " (by .x-mask-msg)";
+        if (msg.contains("modal"))         return " (by modal overlay)";
+        return "";
+    }
 }

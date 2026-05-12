@@ -12,6 +12,7 @@ import io.github.sskorol.core.DataSupplier;
 import one.util.streamex.StreamEx;
 
 import java.lang.reflect.Method;
+import java.util.List;
 
 /**
  * DataSupplier router — delegates to the configured data source:
@@ -19,13 +20,24 @@ import java.lang.reflect.Method;
  *   <li>{@code testdata.source=EXCEL} (default) → {@link ExcelArVoucherDataSource}</li>
  *   <li>{@code testdata.source=DB}              → {@link DbArVoucherDataSource}</li>
  * </ul>
- * Switch by changing {@code testdata.source} in {@code config.properties}.
- * All existing Excel-based tests are unaffected when the value is {@code EXCEL}.
+ *
+ * <p><b>Parallelism model (both modes):</b> each row carries a {@code null} user credential.
+ * {@code WebTest.setUp()} calls {@link com.gsl.testdata.UserPool#acquireSet1User} which
+ * <em>blocks</em> until a user is free. This guarantees:
+ * <ul>
+ *   <li>One user = one browser at a time — the same username is never logged into two
+ *       sessions simultaneously.</li>
+ *   <li>Net concurrency is capped at the number of users in {@code UsersList.xlsx},
+ *       regardless of the {@code thread-count} value in testng.xml.</li>
+ *   <li>All scenarios execute — one row per scenario, not one row per user.</li>
+ * </ul>
+ * {@code WebTest.tearDown()} releases the user back to the pool so the next waiting
+ * thread can acquire it immediately.
  */
 public class MergedFinArVoucherDataSupplier {
 
-    @DataSupplier(name = "FinanceArVoucherData", flatMap = true)
-    public StreamEx<MergedFinanceArVoucherData> dataSupplier(Method method) {
+    @DataSupplier(name = "FinanceArVoucherData", flatMap = true, runInParallel = true)
+    public StreamEx<Object[]> dataSupplier(Method method) {
         String source = ConfigFactory.getConfig().testDataSource();
         Log.info("[DataSupplier] testdata.source={}, method={}", source, method.getName());
 
@@ -39,7 +51,17 @@ public class MergedFinArVoucherDataSupplier {
                         : new ExcelArVoucherDataSource();
 
         try {
-            return StreamEx.of(loader.load(method.getName()));
+            List<MergedFinanceArVoucherData> scenarios = loader.load(method.getName());
+
+            Log.info("[DataSupplier] Emitting {} scenario row(s) for '{}' — users assigned by pool at runtime.",
+                    scenarios.size(), method.getName());
+
+            // null credential → WebTest.setUp() acquires from UserPool (blocking)
+            // Pool guarantees: same user never in two browsers simultaneously
+            return StreamEx.of(scenarios).map(data -> new Object[]{null, data});
+
+        } catch (org.testng.SkipException se) {
+            throw se;
         } catch (Throwable e) {
             Throwable root = e;
             while (root.getCause() != null) root = root.getCause();

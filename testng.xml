@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE suite SYSTEM "http://testng.org/testng-1.0.dtd">
-<suite name="All Test Suite" parallel="methods" thread-count="5">
+<suite name="All Test Suite" parallel="tests" thread-count="10">
     <listeners>
         <listener class-name="com.gsl.listeners.TestListener"/>
         <listener class-name="com.gsl.listeners.SuiteDataLoader"/>
@@ -30,9 +30,23 @@
         </classes>
     </test>
 
-    <test name="SeleniumFramework">
+    <test name="SeleniumFramework" parallel="methods" thread-count="4" data-provider-thread-count="4">
         <classes>
             <class name="com.tests.Finance.Operations.Vouchers.CreateArVoucher"></class>
+        </classes>
+    </test>
+
+    <!--
+        SET-2 concurrent test block.
+        thread-count must equal the number of users in the group (G1 has 2 users → thread-count="2").
+        Each thread receives a distinct user from the group assigned by arrival index.
+        awaitBeforeSave() and awaitAfterSave() barriers synchronise all threads at race-condition checkpoints.
+    -->
+    <test name="SET-2 Concurrent G1" parallel="methods" thread-count="2">
+        <parameter name="set2.group.id" value="G1"/>
+        <classes>
+            <!-- Replace with your actual SET-2 test class(es) that extend BaseSetTwoTest -->
+            <!-- <class name="com.tests.Concurrent.SomeSet2Test"/> -->
         </classes>
     </test>
 </suite>

@@ -2,6 +2,7 @@ package com.tests;
 
 import com.gsl.annotations.FrameworkAnnotation;
 import com.gsl.driver.DriverManager;
+import com.gsl.testdata.UserCredential;
 import com.gsl.enums.TestAuthor;
 import com.gsl.pages.Common.DocumentMessageBox;
 import com.gsl.pages.HomePage;
@@ -23,7 +24,7 @@ import org.testng.Assert;
 import org.testng.annotations.Test;
 
 
-public class MergedReceiptTest extends BaseTest{
+public class MergedReceiptTest extends WebTest {
 
     @FrameworkAnnotation(TestAuthor.ARANI)
     @Test(description = "To check the creation of Receipts from UI", dataProvider = "dataSupplier", dataProviderClass = MergedReceiptDataSupplier.class)
@@ -35,8 +36,9 @@ public class MergedReceiptTest extends BaseTest{
         );
 
         // 1. Login to the application
+        UserCredential u = DriverManager.getCurrentUser();
         LoginPage loginPage = new LoginPage();
-        HomePage homePage = loginPage.loginToApplication(data.getMasterTestData().getUsername(), data.getMasterTestData().getPassword());
+        HomePage homePage = loginPage.loginToApplication(u.username(), u.password());
 
         // 2. Use the navigation utility to get to the correct screen
         ReceiptsListPage receiptsListPage = NavigationUtils.navigateToProcurementSideMenu(homePage,

@@ -1,6 +1,7 @@
 package com.gsl.utils.dataprovider.fixture.finance;
 
 import com.gsl.config.ConfigFactory;
+import com.gsl.database.DocumentReservationRegistry;
 import com.gsl.database.dialect.DbDialect;
 import com.gsl.database.dialect.DbDialectFactory;
 import com.gsl.database.query.AdmClsQuery;
@@ -121,6 +122,14 @@ public final class ArVoucherTemplateLoader {
         List<SelectDocument> selectDocs = buildSelectDocumentsWithAmountMode(
                 id, refs.getPendingSlNames(), refs.getPendingDocsBySlName(), variant.getAmountMode());
 
+        if (selectDocs.isEmpty()) {
+            throw new IllegalStateException(
+                "No selectable documents for SELECT_DOCUMENT variant '" + id + "' — " +
+                "all fetched documents had pending amounts that round to 0.00 or were exhausted " +
+                "by concurrent reservations. Pending SLs: " + refs.getPendingSlNames() +
+                ". Increase test data or reduce parallel thread count.");
+        }
+
         // ── 5. Per-SL sum of adjusted document amounts ────────────────────────
         Map<String, BigDecimal> docTotalBySl = computeDocTotalPerSl(
                 refs.getPendingSlNames(), selectDocs);
@@ -160,6 +169,7 @@ public final class ArVoucherTemplateLoader {
                 .paymentInformationList(payments)
                 .paymentProvided(!payments.isEmpty())
                 .needsIgnoreProceed(computeNeedsIgnoreProceed(subLedgers, payments, refs.getCashBankType()))
+                .gridRelation(variant.getGridRelation())
                 .invocationIndex(1)
                 .totalInvocations(1)
                 .build();
@@ -351,6 +361,18 @@ public final class ArVoucherTemplateLoader {
                     slNameWithId.getSlName(), slNameWithId.getSlId());
             List<PendingSlDocument> docs = pendingDocsBySlName.getOrDefault(compositeKey, List.of());
             for (PendingSlDocument doc : docs) {
+                if (doc.getPending() == null || doc.getPending().compareTo(BigDecimal.ZERO) <= 0) {
+                    Log.warn("[ArVoucherTemplateLoader] Skipping document {} for SL '{}' — pending={} is not positive",
+                            doc.getDocumentNo(), slNameWithId.getSlName(), doc.getPending());
+                    continue;
+                }
+                BigDecimal scaledPending = doc.getPending().setScale(2, RoundingMode.HALF_UP);
+                if (scaledPending.compareTo(BigDecimal.ZERO) <= 0) {
+                    Log.warn("[ArVoucherTemplateLoader] Skipping document {} for SL '{}' — " +
+                             "pending {} rounds to 0.00 after scale.",
+                             doc.getDocumentNo(), slNameWithId.getSlName(), doc.getPending());
+                    continue;
+                }
                 result.add(new SelectDocument(
                         testCaseId,
                         slLineNo,                       // same lineNo as the parent sub-ledger row
@@ -360,7 +382,7 @@ public final class ArVoucherTemplateLoader {
                         doc.getRefNo(),
                         doc.getDocumentDate(),           // referenceDate = documentDate
                         doc.getReferenceSite(),
-                        doc.getPending()
+                        scaledPending
                 ));
             }
         }
@@ -372,14 +394,7 @@ public final class ArVoucherTemplateLoader {
      * testcasename, username, password, expectedTitle, age, date, testcaseid, invocationcount
      */
     private static MasterTestData buildMaster(String methodName, String id) {
-        return new MasterTestData(
-                methodName,
-                ConfigFactory.getConfig().username(),
-                ConfigFactory.getConfig().password(),
-                null, null, null,
-                id,
-                1
-        );
+        return new MasterTestData(methodName, null, null, null, id, 1);
     }
 
     /**
@@ -391,14 +406,7 @@ public final class ArVoucherTemplateLoader {
      * @param testCaseName the descriptive name shown in reports (from SelectDocumentVariant)
      */
     private static MasterTestData buildMaster(String methodName, String id, String testCaseName) {
-        return new MasterTestData(
-                testCaseName,
-                ConfigFactory.getConfig().username(),
-                ConfigFactory.getConfig().password(),
-                null, null, null,
-                id,
-                1
-        );
+        return new MasterTestData(testCaseName, null, null, null, id, 1);
     }
 
     /**
@@ -444,22 +452,33 @@ public final class ArVoucherTemplateLoader {
 
     /**
      * Resolves the document date for the AR Voucher header.
-     * Uses {@link SelectDocumentVariant#getBackDateDays()} as the preferred offset.
      *
-     * <p>TODO: Clamp to valid posting window — at resolution time query:
-     *   <ul>
-     *     <li>Lock days from {@code finparams} (no posting before today minus lockdays)</li>
-     *     <li>Last open Finance Month boundary</li>
-     *     <li>Open Accounting Year range</li>
-     *   </ul>
-     *   Return the most recent date satisfying all three constraints.
-     *   If no valid back-date exists, use {@code Assume.assumeTrue(false, "No valid back-date...")}
-     *   so the variant self-skips rather than failing with a misleading error.
+     * <p>For BACK_DATED variants the requested {@code backDateDays} is clamped to
+     * {@code finance.backdate.max.days} from {@code config.properties} (default 58).
+     * If the variant's offset exceeds the ceiling the test self-skips with a clear
+     * message rather than submitting a date that falls outside the open posting window.
+     *
+     * <p>Full posting-window validation (finparams lock-days, open Finance Month,
+     * open Accounting Year) is left as a future improvement once the DB schema for
+     * these boundaries is confirmed.
      */
     private static LocalDate resolveDocumentDate(SelectDocumentVariant variant) {
-        return variant.getDateMode() == SelectDocumentVariant.DateMode.BACK_DATED
-                ? LocalDate.now().minusDays(variant.getBackDateDays())
-                : LocalDate.now();
+        if (variant.getDateMode() != SelectDocumentVariant.DateMode.BACK_DATED) {
+            return LocalDate.now();
+        }
+
+        int requested = variant.getBackDateDays();
+        int maxDays   = ConfigFactory.getConfig().financeBackdateMaxDays();
+
+        if (requested > maxDays) {
+            throw new org.testng.SkipException(String.format(
+                    "[ArVoucherTemplateLoader] Skipping variant '%s' — requested backDateDays=%d " +
+                    "exceeds finance.backdate.max.days=%d. Either increase the property or add " +
+                    "open-period documents that are older than %d days.",
+                    variant.getVariantId(), requested, maxDays, maxDays));
+        }
+
+        return LocalDate.now().minusDays(requested);
     }
 
     /**
@@ -591,12 +610,25 @@ public final class ArVoucherTemplateLoader {
             String compositeKey = PendingAdjQuery.compositeKey(sl.getSlName(), sl.getSlId());
             List<PendingSlDocument> docs = pendingDocsBySlName.getOrDefault(compositeKey, List.of());
 
+            int docIndexForAmount = 0;
             for (int j = 0; j < docs.size(); j++) {
                 PendingSlDocument doc = docs.get(j);
                 BigDecimal pending = doc.getPending() != null
                         ? doc.getPending()
                         : BigDecimal.ZERO;
-                BigDecimal adjAmount = computeDocAmount(pending, amountMode, j);
+                if (pending.compareTo(BigDecimal.ZERO) <= 0) {
+                    Log.warn("[ArVoucherTemplateLoader] Skipping document {} for SL '{}' — pending={} is not positive",
+                            doc.getDocumentNo(), sl.getSlName(), doc.getPending());
+                    continue;
+                }
+                BigDecimal adjAmount = computeDocAmount(pending, amountMode, docIndexForAmount++);
+                if (adjAmount.compareTo(BigDecimal.ZERO) <= 0) {
+                    Log.warn("[ArVoucherTemplateLoader] Skipping document {} for SL '{}' — " +
+                             "adjAmount rounds to {} (pending={}, mode={}). " +
+                             "Document excluded from selectDocumentList.",
+                             doc.getDocumentNo(), sl.getSlName(), adjAmount, pending, amountMode);
+                    continue;
+                }
 
                 result.add(new SelectDocument(
                         testCaseId,
@@ -698,7 +730,27 @@ public final class ArVoucherTemplateLoader {
         return slNames.stream()
                 .map(sl -> {
                     String key = PendingAdjQuery.compositeKey(sl.getSlName(), sl.getSlId());
-                    BigDecimal docTotal = docTotalBySl.getOrDefault(key, BigDecimal.ZERO);
+                    // Invariant — DocumentSelector guarantees every selected SL has a positive docTotal.
+                    // If this check ever fires, an upstream consistency bug has been re-introduced
+                    // (e.g. SL list and reserved-doc map drifted apart). Fail loudly *before* the UI
+                    // step so the cryptic "Total adjustment amount can not be in negative" popup
+                    // never appears.
+                    if (!docTotalBySl.containsKey(key)) {
+                        throw new IllegalStateException(
+                                "[ArVoucherTemplate] Invariant broken — SL '" + key + "' has no docTotal entry. " +
+                                "Selected SLs: " + docTotalBySl.keySet() +
+                                ". DocumentSelector returned an inconsistent (slList, docMap) pair, " +
+                                "or upstream code dropped an SL after selection.\n" +
+                                DocumentReservationRegistry.snapshotAsString());
+                    }
+                    BigDecimal docTotal = docTotalBySl.get(key);
+                    if (docTotal == null || docTotal.signum() <= 0) {
+                        throw new IllegalStateException(
+                                "[ArVoucherTemplate] Invariant broken — SL '" + key + "' has non-positive docTotal " +
+                                docTotal + ". DocumentSelector should never select an SL whose reserved docs " +
+                                "sum to zero. Increase doc.selector.documentcount.default in config.properties.\n" +
+                                DocumentReservationRegistry.snapshotAsString());
+                    }
                     BigDecimal amountCr = applyGridRelation(docTotal, gridRelation);
                     String glName = slToArApName.getOrDefault(key, null);
                     return new SubLedgerInformation(
@@ -728,17 +780,30 @@ public final class ArVoucherTemplateLoader {
     private static BigDecimal applyGridRelation(
             BigDecimal docTotal, SelectDocumentVariant.GridRelation gridRelation) {
 
-        BigDecimal base = (docTotal == null || docTotal.compareTo(BigDecimal.ZERO) <= 0)
-                ? BigDecimal.ONE
-                : docTotal;
+        // DocumentSelector guarantees a positive docTotal; this guard is defensive only.
+        if (docTotal == null || docTotal.compareTo(BigDecimal.ZERO) <= 0) {
+            throw new IllegalStateException(
+                    "[ArVoucherTemplate] applyGridRelation got non-positive docTotal=" + docTotal +
+                    ". DocumentSelector should have caught this upstream.");
+        }
+        BigDecimal base = docTotal;
 
         switch (gridRelation) {
             case LESS:
-                // Grid Cr is 1.00 less than doc total — triggers mismatch validation
+                // Grid Cr is 1.00 less than doc total. If the document pool is so small that
+                // base ≤ 1.00, the LESS variant cannot be satisfied — surface this loudly
+                // rather than masking it with 0.01 and letting the UI reject the unbalanced math.
                 BigDecimal less = base.subtract(BigDecimal.ONE).setScale(2, RoundingMode.HALF_UP);
-                return less.compareTo(BigDecimal.ZERO) > 0 ? less : BigDecimal.valueOf(0.01).setScale(2, RoundingMode.HALF_UP);
+                if (less.signum() <= 0) {
+                    throw new IllegalStateException(
+                            "[ArVoucherTemplate] LESS grid relation produced non-positive value " + less +
+                            " from base=" + base + ". The selected document pool is too small for this " +
+                            "scenario — increase doc.selector.documentcount.default in config.properties " +
+                            "or pick a sub-ledger with larger pending amounts.");
+                }
+                return less;
             case GREATER:
-                // Grid Cr is 1.00 more than doc total — triggers mismatch validation
+                // Grid Cr is greater than doc total — automation uses 1.00 as a fixed offset
                 return base.add(BigDecimal.ONE).setScale(2, RoundingMode.HALF_UP);
             case EQUAL:
             default:

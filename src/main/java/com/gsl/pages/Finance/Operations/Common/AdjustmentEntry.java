@@ -2,12 +2,12 @@ package com.gsl.pages.Finance.Operations.Common;
 
 import org.openqa.selenium.By;
 import org.openqa.selenium.TimeoutException;
-import org.openqa.selenium.WebDriver;
 import org.openqa.selenium.support.ui.ExpectedConditions;
 import org.openqa.selenium.support.ui.WebDriverWait;
 import com.gsl.config.ConfigFactory;
 import com.gsl.constants.FrameworkConstants;
 import com.gsl.driver.DriverManager;
+import com.gsl.pages.pagecomponent.Finance.Common.AdjustmentEntryParent;
 import com.gsl.utils.Log;
 import com.gsl.utils.Selenium.ActionUtils;
 import com.gsl.utils.Selenium.JavascriptExecutorUtils;
@@ -18,7 +18,10 @@ import java.time.Duration;
 
 public class AdjustmentEntry {
 
-    public AdjustmentEntry(WebDriver driver) {
+    private final AdjustmentEntryParent parent;
+
+    public AdjustmentEntry(AdjustmentEntryParent parent) {
+        this.parent = parent;
     }
 
     // ===========================
@@ -127,8 +130,18 @@ public class AdjustmentEntry {
     }
 
     public AdjustmentEntry clickOK() {
-        SeleniumUtils.click(OK_BUTTON, WaitType.CLICKABLE, "OK Button");
+        SeleniumUtils.clickAndCheckPopup(OK_BUTTON, "OK Button in Adjustment Entry");
         return this;
+    }
+
+    /**
+     * Clicks OK when Grid Amount > total adjustment entry amount (Grid:GREATER).
+     * Returns a DocumentPopup pre-wired with this entry's parent and this instance
+     * so the caller can invoke clickProceedAnyway() or clickStay().
+     */
+    public DocumentPopup clickOKExpectingConfirmation() {
+        SeleniumUtils.click(OK_BUTTON, WaitType.CLICKABLE, "OK Button");
+        return new DocumentPopup(parent, this);
     }
 
     public AdjustmentEntry clickCancel() {

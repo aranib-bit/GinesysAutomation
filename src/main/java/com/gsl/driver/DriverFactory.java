@@ -1,24 +1,20 @@
 package com.gsl.driver;
 
+import com.gsl.enums.Browser;
+import com.gsl.enums.RunMode;
 import org.openqa.selenium.WebDriver;
 
-import java.net.MalformedURLException;
-
+/**
+ * Backward-compatible adapter — parses legacy String runmode/browser args and
+ * delegates to MasterDriverFactory. New code should call MasterDriverFactory directly.
+ */
 public final class DriverFactory {
 
-    private DriverFactory() {
-    }
+    private DriverFactory() {}
 
-    public static WebDriver getDriver(String runmode, String browserName) throws MalformedURLException {
-        WebDriver driver;
-        if (runmode.equalsIgnoreCase("local")) {
-            driver = LocalDriverFactory.getLocalDriver(browserName);
-        } else if (runmode.equalsIgnoreCase("remote")) {
-            driver = RemoteDriverFactory.getRemoteDriver(browserName);
-        } else {
-            throw new IllegalArgumentException("Unsupported runmode: " + runmode);
-        }
-        return driver;
+    public static WebDriver getDriver(String runmode, String browserName) {
+        RunMode  mode    = RunMode.valueOf(runmode.toUpperCase());
+        Browser  browser = Browser.valueOf(browserName.toUpperCase());
+        return MasterDriverFactory.create(mode, browser);
     }
-
 }

@@ -1,5 +1,6 @@
 package com.gsl.reports;
 
+import com.aventstack.extentreports.ExtentTest;
 import com.aventstack.extentreports.MediaEntityBuilder;
 import com.aventstack.extentreports.markuputils.Markup;
 import com.gsl.driver.DriverManager;
@@ -35,6 +36,37 @@ public final class ExtentLogger {
 
     public static void warning(String message) {
         if (ExtentManager.getExtentTest() != null) ExtentManager.getExtentTest().warning(message);
+    }
+
+    public static void failWithBase64Screenshot(String message, String base64) {
+        if (ExtentManager.getExtentTest() == null) return;
+        try {
+            ExtentManager.getExtentTest().fail(message,
+                    MediaEntityBuilder.createScreenCaptureFromBase64String(base64).build());
+        } catch (Exception e) {
+            ExtentManager.getExtentTest().fail(message);
+        }
+    }
+
+    /** Attaches raw HTML as an info entry on the current test. No-op if no active test. */
+    public static void infoHtml(String html) {
+        if (ExtentManager.getExtentTest() == null) return;
+        ExtentManager.getExtentTest().info((Markup) () -> html);
+    }
+
+    /**
+     * P8: Creates a named child node on the current ExtentTest and renders the given HTML
+     * inside it. The child node appears inline in the test step list (same style as
+     * StepExecutor nodes), ensuring it always renders after the preceding steps.
+     *
+     * @param nodeName  display name for the child node (shown as the collapsible header)
+     * @param innerHtml HTML content to render inside the node
+     */
+    public static void infoHtmlOnChildNode(String nodeName, String innerHtml) {
+        ExtentTest parent = ExtentManager.getExtentTest();
+        if (parent == null) return;
+        ExtentTest child = parent.createNode(nodeName);
+        child.info((Markup) () -> innerHtml);
     }
 
     public static void infoTable(String[][] table) {

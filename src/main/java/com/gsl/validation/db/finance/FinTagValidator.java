@@ -6,11 +6,11 @@ import com.gsl.database.dao.finance.FinTagDao;
 import com.gsl.model.finance.FinPost;
 import com.gsl.model.finance.FinTag;
 import com.gsl.model.finance.FinVchMain;
-import com.gsl.reports.DbQueryLogger;
 import com.gsl.reports.ReportLogger;
 import com.gsl.testdata.Finance.Operations.Vouchers.ARVoucher.SelectDocument;
 import com.gsl.testdata.dto.MergedFinanceArVoucherData;
-import org.testng.asserts.SoftAssert;
+import com.gsl.utils.dataprovider.fixture.finance.SelectDocumentVariant;
+import org.assertj.core.api.SoftAssertions;
 
 import java.math.BigDecimal;
 import java.util.List;
@@ -22,7 +22,7 @@ import java.util.Optional;
  * SHARED TABLE NOTE: fintag is used by Finance and Procurement.
  * Queries scoped to postcode1 values from the current voucher's finpost entries only.
  *
- * NON-BLOCKING: all failures collected via SoftAssert.
+ * NON-BLOCKING: all failures collected via SoftAssertions (AssertJ).
  * ADVANCE_PAYMENT: skipped (no SelectDocument → 0 fintag rows expected).
  */
 public class FinTagValidator {
@@ -50,39 +50,49 @@ public class FinTagValidator {
 
         ReportLogger.info("Level 4a — fintag validation for voucherNo [" + voucherNo + "]");
 
-        SoftAssert soft = new SoftAssert();
-
         long vchcode = header.getVchcode();
-        DbQueryLogger.log("SELECT * FROM fintag WHERE entcode1 = :entcode1", "entcode1", vchcode);
         List<FinTag> tags = finTagDao.findByEntCode1(vchcode);
 
         if (tags.isEmpty()) {
             ReportLogger.info("Level 4a — no fintag rows found for entcode1 (vchcode) [" + vchcode + "]");
-            soft.assertAll();
             return;
         }
 
-        // Cardinality: total tags across voucher == number of SelectDocuments
-        soft.assertEquals(tags.size(), selectDocs.size(),
-                "[Level 4a] fintag count for entcode1 [" + vchcode
-                        + "]: expected " + selectDocs.size() + " found " + tags.size());
-
-        // SUM(amount) == voucher damount
-        DbQueryLogger.log("SELECT COALESCE(SUM(amount), 0) FROM fintag WHERE entcode1 = :entcode1",
-                "entcode1", vchcode);
         BigDecimal totalTagged = finTagDao.sumTaggedAmountByEntCode1(vchcode);
-        soft.assertEquals(totalTagged.compareTo(header.getDamount()), 0,
-                "[Level 4a] SUM(fintag.amount)=" + totalTagged
-                        + " != finvchmain.damount=" + header.getDamount()
-                        + " for entcode1 [" + vchcode + "]");
+        // Grid:GREATER — tagged amount equals adj entry total, not grid amount (finvchmain.damount)
+        final boolean isGridGreater = data.getGridRelation() == SelectDocumentVariant.GridRelation.GREATER;
 
-        for (FinTag tag : tags)
-            validateTagRow(soft, tag, selectDocs, voucherNo);
+        SoftAssertions.assertSoftly(soft -> {
+            // Cardinality: total tags across voucher == number of SelectDocuments
+            soft.assertThat(tags.size())
+                    .as("[Level 4a] fintag count for entcode1 [" + vchcode
+                            + "]: expected " + selectDocs.size() + " found " + tags.size())
+                    .isEqualTo(selectDocs.size());
+
+            if (isGridGreater) {
+                BigDecimal expectedTagTotal = selectDocs.stream()
+                        .map(SelectDocument::getAdjustmentAmount)
+                        .filter(a -> a != null)
+                        .reduce(BigDecimal.ZERO, BigDecimal::add);
+                soft.assertThat(totalTagged)
+                        .as("[Level 4a] Grid:GREATER — SUM(fintag.amount)=" + totalTagged
+                                + " != SUM(selectDoc.adjustmentAmount)=" + expectedTagTotal
+                                + " for entcode1 [" + vchcode + "]")
+                        .isEqualByComparingTo(expectedTagTotal);
+            } else {
+                soft.assertThat(totalTagged)
+                        .as("[Level 4a] SUM(fintag.amount)=" + totalTagged
+                                + " != finvchmain.damount=" + header.getDamount()
+                                + " for entcode1 [" + vchcode + "]")
+                        .isEqualByComparingTo(header.getDamount());
+            }
+
+            for (FinTag tag : tags)
+                validateTagRow(soft, tag, selectDocs, voucherNo);
+        });
 
         ReportLogger.info("<b>fintag rows:</b>");
         ReportLogger.infoTable(buildTagTable(tags));
-
-        soft.assertAll();
         ReportLogger.info("Level 4a — PASSED for voucherNo [" + voucherNo + "]");
     }
 
@@ -104,16 +114,15 @@ public class FinTagValidator {
     private static String str(Object o) { return o == null ? "—" : o.toString(); }
     private static String str(long v)   { return String.valueOf(v); }
 
-    private void validateTagRow(SoftAssert soft, FinTag tag,
+    private void validateTagRow(SoftAssertions soft, FinTag tag,
                                  List<SelectDocument> selectDocs, String voucherNo) {
 
         // FK: postcode2 must resolve to a real finpost row
-        DbQueryLogger.log("SELECT * FROM finpost WHERE postcode = :postcode",
-                "postcode", tag.getPostcode2());
         Optional<FinPost> invPost = finPostDao.findByPostCode(tag.getPostcode2());
-        soft.assertTrue(invPost.isPresent(),
-                "[Level 4a] fintag.postcode2 [" + tag.getPostcode2()
-                        + "] has no finpost row — broken FK for [" + voucherNo + "]");
+        soft.assertThat(invPost)
+                .as("[Level 4a] fintag.postcode2 [" + tag.getPostcode2()
+                        + "] has no finpost row — broken FK for [" + voucherNo + "]")
+                .isPresent();
 
         // Tagged amount matches SelectDocument.adjustmentAmount
         if (tag.getAmount() != null && invPost.isPresent()) {
@@ -122,23 +131,29 @@ public class FinTagValidator {
                     .filter(d -> entNo != null && entNo.equalsIgnoreCase(d.getDocumentNumber()))
                     .findFirst().orElse(null);
             if (matched != null && matched.getAdjustmentAmount() != null)
-                soft.assertEquals(tag.getAmount().compareTo(matched.getAdjustmentAmount()), 0,
-                        "[Level 4a] fintag.amount=" + tag.getAmount()
+                soft.assertThat(tag.getAmount())
+                        .as("[Level 4a] fintag.amount=" + tag.getAmount()
                                 + " != SelectDocument.adjustmentAmount="
                                 + matched.getAdjustmentAmount()
-                                + " for invoice [" + entNo + "]");
+                                + " for invoice [" + entNo + "]")
+                        .isEqualByComparingTo(matched.getAdjustmentAmount());
         }
 
-        soft.assertTrue(tag.getSlcode() > 0,
-                "[Level 4a] fintag.slcode invalid for postcode1 [" + tag.getPostcode1() + "]");
-        soft.assertNotNull(tag.getAmount(),
-                "[Level 4a] fintag.amount null for postcode1 [" + tag.getPostcode1() + "]");
+        soft.assertThat(tag.getSlcode())
+                .as("[Level 4a] fintag.slcode invalid for postcode1 [" + tag.getPostcode1() + "]")
+                .isGreaterThan(0L);
+        soft.assertThat(tag.getAmount())
+                .as("[Level 4a] fintag.amount null for postcode1 [" + tag.getPostcode1() + "]")
+                .isNotNull();
         if (tag.getAmount() != null)
-            soft.assertTrue(tag.getAmount().compareTo(BigDecimal.ZERO) > 0,
-                    "[Level 4a] fintag.amount not positive: " + tag.getAmount());
-        soft.assertNotNull(tag.getEnttype1(),
-                "[Level 4a] fintag.enttype1 null for postcode1 [" + tag.getPostcode1() + "]");
-        soft.assertNotNull(tag.getEnttype2(),
-                "[Level 4a] fintag.enttype2 null for postcode2 [" + tag.getPostcode2() + "]");
+            soft.assertThat(tag.getAmount())
+                    .as("[Level 4a] fintag.amount not positive: " + tag.getAmount())
+                    .isGreaterThan(BigDecimal.ZERO);
+        soft.assertThat(tag.getEnttype1())
+                .as("[Level 4a] fintag.enttype1 null for postcode1 [" + tag.getPostcode1() + "]")
+                .isNotNull();
+        soft.assertThat(tag.getEnttype2())
+                .as("[Level 4a] fintag.enttype2 null for postcode2 [" + tag.getPostcode2() + "]")
+                .isNotNull();
     }
 }

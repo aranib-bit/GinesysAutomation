@@ -45,14 +45,15 @@ public class SelectDocumentVariant {
     /**
      * How Grid Amount Cr compares to the total selected document amount.
      * LESS and GREATER are used to verify UI validation behaviour.
-     * <!-- TODO: per open item #3 – confirm whether LESS/GREATER blocks save or shows warning -->
+     * GREATER shows a "Proceed Anyway / Stay" confirmation popup (saveable warning, not a hard block).
+     * LESS behaviour is still unconfirmed — see open item #3.
      */
     public enum GridRelation {
         /** Grid Cr == total doc amount (normal case). */
         EQUAL,
-        /** Grid Cr == total doc amount - 1.00. */
+        /** Grid Cr is less than total doc amount — triggers UI mismatch validation. */
         LESS,
-        /** Grid Cr == total doc amount + 1.00. */
+        /** Grid Cr is greater than total doc amount (by any amount) — shows Proceed Anyway / Stay popup. */
         GREATER
     }
 

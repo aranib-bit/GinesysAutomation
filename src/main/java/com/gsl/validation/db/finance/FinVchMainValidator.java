@@ -4,12 +4,11 @@ import com.gsl.config.ConfigFactory;
 import com.gsl.database.DatabaseManager;
 import com.gsl.database.dao.finance.FinVchMainDao;
 import com.gsl.model.finance.FinVchMain;
-import com.gsl.reports.DbQueryLogger;
 import com.gsl.reports.ReportLogger;
 import com.gsl.testdata.Finance.Operations.Vouchers.ARVoucher.DocumentInformation;
 import com.gsl.testdata.dto.MergedFinanceArVoucherData;
+import org.assertj.core.api.SoftAssertions;
 import org.testng.Assert;
-import org.testng.asserts.SoftAssert;
 
 import java.time.temporal.ChronoUnit;
 import java.util.Optional;
@@ -38,15 +37,11 @@ public class FinVchMainValidator {
         ReportLogger.info("Level 1 — finvchmain for scheme_docno [" + schemeDocno + "]");
 
         // Step 1: count check — BLOCKING
-        DbQueryLogger.log("SELECT COUNT(*) FROM finvchmain WHERE scheme_docno = :schemeDocno",
-                "schemeDocno", schemeDocno);
         int count = dao.countBySchemeDocno(schemeDocno);
         Assert.assertEquals(count, 1,
                 "[Level 1] Expected exactly 1 finvchmain row for scheme_docno [" + schemeDocno + "] but found [" + count + "]");
 
         // Step 2: fetch full record by scheme_docno — BLOCKING
-        DbQueryLogger.log("SELECT * FROM finvchmain WHERE scheme_docno = :schemeDocno",
-                "schemeDocno", schemeDocno);
         Optional<FinVchMain> result = dao.findBySchemeDocno(schemeDocno);
         Assert.assertTrue(result.isPresent(),
                 "[Level 1] finvchmain NOT FOUND for scheme_docno [" + schemeDocno + "]");
@@ -59,54 +54,68 @@ public class FinVchMainValidator {
 
         ReportLogger.info("Level 1 — scheme_docno [" + schemeDocno + "] resolved to vchcode [" + h.getVchcode() + "]");
 
-        SoftAssert soft = new SoftAssert();
+        validateHeaderFields(h, doc, context);
 
-        if (doc.getDocumentdate() != null)
-            soft.assertEquals(h.getVchdt(), doc.getDocumentdate(),
-                    "[Level 1] finvchmain.vchdt != input documentdate");
+        ReportLogger.info("<b>finvchmain row:</b>");
+        ReportLogger.infoTable(buildMainTable(h));
 
-        if (doc.getReference() != null && !doc.getReference().isBlank())
-            soft.assertEquals(h.getRefno(), doc.getReference(),
-                    "[Level 1] finvchmain.refno != input reference");
+        ReportLogger.info("Level 1 — PASSED: scheme_docno [" + schemeDocno + "] vchcode [" + h.getVchcode() + "]");
+        return h;
+    }
 
-        if (doc.getRemarks() != null && !doc.getRemarks().isBlank())
-            soft.assertEquals(h.getNartext(), doc.getRemarks(),
-                    "[Level 1] finvchmain.nartext != input remarks");
-
-        soft.assertNotNull(h.getDamount(), "[Level 1] finvchmain.damount is null");
-
-        if (h.getEntrySource() != null)
-            soft.assertTrue(
-                    "WEB".equalsIgnoreCase(h.getEntrySource()) ||
-                    "API".equalsIgnoreCase(h.getEntrySource()),
-                    "[Level 1] Unexpected entry_source [" + h.getEntrySource() + "]");
-
-        soft.assertNotNull(h.getCreationDt(), "[Level 1] finvchmain.creation_dt is null");
-
+    private void validateHeaderFields(FinVchMain h, DocumentInformation doc, VoucherDbContext context) {
+        Long diffSeconds = null;
+        long toleranceSeconds = 0;
         if (context.getSaveStartTime() != null && h.getCreationDt() != null) {
-            long toleranceSeconds = ConfigFactory.getConfig().dbCreationTolerance();
-            long diffSeconds = Math.abs(
-                    ChronoUnit.SECONDS.between(context.getSaveStartTime(), h.getCreationDt()));
+            toleranceSeconds = ConfigFactory.getConfig().dbCreationTolerance();
+            diffSeconds = Math.abs(ChronoUnit.SECONDS.between(context.getSaveStartTime(), h.getCreationDt()));
             ReportLogger.info("[Level 1] creation_dt tolerance:"
                     + " saveStartTime=" + context.getSaveStartTime()
                     + " | creation_dt=" + h.getCreationDt()
                     + " | diff=" + diffSeconds + "s"
                     + " | tolerance=" + toleranceSeconds + "s");
-            soft.assertTrue(diffSeconds <= toleranceSeconds,
-                    "[Level 1] finvchmain.creation_dt out of tolerance:"
-                    + " diff=" + diffSeconds + "s"
-                    + ", tolerance=" + toleranceSeconds + "s"
-                    + ", saveStartTime=" + context.getSaveStartTime()
-                    + ", creation_dt=" + h.getCreationDt());
         }
+        final Long finalDiff = diffSeconds;
+        final long finalTolerance = toleranceSeconds;
 
-        ReportLogger.info("<b>finvchmain row:</b>");
-        ReportLogger.infoTable(buildMainTable(h));
+        SoftAssertions.assertSoftly(soft -> {
+            if (doc.getDocumentdate() != null)
+                soft.assertThat(h.getVchdt())
+                        .as("[Level 1] finvchmain.vchdt != input documentdate")
+                        .isEqualTo(doc.getDocumentdate());
 
-        soft.assertAll();
+            if (doc.getReference() != null && !doc.getReference().isBlank())
+                soft.assertThat(h.getRefno())
+                        .as("[Level 1] finvchmain.refno != input reference")
+                        .isEqualTo(doc.getReference());
 
-        ReportLogger.info("Level 1 — PASSED: scheme_docno [" + schemeDocno + "] vchcode [" + h.getVchcode() + "]");
-        return h;
+            if (doc.getRemarks() != null && !doc.getRemarks().isBlank())
+                soft.assertThat(h.getNartext())
+                        .as("[Level 1] finvchmain.nartext != input remarks")
+                        .isEqualTo(doc.getRemarks());
+
+            soft.assertThat(h.getDamount())
+                    .as("[Level 1] finvchmain.damount is null")
+                    .isNotNull();
+
+            if (h.getEntrySource() != null)
+                soft.assertThat(h.getEntrySource())
+                        .as("[Level 1] Unexpected entry_source [" + h.getEntrySource() + "]")
+                        .matches("(?i)WEB|API");
+
+            soft.assertThat(h.getCreationDt())
+                    .as("[Level 1] finvchmain.creation_dt is null")
+                    .isNotNull();
+
+            if (finalDiff != null)
+                soft.assertThat(finalDiff)
+                        .as("[Level 1] finvchmain.creation_dt out of tolerance:"
+                                + " diff=" + finalDiff + "s"
+                                + ", tolerance=" + finalTolerance + "s"
+                                + ", saveStartTime=" + context.getSaveStartTime()
+                                + ", creation_dt=" + h.getCreationDt())
+                        .isLessThanOrEqualTo(finalTolerance);
+        });
     }
 
     private static String[][] buildMainTable(FinVchMain r) {

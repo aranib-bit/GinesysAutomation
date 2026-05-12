@@ -1,7 +1,9 @@
 package com.tests.Procurement.Operations;
 
 import com.gsl.annotations.FrameworkAnnotation;
+import com.gsl.driver.DriverManager;
 import com.gsl.enums.TestAuthor;
+import com.gsl.testdata.UserCredential;
 import com.gsl.pages.HomePage;
 import com.gsl.pages.LoginPage;
 import com.gsl.pages.enums.Procurement.MainMenuType;
@@ -12,16 +14,17 @@ import com.gsl.testdata.MergedReceiptData;
 import com.gsl.testdata.Procurement.*;
 import com.gsl.utils.NavigationUtils;
 import com.gsl.utils.dataprovider.MergedReceiptDataSupplier;
-import com.tests.BaseTest;
+import com.tests.WebTest;
 import org.testng.annotations.Test;
 
-public class ReceiptsDataTest extends BaseTest {
+public class ReceiptsDataTest extends WebTest {
     @FrameworkAnnotation(TestAuthor.ARANI)
     @Test(description = "To check the creation of Receipts from UI", dataProvider = "receiptData", dataProviderClass = MergedReceiptDataSupplier.class)
     public void receiptsDataTest(MergedReceiptData data) {
         // 1. Login to the application
+        UserCredential u = DriverManager.getCurrentUser();
         LoginPage loginPage = new LoginPage();
-        HomePage homePage = loginPage.loginToApplication(data.getMasterTestData().getUsername(), data.getMasterTestData().getPassword());
+        HomePage homePage = loginPage.loginToApplication(u.username(), u.password());
 
         // 2. Use the navigation utility to get to the correct screen
         ReceiptsListPage receiptsListPage = NavigationUtils.navigateToProcurementSideMenu(homePage,
@@ -39,7 +42,7 @@ public class ReceiptsDataTest extends BaseTest {
 
         String vendorType = goodsReceiveChallanAdd.fetchVendorType();
 
-        System.out.println("Test Login UserName:"+ data.getMasterTestData().getUsername());
+        System.out.println("Test Login UserName:" + DriverManager.getCurrentUser().username());
         System.out.println("Test Case: " + data.getMasterTestData().getTestcasename());
         System.out.println("Vendor: " + data.getReceiptHeader().getVendorName());
 

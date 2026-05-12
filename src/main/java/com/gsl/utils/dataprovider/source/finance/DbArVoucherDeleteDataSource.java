@@ -65,13 +65,8 @@ public class DbArVoucherDeleteDataSource implements TestDataSource<MergedFinance
                 vchcode, header.getSchemeDocno(), header.getReleaseStatus());
 
         MasterTestData master = new MasterTestData(
-                testMethodName,
-                ConfigFactory.getConfig().username(),
-                ConfigFactory.getConfig().password(),
-                null, null, null,
-                "FIN-AR-DELETE-" + vchcode,
-                1
-        );
+                testMethodName, null, null, null,
+                "FIN-AR-DELETE-" + vchcode, 1);
 
         MergedFinanceArVoucherData deleteData = MergedFinanceArVoucherData.builder()
                 .existingVoucherNo(header.getSchemeDocno())

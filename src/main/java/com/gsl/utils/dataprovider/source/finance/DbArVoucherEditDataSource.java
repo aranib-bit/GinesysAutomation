@@ -112,13 +112,8 @@ public class DbArVoucherEditDataSource implements TestDataSource<MergedFinanceAr
 
         // 7. MasterTestData — login credentials from config
         MasterTestData master = new MasterTestData(
-                testMethodName,
-                ConfigFactory.getConfig().username(),
-                ConfigFactory.getConfig().password(),
-                null, null, null,
-                "FIN-AR-EDIT-" + vchcode,
-                1
-        );
+                testMethodName, null, null, null,
+                "FIN-AR-EDIT-" + vchcode, 1);
 
         MergedFinanceArVoucherData editData = MergedFinanceArVoucherData.builder()
                 .existingVoucherNo(header.getSchemeDocno())
