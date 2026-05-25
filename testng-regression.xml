@@ -1,0 +1,54 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE suite SYSTEM "http://testng.org/testng-1.0.dtd">
+<!--
+    Full Regression Suite — Phase-1 + Phase-2 + Phase-3 run sequentially.
+    Parallel within each phase; phases are sequential (Phase-1 finishes before Phase-2 starts).
+    arv.group is set per test block via Maven Surefire systemPropertyVariables in the
+    regression profile — each test block's JVM args override the system property for that run.
+
+    NOTE: Because a single JVM run cannot set different system properties per <test> block,
+    this suite relies on the regression Maven profile setting arv.group=ALL_REGRESSION,
+    which DbArVoucherDataSource treats identically to a null (run everything).
+    To run phases individually use -Pregression-phase1 / -Pregression-phase2 / -Pregression-phase3.
+
+    Run (all phases): mvn clean test -Pregression
+-->
+<suite name="AR Voucher — Full Regression" parallel="tests" thread-count="10">
+    <listeners>
+        <listener class-name="com.gsl.listeners.TestListener"/>
+        <listener class-name="com.gsl.listeners.SuiteDataLoader"/>
+    </listeners>
+
+    <test name="AR Voucher Validation — Regression">
+        <parameter name="voucherDomain" value="AR"/>
+        <parameter name="executionType" value="ALL"/>
+        <classes>
+            <class name="com.tests.Validation.RuleTest"/>
+        </classes>
+    </test>
+
+    <!-- Phase-1 → Phase-2 → Phase-3 run sequentially; parallel within each phase -->
+    <test name="AR Voucher Create — Regression Phase-1"
+          parallel="methods" thread-count="6" data-provider-thread-count="6">
+        <parameter name="arv.group" value="REGRESSION_PHASE1"/>
+        <classes>
+            <class name="com.tests.Finance.Operations.Vouchers.CreateArVoucher"/>
+        </classes>
+    </test>
+
+    <test name="AR Voucher Create — Regression Phase-2"
+          parallel="methods" thread-count="8" data-provider-thread-count="8">
+        <parameter name="arv.group" value="REGRESSION_PHASE2"/>
+        <classes>
+            <class name="com.tests.Finance.Operations.Vouchers.CreateArVoucher"/>
+        </classes>
+    </test>
+
+    <test name="AR Voucher Create — Regression Phase-3"
+          parallel="methods" thread-count="4" data-provider-thread-count="4">
+        <parameter name="arv.group" value="REGRESSION_PHASE3"/>
+        <classes>
+            <class name="com.tests.Finance.Operations.Vouchers.CreateArVoucher"/>
+        </classes>
+    </test>
+</suite>

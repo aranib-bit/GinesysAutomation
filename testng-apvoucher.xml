@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE suite SYSTEM "http://testng.org/testng-1.0.dtd">
+<suite name="AP Voucher Suite" parallel="tests" thread-count="10">
+    <listeners>
+        <listener class-name="com.gsl.listeners.TestListener"/>
+        <listener class-name="com.gsl.listeners.SuiteDataLoader"/>
+    </listeners>
+
+    <test name="AP Voucher" parallel="methods" thread-count="4" data-provider-thread-count="4">
+        <classes>
+            <class name="com.tests.Finance.Operations.Vouchers.CreateApVoucher"/>
+        </classes>
+    </test>
+
+</suite>

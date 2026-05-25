@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE suite SYSTEM "http://testng.org/testng-1.0.dtd">
+<!--
+    Regression Phase-2 — full party-type matrix (Customer/Supplier/Jobber/Agent/Others/Channel
+    and User SL types TDS/Staff), customer SL ownership/tagging configs, grid LESS/GREATER,
+    payment MIX, backdate, Cash GL multi-doc/multi-SL, amount MIX.
+    Corresponds to REG-13 to REG-19. arv.group=REGRESSION_PHASE2 set via Maven Surefire.
+
+    Run: mvn clean test -Pregression-phase2
+-->
+<suite name="AR Voucher — Regression Phase-2" parallel="tests" thread-count="8">
+    <listeners>
+        <listener class-name="com.gsl.listeners.TestListener"/>
+        <listener class-name="com.gsl.listeners.SuiteDataLoader"/>
+    </listeners>
+
+    <test name="AR Voucher Create — Regression Phase-2"
+          parallel="methods" thread-count="8" data-provider-thread-count="8">
+        <parameter name="arv.group" value="REGRESSION_PHASE2"/>
+        <classes>
+            <class name="com.tests.Finance.Operations.Vouchers.CreateArVoucher"/>
+        </classes>
+    </test>
+</suite>

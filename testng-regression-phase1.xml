@@ -1,0 +1,31 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE suite SYSTEM "http://testng.org/testng-1.0.dtd">
+<!--
+    Regression Phase-1 — payment validation, basic SL/doc count, amount modes,
+    grid EQUAL, date TODAY/BACKDATE, NO_ADJUSTMENT User SL, FIFO variants, Finance-Dup.
+    Corresponds to REG-01 to REG-12. arv.group=REGRESSION_PHASE1 set via Maven Surefire.
+
+    Run: mvn clean test -Pregression-phase1
+-->
+<suite name="AR Voucher — Regression Phase-1" parallel="tests" thread-count="6">
+    <listeners>
+        <listener class-name="com.gsl.listeners.TestListener"/>
+        <listener class-name="com.gsl.listeners.SuiteDataLoader"/>
+    </listeners>
+
+    <test name="AR Voucher Validation — Regression">
+        <parameter name="voucherDomain" value="AR"/>
+        <parameter name="executionType" value="ALL"/>
+        <classes>
+            <class name="com.tests.Validation.RuleTest"/>
+        </classes>
+    </test>
+
+    <test name="AR Voucher Create — Regression Phase-1"
+          parallel="methods" thread-count="6" data-provider-thread-count="6">
+        <parameter name="arv.group" value="REGRESSION_PHASE1"/>
+        <classes>
+            <class name="com.tests.Finance.Operations.Vouchers.CreateArVoucher"/>
+        </classes>
+    </test>
+</suite>

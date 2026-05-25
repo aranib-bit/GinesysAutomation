@@ -1,0 +1,30 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE suite SYSTEM "http://testng.org/testng-1.0.dtd">
+<!--
+    Mandatory Suite — 6 core smoke tests + AR validation rules.
+    Fast CI build-verification run. arv.group=MANDATORY set via Maven Surefire systemPropertyVariables.
+
+    Run: mvn clean test -Pmandatory
+-->
+<suite name="AR Voucher — Mandatory Suite" parallel="tests" thread-count="4">
+    <listeners>
+        <listener class-name="com.gsl.listeners.TestListener"/>
+        <listener class-name="com.gsl.listeners.SuiteDataLoader"/>
+    </listeners>
+
+    <test name="AR Voucher Validation — Mandatory">
+        <parameter name="voucherDomain" value="AR"/>
+        <parameter name="executionType" value="MANDATORY"/>
+        <classes>
+            <class name="com.tests.Validation.RuleTest"/>
+        </classes>
+    </test>
+
+    <test name="AR Voucher Create — Mandatory"
+          parallel="methods" thread-count="4" data-provider-thread-count="4">
+        <parameter name="arv.group" value="MANDATORY"/>
+        <classes>
+            <class name="com.tests.Finance.Operations.Vouchers.CreateArVoucher"/>
+        </classes>
+    </test>
+</suite>
