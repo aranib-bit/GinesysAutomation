@@ -17,4 +17,6 @@ public class LogEntry {
     String  message;
     /** The original unmodified raw line from the remote log file. */
     String  rawLine;
+    /** Absolute path of the source file on the remote server; null when not tracked. */
+    String  sourceFile;
 }

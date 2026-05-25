@@ -203,6 +203,21 @@ public interface FrameworkConfig extends Config {
     @DefaultValue("false")
     boolean networkCaptureFailedOnly();
 
+    /** always | failure — when to log the per-request timing table to the report. */
+    @Key("network.timing.log.on")
+    @DefaultValue("always")
+    String networkTimingLogOn();
+
+    /** always | failure — when to log the request cookies table to the report. */
+    @Key("network.cookies.log.on")
+    @DefaultValue("failure")
+    String networkCookiesLogOn();
+
+    /** always | failure — when to log the JS initiator call stack table to the report. */
+    @Key("network.callstack.log.on")
+    @DefaultValue("failure")
+    String networkCallstackLogOn();
+
     /** Include request and response headers in the captured record. */
     @Key("network.capture.headers")
     @DefaultValue("true")
@@ -223,6 +238,15 @@ public interface FrameworkConfig extends Config {
     @Key("network.capture.url.filter")
     @DefaultValue("")
     String networkCaptureUrlFilter();
+
+    /**
+     * When true, passing tests show ALL captured network requests (same as failure view),
+     * overriding any @ApiFlow filter on the test class.
+     * Default: false — passing tests show only the @ApiFlow-matched endpoint requests.
+     */
+    @Key("network.capture.pass.show.all")
+    @DefaultValue("false")
+    boolean networkCapturePassShowAll();
 
     // ─── Browser log capture ──────────────────────────────────────────────────
 
@@ -343,6 +367,22 @@ public interface FrameworkConfig extends Config {
     @DefaultValue("true")
     boolean diagnosticsDriverCapabilitiesEnabled();
 
+    // ─── Diagnostics — Action Trail capture mode ─────────────────────────────
+
+    /** Controls when Action Trail is included in the diagnostic bundle.
+     *  ALL  — include for both passed and failed tests (default).
+     *  FAIL — include only when the test fails. */
+    @Key("action.trail.capture.mode")
+    @DefaultValue("ALL")
+    String actionTrailCaptureMode();
+
+    /** Controls when UI Components (ExtJS) section is included in the diagnostic bundle.
+     *  ALL  — include for both passed and failed tests (default).
+     *  FAIL — include only when the test fails. */
+    @Key("ui.components.capture.mode")
+    @DefaultValue("ALL")
+    String uiComponentsCaptureMode();
+
     // ─── Diagnostics — Active popup capture ──────────────────────────────────
 
     @Key("diagnostics.active.popup.enabled")
@@ -442,6 +482,15 @@ public interface FrameworkConfig extends Config {
     @DefaultValue("/var/log/ginesys/app.log")
     String remoteAppServerLogPaths();
 
+    /**
+     * Name of a .properties file in the config directory listing one log path per value.
+     * When set, takes priority over {@link #remoteAppServerLogPaths()}.
+     * Example: {@code app-log-paths.properties}
+     */
+    @Key("remote.app.server.log.paths.file")
+    @DefaultValue("")
+    String remoteAppServerLogPathsFile();
+
     /** SSH port on the application server. */
     @Key("remote.app.server.ssh.port")
     @DefaultValue("22")
@@ -456,6 +505,26 @@ public interface FrameworkConfig extends Config {
     @Key("remote.app.server.winrm.use.https")
     @DefaultValue("false")
     boolean remoteAppServerWinrmUseHttps();
+
+    /** WinRM username for the app server. Blank = env var REMOTE_LOG_WINRM_USER only. */
+    @Key("remote.app.server.winrm.username")
+    @DefaultValue("")
+    String remoteAppServerWinrmUsername();
+
+    /** WinRM password for the app server. Blank = env var REMOTE_LOG_WINRM_PASS only. */
+    @Key("remote.app.server.winrm.password")
+    @DefaultValue("")
+    String remoteAppServerWinrmPassword();
+
+    /** SSH username for the app server (Linux). Blank = env var REMOTE_LOG_SSH_USER only. */
+    @Key("remote.app.server.ssh.username")
+    @DefaultValue("")
+    String remoteAppServerSshUsername();
+
+    /** SSH password for the app server (Linux). Blank = env var REMOTE_LOG_SSH_PASS only. */
+    @Key("remote.app.server.ssh.password")
+    @DefaultValue("")
+    String remoteAppServerSshPassword();
 
     // ─── Remote Machine Setup — Database Server ───────────────────────────────
 
@@ -484,6 +553,26 @@ public interface FrameworkConfig extends Config {
     @DefaultValue("false")
     boolean remoteDbServerWinrmUseHttps();
 
+    /** WinRM username for the DB server. Blank = env var REMOTE_LOG_WINRM_USER only. */
+    @Key("remote.db.server.winrm.username")
+    @DefaultValue("")
+    String remoteDbServerWinrmUsername();
+
+    /** WinRM password for the DB server. Blank = env var REMOTE_LOG_WINRM_PASS only. */
+    @Key("remote.db.server.winrm.password")
+    @DefaultValue("")
+    String remoteDbServerWinrmPassword();
+
+    /** SSH username for the DB server (Linux). Blank = env var REMOTE_LOG_SSH_USER only. */
+    @Key("remote.db.server.ssh.username")
+    @DefaultValue("")
+    String remoteDbServerSshUsername();
+
+    /** SSH password for the DB server (Linux). Blank = env var REMOTE_LOG_SSH_PASS only. */
+    @Key("remote.db.server.ssh.password")
+    @DefaultValue("")
+    String remoteDbServerSshPassword();
+
     // ─── SSH Connection Pool ──────────────────────────────────────────────────
 
     /** Max pooled SSH connections per host. */
@@ -511,6 +600,14 @@ public interface FrameworkConfig extends Config {
     @DefaultValue("3")
     int remoteLogsWinrmRotatedMaxFiles();
 
+    /**
+     * Timezone offset appended when parsing log lines that use "yyyy-MM-dd HH:mm:ss" format
+     * (no embedded offset). Use +05:30 for IST, Z for UTC.
+     */
+    @Key("remote.logs.server.timezone.offset")
+    @DefaultValue("Z")
+    String remoteLogsServerTimezoneOffset();
+
     // ─── Document selector (atomic SL + doc selection) ────────────────────────
 
     /**
@@ -535,4 +632,129 @@ public interface FrameworkConfig extends Config {
     @Key("doc.selector.documentcount.default")
     @DefaultValue("3")
     int docSelectorDocumentCountDefault();
+
+    // ─── UI Framework Adapter ─────────────────────────────────────────────────
+
+    /**
+     * Target UI framework: extjs | react | angular.
+     * Drives UiFrameworkAdapterFactory — change only this property when migrating frameworks.
+     */
+    @Key("application.type")
+    @DefaultValue("extjs")
+    String applicationType();
+
+    /** Enable UI component diagnostics section in the failure report. */
+    @Key("ui.diagnostics.enabled")
+    @DefaultValue("true")
+    boolean uiDiagnosticsEnabled();
+
+    // ─── Performance timing ───────────────────────────────────────────────────
+
+    /** Capture browser performance timing metrics (domReady, pageLoad, heap) on failure. */
+    @Key("performance.timing.enabled")
+    @DefaultValue("true")
+    boolean performanceTimingEnabled();
+
+    // ─── JS error JSON export ─────────────────────────────────────────────────
+
+    /** Write a structured JSON artifact to reports/js-errors/ when CRITICAL JS errors occur. */
+    @Key("js.error.json.export.enabled")
+    @DefaultValue("true")
+    boolean jsErrorJsonExportEnabled();
+
+    // ─── Custom Metrics (web.dev Performance Observer APIs) ───────────────────
+
+    /** Master toggle — false disables JS collection and hides the section entirely. */
+    @Key("custom.metrics.enabled")
+    @DefaultValue("false")
+    boolean customMetricsEnabled();
+
+    /** When to capture: ALL (pass + fail) | FAIL (failures only) | NEVER. */
+    @Key("custom.metrics.capture.mode")
+    @DefaultValue("FAIL")
+    String customMetricsCaptureMode();
+
+    /** Resources with load duration above this threshold appear in the Slow Resources table. */
+    @Key("custom.metrics.slow.resource.threshold.ms")
+    @DefaultValue("2000")
+    long customMetricsSlowResourceThresholdMs();
+
+    /** User Timing measures with duration above this threshold get an orange warning. */
+    @Key("custom.metrics.user.timing.warn.ms")
+    @DefaultValue("3000")
+    long customMetricsUserTimingWarnMs();
+
+    /**
+     * Fail the test when long task count exceeds this number.
+     * 0 = never auto-fail; any positive value triggers a test failure.
+     */
+    @Key("custom.metrics.fail.on.long.task.count")
+    @DefaultValue("0")
+    int customMetricsFailOnLongTaskCount();
+
+    /** Include Long Animation Frame entries in the report (Chrome 123+). */
+    @Key("custom.metrics.long.animation.frame.enabled")
+    @DefaultValue("true")
+    boolean customMetricsLongAnimationFrameEnabled();
+
+    /** Include Server Timing entries sourced from HTTP response headers. */
+    @Key("custom.metrics.server.timing.enabled")
+    @DefaultValue("true")
+    boolean customMetricsServerTimingEnabled();
+
+    // ─── Frontend Diagnostics (ExtJS / React / Angular) ──────────────────────
+
+    /** Master toggle — enables framework-specific JS instrumentation (loadmask, renders, layout, API). */
+    @Key("frontend.diagnostics.enabled")
+    @DefaultValue("false")
+    boolean frontendDiagnosticsEnabled();
+
+    /** When to capture: ALL (pass + fail) | FAIL (failures only) | NEVER. */
+    @Key("frontend.diagnostics.capture.mode")
+    @DefaultValue("FAIL")
+    String frontendDiagnosticsCaptureMode();
+
+    /** Component render duration (ms) above this threshold is highlighted as a warning. */
+    @Key("frontend.diagnostics.component.render.warn.ms")
+    @DefaultValue("200")
+    long frontendDiagnosticsComponentRenderWarnMs();
+
+    // ─── Action trail ─────────────────────────────────────────────────────────
+
+    /** Max steps retained in the per-thread ring buffer (memory-safe; strings are tiny). */
+    @Key("action.trail.buffer.size")
+    @DefaultValue("200")
+    int actionTrailBufferSize();
+
+    /** Max steps shown in ExtentReport; JSON export always uses the full buffer. */
+    @Key("action.trail.display.limit")
+    @DefaultValue("50")
+    int actionTrailDisplayLimit();
+
+    // ─── Frontend Diagnostics — new feature toggles ───────────────────────────
+
+    /** Capture DOM node count at collection time; >5000 flagged as DOM explosion. */
+    @Key("frontend.diagnostics.dom.tracking.enabled")
+    @DefaultValue("true")
+    boolean frontendDomTrackingEnabled();
+
+    /** Capture JS heap memory via Chrome performance.memory in Custom Metrics section. */
+    @Key("frontend.diagnostics.memory.tracking.enabled")
+    @DefaultValue("true")
+    boolean frontendMemoryTrackingEnabled();
+
+    /** Track click events (tag, class, timestamp) throughout the test. */
+    @Key("frontend.diagnostics.interaction.tracking.enabled")
+    @DefaultValue("true")
+    boolean frontendInteractionTrackingEnabled();
+
+    /** ExtJS only: capture Ext.grid.Panel afterRender with row and column counts. */
+    @Key("frontend.diagnostics.grid.render.tracking.enabled")
+    @DefaultValue("true")
+    boolean frontendGridRenderTrackingEnabled();
+
+    /** Patch getBoundingClientRect(); flag calls >5ms, warn at >50ms as forced reflow. */
+    @Key("frontend.diagnostics.reflow.detection.enabled")
+    @DefaultValue("true")
+    boolean frontendReflowDetectionEnabled();
 }

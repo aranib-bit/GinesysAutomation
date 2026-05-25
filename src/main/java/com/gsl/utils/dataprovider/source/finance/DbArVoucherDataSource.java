@@ -22,6 +22,7 @@ import com.gsl.utils.Faker.FakerUtils;
 import com.gsl.utils.Log;
 import com.gsl.utils.dataprovider.fixture.ArVoucherFixtureFactory;
 import com.gsl.utils.dataprovider.fixture.LiveDbRefs;
+import com.gsl.utils.dataprovider.fixture.finance.ArVoucherExecutionGroup;
 import com.gsl.utils.dataprovider.fixture.finance.ArVoucherFixtureOptions;
 import com.gsl.utils.dataprovider.fixture.finance.ArVoucherScenarioType;
 import com.gsl.utils.dataprovider.fixture.finance.ArVoucherTemplateLoader;
@@ -61,10 +62,24 @@ import java.util.Optional;
  */
 public class DbArVoucherDataSource implements TestDataSource<MergedFinanceArVoucherData> {
 
+    // Captured from TestNG <parameter name="arv.group"> at construction time.
+    // Used as fallback when the system property is absent (IntelliJ direct run).
+    private final String xmlGroupParam;
+
+    public DbArVoucherDataSource() { this.xmlGroupParam = null; }
+
+    public DbArVoucherDataSource(String xmlGroupParam) { this.xmlGroupParam = xmlGroupParam; }
+
     @Override
     public List<MergedFinanceArVoucherData> load(String testMethodName) {
         String loginName = ConfigFactory.getConfig().username();
         String loginPwd  = ConfigFactory.getConfig().password();
+
+        // Read execution group filter from system property (set by Maven Surefire via -Darv.group=...)
+        // null = no filter, run all groups (default testng.xml full-suite run)
+        ArVoucherExecutionGroup activeGroup = resolveActiveGroup();
+
+        Log.info("[DB] Execution group filter: {}", activeGroup != null ? activeGroup : "ALL (no filter)");
 
         // Discover SL classification types once — reused across all scenario types
         Jdbi jdbi        = DatabaseManager.getJdbi();
@@ -94,8 +109,8 @@ public class DbArVoucherDataSource implements TestDataSource<MergedFinanceArVouc
         for (ArVoucherScenarioType scenario : ArVoucherFixtureFactory.scenariosFor(testMethodName)) {
 
             if (scenario == ArVoucherScenarioType.SELECT_DOCUMENT) {
-                // ── One placeholder per variant (Group 0 mandatory + Group 1 + Group 2 + Groups 3-8 + Cash GL)
-                List<SelectDocumentVariant> variants = buildVariantList(classificationTypes);
+                // ── One placeholder per variant, filtered by active execution group
+                List<SelectDocumentVariant> variants = buildVariantList(classificationTypes, activeGroup);
                 for (SelectDocumentVariant variant : variants) {
                     ArVoucherFixtureOptions opts = ArVoucherFixtureOptions.builder()
                             .subLedgerCount(variant.getSlCount())
@@ -107,34 +122,37 @@ public class DbArVoucherDataSource implements TestDataSource<MergedFinanceArVouc
                 }
 
             } else if (scenario == ArVoucherScenarioType.NO_ADJUSTMENT) {
-                // ── NO_ADJUSTMENT: Bank GL — one per SL category (system + user)
-                if (systemClsCode > 0) {
+                // NO_ADJ_SYSTEM → MANDATORY
+                // NO_ADJ_USER   → REGRESSION_PHASE1
+                if (systemClsCode > 0 && matchesGroup(activeGroup, ArVoucherExecutionGroup.MANDATORY)) {
                     placeholders.add(buildPlaceholder(testMethodName, loginName, loginPwd, scenario,
                             ArVoucherFixtureOptions.forCashBankTypeAndClsCode(CashBankType.BANK, systemClsCode),
                             "NO_ADJ_SYSTEM", "NO_ADJUSTMENT | [Bank GL] | System SL"));
                 }
-                if (userClsCode > 0) {
+                if (userClsCode > 0 && matchesGroup(activeGroup, ArVoucherExecutionGroup.REGRESSION_PHASE1)) {
                     placeholders.add(buildPlaceholder(testMethodName, loginName, loginPwd, scenario,
                             ArVoucherFixtureOptions.forCashBankTypeAndClsCode(CashBankType.BANK, userClsCode),
                             "NO_ADJ_USER", "NO_ADJUSTMENT | [Bank GL] | User SL"));
                 }
 
             } else {
-                // ── FIFO_SETOFF / REFERENCE_SITEWISE_FIFO:
-                //    - Cash GL (any SL, no class filter)
-                //    - Bank GL System SL (cmpcode=1)
-                //    - Bank GL User SL   (cmpcode=0)
+                // FIFO_SETOFF / REFERENCE_SITEWISE_FIFO:
+                //   FIFO Cash GL     → REGRESSION_PHASE1 (REG-11A)
+                //   FIFO Bank System → MANDATORY         (MAND-03)
+                //   FIFO Bank User   → REGRESSION_PHASE1 (REG-11B)
                 String baseId  = scenario == ArVoucherScenarioType.FIFO_SETOFF ? "DB_FIFO" : "DB_REF_FIFO";
                 String scenLbl = scenario.name();
-                placeholders.add(buildPlaceholder(testMethodName, loginName, loginPwd, scenario,
-                        ArVoucherFixtureOptions.forCashBankType(CashBankType.CASH),
-                        baseId + "_CASH", scenLbl + " | [Cash GL]"));
-                if (systemClsCode > 0) {
+                if (matchesGroup(activeGroup, ArVoucherExecutionGroup.REGRESSION_PHASE1)) {
+                    placeholders.add(buildPlaceholder(testMethodName, loginName, loginPwd, scenario,
+                            ArVoucherFixtureOptions.forCashBankType(CashBankType.CASH),
+                            baseId + "_CASH", scenLbl + " | [Cash GL]"));
+                }
+                if (systemClsCode > 0 && matchesGroup(activeGroup, ArVoucherExecutionGroup.MANDATORY)) {
                     placeholders.add(buildPlaceholder(testMethodName, loginName, loginPwd, scenario,
                             ArVoucherFixtureOptions.forCashBankTypeAndClsCode(CashBankType.BANK, systemClsCode),
                             baseId + "_BANK_SYSTEM", scenLbl + " | [Bank GL] | System SL"));
                 }
-                if (userClsCode > 0) {
+                if (userClsCode > 0 && matchesGroup(activeGroup, ArVoucherExecutionGroup.REGRESSION_PHASE1)) {
                     placeholders.add(buildPlaceholder(testMethodName, loginName, loginPwd, scenario,
                             ArVoucherFixtureOptions.forCashBankTypeAndClsCode(CashBankType.BANK, userClsCode),
                             baseId + "_BANK_USER", scenLbl + " | [Bank GL] | User SL"));
@@ -155,7 +173,43 @@ public class DbArVoucherDataSource implements TestDataSource<MergedFinanceArVouc
     }
 
     /**
-     * Builds the full ordered SELECT_DOCUMENT variant list from pre-discovered classification types.
+     * Resolves the active execution group using a two-source priority:
+     * <ol>
+     *   <li>System property {@code arv.group} — set by Maven Surefire via profile (CI/Maven path)</li>
+     *   <li>{@link #xmlGroupParam} — captured from TestNG {@code <parameter name="arv.group">}
+     *       at construction time (IntelliJ direct-run path)</li>
+     * </ol>
+     * Returns {@code null} when neither source provides a value (full-suite run with no filter).
+     */
+    private ArVoucherExecutionGroup resolveActiveGroup() {
+        String prop = System.getProperty("arv.group");
+        if (prop == null || prop.isBlank()) prop = this.xmlGroupParam;
+        if (prop == null || prop.isBlank()) return null;
+        try {
+            return ArVoucherExecutionGroup.valueOf(prop.trim().toUpperCase());
+        } catch (IllegalArgumentException e) {
+            Log.warn("[DB] Unknown arv.group value '{}' — running all groups.", prop);
+            return null;
+        }
+    }
+
+    /**
+     * Returns true when the placeholder should be emitted for the given active group.
+     *
+     * <ul>
+     *   <li>{@code activeGroup == null} → always true (no filter, run all)</li>
+     *   <li>{@code activeGroup == targetGroup} → true</li>
+     *   <li>otherwise → false</li>
+     * </ul>
+     */
+    private static boolean matchesGroup(ArVoucherExecutionGroup activeGroup,
+                                        ArVoucherExecutionGroup targetGroup) {
+        return activeGroup == null || activeGroup == targetGroup;
+    }
+
+    /**
+     * Builds the full ordered SELECT_DOCUMENT variant list from pre-discovered classification types,
+     * then filters to only those matching {@code activeGroup} (null = no filter).
      *
      * <ol>
      *   <li>Group 0 — mandatory baseline per SL category (1 system + 1 user, if present)</li>
@@ -165,17 +219,22 @@ public class DbArVoucherDataSource implements TestDataSource<MergedFinanceArVouc
      *       user-defined ({@code cmpcode=0}) → 3 variants</li>
      *   <li>Groups 3–8 — static customer/SL-count/amount/grid/payment/date variants</li>
      *   <li>Cash GL — explicit Cash GL variants</li>
+     *   <li>Phase-3 — specific document type filter variant (REG-09)</li>
      * </ol>
      *
      * @param classificationTypes active classification types discovered from pending AR
-     *                            (already filtered to {@code ext='N'} by the query)
+     * @param activeGroup         execution group filter; null = include all variants
      */
-    private static List<SelectDocumentVariant> buildVariantList(List<AdmCls> classificationTypes) {
+    private static List<SelectDocumentVariant> buildVariantList(
+            List<AdmCls> classificationTypes, ArVoucherExecutionGroup activeGroup) {
         List<SelectDocumentVariant> variants = new java.util.ArrayList<>();
 
         // Group 0 — mandatory baseline: one per SL cmpcode category
         classificationTypes.stream().filter(c -> c.getCmpcode() == 1).findFirst()
                 .ifPresent(cls -> variants.add(SelectDocumentCombinations.mandatoryBaselineVariant(cls)));
+        // Group 0b — MAND-06: system SL, Bank GL, UniqueRandom(CHEQUE/NEFT_RTGS)
+        classificationTypes.stream().filter(c -> c.getCmpcode() == 1).findFirst()
+                .ifPresent(cls -> variants.add(SelectDocumentCombinations.mandatoryBankRandomVariant(cls)));
         classificationTypes.stream().filter(c -> c.getCmpcode() == 0).findFirst()
                 .ifPresent(cls -> variants.add(SelectDocumentCombinations.mandatoryBaselineVariant(cls)));
 
@@ -197,6 +256,16 @@ public class DbArVoucherDataSource implements TestDataSource<MergedFinanceArVouc
         // Cash GL — explicit variants
         variants.addAll(SelectDocumentCombinations.cashGlVariants());
 
+        // Phase-3 — INV-only specific document type variant (REG-09)
+        variants.add(SelectDocumentCombinations.specificDocTypeVariant());
+
+        // Apply execution group filter — null activeGroup means no filtering
+        if (activeGroup != null) {
+            variants.removeIf(v -> v.getExecutionGroup() != activeGroup);
+        }
+
+        Log.info("[DB] SELECT_DOCUMENT variant list: {} variant(s) after group filter={}",
+                variants.size(), activeGroup != null ? activeGroup : "ALL");
         return variants;
     }
 

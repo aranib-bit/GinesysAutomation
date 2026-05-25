@@ -3,6 +3,9 @@ package com.gsl.reports;
 import com.aventstack.extentreports.ExtentTest;
 import com.aventstack.extentreports.markuputils.Markup;
 import com.gsl.browser.BrowserLogRecord;
+import com.gsl.browser.JsErrorCategory;
+import com.gsl.browser.JsErrorClassification;
+import com.gsl.browser.JsErrorClassificationEngine;
 import com.gsl.browser.LogSeverity;
 
 import java.time.Instant;
@@ -67,6 +70,29 @@ public final class AdvancedExtentLogger {
             if ("JS_ERROR".equalsIgnoreCase(record.source()) || record.level() == LogSeverity.CRITICAL) {
                 html.append("<span style='color:red;font-weight:bold'>[JS ERROR]</span> ")
                     .append(escapeHtml(record.message()));
+
+                // Line : Column (only when captured) — own line for visibility
+                if (record.lineNumber() > 0 || record.columnNumber() > 0) {
+                    html.append("<br><span style='color:#888;font-size:11px;margin-left:8px;'>")
+                        .append("&#128205; Line: <b>").append(record.lineNumber()).append("</b>")
+                        .append(" &nbsp;|&nbsp; Col: <b>").append(record.columnNumber()).append("</b>")
+                        .append("</span>");
+                }
+
+                // Timing correlation bar
+                if (hasValue(record.capturedAtStep()) && !"n/a".equalsIgnoreCase(record.capturedAtStep())) {
+                    String msColor = record.capturedAfterActionMs() > 500 ? "#cc6600" : "#006600";
+                    String rdColor = "loading".equalsIgnoreCase(record.pageReadyState()) ? "red" : "#555";
+                    html.append("<br><span style='font-size:11px;margin-left:8px;'>")
+                        .append("&#x23F1; Captured at step: <b>").append(escapeHtml(record.capturedAtStep())).append("</b>")
+                        .append(" &nbsp;|&nbsp; <span style='color:").append(msColor).append(";'>")
+                        .append(record.capturedAfterActionMs() >= 0 ? record.capturedAfterActionMs() + " ms after action" : "timing unknown")
+                        .append("</span>")
+                        .append(" &nbsp;|&nbsp; Page: <span style='color:").append(rdColor).append(";'>")
+                        .append(escapeHtml(record.pageReadyState())).append("</span>")
+                        .append("</span>");
+                }
+
                 if (hasValue(record.url())) {
                     html.append("<br><span style='color:#888;font-size:11px;margin-left:8px;'>")
                         .append("Affected URL: ").append(escapeHtml(record.url()))
@@ -77,6 +103,24 @@ public final class AdvancedExtentLogger {
                         .append("white-space:pre-wrap;background:#fff5f5;padding:4px;border-left:2px solid #cc0000;'>")
                         .append(escapeHtml(record.stack()))
                         .append("</pre>");
+                }
+
+                // Root cause classification (only for classified errors)
+                JsErrorClassification cls = JsErrorClassificationEngine.classify(record);
+                if (cls.category() != JsErrorCategory.UNKNOWN) {
+                    String confColor = switch (cls.confidence()) {
+                        case "HIGH"   -> "#c62828";
+                        case "MEDIUM" -> "#e65100";
+                        default       -> "#555555";
+                    };
+                    html.append("<div style='margin:2px 0 6px 8px;padding:5px 8px;")
+                        .append("background:#fff8e1;border-left:3px solid #f9a825;font-size:11px;'>")
+                        .append("<b style='color:#e65100;'>&#128270; Root Cause Analysis</b><br>")
+                        .append("Category: <b>").append(escapeHtml(cls.category().name())).append("</b>")
+                        .append(" &nbsp;|&nbsp; Cause: ").append(escapeHtml(cls.probableCause()))
+                        .append(" &nbsp;|&nbsp; Confidence: <span style='color:").append(confColor)
+                        .append(";font-weight:bold;'>").append(escapeHtml(cls.confidence())).append("</span>")
+                        .append("</div>");
                 }
             } else {
                 html.append("[").append(record.level()).append("] ")

@@ -1,0 +1,288 @@
+package com.gsl.reports;
+
+import com.aventstack.extentreports.ExtentReports;
+import com.aventstack.extentreports.markuputils.MarkupHelper;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.gsl.reports.profile.BrowserConfig;
+import com.gsl.reports.profile.DatabaseConfig;
+import com.gsl.reports.profile.DiagnosticsConfig;
+import com.gsl.reports.profile.ExecutionConfig;
+import com.gsl.reports.profile.NetworkConfig;
+import com.gsl.reports.profile.PerformanceConfig;
+import com.gsl.reports.profile.RemoteLogConfig;
+import com.gsl.reports.profile.RemoteServerConfig;
+import com.gsl.reports.profile.RuntimeExecutionProfile;
+import com.gsl.reports.profile.TestDataConfig;
+
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.util.Map;
+
+public final class ReportConfigRenderer {
+
+    private static final ObjectMapper MAPPER = new ObjectMapper();
+    private static String snapshotPath;
+
+    private ReportConfigRenderer() {
+    }
+
+    /**
+     * Writes Level-1 execution metadata to the ExtentReports dashboard system info panel.
+     * No sensitive data, no full paths.
+     */
+    public static void renderDashboard(ExtentReports extent, RuntimeExecutionProfile profile) {
+        ExecutionConfig e = profile.getExecution();
+        BrowserConfig b = profile.getBrowser();
+        DatabaseConfig db = profile.getDatabase();
+        TestDataConfig td = profile.getTestData();
+        PerformanceConfig p = profile.getPerformance();
+
+        extent.setSystemInfo("Environment",       nullSafe(e.getEnvironment()));
+        extent.setSystemInfo("Browser",           nullSafe(e.getBrowser()));
+        extent.setSystemInfo("Run Mode",          nullSafe(e.getRunMode()));
+        extent.setSystemInfo("Execution Type",    nullSafe(e.getExecutionType()));
+        extent.setSystemInfo("Thread Count",      String.valueOf(e.getThreadCount()));
+        extent.setSystemInfo("Concurrent Users",  String.valueOf(e.getConcurrentUserCount()));
+        extent.setSystemInfo("Application Type",  nullSafe(e.getApplicationType()));
+        extent.setSystemInfo("Headless",          String.valueOf(b.isHeadless()));
+        extent.setSystemInfo("Network Logs",      b2s(profile.getNetwork().isEnabled()));
+        extent.setSystemInfo("DB Host",           nullSafe(db.getHost()));
+        extent.setSystemInfo("DB Pool",           nullSafe(db.getPoolName()));
+        extent.setSystemInfo("Test Data Source",  nullSafe(td.getSource()));
+        extent.setSystemInfo("Performance Timing",b2s(p.isTimingEnabled()));
+        extent.setSystemInfo("Custom Metrics",    b2s(p.isCustomMetricsEnabled()));
+    }
+
+    /**
+     * Serializes the full profile to {user.dir}/runtime-snapshot.json.
+     * Full log paths and all non-sensitive config values are included.
+     * All credentials are already masked in the profile object itself.
+     */
+    public static String generateJsonSnapshot(RuntimeExecutionProfile profile) throws Exception {
+        String json = MAPPER.writerWithDefaultPrettyPrinter().writeValueAsString(profile);
+        Path path = Path.of(System.getProperty("user.dir"), "runtime-snapshot.json");
+        Files.writeString(path, json);
+        snapshotPath = path.toAbsolutePath().toString();
+        return snapshotPath;
+    }
+
+    public static String getSnapshotPath() {
+        return snapshotPath;
+    }
+
+    /**
+     * Renders all 10 config sections as ExtentReports markup tables.
+     * Must be called after ExtentReport.createTest() has created a test node on this thread.
+     */
+    public static void renderAllSections(RuntimeExecutionProfile profile) {
+        renderEnvironmentSection(profile.getExecution());
+        renderBrowserSection(profile.getBrowser());
+        renderDatabaseSection(profile.getDatabase());
+        renderNetworkSection(profile.getNetwork());
+        renderDiagnosticsSection(profile.getDiagnostics());
+        renderRemoteLogSection(profile.getRemoteLogs());
+        renderRemoteServerSection(profile.getRemoteServer());
+        renderTestDataSection(profile.getTestData());
+        renderPerformanceSection(profile.getPerformance());
+        renderAppLogSourcesSection(profile.getAppLogSources());
+    }
+
+    private static void renderEnvironmentSection(ExecutionConfig e) {
+        String[][] table = {
+                {"Field", "Value"},
+                {"Environment",       nullSafe(e.getEnvironment())},
+                {"Application URL",   nullSafe(e.getApplicationUrl())},
+                {"Grid URL",          nullSafe(e.getGridUrl())},
+                {"Docker Grid URL",   nullSafe(e.getDockerGridUrl())},
+                {"App Server Host",   nullSafe(e.getRemoteAppServerHost())},
+                {"Run Mode",          nullSafe(e.getRunMode())},
+                {"Execution Type",    nullSafe(e.getExecutionType())},
+                {"Thread Count",      String.valueOf(e.getThreadCount())},
+                {"Concurrent Users",  String.valueOf(e.getConcurrentUserCount())},
+                {"Application Type",  nullSafe(e.getApplicationType())}
+        };
+        ExtentManager.getExtentTest().info("<b>Environment &amp; Execution Configuration</b>");
+        ExtentManager.getExtentTest().info(MarkupHelper.createTable(table));
+    }
+
+    private static void renderBrowserSection(BrowserConfig b) {
+        String[][] table = {
+                {"Field", "Value"},
+                {"Headless Mode",             String.valueOf(b.isHeadless())},
+                {"Incognito Mode",            String.valueOf(b.isIncognito())},
+                {"Accept Insecure Certs",     String.valueOf(b.isAcceptInsecureCerts())},
+                {"Item Scan Timeout (ms)",    String.valueOf(b.getItemScanTimeout())},
+                {"Sync Timeout (s)",          String.valueOf(b.getSyncTimeoutSeconds())},
+                {"ExtJS Timeout (s)",         String.valueOf(b.getExtjsTimeout())},
+                {"ExtJS Min Timeout (s)",     String.valueOf(b.getExtjsMinTimeout())},
+                {"Overlay Retry Count",       String.valueOf(b.getClickOverlayRetryMax())},
+                {"Doc Selector Mode",         nullSafe(b.getDocSelectorMode())},
+                {"Overfetch Multiplier",      String.valueOf(b.getDocSelectorOverfetchMultiplier())},
+                {"Retry Backoff (ms)",        String.valueOf(b.getDocSelectorRetryBackoffMs())},
+                {"Default Doc Count",         String.valueOf(b.getDocSelectorDocumentCountDefault())}
+        };
+        ExtentManager.getExtentTest().info("<b>Browser Configuration</b>");
+        ExtentManager.getExtentTest().info(MarkupHelper.createTable(table));
+    }
+
+    private static void renderDatabaseSection(DatabaseConfig db) {
+        String[][] table = {
+                {"Field", "Value"},
+                {"Database Type",                 nullSafe(db.getType())},
+                {"Database Name",                 nullSafe(db.getName())},
+                {"Database Host",                 nullSafe(db.getHost())},
+                {"Database Port",                 nullSafe(db.getPort())},
+                {"Username",                      db.getUsername()},
+                {"Password",                      db.getPassword()},
+                {"Pool Name",                     nullSafe(db.getPoolName())},
+                {"Max Pool Size",                 String.valueOf(db.getMaximumPoolSize())},
+                {"Min Idle",                      String.valueOf(db.getMinimumIdle())},
+                {"Idle Timeout (ms)",             String.valueOf(db.getIdleTimeout())},
+                {"Connection Timeout (ms)",       String.valueOf(db.getConnectionTimeout())},
+                {"Max Lifetime (ms)",             String.valueOf(db.getMaxLifetime())},
+                {"Leak Detection Threshold (ms)", String.valueOf(db.getLeakDetectionThreshold())}
+        };
+        ExtentManager.getExtentTest().info("<b>Database Configuration</b>");
+        ExtentManager.getExtentTest().info(MarkupHelper.createTable(table));
+    }
+
+    private static void renderNetworkSection(NetworkConfig n) {
+        String[][] table = {
+                {"Field", "Value"},
+                {"Network Mode",               nullSafe(n.getNetworkMode())},
+                {"Network Logging",            b2s(n.isEnabled())},
+                {"Capture Failed Only",        b2s(n.isCaptureFailedOnly())},
+                {"Capture Headers",            b2s(n.isCaptureHeaders())},
+                {"Capture Body",               b2s(n.isCaptureBody())},
+                {"URL Filter",                 nullSafe(n.getUrlFilter())},
+                {"Show All On Pass",           b2s(n.isPassShowAll())},
+                {"Timing Log On",              nullSafe(n.getTimingLogOn())},
+                {"Cookies Log On",             nullSafe(n.getCookiesLogOn())},
+                {"Call Stack Log On",          nullSafe(n.getCallstackLogOn())},
+                {"Browser Logs Enabled",       b2s(n.isBrowserLogsEnabled())},
+                {"Capture On Failure",         b2s(n.isBrowserLogsCaptureOnFailure())},
+                {"Fail On JS Error",           b2s(n.isBrowserLogsFailOnJsError())},
+                {"Fail On Critical JS Error",  b2s(n.isBrowserLogsFailOnCriticalJsError())},
+                {"Capture Only",               b2s(n.isBrowserLogsCaptureOnly())},
+                {"Browser Log Level",          nullSafe(n.getBrowserLogsLevel())}
+        };
+        ExtentManager.getExtentTest().info("<b>Network &amp; Browser Logging Configuration</b>");
+        ExtentManager.getExtentTest().info(MarkupHelper.createTable(table));
+    }
+
+    private static void renderDiagnosticsSection(DiagnosticsConfig d) {
+        String[][] table = {
+                {"Field", "Value"},
+                {"HTML Capture On Failure",     b2s(d.isHtmlCaptureOnElementFailure())},
+                {"Driver Capability Capture",   b2s(d.isDriverCapabilitiesEnabled())},
+                {"Active Popup Detection",      b2s(d.isActivePopupEnabled())},
+                {"DB State Snapshot",           b2s(d.isDbStateEnabled())},
+                {"Thread Dump Capture",         b2s(d.isThreadDumpEnabled())},
+                {"JS Error JSON Export",        b2s(d.isJsErrorJsonExportEnabled())},
+                {"UI Diagnostics",              b2s(d.isUiDiagnosticsEnabled())},
+                {"App Server Util",             b2s(d.isAppServerUtilEnabled())},
+                {"App Server Host",             nullSafe(d.getAppServerHost())},
+                {"App Server OS",               nullSafe(d.getAppServerType())},
+                {"DB Server Util",              b2s(d.isDbServerUtilEnabled())},
+                {"DB Server Host",              nullSafe(d.getDbServerHost())},
+                {"DB Server OS",                nullSafe(d.getDbServerType())},
+                {"Event Log Capture",           b2s(d.isEventLogEnabled())},
+                {"Event Log Lines",             String.valueOf(d.getEventLogLines())}
+        };
+        ExtentManager.getExtentTest().info("<b>Diagnostics Configuration</b>");
+        ExtentManager.getExtentTest().info(MarkupHelper.createTable(table));
+    }
+
+    private static void renderRemoteLogSection(RemoteLogConfig rl) {
+        String[][] table = {
+                {"Field", "Value"},
+                {"Capture Mode",             nullSafe(rl.getCaptureMode())},
+                {"Max Log Lines",            String.valueOf(rl.getMaxLines())},
+                {"Debug Enabled",            b2s(rl.isDebugEnabled())},
+                {"SSH Retry Count",          String.valueOf(rl.getSshRetryCount())},
+                {"SSH Command Timeout (s)",  String.valueOf(rl.getSshCommandTimeoutSeconds())},
+                {"WinRM Timeout (s)",        String.valueOf(rl.getWinrmOperationTimeoutSeconds())},
+                {"Server Timezone Offset",   nullSafe(rl.getServerTimezoneOffset())},
+                {"Keywords",                 nullSafe(rl.getKeywords())}
+        };
+        ExtentManager.getExtentTest().info("<b>Remote Log Collection Configuration</b>");
+        ExtentManager.getExtentTest().info(MarkupHelper.createTable(table));
+    }
+
+    private static void renderRemoteServerSection(RemoteServerConfig rs) {
+        String[][] table = {
+                {"Field", "Value"},
+                {"App Server Host",        nullSafe(rs.getAppHost())},
+                {"App SSH Port",           String.valueOf(rs.getAppSshPort())},
+                {"App SSH Username",       rs.getAppSshUsername()},
+                {"App SSH Password",       rs.getAppSshPassword()},
+                {"App WinRM Port",         String.valueOf(rs.getAppWinrmPort())},
+                {"App WinRM HTTPS",        b2s(rs.isAppWinrmUseHttps())},
+                {"App WinRM Username",     rs.getAppWinrmUsername()},
+                {"App WinRM Password",     rs.getAppWinrmPassword()},
+                {"DB Server Host",         nullSafe(rs.getDbHost())},
+                {"DB SSH Port",            String.valueOf(rs.getDbSshPort())},
+                {"DB SSH Username",        rs.getDbSshUsername()},
+                {"DB SSH Password",        rs.getDbSshPassword()},
+                {"DB WinRM Port",          String.valueOf(rs.getDbWinrmPort())},
+                {"DB WinRM HTTPS",         b2s(rs.isDbWinrmUseHttps())},
+                {"DB WinRM Username",      rs.getDbWinrmUsername()},
+                {"DB WinRM Password",      rs.getDbWinrmPassword()}
+        };
+        ExtentManager.getExtentTest().info("<b>Remote Server Configuration</b>");
+        ExtentManager.getExtentTest().info(MarkupHelper.createTable(table));
+    }
+
+    private static void renderTestDataSection(TestDataConfig td) {
+        String[][] table = {
+                {"Field", "Value"},
+                {"Test Data Source",     nullSafe(td.getSource())},
+                {"Master Test Data",     nullSafe(td.getMasterTestData())},
+                {"Receipts Data",        nullSafe(td.getReceiptsData())},
+                {"Inventory Group Data", nullSafe(td.getInventoryGroupData())},
+                {"Inventory Item Data",  nullSafe(td.getInventoryItemData())},
+                {"AR Voucher Data",      nullSafe(td.getArVoucherData())},
+                {"Users List Data",      nullSafe(td.getUsersListData())}
+        };
+        ExtentManager.getExtentTest().info("<b>Test Data Configuration</b>");
+        ExtentManager.getExtentTest().info(MarkupHelper.createTable(table));
+    }
+
+    private static void renderPerformanceSection(PerformanceConfig p) {
+        String[][] table = {
+                {"Field", "Value"},
+                {"Performance Timing",          b2s(p.isTimingEnabled())},
+                {"Action Trail Buffer Size",     String.valueOf(p.getActionTrailBufferSize())},
+                {"Action Trail Display Limit",   String.valueOf(p.getActionTrailDisplayLimit())},
+                {"Custom Metrics",               b2s(p.isCustomMetricsEnabled())},
+                {"Custom Metrics Mode",          nullSafe(p.getCustomMetricsCaptureMode())},
+                {"Slow Resource Threshold (ms)", String.valueOf(p.getSlowResourceThresholdMs())},
+                {"User Timing Warn (ms)",        String.valueOf(p.getUserTimingWarnMs())},
+                {"Fail On Long Task Count",      String.valueOf(p.getFailOnLongTaskCount())}
+        };
+        ExtentManager.getExtentTest().info("<b>Performance Configuration</b>");
+        ExtentManager.getExtentTest().info(MarkupHelper.createTable(table));
+    }
+
+    private static void renderAppLogSourcesSection(Map<String, String> sources) {
+        if (sources == null || sources.isEmpty()) return;
+        String[][] table = new String[sources.size() + 1][2];
+        table[0] = new String[]{"Log Source", "Status"};
+        int i = 1;
+        for (Map.Entry<String, String> entry : sources.entrySet()) {
+            table[i][0] = entry.getKey();
+            table[i][1] = entry.getValue();
+            i++;
+        }
+        ExtentManager.getExtentTest().info("<b>Application Log Sources</b>");
+        ExtentManager.getExtentTest().info(MarkupHelper.createTable(table));
+    }
+
+    private static String nullSafe(String value) {
+        return (value == null || value.isBlank()) ? "Not Configured" : value;
+    }
+
+    private static String b2s(boolean value) {
+        return value ? "enabled" : "disabled";
+    }
+}

@@ -1,13 +1,15 @@
 package com.gsl.network;
 
+import com.gsl.browser.AdvancedJsLogger;
 import com.gsl.config.ConfigFactory;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 import org.openqa.selenium.WebDriver;
 import org.openqa.selenium.devtools.DevTools;
 import org.openqa.selenium.devtools.HasDevTools;
-import org.openqa.selenium.devtools.v148.network.Network;
-import org.openqa.selenium.devtools.v148.network.model.RequestId;
+import org.openqa.selenium.devtools.v147.network.Network;
+import org.openqa.selenium.devtools.v147.network.model.RequestId;
+import org.openqa.selenium.devtools.v147.page.Page;
 
 import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
@@ -29,6 +31,7 @@ public final class CdpNetworkCapture implements NetworkCapture {
     private final DevTools devTools;
     private final List<NetworkLogRecord>     logs    = new CopyOnWriteArrayList<>();
     private final Map<String, PendingEntry>  pending = new ConcurrentHashMap<>();
+    private volatile boolean                 started = false;
 
     private static final class PendingEntry {
         String              url;
@@ -49,6 +52,13 @@ public final class CdpNetworkCapture implements NetworkCapture {
             devTools.send(Network.enable(
                     Optional.empty(), Optional.empty(),
                     Optional.empty(), Optional.empty(), Optional.empty()));
+
+            // ── Persist JS logger shim across page navigations (login redirects, etc.) ──
+            if (ConfigFactory.getConfig().browserLogsEnabled()) {
+                devTools.send(Page.addScriptToEvaluateOnNewDocument(
+                        AdvancedJsLogger.getScript(),
+                        Optional.empty(), Optional.empty(), Optional.empty()));
+            }
 
             // ── Capture outgoing request ──────────────────────────────────────
             devTools.addListener(Network.requestWillBeSent(), req -> {
@@ -111,6 +121,10 @@ public final class CdpNetworkCapture implements NetworkCapture {
                         NetworkLogType.FAILED));
             });
 
+            // Attach timing/cookies/call-stack listeners to the same session
+            NetworkTimingCapture.attachListeners(devTools, ConfigFactory.getConfig());
+
+            started = true;
             LOG.debug("[CdpNetworkCapture] CDP network capture started.");
         } catch (Exception ex) {
             LOG.warn("[CdpNetworkCapture] Failed to start: {}", ex.getMessage());
@@ -132,7 +146,7 @@ public final class CdpNetworkCapture implements NetworkCapture {
     public List<NetworkLogRecord> getLogs() { return List.copyOf(logs); }
 
     @Override
-    public String protocolName() { return "CDP"; }
+    public String protocolName() { return started ? "CDP" : "CDP (session failed — check logs)"; }
 
     // ── Helpers ───────────────────────────────────────────────────────────────
 

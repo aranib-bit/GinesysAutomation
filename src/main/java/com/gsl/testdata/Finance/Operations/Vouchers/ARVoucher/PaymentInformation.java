@@ -2,6 +2,7 @@ package com.gsl.testdata.Finance.Operations.Vouchers.ARVoucher;
 
 import com.gsl.converter.PaymentModeConverter;
 import com.gsl.enums.PaymentSelectionType;
+import com.gsl.testdata.Finance.Operations.Vouchers.Common.VoucherPaymentInfo;
 import io.github.sskorol.data.Column;
 import io.github.sskorol.data.Sheet;
 import lombok.AllArgsConstructor;
@@ -12,7 +13,7 @@ import lombok.NoArgsConstructor;
 @NoArgsConstructor
 @AllArgsConstructor
 @Sheet(name= "PaymentInformation")
-public class PaymentInformation {
+public class PaymentInformation implements VoucherPaymentInfo {
 
     @Column(name = "TestCaseID")
     private String testCaseID;

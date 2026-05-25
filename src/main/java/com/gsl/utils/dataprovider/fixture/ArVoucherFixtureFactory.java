@@ -27,7 +27,8 @@ public class ArVoucherFixtureFactory {
                 case "createArVoucher" ->
                         scenario == ArVoucherScenarioType.NO_ADJUSTMENT
                                 || scenario == ArVoucherScenarioType.SELECT_DOCUMENT
-                                || scenario == ArVoucherScenarioType.FIFO_SETOFF;
+                                || scenario == ArVoucherScenarioType.FIFO_SETOFF
+                                || scenario == ArVoucherScenarioType.REFERENCE_SITEWISE_FIFO;
                 // Add new test methods here, e.g.:
                 // case "createArVoucherRefSitewise" ->
                 //     scenario == ArVoucherScenarioType.REFERENCE_SITEWISE_FIFO;

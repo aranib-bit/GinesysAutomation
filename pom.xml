@@ -18,7 +18,13 @@
         <dependency>
             <groupId>org.seleniumhq.selenium</groupId>
             <artifactId>selenium-java</artifactId>
-            <version>4.39.0</version>
+            <version>4.43.0</version>
+        </dependency>
+        <!-- CDP devtools v147 — highest artifact bundled with Selenium 4.43.0; compatible with Chrome 147/148 -->
+        <dependency>
+            <groupId>org.seleniumhq.selenium</groupId>
+            <artifactId>selenium-devtools-v147</artifactId>
+            <version>4.43.0</version>
         </dependency>
         <!-- https://mvnrepository.com/artifact/io.github.bonigarcia/webdrivermanager -->
         <dependency>
@@ -190,6 +196,11 @@
             <artifactId>winrm4j</artifactId>
             <version>0.12.3</version>
         </dependency>
+        <dependency>
+            <groupId>com.fasterxml.jackson.core</groupId>
+            <artifactId>jackson-databind</artifactId>
+            <version>2.17.2</version>
+        </dependency>
 
         <!-- Apache Commons Pool2 for SSH connection pooling (Phase 4) -->
         <dependency>
@@ -313,6 +324,124 @@
                                 <suiteXmlFile>testng.xml</suiteXmlFile>
                             </suiteXmlFiles>
                             <argLine>--add-opens java.base/java.lang=ALL-UNNAMED</argLine>
+                        </configuration>
+                    </plugin>
+                </plugins>
+            </build>
+        </profile>
+
+        <!-- AR Voucher — Mandatory (6 smoke tests) -->
+        <profile>
+            <id>mandatory</id>
+            <build>
+                <plugins>
+                    <plugin>
+                        <groupId>org.apache.maven.plugins</groupId>
+                        <artifactId>maven-surefire-plugin</artifactId>
+                        <version>3.2.5</version>
+                        <configuration>
+                            <testFailureIgnore>true</testFailureIgnore>
+                            <suiteXmlFiles>
+                                <suiteXmlFile>testng-mandatory.xml</suiteXmlFile>
+                            </suiteXmlFiles>
+                            <argLine>--add-opens java.base/java.lang=ALL-UNNAMED</argLine>
+                            <systemPropertyVariables>
+                                <arv.group>MANDATORY</arv.group>
+                            </systemPropertyVariables>
+                        </configuration>
+                    </plugin>
+                </plugins>
+            </build>
+        </profile>
+
+        <!-- AR Voucher — Regression Phase-1 (REG-01 to REG-12) -->
+        <profile>
+            <id>regression-phase1</id>
+            <build>
+                <plugins>
+                    <plugin>
+                        <groupId>org.apache.maven.plugins</groupId>
+                        <artifactId>maven-surefire-plugin</artifactId>
+                        <version>3.2.5</version>
+                        <configuration>
+                            <testFailureIgnore>true</testFailureIgnore>
+                            <suiteXmlFiles>
+                                <suiteXmlFile>testng-regression-phase1.xml</suiteXmlFile>
+                            </suiteXmlFiles>
+                            <argLine>--add-opens java.base/java.lang=ALL-UNNAMED</argLine>
+                            <systemPropertyVariables>
+                                <arv.group>REGRESSION_PHASE1</arv.group>
+                            </systemPropertyVariables>
+                        </configuration>
+                    </plugin>
+                </plugins>
+            </build>
+        </profile>
+
+        <!-- AR Voucher — Regression Phase-2 (REG-13 to REG-19, party-type matrix) -->
+        <profile>
+            <id>regression-phase2</id>
+            <build>
+                <plugins>
+                    <plugin>
+                        <groupId>org.apache.maven.plugins</groupId>
+                        <artifactId>maven-surefire-plugin</artifactId>
+                        <version>3.2.5</version>
+                        <configuration>
+                            <testFailureIgnore>true</testFailureIgnore>
+                            <suiteXmlFiles>
+                                <suiteXmlFile>testng-regression-phase2.xml</suiteXmlFile>
+                            </suiteXmlFiles>
+                            <argLine>--add-opens java.base/java.lang=ALL-UNNAMED</argLine>
+                            <systemPropertyVariables>
+                                <arv.group>REGRESSION_PHASE2</arv.group>
+                            </systemPropertyVariables>
+                        </configuration>
+                    </plugin>
+                </plugins>
+            </build>
+        </profile>
+
+        <!-- AR Voucher — Regression Phase-3 (REG-09, INV-only doc type filter) -->
+        <profile>
+            <id>regression-phase3</id>
+            <build>
+                <plugins>
+                    <plugin>
+                        <groupId>org.apache.maven.plugins</groupId>
+                        <artifactId>maven-surefire-plugin</artifactId>
+                        <version>3.2.5</version>
+                        <configuration>
+                            <testFailureIgnore>true</testFailureIgnore>
+                            <suiteXmlFiles>
+                                <suiteXmlFile>testng-regression-phase3.xml</suiteXmlFile>
+                            </suiteXmlFiles>
+                            <argLine>--add-opens java.base/java.lang=ALL-UNNAMED</argLine>
+                            <systemPropertyVariables>
+                                <arv.group>REGRESSION_PHASE3</arv.group>
+                            </systemPropertyVariables>
+                        </configuration>
+                    </plugin>
+                </plugins>
+            </build>
+        </profile>
+
+        <!-- AR Voucher — Full Regression (all phases, no group filter) -->
+        <profile>
+            <id>regression</id>
+            <build>
+                <plugins>
+                    <plugin>
+                        <groupId>org.apache.maven.plugins</groupId>
+                        <artifactId>maven-surefire-plugin</artifactId>
+                        <version>3.2.5</version>
+                        <configuration>
+                            <testFailureIgnore>true</testFailureIgnore>
+                            <suiteXmlFiles>
+                                <suiteXmlFile>testng-regression.xml</suiteXmlFile>
+                            </suiteXmlFiles>
+                            <argLine>--add-opens java.base/java.lang=ALL-UNNAMED</argLine>
+                            <!-- No arv.group property — DbArVoucherDataSource runs all groups -->
                         </configuration>
                     </plugin>
                 </plugins>

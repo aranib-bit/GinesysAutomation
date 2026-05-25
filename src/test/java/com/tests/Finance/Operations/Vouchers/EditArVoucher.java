@@ -1,7 +1,9 @@
 package com.tests.Finance.Operations.Vouchers;
 
+import com.gsl.annotations.ApiFlow;
 import com.gsl.annotations.FrameworkAnnotation;
 import com.gsl.annotations.TestCaseId;
+import com.gsl.network.pattern.FinanceApiPattern;
 import com.gsl.enums.TestAuthor;
 import com.gsl.pages.Finance.Operations.ArVoucherAdd;
 import com.gsl.pages.Finance.Operations.ArVoucherListPage;
@@ -40,6 +42,7 @@ import org.testng.annotations.Test;
  * must remove the tag before editing — that step is marked TODO until the
  * Document Adjustment page object is available.
  */
+@ApiFlow(FinanceApiPattern.AR_VOUCHER)
 public class EditArVoucher extends WebTest {
 
     @FrameworkAnnotation(TestAuthor.ARANI)

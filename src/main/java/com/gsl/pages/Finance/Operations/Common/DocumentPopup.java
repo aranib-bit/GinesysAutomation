@@ -19,6 +19,7 @@ public class DocumentPopup {
 
     public enum ButtonText {
         IGNORE_AND_PROCEED("Ignore & Proceed"),
+        OK_GO_AHEAD        ("OK, Go Ahead"),
         PROCEED_ANYWAY     ("Proceed Anyway"),
         STAY               ("Stay");
 

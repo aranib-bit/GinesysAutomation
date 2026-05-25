@@ -33,6 +33,7 @@
     <test name="SeleniumFramework" parallel="methods" thread-count="4" data-provider-thread-count="4">
         <classes>
             <class name="com.tests.Finance.Operations.Vouchers.CreateArVoucher"></class>
+            <class name="com.tests.Finance.Operations.Vouchers.CreateApVoucher"></class>
         </classes>
     </test>
 

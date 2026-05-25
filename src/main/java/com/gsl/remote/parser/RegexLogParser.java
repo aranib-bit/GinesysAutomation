@@ -1,55 +1,54 @@
 package com.gsl.remote.parser;
 
+import com.gsl.config.ConfigFactory;
 import com.gsl.remote.model.LogEntry;
 
-import java.time.Instant;
-import java.time.format.DateTimeParseException;
 import java.util.Optional;
-import java.util.regex.Matcher;
-import java.util.regex.Pattern;
 
 /**
- * Parses log lines with a common timestamp-level-message format:
- *   2024-05-01T10:23:45.123Z ERROR Some message here
+ * Parses log lines from all GINESYS server-side log files into {@link LogEntry} instances.
  *
- * Falls back to a raw-line LogEntry when the pattern does not match,
- * ensuring no log line is silently discarded.
+ * <p>Recognised formats are defined in {@link LogFormat} and tried in declaration order:
+ * <ol>
+ *   <li>{@link LogFormat#FINANCE_API} — custom Serilog with {@code #} field separators</li>
+ *   <li>{@link LogFormat#LOG4NET} — Log4Net level-first with {@code ,} millisecond separator</li>
+ *   <li>{@link LogFormat#ISO_SINGLE_TOKEN} — ISO-8601 single-token fallback</li>
+ * </ol>
+ *
+ * <p>Any line not matching any format is returned as a raw {@link LogEntry} with
+ * {@code null} timestamp so no log line is ever silently discarded.
+ *
+ * <p>To add or modify a log format, edit {@link LogFormat} — no changes required here.
  */
 public final class RegexLogParser implements LogParser {
-
-    private static final Pattern LOG_PATTERN = Pattern.compile(
-            "^(?<timestamp>\\S+)\\s+(?<level>ERROR|WARN|WARNING|INFO|DEBUG|TRACE)\\s+(?<message>.*)$",
-            Pattern.CASE_INSENSITIVE);
 
     @Override
     public Optional<LogEntry> parse(String line) {
         if (line == null || line.isBlank()) return Optional.empty();
 
-        Matcher m = LOG_PATTERN.matcher(line.trim());
-        if (m.matches()) {
-            Instant ts = tryParseInstant(m.group("timestamp"));
-            return Optional.of(LogEntry.builder()
-                    .timestamp(ts)
-                    .level(m.group("level").toUpperCase())
-                    .message(m.group("message"))
-                    .rawLine(line)
-                    .build());
+        String trimmed = line.trim();
+        String offset  = serverTimezoneOffset();
+
+        for (LogFormat format : LogFormat.values()) {
+            Optional<LogEntry> entry = format.tryParse(trimmed, offset);
+            if (entry.isPresent()) return entry;
         }
 
-        // Unrecognised format — return raw line so nothing is lost
+        // Unrecognised format (e.g. stack trace continuation lines) — raw entry, nothing is lost
         return Optional.of(LogEntry.builder()
                 .timestamp(null)
                 .level(null)
-                .message(line.trim())
+                .message(trimmed)
                 .rawLine(line)
                 .build());
     }
 
-    private static Instant tryParseInstant(String raw) {
+    private static String serverTimezoneOffset() {
         try {
-            return Instant.parse(raw);
-        } catch (DateTimeParseException e) {
-            return null;
+            String offset = ConfigFactory.getConfig().remoteLogsServerTimezoneOffset();
+            return (offset != null && !offset.isBlank()) ? offset : "Z";
+        } catch (Exception e) {
+            return "Z";
         }
     }
 }

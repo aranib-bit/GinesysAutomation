@@ -1,6 +1,8 @@
 package com.gsl.utils.Selenium;
 
 import com.gsl.driver.DriverManager;
+import com.gsl.enums.WaitType;
+import org.openqa.selenium.By;
 import org.openqa.selenium.JavascriptExecutor;
 import org.openqa.selenium.WebDriver;
 
@@ -11,6 +13,108 @@ import java.util.Date;
 public class ExtJsUtils {
 
     private ExtJsUtils() {}
+
+    // ── ExtJS Radio Button Utilities ─────────────────────────────────────────
+    //
+    // ExtJS radio buttons do NOT update the DOM `checked` attribute when selected.
+    // State is tracked internally; the only reliable DOM signal is the CSS class
+    // `x-form-cb-checked` added to the <input class="x-form-cb-input"> element.
+    // XPath attribute checks on `checked` will always fail — use JS for detection.
+
+    /**
+     * Implement this interface on enums that represent ExtJS radio-group field labels.
+     * Keeps field heading strings out of page-object code and in one typed location.
+     *
+     * <pre>{@code
+     * public enum VoucherDocumentFormLabel implements ExtJsUtils.RadioFieldLabel {
+     *     ON_ACCOUNT("On Account:");
+     *     ...
+     * }
+     * }</pre>
+     */
+    public interface RadioFieldLabel {
+        String getFieldLabel();
+    }
+
+    // ── Enum-typed overloads (preferred — eliminates magic strings) ───────────
+
+    public static void selectExtJsRadio(RadioFieldLabel field, String optionLabel) {
+        selectExtJsRadio(field.getFieldLabel(), optionLabel);
+    }
+
+    public static String getSelectedExtJsRadioLabel(RadioFieldLabel field) {
+        return getSelectedExtJsRadioLabel(field.getFieldLabel());
+    }
+
+    // ── String overloads (fallback / one-off usage) ───────────────────────────
+
+    /**
+     * Clicks a radio option on the page by its visible label text.
+     * Use when only one radio group is present on the page.
+     */
+    public static void selectExtJsRadio(String optionLabel) {
+        SeleniumUtils.click(
+                By.xpath("//label[contains(@class,'x-form-cb-label') and normalize-space()='" + optionLabel + "']"),
+                WaitType.CLICKABLE,
+                "RADIO_" + optionLabel
+        );
+        JavascriptExecutorUtils.waitForExtJS();
+    }
+
+    /**
+     * Clicks a radio option scoped to a named field label.
+     * Use when multiple radio groups share the same option labels (e.g. two "Yes/No" groups).
+     *
+     * @param fieldLabel  the field heading text, e.g. {@code "On Account:"}
+     * @param optionLabel the option to select, e.g. {@code "Yes"} or {@code "No"}
+     */
+    public static void selectExtJsRadio(String fieldLabel, String optionLabel) {
+        SeleniumUtils.click(
+                By.xpath("//span[contains(@class,'x-form-item-label-text') and normalize-space()='" + fieldLabel + "']" +
+                         "/ancestor::div[contains(@class,'x-form-item')]" +
+                         "//label[contains(@class,'x-form-cb-label') and normalize-space()='" + optionLabel + "']"),
+                WaitType.CLICKABLE,
+                "RADIO_" + fieldLabel + "_" + optionLabel
+        );
+        JavascriptExecutorUtils.waitForExtJS();
+    }
+
+    /**
+     * Returns the label text of the currently selected radio option on the page.
+     * Use when only one radio group is present on the page.
+     *
+     * @return option label text (e.g. {@code "Yes"}), or {@code null} if nothing is selected
+     */
+    public static String getSelectedExtJsRadioLabel() {
+        return (String) ((JavascriptExecutor) DriverManager.getDriver()).executeScript(
+                "return document.querySelector('.x-form-cb-input.x-form-cb-checked')" +
+                "?.closest('.x-form-cb')" +
+                "?.querySelector('.x-form-cb-label')?.innerText?.trim();"
+        );
+    }
+
+    /**
+     * Returns the selected radio option label for a specific named field.
+     * Use when multiple radio groups are present on the same page.
+     *
+     * @param fieldLabel the field heading text, e.g. {@code "On Account:"}
+     * @return option label text (e.g. {@code "Yes"}), or {@code null} if nothing is selected
+     */
+    public static String getSelectedExtJsRadioLabel(String fieldLabel) {
+        return (String) ((JavascriptExecutor) DriverManager.getDriver()).executeScript(
+                "var fieldSpan = [...document.querySelectorAll('.x-form-item-label-text')]" +
+                "  .find(function(el){ return el.innerText.trim() === arguments[0]; });" +
+                "if (!fieldSpan) return null;" +
+                "var formItem = fieldSpan.closest('.x-form-item');" +
+                "if (!formItem) return null;" +
+                "var checked = formItem.querySelector('.x-form-cb-input.x-form-cb-checked');" +
+                "if (!checked) return null;" +
+                "return checked.closest('.x-form-cb')?.querySelector('.x-form-cb-label')?.innerText?.trim();",
+                fieldLabel
+        );
+    }
+
+    // ────────────────────────────────────────────────────────────────────────
 
     public static void setExtJsComboByLabel(String fieldLabel, String displayValue) {
 

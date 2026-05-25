@@ -10,6 +10,7 @@ import com.gsl.utils.dataprovider.source.finance.DbArVoucherEditDataSource;
 import com.gsl.utils.dataprovider.source.finance.ExcelArVoucherDataSource;
 import io.github.sskorol.core.DataSupplier;
 import one.util.streamex.StreamEx;
+import org.testng.ITestContext;
 
 import java.lang.reflect.Method;
 import java.util.List;
@@ -37,16 +38,20 @@ import java.util.List;
 public class MergedFinArVoucherDataSupplier {
 
     @DataSupplier(name = "FinanceArVoucherData", flatMap = true, runInParallel = true)
-    public StreamEx<Object[]> dataSupplier(Method method) {
+    public StreamEx<Object[]> dataSupplier(Method method, ITestContext context) {
         String source = ConfigFactory.getConfig().testDataSource();
         Log.info("[DataSupplier] testdata.source={}, method={}", source, method.getName());
+
+        // Read arv.group from TestNG XML <parameter> — used as fallback when the system
+        // property is absent (IntelliJ direct-run; Maven path sets the system property instead).
+        String xmlGroupParam = context.getCurrentXmlTest().getParameter("arv.group");
 
         TestDataSource<MergedFinanceArVoucherData> loader =
                 "DB".equalsIgnoreCase(source)
                         ? switch (method.getName()) {
                             case "editArVoucher"   -> new DbArVoucherEditDataSource();
                             case "deleteArVoucher" -> new DbArVoucherDeleteDataSource();
-                            default                -> new DbArVoucherDataSource();
+                            default                -> new DbArVoucherDataSource(xmlGroupParam);
                           }
                         : new ExcelArVoucherDataSource();
 

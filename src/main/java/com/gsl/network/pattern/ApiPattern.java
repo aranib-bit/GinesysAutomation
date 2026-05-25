@@ -1,6 +1,5 @@
 package com.gsl.network.pattern;
 
-import com.gsl.config.ConfigFactory;
 import com.gsl.network.NetworkLogRecord;
 
 import java.util.List;
@@ -16,15 +15,8 @@ public interface ApiPattern {
      * Base URL is resolved from config so the same enum works across environments.
      */
     default List<NetworkLogRecord> filterLogs(List<NetworkLogRecord> all) {
-        String base = stripTrailingSlash(ConfigFactory.getConfig().url());
         return all.stream()
-                .filter(r -> urlPatterns().stream()
-                        .map(p -> base + p)
-                        .anyMatch(r.url()::startsWith))
+                .filter(r -> urlPatterns().stream().anyMatch(p -> r.url().contains(p)))
                 .toList();
-    }
-
-    private static String stripTrailingSlash(String url) {
-        return (url != null && url.endsWith("/")) ? url.substring(0, url.length() - 1) : url;
     }
 }

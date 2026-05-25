@@ -130,7 +130,7 @@ public class AdjustmentEntry {
     }
 
     public AdjustmentEntry clickOK() {
-        SeleniumUtils.clickAndCheckPopup(OK_BUTTON, "OK Button in Adjustment Entry");
+        SeleniumUtils.clickAndNotePopup(OK_BUTTON, WaitType.CLICKABLE, "OK Button in Adjustment Entry");
         return this;
     }
 

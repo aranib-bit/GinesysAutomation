@@ -1,7 +1,9 @@
 package com.tests.Finance.Operations.Vouchers;
 
+import com.gsl.annotations.ApiFlow;
 import com.gsl.annotations.FrameworkAnnotation;
 import com.gsl.annotations.TestCaseId;
+import com.gsl.network.pattern.FinanceApiPattern;
 import com.gsl.enums.TestAuthor;
 import com.gsl.model.finance.FinPost;
 import com.gsl.pages.Finance.Operations.ArVoucherListPage;
@@ -36,6 +38,7 @@ import java.util.Map;
 import java.util.stream.Collectors;
 
 
+@ApiFlow(FinanceApiPattern.AR_VOUCHER)
 public class CreateArVoucher extends WebTest {
 
     @FrameworkAnnotation(TestAuthor.ARANI)

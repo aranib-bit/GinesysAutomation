@@ -24,6 +24,8 @@ public class SeleniumUtils {
         WebElement element = waitUntilElementPresent(by);
         clickWithOverlayRetry(element, elementName);
         ExtentLogger.info(elementName + " is clicked successfully");
+        WaitUtils.waitForExtMask();
+        PopupMonitor.checkAfterAction(elementName);
     }
 
     public static void click(By by, WaitType waitType, String elementName) {
@@ -32,17 +34,15 @@ public class SeleniumUtils {
         WebElement element;
         if (waitType == WaitType.PRESENCE) {
             element = waitUntilElementPresent(by);
-            clickWithOverlayRetry(element, elementName);
-            ExtentLogger.info(elementName + " is clicked successfully");
         } else if (waitType == WaitType.CLICKABLE) {
             element = waitUntilElementClickable(by);
-            clickWithOverlayRetry(element, elementName);
-            ExtentLogger.info(elementName + " is clicked successfully");
-        } else if (waitType == WaitType.VISIBLE) {
+        } else {
             element = waitUntilElementVisible(by);
-            clickWithOverlayRetry(element, elementName);
-            ExtentLogger.info(elementName + " is clicked successfully");
         }
+        clickWithOverlayRetry(element, elementName);
+        ExtentLogger.info(elementName + " is clicked successfully");
+        WaitUtils.waitForExtMask();
+        PopupMonitor.checkAfterAction(elementName);
     }
 
     public static void click(WebElement element, WaitType waitType, String elementName) {
@@ -59,6 +59,8 @@ public class SeleniumUtils {
         }
         clickWithOverlayRetry(ready, elementName);
         ExtentLogger.info(elementName + " is clicked successfully");
+        WaitUtils.waitForExtMask();
+        PopupMonitor.checkAfterAction(elementName);
     }
 
     public static void jsClick(By by, String elementName) {
@@ -202,21 +204,21 @@ public class SeleniumUtils {
         sendKeys(by, waitType, value, meta.getName());
     }
 
-    // -------------------------------------------------------------------------
-
     /**
-     * Clicks a business-triggering element and immediately checks for unexpected popups.
-     * Use for Save, Submit, Delete, Post, Approve, and other backend-invoking actions.
-     * Do NOT use for field focus, typing, checkbox ticks, or scroll actions.
-     *
-     * @param by         locator of the button/element to click
-     * @param actionName human-readable description used in failure messages and reports
-     * @throws com.gsl.exceptions.UnexpectedPopupException if the action triggers an unexpected popup
+     * Clicks an element and notes any resulting popup in the report without failing the test.
+     * Use when a popup is a known, handled outcome of this action.
      */
-    public static void clickAndCheckPopup(By by, String actionName) {
-        click(by, WaitType.CLICKABLE, actionName);
+    public static void clickAndNotePopup(By by, WaitType waitType, String elementName) {
+        JavascriptExecutorUtils.waitForPageLoad();
+        JavascriptExecutorUtils.waitForExtJS();
+        WebElement element;
+        if (waitType == WaitType.PRESENCE)       element = waitUntilElementPresent(by);
+        else if (waitType == WaitType.CLICKABLE)  element = waitUntilElementClickable(by);
+        else                                      element = waitUntilElementVisible(by);
+        clickWithOverlayRetry(element, elementName);
+        ExtentLogger.info(elementName + " is clicked successfully");
         WaitUtils.waitForExtMask();
-        PopupMonitor.checkAfterAction(actionName);
+        PopupMonitor.noteAfterAction(elementName);
     }
 
     public static void waitForInputReady(By locator) {

@@ -1,5 +1,8 @@
 package com.tests;
 
+import com.gsl.browser.CustomMetricsObserverInjector;
+import com.gsl.browser.injector.FrontendDiagnosticsInjectorFactory;
+import com.gsl.config.ConfigFactory;
 import com.gsl.database.DocumentReservationRegistry;
 import com.gsl.driver.Driver;
 import com.gsl.driver.DriverManager;
@@ -106,6 +109,16 @@ public abstract class WebTest extends BaseTest {
             Log.info("[WebTest] [T-{}] Starting browser for UI user '{}'.",
                     Thread.currentThread().getId(), uiUser.username());
             Driver.initDriver();
+
+            // ── Inject PerformanceObserver listeners for Custom Metrics ───────────
+            if (ConfigFactory.getConfig().customMetricsEnabled()) {
+                CustomMetricsObserverInjector.inject(DriverManager.getDriver());
+            }
+
+            // ── Inject framework-specific frontend performance instrumentation ────
+            if (ConfigFactory.getConfig().frontendDiagnosticsEnabled()) {
+                FrontendDiagnosticsInjectorFactory.get().inject(DriverManager.getDriver());
+            }
 
         } catch (Exception e) {
             // Release any pool-acquired users so other waiting threads are not starved

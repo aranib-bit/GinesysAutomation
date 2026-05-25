@@ -1,14 +1,23 @@
 package com.gsl.diagnostics;
 
+import com.gsl.annotations.ApiFlow;
 import com.gsl.browser.AdvancedLogFetcher;
 import com.gsl.browser.BrowserLogRecord;
 import com.gsl.config.ConfigFactory;
+import com.gsl.config.FrameworkConfig;
 import com.gsl.diagnostics.section.*;
+import com.gsl.diagnostics.section.frontend.FrontendPerformanceSection;
+import com.gsl.diagnostics.section.frontend.FrontendPerformanceSectionFactory;
+import com.gsl.reports.ExtentLogger;
 import com.gsl.driver.DriverManager;
 import com.gsl.network.NetworkCaptureManager;
+import com.gsl.network.NetworkJsErrorCorrelator;
+import com.gsl.network.NetworkLogRecord;
+import com.gsl.network.pattern.ApiPattern;
 import com.gsl.remote.RemoteLogCollector;
 import com.gsl.remote.model.CaptureMode;
 import com.gsl.remote.model.LogFetchResponse;
+import com.gsl.reports.ActionTrailBuffer;
 import com.gsl.utils.Log;
 import org.openqa.selenium.NoSuchElementException;
 import org.openqa.selenium.TimeoutException;
@@ -18,6 +27,7 @@ import org.testng.ITestResult;
 import java.time.Instant;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 
 /**
  * Single entry point for assembling all failure (or success) evidence into a
@@ -40,15 +50,44 @@ public final class FailureBundleOrchestrator {
         Instant   start  = Instant.ofEpochMilli(result.getStartMillis());
         Instant   end    = Instant.now();
 
+        // Fetch browser logs and network logs first — needed by correlator + exporter
+        List<BrowserLogRecord> jsLogs  = fetchBrowserLogs(driver);
+        List<NetworkLogRecord>  netLogs = NetworkCaptureManager.get().getLogs();
+        String                  proto   = NetworkCaptureManager.get().protocolName();
+
+        // Correlate failed network requests to CRITICAL JS errors by timestamp proximity
+        Set<String> correlatedUrls = NetworkJsErrorCorrelator.correlatedUrls(netLogs, jsLogs);
+
+        // Write structured JSON artifact when CRITICAL JS errors are present
+        JsErrorJsonExporter.export(result, jsLogs, netLogs, correlatedUrls, driver);
+
         // Pre-collect remote logs concurrently (APP + DB in parallel) before builder chain
         Map<ServerRole, LogFetchResponse> remoteLogs = collectRemoteLogs(start, end);
 
-        return new DiagnosticReport()
+        // Collect Custom Metrics once — reused for both the report and threshold check
+        CustomMetricsSection customMetrics = buildCustomMetricsSection(driver, true);
+
+        // Collect Frontend Diagnostics once — reused for report and RootCauseAttributionSection
+        FrontendPerformanceSection frontendPerf = buildFrontendPerfSection(driver, true);
+
+        DiagnosticReport report = new DiagnosticReport()
                 // ── Browser & frontend ──────────────────────────────────────
-                .add(browserLogSection(result, driver))
-                .add(new NetworkLogSection(
-                        NetworkCaptureManager.get().getLogs(),
-                        NetworkCaptureManager.get().protocolName()))
+                .add(new BrowserLogSection(jsLogs, result.getMethod().getDescription()))
+                .add(new NetworkLogSection(netLogs, proto, correlatedUrls))
+                .add(networkTimingSection(true))
+                // ── Action trail ──────────────────────────────────────────────
+                .add(new ActionTrailSection(ActionTrailBuffer.getForDisplay(), ActionTrailBuffer.totalCaptured()))
+                // ── Performance timing ────────────────────────────────────────
+                .add(performanceTimingSection(driver))
+                // ── Custom Metrics (web.dev Performance APIs) ─────────────────
+                .add(customMetrics)
+                // ── Frontend framework diagnostics (ExtJS / React / Angular) ──
+                .add(frontendPerf)
+                // ── Root Cause Attribution ────────────────────────────────────
+                .add(rootCauseSection(customMetrics, frontendPerf))
+                // ── UI component state (ExtJS / React / Angular) ─────────────
+                .add(uiComponentSection(driver))
+                // ── HTML capture ──────────────────────────────────────────────
                 .add(htmlCaptureSection(t, driver, result))
                 // ── Driver metadata ──────────────────────────────────────────
                 .add(driverCapsSection(driver))
@@ -65,6 +104,11 @@ public final class FailureBundleOrchestrator {
                 .add(dbStateSection())
                 // ── Thread dump on timeout ───────────────────────────────────
                 .add(threadDumpSection(t));
+
+        // Threshold check uses the same instance — no second JS round-trip
+        enforceCustomMetricsThreshold(customMetrics);
+
+        return report;
     }
 
     /**
@@ -75,27 +119,178 @@ public final class FailureBundleOrchestrator {
         Instant   start  = Instant.ofEpochMilli(result.getStartMillis());
         Instant   end    = Instant.now();
 
+        List<BrowserLogRecord> jsLogs  = fetchBrowserLogs(driver);
+
         Map<ServerRole, LogFetchResponse> remoteLogs = collectRemoteLogs(start, end);
 
+        CustomMetricsSection passCustomMetrics = buildCustomMetricsSection(driver, false);
+        FrontendPerformanceSection passFrontendPerf = buildFrontendPerfSection(driver, false);
+
         return new DiagnosticReport()
-                .add(browserLogSection(result, driver))
-                .add(new NetworkLogSection(
-                        NetworkCaptureManager.get().getLogs(),
-                        NetworkCaptureManager.get().protocolName()))
+                .add(new BrowserLogSection(jsLogs, result.getMethod().getDescription()))
+                .add(networkLogSectionForPass(result))
+                .add(networkTimingSection(false))
+                .add(actionTrailSectionForPass())
+                .add(performanceTimingSection(driver))
+                // Custom Metrics on pass only when capture.mode=ALL
+                .add(passCustomMetrics)
+                // Frontend diagnostics on pass only when capture.mode=ALL
+                .add(passFrontendPerf)
+                .add(rootCauseSection(passCustomMetrics, passFrontendPerf))
+                .add(uiComponentSectionForPass(driver))
+                .add(driverCapsSection(driver))
+                .add(activePopupSection(driver))
                 .add(remoteLogSection(ServerRole.APP, remoteLogs))
                 .add(remoteLogSection(ServerRole.DB,  remoteLogs));
     }
 
+    private static DiagnosticSection networkTimingSection(boolean isFailure) {
+        String logOn = ConfigFactory.getConfig().networkTimingLogOn();
+        if (!"always".equalsIgnoreCase(logOn) && !isFailure) return null;
+        NetworkTimingSection section = new NetworkTimingSection(isFailure);
+        return section.hasData() ? section : null;
+    }
+
+    // ── pass-specific network section ────────────────────────────────────────
+
+    private static DiagnosticSection networkLogSectionForPass(ITestResult result) {
+        List<NetworkLogRecord> logs     = NetworkCaptureManager.get().getLogs();
+        String                 protocol = NetworkCaptureManager.get().protocolName();
+
+        if (ConfigFactory.getConfig().networkCapturePassShowAll()) {
+            return new NetworkLogSection(logs, protocol);
+        }
+        ApiPattern pattern = resolveApiPattern(result);
+        return new NetworkLogSection(logs, protocol, pattern);
+    }
+
+    private static ApiPattern resolveApiPattern(ITestResult result) {
+        Class<?> cls = result.getInstance().getClass();
+        while (cls != null && cls != Object.class) {
+            ApiFlow ann = cls.getAnnotation(ApiFlow.class);
+            if (ann != null) return ann.value();
+            cls = cls.getSuperclass();
+        }
+        return null;
+    }
+
     // ── section builders ──────────────────────────────────────────────────────
 
-    private static DiagnosticSection browserLogSection(ITestResult result, WebDriver driver) {
-        if (!ConfigFactory.getConfig().browserLogsEnabled()) return null;
-        if (driver == null) return null;
+    private static List<BrowserLogRecord> fetchBrowserLogs(WebDriver driver) {
+        if (!ConfigFactory.getConfig().browserLogsEnabled() || driver == null) return List.of();
         try {
             List<BrowserLogRecord> logs = AdvancedLogFetcher.fetchLogs();
-            return (logs != null) ? new BrowserLogSection(logs, result.getMethod().getDescription()) : null;
+            return logs != null ? logs : List.of();
         } catch (Exception e) {
             Log.warn("[FailureBundleOrchestrator] Browser log fetch failed: {}", e.getMessage());
+            return List.of();
+        }
+    }
+
+    private static DiagnosticSection actionTrailSectionForPass() {
+        String mode = ConfigFactory.getConfig().actionTrailCaptureMode();
+        if (!"ALL".equalsIgnoreCase(mode)) return null;
+        return new ActionTrailSection(ActionTrailBuffer.getForDisplay(), ActionTrailBuffer.totalCaptured());
+    }
+
+    /**
+     * Builds the FrontendPerformanceSection when frontend diagnostics are enabled and the
+     * capture mode matches the call site (isFailure=true → FAIL or ALL; false → ALL only).
+     * Returns null (silently skipped) when disabled, not configured, or no data collected.
+     */
+    private static FrontendPerformanceSection buildFrontendPerfSection(WebDriver driver,
+                                                                        boolean isFailure) {
+        FrameworkConfig cfg = ConfigFactory.getConfig();
+        if (!cfg.frontendDiagnosticsEnabled()) {
+            Log.debug("[FrontendDiag] Skipped — frontend.diagnostics.enabled=false");
+            return null;
+        }
+        if (driver == null) {
+            Log.debug("[FrontendDiag] Skipped — driver is null");
+            return null;
+        }
+        String mode = cfg.frontendDiagnosticsCaptureMode();
+        if ("NEVER".equalsIgnoreCase(mode)) {
+            Log.debug("[FrontendDiag] Skipped — capture.mode=NEVER");
+            return null;
+        }
+        if (!isFailure && !"ALL".equalsIgnoreCase(mode)) {
+            Log.debug("[FrontendDiag] Skipped — capture.mode={} and test did not fail", mode);
+            return null;
+        }
+        FrontendPerformanceSection section = FrontendPerformanceSectionFactory.create(driver);
+        if (!section.hasData()) {
+            Log.debug("[FrontendDiag] Skipped — window.__gslExtDiag present={} but all arrays empty",
+                    section.isCaptured());
+        }
+        return section.hasData() ? section : null;
+    }
+
+    /**
+     * Builds the RootCauseAttributionSection from the already-collected CustomMetrics and
+     * FrontendPerformance sections.  Returns null when either input is null (no double
+     * JS round-trip needed — both sections are reused).
+     */
+    private static DiagnosticSection rootCauseSection(CustomMetricsSection customMetrics,
+                                                       FrontendPerformanceSection frontendPerf) {
+        if (customMetrics == null || frontendPerf == null) return null;
+        RootCauseAttributionSection section =
+                new RootCauseAttributionSection(customMetrics, frontendPerf);
+        return section.hasData() ? section : null;
+    }
+
+    private static DiagnosticSection uiComponentSectionForPass(WebDriver driver) {
+        String mode = ConfigFactory.getConfig().uiComponentsCaptureMode();
+        if (!"ALL".equalsIgnoreCase(mode)) return null;
+        return uiComponentSection(driver);
+    }
+
+    private static DiagnosticSection performanceTimingSection(WebDriver driver) {
+        if (!ConfigFactory.getConfig().performanceTimingEnabled() || driver == null) return null;
+        PerformanceTimingSection section = new PerformanceTimingSection(driver);
+        return section.hasData() ? section : null;
+    }
+
+    /**
+     * Collects Custom Metrics for the given driver when the feature is enabled and the
+     * capture mode matches the call site (isFailure=true → FAIL or ALL; false → ALL only).
+     * Returns the live section instance so it can be added to the report AND inspected
+     * for threshold checks without a second JS round-trip.
+     */
+    private static CustomMetricsSection buildCustomMetricsSection(WebDriver driver, boolean isFailure) {
+        FrameworkConfig cfg = ConfigFactory.getConfig();
+        if (!cfg.customMetricsEnabled() || driver == null) return null;
+        String mode = cfg.customMetricsCaptureMode();
+        if ("NEVER".equalsIgnoreCase(mode)) return null;
+        if (!isFailure && !"ALL".equalsIgnoreCase(mode)) return null;
+        CustomMetricsSection section = new CustomMetricsSection(driver, cfg);
+        return section.hasData() ? section : null;
+    }
+
+    /**
+     * Fails the test when the long task count in the already-collected section exceeds
+     * the configured threshold. Reuses the existing instance — no second JS round-trip.
+     */
+    private static void enforceCustomMetricsThreshold(CustomMetricsSection section) {
+        if (section == null) return;
+        int threshold = ConfigFactory.getConfig().customMetricsFailOnLongTaskCount();
+        if (threshold <= 0) return;
+        int count = section.longTaskCount();
+        if (count > threshold) {
+            String msg = "[CustomMetrics] Long task threshold breached: " + count
+                    + " long tasks detected (limit=" + threshold + ").";
+            ExtentLogger.fail(msg);
+            throw new AssertionError(msg);
+        }
+    }
+
+    private static DiagnosticSection uiComponentSection(WebDriver driver) {
+        if (!ConfigFactory.getConfig().uiDiagnosticsEnabled() || driver == null) return null;
+        try {
+            UiComponentSection section = new UiComponentSection(driver);
+            return section.hasData() ? section : null;
+        } catch (Exception e) {
+            Log.warn("[FailureBundleOrchestrator] UI component section failed: {}", e.getMessage());
             return null;
         }
     }
@@ -132,10 +327,6 @@ public final class FailureBundleOrchestrator {
 
     // ── remote log helpers ────────────────────────────────────────────────────
 
-    /**
-     * Pre-collects remote logs concurrently for APP and DB servers.
-     * Returns an empty map when capture mode is NEVER or on any initialisation error.
-     */
     private static Map<ServerRole, LogFetchResponse> collectRemoteLogs(Instant start, Instant end) {
         try {
             if (resolveCaptureMode() == CaptureMode.NEVER) return Map.of();
@@ -150,11 +341,6 @@ public final class FailureBundleOrchestrator {
         }
     }
 
-    /**
-     * Resolves the effective host for a server role.
-     * {@code remote.*.server.host} takes priority; falls back to
-     * {@code diagnostics.*.server.host} for backward compat (excluding localhost).
-     */
     private static String resolveHost(ServerRole role) {
         boolean isApp = role == ServerRole.APP;
 
@@ -176,10 +362,25 @@ public final class FailureBundleOrchestrator {
 
     private static RemoteLogSection remoteLogSection(
             ServerRole role, Map<ServerRole, LogFetchResponse> results) {
-        LogFetchResponse resp = results.get(role);
-        if (resp == null) return null;
+        String displayName = (role == ServerRole.APP) ? "Application Logs" : "DB Server Logs";
         String host  = resolveHost(role);
-        String label = role.label + (host != null ? " (" + host + ")" : "");
+        String label = displayName + (host != null ? " — " + host : "");
+
+        if (!results.containsKey(role)) {
+            String reason = displayName + ": capture disabled — set remote.logs.capture.mode=ALWAYS"
+                    + " or ON_FAILURE in config.properties";
+            return new RemoteLogSection(label, reason);
+        }
+
+        LogFetchResponse resp = results.get(role);
+        if (resp == null) {
+            String reason = (host == null)
+                    ? displayName + ": host not configured — set remote."
+                      + (role == ServerRole.APP ? "app" : "db") + ".server.host in config.properties"
+                    : displayName + ": credentials not configured — set REMOTE_LOG_WINRM_USER/PASS"
+                      + " env vars or remote.*server.winrm.username/password in config.properties";
+            return new RemoteLogSection(label, reason);
+        }
         return new RemoteLogSection(resp, label);
     }
 

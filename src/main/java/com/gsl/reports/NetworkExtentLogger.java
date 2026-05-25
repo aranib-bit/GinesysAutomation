@@ -1,13 +1,17 @@
 package com.gsl.reports;
 
 import com.aventstack.extentreports.ExtentTest;
+import com.aventstack.extentreports.markuputils.CodeLanguage;
 import com.aventstack.extentreports.markuputils.Markup;
+import com.aventstack.extentreports.markuputils.MarkupHelper;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.gsl.config.ConfigFactory;
 import com.gsl.network.NetworkLogRecord;
 import com.gsl.network.NetworkLogType;
 
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 
 /**
  * Renders captured network traffic as a collapsible table in ExtentReport.
@@ -25,6 +29,8 @@ public final class NetworkExtentLogger {
 
     private NetworkExtentLogger() {}
 
+    private static final ObjectMapper MAPPER = new ObjectMapper();
+
     public static void logNetworkLogs(List<NetworkLogRecord> logs, String protocol) {
         if (logs == null || logs.isEmpty()) return;
         ExtentTest test = ExtentManager.getExtentTest();
@@ -40,7 +46,7 @@ public final class NetworkExtentLogger {
             wrapper.append(" <span style='color:red;'>(").append(failed).append(" failed)</span>");
         }
         wrapper.append("</summary><div style='margin-top:6px;overflow-x:auto;'>")
-               .append(buildTable(logs))
+               .append(buildTable(logs, Set.of()))
                .append("</div></details>");
 
         String html = wrapper.toString();
@@ -51,25 +57,37 @@ public final class NetworkExtentLogger {
 
     /** Returns the rendered HTML table — used by NetworkLogSection in DiagnosticReport. */
     public static String renderTable(List<NetworkLogRecord> logs) {
-        return buildTable(logs);
+        return buildTable(logs, Set.of());
     }
 
-    private static String buildTable(List<NetworkLogRecord> logs) {
+    /** Renders the table with correlated URL rows highlighted in amber. */
+    public static String renderTable(List<NetworkLogRecord> logs, Set<String> correlatedUrls) {
+        return buildTable(logs, correlatedUrls != null ? correlatedUrls : Set.of());
+    }
+
+    private static String buildTable(List<NetworkLogRecord> logs, Set<String> correlatedUrls) {
         StringBuilder t = new StringBuilder();
         t.append("<table style='width:100%;border-collapse:collapse;font-size:11px;font-family:monospace;'>")
          .append("<tr style='background:#f0f0f0;font-weight:bold;text-align:left;'>")
          .append("<th style='").append(TH).append("'>Status</th>")
          .append("<th style='").append(TH).append("'>Method</th>")
-         .append("<th style='").append(TH).append("width:55%'>URL</th>")
+         .append("<th style='").append(TH).append("width:50%'>URL</th>")
          .append("<th style='").append(TH).append("'>Duration</th>")
+         .append("<th style='").append(TH).append("'>JS Correlation</th>")
          .append("</tr>");
 
         for (NetworkLogRecord r : logs) {
-            boolean isBad     = r.type() == NetworkLogType.FAILED || r.status() >= 400;
-            String  rowBg     = isBad ? "#fff5f5" : "#ffffff";
-            String  statusStr = r.status() == 0 ? "ERR" : String.valueOf(r.status());
-            String  statusClr = statusColor(r.status());
-            String  duration  = r.durationMs() > 0 ? r.durationMs() + "ms" : "—";
+            boolean isBad        = r.type() == NetworkLogType.FAILED || r.status() >= 400;
+            boolean isCorrelated = isBad && correlatedUrls.contains(r.url());
+            String  rowBg        = isCorrelated ? "#fff3cd"
+                                 : isBad        ? "#fff5f5"
+                                 :                "#ffffff";
+            String  statusStr    = r.status() == 0 ? "ERR" : String.valueOf(r.status());
+            String  statusClr    = statusColor(r.status());
+            String  duration     = r.durationMs() > 0 ? r.durationMs() + "ms" : "—";
+            String  correlation  = isCorrelated
+                    ? "<span style='color:#cc6600;font-weight:bold;'>&#9888; Near JS Error</span>"
+                    : "";
 
             t.append("<tr style='background:").append(rowBg).append(";'>")
              .append("<td style='").append(TD).append("color:").append(statusClr).append(";font-weight:bold;'>")
@@ -78,6 +96,7 @@ public final class NetworkExtentLogger {
              .append("<td style='").append(TD).append("max-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;' title='")
              .append(esc(r.url())).append("'>").append(esc(r.url())).append("</td>")
              .append("<td style='").append(TD).append("'>").append(duration).append("</td>")
+             .append("<td style='").append(TD).append("'>").append(correlation).append("</td>")
              .append("</tr>");
 
             // Headers sub-row
@@ -115,10 +134,10 @@ public final class NetworkExtentLogger {
         if (isStaticAsset(r)) return "";
         StringBuilder s = new StringBuilder();
         if (hasValue(r.requestBody())) {
-            s.append(collapsible("Request Body",  preBlock(r.requestBody()),  "#777"));
+            s.append(collapsible("Request Body",  jsonBlock(r.requestBody()),  "#777"));
         }
         if (hasValue(r.responseBody())) {
-            s.append(collapsible("Response Body", preBlock(r.responseBody()), "#777"));
+            s.append(collapsible("Response Body", jsonBlock(r.responseBody()), "#777"));
         }
         return s.toString();
     }
@@ -160,6 +179,16 @@ public final class NetworkExtentLogger {
                 + "background:#f8f8f8;border-left:2px solid #ddd;'>");
         headers.forEach((k, v) -> sb.append(esc(k)).append(": ").append(esc(v)).append("\n"));
         return sb.append("</pre>").toString();
+    }
+
+    private static String jsonBlock(String content) {
+        try {
+            Object parsed = MAPPER.readValue(content, Object.class);
+            String pretty = MAPPER.writerWithDefaultPrettyPrinter().writeValueAsString(parsed);
+            return MarkupHelper.createCodeBlock(pretty, CodeLanguage.JSON).getMarkup();
+        } catch (Exception e) {
+            return preBlock(content);
+        }
     }
 
     private static String preBlock(String content) {

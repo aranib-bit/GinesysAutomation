@@ -6,6 +6,7 @@ import com.gsl.enums.PopupType;
 import com.gsl.utils.Selenium.ScreenshotUtils;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
+import org.openqa.selenium.JavascriptExecutor;
 import org.openqa.selenium.TimeoutException;
 import org.openqa.selenium.WebElement;
 import org.openqa.selenium.support.ui.ExpectedConditions;
@@ -42,16 +43,23 @@ public final class PopupHandler {
             if (container == null) return null;
 
             String    header  = safeText(AppPopupLocators.MESSAGEBOX_HEADER);
-            String    message = safeText(AppPopupLocators.MESSAGEBOX_BODY);
+            String    message = safeFullText(AppPopupLocators.MESSAGEBOX_BODY);
             String    url     = safeUrl();
             String    title   = safeTitle();   // P7: capture page title before dismissal
             String    shot    = safeScreenshot();
             PopupType type    = PopupType.fromHeader(header);
 
-            LOG.warn("[PopupHandler] Unexpected popup detected — type={} header='{}' message='{}' pageTitle='{}'",
+            // Any dialog with 2+ action buttons requires the page flow to choose (Yes/No,
+            // Ignore & Proceed/Close, etc.) — treat as CONFIRM regardless of header
+            if (type != PopupType.CONFIRM && hasMultipleActionButtons()) {
+                type = PopupType.CONFIRM;
+            }
+
+            LOG.warn("[PopupHandler] Popup detected — type={} header='{}' message='{}' pageTitle='{}'",
                     type, header, message, title);
 
-            dismissPopup();
+            // CONFIRM dialogs have Yes/No buttons — leave them for the page object to handle
+            if (type != PopupType.CONFIRM) dismissPopup();
 
             return new PopupResult(header, message, type, url, title, LocalDateTime.now(), shot);
 
@@ -77,6 +85,23 @@ public final class PopupHandler {
     private static String safeText(org.openqa.selenium.By locator) {
         try {
             return DriverManager.getDriver().findElement(locator).getText();
+        } catch (Exception e) {
+            return "";
+        }
+    }
+
+    private static boolean hasMultipleActionButtons() {
+        return DriverManager.getDriver()
+                .findElements(AppPopupLocators.MESSAGEBOX_ACTION_BTNS)
+                .size() >= 2;
+    }
+
+    private static String safeFullText(org.openqa.selenium.By locator) {
+        try {
+            WebElement el = DriverManager.getDriver().findElement(locator);
+            Object result = ((JavascriptExecutor) DriverManager.getDriver())
+                    .executeScript("return arguments[0].innerHTML;", el);
+            return result != null ? result.toString().trim() : "";
         } catch (Exception e) {
             return "";
         }

@@ -2,8 +2,10 @@ package com.gsl.remote.fetcher;
 
 import com.gsl.config.ConfigFactory;
 import com.gsl.remote.exception.RemoteCommandException;
+import com.gsl.remote.filter.LogFileNameDateFilter;
 import com.gsl.remote.filter.LogFilter;
 import com.gsl.remote.model.*;
+import com.gsl.remote.parser.LogFormat;
 import com.gsl.remote.parser.LogParser;
 import com.gsl.remote.retry.RetryPolicy;
 import com.gsl.remote.validation.LogFetchRequestValidator;
@@ -14,7 +16,9 @@ import io.cloudsoft.winrm4j.winrm.WinRmToolResponse;
 import org.slf4j.MDC;
 
 import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.stream.Collectors;
 
 /**
@@ -76,6 +80,8 @@ public final class WinRmLogFetcher implements LogFetcher {
 
             return LogFetchResponse.builder()
                     .entries(response.getEntries())
+                    .filesRead(response.getFilesRead())
+                    .fileErrors(response.getFileErrors())
                     .stderr(response.getStderr())
                     .exitCode(response.getExitCode())
                     .retriesUsed(retriesUsed[0] - 1)
@@ -115,16 +121,20 @@ public final class WinRmLogFetcher implements LogFetcher {
             String stderr   = response.getStdErr();
             int    exitCode = response.getStatusCode();
 
-            if (exitCode != 0) {
+            // Select-String exits 1 when no lines match — same as grep on Linux.
+            // Treat exit 1 with empty stderr as "no data found", not a command failure.
+            if (exitCode != 0 && !(exitCode == 1 && (stderr == null || stderr.isBlank()))) {
                 Log.error("[WinRmLogFetcher] Command failed. host={} exitCode={} stderr={}",
                         request.getHost(), exitCode, stderr);
                 throw new RemoteCommandException(
                         "WinRM command non-zero exit on " + request.getHost(), exitCode, stderr);
             }
 
-            List<LogEntry> entries = parseAndFilter(stdout, request);
+            ParseResult parsed = parseAndFilter(stdout, request);
             return LogFetchResponse.builder()
-                    .entries(entries)
+                    .entries(parsed.entries())
+                    .filesRead(parsed.filesRead())
+                    .fileErrors(parsed.fileErrors())
                     .stderr(stderr != null ? stderr.trim() : "")
                     .exitCode(exitCode)
                     .retriesUsed(0)
@@ -143,7 +153,11 @@ public final class WinRmLogFetcher implements LogFetcher {
      * results sorted by LastWriteTime descending so the most recent files are read first.
      * At most {@code maxRotatedFiles} files are read per pattern to cap I/O on busy servers.
      *
-     * <p>If any log path starts with {@code EventLog:}, reads from the Windows Event Log instead.
+     * <p>File-based commands emit a {@code ###FILE:fullpath###} sentinel before each file's
+     * content so the Java side can group log lines by source file.
+     *
+     * <p>If any log path starts with {@code EventLog:}, reads from the Windows Event Log instead
+     * (no per-file grouping in that case).
      */
     private String buildPowerShellCommand(LogFetchRequest request) {
         long max = request.getMaxResultLines();
@@ -158,6 +172,7 @@ public final class WinRmLogFetcher implements LogFetcher {
                     .map(p -> p.substring(EVENT_LOG_PREFIX.length()).trim())
                     .findFirst().orElse("Application");
             return String.format(
+                    "$ProgressPreference='SilentlyContinue'; " +
                     "Get-EventLog -LogName '%s' -EntryType Error,Warning -Newest %d | " +
                     "Format-List TimeGenerated,EntryType,Message | Out-String -Width 512",
                     logName, max);
@@ -165,45 +180,180 @@ public final class WinRmLogFetcher implements LogFetcher {
 
         // File-based: resolve wildcards via Get-ChildItem (handles date-named + rotated files),
         // sort by LastWriteTime descending and cap per pattern, then read content.
+        // Each file is preceded by a ###FILE:fullpath### sentinel for per-file grouping in Java.
         String pathArray = request.getLogPaths().stream()
                 .map(p -> "'" + p.replace("'", "''") + "'")
                 .collect(Collectors.joining(","));
 
-        if (request.getSearchKeywords() == null || request.getSearchKeywords().isEmpty()) {
-            return String.format(
-                    "@(%s) | ForEach-Object { " +
-                    "  Get-ChildItem $_ -ErrorAction SilentlyContinue | " +
-                    "  Sort-Object LastWriteTime -Descending | Select-Object -First %d " +
-                    "} | ForEach-Object { Get-Content $_.FullName -ErrorAction SilentlyContinue } | " +
-                    "Select-Object -Last %d",
-                    pathArray, maxRotated, max);
+        String dateFilterClause = LogFileNameDateFilter.buildPsDateFilterClause(
+                request.getStartUtc(), request.getEndUtc());
+
+        // Build the per-file content reader.
+        // When the time window is known we stream the full file and emit only lines whose
+        // leading timestamp falls inside [startTs, endTs]; continuation lines (no timestamp)
+        // inherit the in-window state of the preceding entry so multi-line SQL blocks are
+        // kept whole. This replaces the old "Select-Object -Last N" tail which silently
+        // dropped early-in-file entries whenever the log file spanned more than N lines.
+        String startStr = LogFileNameDateFilter.serverTimeString(request.getStartUtc());
+        String endStr   = LogFileNameDateFilter.serverTimeString(request.getEndUtc());
+        boolean hasWindow = (startStr != null && endStr != null);
+
+        String fileReadCmd;
+        if (hasWindow && (request.getSearchKeywords() == null || request.getSearchKeywords().isEmpty())) {
+            // No-keyword case: stream file with timestamp-based window tracking.
+            fileReadCmd =
+                    "$inWin = $false; " +
+                    "Get-Content $f.FullName -ErrorAction Stop | ForEach-Object { " +
+                    "  if ($_ -match '^[^\\d]{0,10}(\\d{4}-\\d{2}-\\d{2}[ T]\\d{2}:\\d{2}:\\d{2})') { " +
+                    "    try { $ts = [DateTime]::ParseExact(($Matches[1] -replace 'T',' '), " +
+                    "      'yyyy-MM-dd HH:mm:ss', $null); " +
+                    "      $inWin = ($ts -ge $startTs -and $ts -le $endTs) " +
+                    "    } catch { $inWin = $false } " +
+                    "  }; " +
+                    "  if ($inWin) { $_ } " +
+                    "};";
+        } else if (hasWindow) {
+            // Keyword case: accumulate per-entry blocks, flush only when keyword matches.
+            String pattern = request.getSearchKeywords().stream()
+                    .map(k -> k.replace("'", "''"))
+                    .collect(Collectors.joining("|"));
+            fileReadCmd = String.format(
+                    "$inWin = $false; " +
+                    "$blk = [System.Collections.Generic.List[string]]::new(); " +
+                    "Get-Content $f.FullName -ErrorAction Stop | ForEach-Object { " +
+                    "  if ($_ -match '^[^\\d]{0,10}(\\d{4}-\\d{2}-\\d{2}[ T]\\d{2}:\\d{2}:\\d{2})') { " +
+                    "    if ($blk.Count -gt 0) { " +
+                    "      if ($blk | Where-Object { $_ -match '%s' }) { $blk | Write-Output } " +
+                    "      $blk.Clear() " +
+                    "    }; " +
+                    "    try { $ts = [DateTime]::ParseExact(($Matches[1] -replace 'T',' '), " +
+                    "      'yyyy-MM-dd HH:mm:ss', $null); " +
+                    "      $inWin = ($ts -ge $startTs -and $ts -le $endTs) " +
+                    "    } catch { $inWin = $false } " +
+                    "  }; " +
+                    "  if ($inWin) { [void]$blk.Add($_) } " +
+                    "}; " +
+                    "if ($blk.Count -gt 0 -and ($blk | Where-Object { $_ -match '%s' })) " +
+                    "  { $blk | Write-Output };",
+                    pattern, pattern);
+        } else if (request.getSearchKeywords() == null || request.getSearchKeywords().isEmpty()) {
+            // No time window, no keywords: tail fallback.
+            fileReadCmd = String.format(
+                    "Get-Content $f.FullName -ErrorAction Stop | Select-Object -Last %d;", max);
+        } else {
+            // No time window, with keywords: Select-String fallback.
+            String pattern = request.getSearchKeywords().stream()
+                    .map(k -> k.replace("'", "''"))
+                    .collect(Collectors.joining("|"));
+            fileReadCmd = String.format(
+                    "Get-Content $f.FullName -ErrorAction Stop | " +
+                    "Select-String -Pattern '%s' | ForEach-Object { $_.Line };", pattern);
         }
 
-        String pattern = request.getSearchKeywords().stream()
-                .map(k -> k.replace("'", "''"))
-                .collect(Collectors.joining("|"));
+        String windowInit = hasWindow
+                ? String.format("$startTs = [DateTime]::ParseExact('%s', 'yyyy-MM-dd HH:mm:ss', $null); " +
+                                "$endTs   = [DateTime]::ParseExact('%s', 'yyyy-MM-dd HH:mm:ss', $null); ",
+                                startStr, endStr)
+                : "";
 
         return String.format(
-                "@(%s) | ForEach-Object { " +
-                "  Get-ChildItem $_ -ErrorAction SilentlyContinue | " +
-                "  Sort-Object LastWriteTime -Descending | Select-Object -First %d " +
-                "} | ForEach-Object { Get-Content $_.FullName -ErrorAction SilentlyContinue } | " +
-                "Select-String -Pattern '%s' | Select-Object -Last %d | " +
-                "ForEach-Object { $_.Line }",
-                pathArray, maxRotated, pattern, max);
+                "$ProgressPreference='SilentlyContinue'; " +
+                "%s" +  // time-window variable init (empty when no window)
+                "foreach ($p in @(%s)) { " +
+                "  try { " +
+                "    $files = @(Get-ChildItem $p -ErrorAction Stop%s | " +
+                "      Sort-Object LastWriteTime -Descending | Select-Object -First %d); " +
+                "  } catch { " +
+                "    Write-Output ('###FILE_ERROR:' + $p + ':::' + $_.Exception.Message + '###'); " +
+                "    continue; " +
+                "  } " +
+                "  if ($files.Count -eq 0) { " +
+                "    Write-Output ('###FILE_ERROR:' + $p + ':::No matching files###'); " +
+                "    continue; " +
+                "  } " +
+                "  foreach ($f in $files) { " +
+                "    Write-Output ('###FILE:' + $f.FullName + '###'); " +
+                "    try { %s } catch { " +  // file content read command
+                "      Write-Output ('###FILE_ERROR:' + $f.FullName + ':::' + $_.Exception.Message + '###'); " +
+                "    } " +
+                "  } " +
+                "}",
+                windowInit, pathArray, dateFilterClause, maxRotated, fileReadCmd);
     }
 
-    private List<LogEntry> parseAndFilter(String stdout, LogFetchRequest request) {
-        if (stdout == null || stdout.isBlank()) return List.of();
+    private record ParseResult(List<LogEntry> entries, List<String> filesRead, Map<String, String> fileErrors) {}
 
-        List<LogEntry> result = new ArrayList<>();
+    private ParseResult parseAndFilter(String stdout, LogFetchRequest request) {
+        if (stdout == null || stdout.isBlank())
+            return new ParseResult(List.of(), List.of(), Map.of());
+
+        List<LogEntry>       entries     = new ArrayList<>();
+        List<String>         filesRead   = new ArrayList<>();
+        Map<String, String>  fileErrors  = new LinkedHashMap<>();
+        String               currentFile = null;
+
+        List<String> block     = new ArrayList<>();
+        String       blockFile = null;
+
         for (String line : stdout.split("\r?\n")) {
             if (line.isBlank()) continue;
-            parser.parse(line).ifPresent(entry -> {
-                if (filter.matches(entry)) result.add(entry);
-            });
+
+            if (line.startsWith("###FILE:") && line.endsWith("###")) {
+                flushBlock(block, blockFile, entries, filter);
+                block.clear();
+                currentFile = line.substring(8, line.length() - 3);
+                filesRead.add(currentFile);
+                continue;
+            }
+            if (line.startsWith("###FILE_ERROR:") && line.endsWith("###")) {
+                flushBlock(block, blockFile, entries, filter);
+                block.clear();
+                String rest    = line.substring("###FILE_ERROR:".length(), line.length() - 3);
+                int    sep     = rest.indexOf(":::");
+                String errPath = sep >= 0 ? rest.substring(0, sep) : rest;
+                String errMsg  = sep >= 0 ? rest.substring(sep + 3) : "unknown error";
+                fileErrors.put(errPath, errMsg);
+                if (!filesRead.contains(errPath)) filesRead.add(errPath);
+                continue;
+            }
+
+            if (LogFormat.ENTRY_START.matcher(line).find()) {
+                flushBlock(block, blockFile, entries, filter);
+                block.clear();
+                blockFile = currentFile;
+            }
+            block.add(line);
         }
-        return result;
+        flushBlock(block, blockFile, entries, filter);
+        return new ParseResult(entries, filesRead, fileErrors);
+    }
+
+    private void flushBlock(List<String> block, String file,
+                             List<LogEntry> entries, LogFilter filter) {
+        if (block.isEmpty()) return;
+        parser.parse(block.get(0)).ifPresentOrElse(base -> {
+            String fullMsg = block.size() == 1
+                    ? base.getMessage()
+                    : base.getMessage() + "\n" + String.join("\n", block.subList(1, block.size()));
+            LogEntry assembled = LogEntry.builder()
+                    .timestamp(base.getTimestamp())
+                    .level(base.getLevel())
+                    .message(fullMsg)
+                    .rawLine(String.join("\n", block))
+                    .sourceFile(file)
+                    .build();
+            if (filter.matches(assembled)) entries.add(assembled);
+        }, () -> {
+            // Orphaned continuation lines before the first timestamped entry — emit as-is
+            for (String raw : block) {
+                parser.parse(raw).ifPresent(e -> {
+                    if (filter.matches(e)) entries.add(LogEntry.builder()
+                            .timestamp(e.getTimestamp()).level(e.getLevel())
+                            .message(e.getMessage()).rawLine(e.getRawLine())
+                            .sourceFile(file).build());
+                });
+            }
+        });
     }
 
     private static String buildWinRmUrl(LogFetchRequest request) {

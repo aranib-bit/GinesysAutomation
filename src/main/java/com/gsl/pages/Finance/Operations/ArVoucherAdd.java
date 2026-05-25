@@ -37,7 +37,7 @@ public class ArVoucherAdd implements CashBankParent {
 
     @LogStep("Save AR Voucher")
     public DocumentPopup clickSave() {
-        JavascriptExecutorUtils.setSubLedgerVerify();
+        JavascriptExecutorUtils.setSubLedgerVerify("arvch_grid");
         arVoucherFooter.clickSave();
         return new DocumentPopup();
     }

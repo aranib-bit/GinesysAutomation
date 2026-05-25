@@ -40,10 +40,19 @@ public final class WaitUtils {
     }
 
     public static void waitForExtMask() {
-        new WebDriverWait(DriverManager.getDriver(), Duration.ofSeconds(extJsTimeout()))
-                .until(ExpectedConditions.invisibilityOfElementLocated(
-                        By.cssSelector(".x-mask, .x-mask-msg")
-                ));
+        try {
+            new WebDriverWait(DriverManager.getDriver(), Duration.ofSeconds(extJsTimeout()))
+                    .until(ExpectedConditions.invisibilityOfElementLocated(
+                            By.cssSelector(".x-mask, .x-mask-msg")
+                    ));
+        } catch (TimeoutException e) {
+            // If a messagebox dialog is visible the mask won't clear until Yes/No is clicked — expected
+            boolean dialogBlocking = !DriverManager.getDriver()
+                    .findElements(By.xpath(
+                            "//div[contains(@class,'x-message-box') and not(contains(@class,'x-hide-display'))]"))
+                    .isEmpty();
+            if (!dialogBlocking) throw e;
+        }
     }
 
     public static void waitForExtJsApp() {

@@ -6,9 +6,9 @@ import com.gsl.enums.AdjustmentType;
 import com.gsl.enums.PaymentSelectionType;
 import com.gsl.enums.WaitType;
 import com.gsl.pages.Finance.Operations.Common.AdjustmentEntry;
-import com.gsl.pages.Finance.Operations.Common.PaymentInformationPopup;
+import com.gsl.enums.VoucherDomain;
 import com.gsl.pages.Finance.Operations.Common.SelectDocumentPopup;
-import com.gsl.pages.pagecomponent.Finance.Common.AdjustmentEntryParent;
+import com.gsl.pages.pagecomponent.Finance.Operations.Common.VoucherSubLedgerInformationBase;
 import com.gsl.testdata.Finance.Operations.Vouchers.ARVoucher.PaymentInformation;
 import com.gsl.testdata.Finance.Operations.Vouchers.ARVoucher.SelectDocument;
 import com.gsl.testdata.Finance.Operations.Vouchers.ARVoucher.SubLedgerInformation;
@@ -31,20 +31,23 @@ import java.util.List;
 import java.util.concurrent.TimeUnit;
 import java.util.stream.Collectors;
 
+import com.gsl.pages.Finance.Operations.Common.ArPaymentInformationPopup;
+import com.gsl.pages.Finance.Operations.Common.PaymentInformationPopup;
 import static com.gsl.utils.Selenium.ExtJsUtils.setExtJsComboByName;
 
-public class ARVoucherSubLedgerInformation implements AdjustmentEntryParent {
+public class ARVoucherSubLedgerInformation extends VoucherSubLedgerInformationBase {
+
+    public ARVoucherSubLedgerInformation() {
+        super(VoucherDomain.AR);
+    }
+
+    @Override
+    protected PaymentInformationPopup createPaymentPopup() {
+        return new ArPaymentInformationPopup();
+    }
     private static final By SUBLEDGERNAMEBLANK=By.xpath("(//div[contains(@class,'x-window')]//table[contains(@class,'x-grid-item')])[last()]//tr[last()]//td[3]");
     private static final String SUBLEDGERSELECTION_XPATH="//span[text()='%s']";
     private static final By SUBLEDGERAMOUNTCR = By.xpath("//tr[.//td/div[normalize-space()='ABUL KASHEM MOLLHA'] and .//td/div[normalize-space()='Hena Embroidery']]//td[contains(@data-columnid,'numbercolumn')]//div");
-    private static final String SUBLEDGERADJUSTBUTTON_TEMPLATE =
-            "//tr[td[@data-columnid=//span[normalize-space()='Sub Ledger']/ancestor::div[contains(@id,'gridcolumn')]/@id]/div[text()='%s'] and td[@data-columnid=//span[normalize-space()='Reference Site']/ancestor::div[contains(@id,'gridcolumn')]/@id]/div[normalize-space()='%s']]//td[@data-columnid=//span[normalize-space()='Reference Site']/ancestor::div[contains(@id,'gridcolumn')]/@id]/following-sibling::td/div//button[normalize-space()='Adjust']";
-    private static final String SUBLEDGERADJUSTBUTTON_TEMPLATE_WITH_SLID =
-            "//tr[td[@data-columnid=//span[normalize-space()='Sub Ledger']/ancestor::div[contains(@id,'gridcolumn')]/@id]/div[text()='%s'] and td[@data-columnid=//span[normalize-space()='Reference Site']/ancestor::div[contains(@id,'gridcolumn')]/@id]/div[normalize-space()='%s'] and td[@data-columnid=//span[normalize-space()='Sub Ledger Id']/ancestor::div[contains(@id,'gridcolumn')]/@id]/div[normalize-space()='%s']]//td[@data-columnid=//span[normalize-space()='Reference Site']/ancestor::div[contains(@id,'gridcolumn')]/@id]/following-sibling::td/div//button[normalize-space()='Adjust']";
-    private static final String PAYMENT_BUTTON_TEMPLATE =
-            "//tr[td[@data-columnid=//span[normalize-space()='Sub Ledger']/ancestor::div[contains(@id,'gridcolumn')]/@id]/div[text()='%s'] and td[@data-columnid=//span[normalize-space()='Reference Site']/ancestor::div[contains(@id,'gridcolumn')]/@id]/div[normalize-space()='%s']]//td[@data-columnid=//span[normalize-space()='Reference Site']/ancestor::div[contains(@id,'gridcolumn')]/@id]/following-sibling::td/div//button[normalize-space()='Cheque/RTGS']";
-    private static final String PAYMENT_BUTTON_TEMPLATE_WITH_SLID =
-            "//tr[td[@data-columnid=//span[normalize-space()='Sub Ledger']/ancestor::div[contains(@id,'gridcolumn')]/@id]/div[text()='%s'] and td[@data-columnid=//span[normalize-space()='Reference Site']/ancestor::div[contains(@id,'gridcolumn')]/@id]/div[normalize-space()='%s'] and td[@data-columnid=//span[normalize-space()='Sub Ledger Id']/ancestor::div[contains(@id,'gridcolumn')]/@id]/div[normalize-space()='%s']]//td[@data-columnid=//span[normalize-space()='Reference Site']/ancestor::div[contains(@id,'gridcolumn')]/@id]/following-sibling::td/div//button[normalize-space()='Cheque/RTGS']";
     // ── Active ExtJS editor – works regardless of row content ────────────────
     private static final By ACTIVE_EDITOR_INPUT = By.xpath(
             "//div[contains(@class,'x-editor') " +
@@ -361,26 +364,10 @@ public class ARVoucherSubLedgerInformation implements AdjustmentEntryParent {
         return this;
     }
 
-    private void clickAdjust(String subLedgerName, String referenceSite, String slid) {
-        String xpath = (slid != null && !slid.isBlank())
-                ? String.format(SUBLEDGERADJUSTBUTTON_TEMPLATE_WITH_SLID, subLedgerName, referenceSite, slid)
-                : String.format(SUBLEDGERADJUSTBUTTON_TEMPLATE, subLedgerName, referenceSite);
-        SeleniumUtils.click(By.xpath(xpath), WaitType.CLICKABLE, "SUBLEDGERADJUSTBUTTON");
-    }
-
     private By getSubLedgerNameSelection(String subLedgerName) {
         String xpath = String.format(SUBLEDGERSELECTION_XPATH, subLedgerName);
         System.out.println("Generated XPath: " + xpath);
         return By.xpath(xpath);
-    }
-
-    private PaymentInformationPopup clickPaymentButton(String subLedger, String referenceSite, String slid) {
-        String xpath = (slid != null && !slid.isBlank())
-                ? String.format(PAYMENT_BUTTON_TEMPLATE_WITH_SLID, subLedger, referenceSite, slid)
-                : String.format(PAYMENT_BUTTON_TEMPLATE, subLedger, referenceSite);
-        SeleniumUtils.click(By.xpath(xpath), WaitType.CLICKABLE, "PAYMENT_BUTTON_" + subLedger);
-        JavascriptExecutorUtils.waitForExtJS();
-        return new PaymentInformationPopup();
     }
 
     private void handlePaymentInformation(

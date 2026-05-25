@@ -2620,24 +2620,19 @@ public final class JavascriptExecutorUtils {
 
 
 
-    public static void setSubLedgerVerify() {
+    public static void setSubLedgerVerify(String gridItemId) {
         JavascriptExecutor js = (JavascriptExecutor) DriverManager.getDriver();
         String payload = (String) js.executeScript(
                 "try {" +
-                        "    var grids = Ext.ComponentQuery.query('grid');" +
-                        "    for (var i = 0; i < grids.length; i++) {" +
-                        "        var store = grids[i].getStore();" +
-                        "        if (store && store.getCount() > 0) {" +
-                        "            var rec = store.getAt(0);" +
-                        "            return JSON.stringify(rec.getData());" +
-                        "        }" +
-                        "    }" +
-                        "    return 'No record found';" +
+                        "    var g = Ext.ComponentQuery.query('gridpanel[itemId=" + gridItemId + "]')[0];" +
+                        "    if (!g) return '" + gridItemId + " not found';" +
+                        "    var store = g.getStore();" +
+                        "    if (!store || store.getCount() === 0) return 'NO_RECORDS_IN_" + gridItemId + "';" +
+                        "    var rec = store.getAt(0);" +
+                        "    return JSON.stringify(rec.getData());" +
                         "} catch(e) { return 'ERROR: ' + e.message; }"
         );
-        System.out.println("=== DETAIL RECORD BEFORE SAVE ===");
-        System.out.println(payload);
-        System.out.println("=== END DETAIL RECORD ===");
+        ExtentLogger.info("=== DETAIL RECORD BEFORE SAVE [" + gridItemId + "] === " + payload + " === END ===");
     }
 
     public static void debugSubLedgerRecords(WebDriver driver) {
@@ -3120,6 +3115,10 @@ public final class JavascriptExecutorUtils {
 
 
     public static void setSubLedger(WebDriver driver, String slName, String slId, String referenceSite) {
+        setSubLedger(driver, slName, slId, referenceSite, "arvch_grid");
+    }
+
+    public static void setSubLedger(WebDriver driver, String slName, String slId, String referenceSite, String gridItemId) {
         slName = (slName != null) ? slName.trim() : "";
         slId   = (slId   != null) ? slId.trim()   : "";
         if (slName.isEmpty()) {
@@ -3134,8 +3133,8 @@ public final class JavascriptExecutorUtils {
 
         String clickScript =
                 "try {"
-                        + "  var childGrid = Ext.ComponentQuery.query('gridpanel[itemId=arvch_grid]')[0];"
-                        + "  if (!childGrid) throw new Error('arvch_grid not found');"
+                        + "  var childGrid = Ext.ComponentQuery.query('gridpanel[itemId=" + gridItemId + "]')[0];"
+                        + "  if (!childGrid) throw new Error('" + gridItemId + " not found');"
                         + "  var view = childGrid.getView();"
                         + "  var rowEl = view.getNode(0);"
                         + "  if (!rowEl) throw new Error('child grid row 0 DOM node not found');"
@@ -3161,7 +3160,7 @@ public final class JavascriptExecutorUtils {
         String selectScript =
                 "window.__slSearchDone = false; window.__slSearchFound = false;"
                         + "try {"
-                        + "  var childGrid = Ext.ComponentQuery.query('gridpanel[itemId=arvch_grid]')[0];"
+                        + "  var childGrid = Ext.ComponentQuery.query('gridpanel[itemId=" + gridItemId + "]')[0];"
                         + "  var combo = Ext.ComponentQuery.query('combo[name=slCode]')[0];"
                         + "  if (!combo) throw new Error('slCode combo still not found after cell click');"
                         + "  console.log('combo found: ' + combo.id);"
@@ -3195,24 +3194,62 @@ public final class JavascriptExecutorUtils {
                         + "          }"
                         + "          return;"
                         + "        }"
+                        + "        window.__slRecData = JSON.stringify(slRec.getData());"
                         + "        combo.select(slRec);"
                         + "        combo.fireEvent('select', combo, slRec);"
-                        + "        setTimeout(function() {"
+                        + "        combo.blur();"
+                        + "        var __glPollCount0 = 0;"
+                        + "        var __glPollStart0 = Date.now();"
+                        + "        function __pollGlRow0() {"
                         + "          var rec = childGrid.getStore().getAt(0);"
-                        + "          if (!rec) { console.error('child grid rec not found'); window.__slSearchDone = true; window.__slSearchFound = false; return; }"
-                        + "          rec.set('slCode',             slRec.get('slCode'));"
-                        + "          rec.set('slName',             slRec.get('slName'));"
-                        + "          rec.set('slid',               slRec.get('slid'));"
-                        + "          rec.set('className',          slRec.get('className'));"
-                        + "          rec.set('ledgerCode',         slRec.get('glCode')                 || 0);"
-                        + "          rec.set('ledgerName',         slRec.get('glName')                 || '');"
-                        + "          rec.set('ledgerGroupName',    slRec.get('generalLedgerGroupName') || '');"
-                        + "          rec.set('ledgerAbbreviation', slRec.get('generalLedgerAbbre')     || '');"
+                        + "          if (!rec) { window.__slSearchDone = true; window.__slSearchFound = false; return; }"
+                        + "          rec.set('ledgerCode', slRec.get('glCode') || rec.get('ledgerCode') || 0);"
+                        + "          rec.set('glCode',     slRec.get('glCode') || rec.get('ledgerCode') || 0);"
+                        + "          var glName  = slRec.get('glName');"
+                        + "          var glGrp   = slRec.get('generalLedgerGroupName');"
+                        + "          var glAbbre = slRec.get('generalLedgerAbbre');"
+                        + "          if (glName)  rec.set('ledgerName',             glName);"
+                        + "          if (glGrp) { rec.set('ledgerGroupName',        glGrp);"
+                        + "                       rec.set('generalLedgerGroupName', glGrp); }"
+                        + "          if (glAbbre) rec.set('ledgerAbbreviation',     glAbbre);"
+                        + "          var glReady = rec.get('ledgerCode') > 0 && (rec.get('generalLedgerGroupName') || '') !== '' && !Ext.Ajax.isLoading();"
+                        + "          if (!glReady && __glPollCount0 < 30) { __glPollCount0++; setTimeout(__pollGlRow0, 400); return; }"
+                        + "          rec.set('slCode',    slRec.get('slCode'));"
+                        + "          rec.set('slName',    slRec.get('slName'));"
+                        + "          rec.set('slid',      slRec.get('slid'));"
+                        + "          rec.set('className', slRec.get('className'));"
+                        + "          var tdsAppFromSl = slRec.get('tdsApp');"
+                        + "          if (tdsAppFromSl != null) {"
+                        + "            rec.set('tdsApp',    tdsAppFromSl);"
+                        + "            rec.set('TDSdeduct', tdsAppFromSl);"
+                        + "            rec.set('deductTDS', tdsAppFromSl);"
+                        + "          }"
+                        + "          window.__gridRecGl = 'ledgerName=' + (rec.get('ledgerName') || 'EMPTY')"
+                        + "            + ' | ledgerGroupName=' + (rec.get('ledgerGroupName') || 'EMPTY')"
+                        + "            + ' | ledgerCode=' + rec.get('ledgerCode') + ' | slCode=' + rec.get('slCode') + ' | polls=' + __glPollCount0 + ' | ms=' + (Date.now() - __glPollStart0);"
+                        + "          window.__slSearchDiag = { lastLedgerCode: rec.get('ledgerCode'), lastLedgerName: rec.get('ledgerName'), lastLedgerGroupName: rec.get('ledgerGroupName'), lastAjaxLoading: Ext.Ajax.isLoading(), polls: __glPollCount0, ms: (Date.now() - __glPollStart0) };"
+                        + "          window.__capturedGlRows = window.__capturedGlRows || [];"
+                        + "          window.__capturedGlRows[0] = {"
+                        + "            name:           rec.get('ledgerName')             || '',"
+                        + "            groupName:      rec.get('ledgerGroupName')        || '',"
+                        + "            generalGrpName: rec.get('generalLedgerGroupName') || '',"
+                        + "            abbre:          rec.get('ledgerAbbreviation')     || '',"
+                        + "            code:           rec.get('ledgerCode')             || 0,"
+                        + "            glCode:         rec.get('glCode')                 || 0,"
+                        + "            slCode:         rec.get('slCode')                 || 0,"
+                        + "            slName:         rec.get('slName')                 || '',"
+                        + "            slid:           rec.get('slid')                   || '',"
+                        + "            className:      rec.get('className')              || '',"
+                        + "            tdsApp:         rec.get('tdsApp')                 || '',"
+                        + "            TDSdeduct:      rec.get('TDSdeduct')              || '',"
+                        + "            deductTDS:      rec.get('deductTDS')              || ''"
+                        + "          };"
                         + "          childGrid.getView().refreshNode(0);"
-                        + "          console.log('DONE slCode=' + rec.get('slCode') + ' slid=' + rec.get('slid') + ' className=' + rec.get('className'));"
+                        + "          console.log('[CAPTURED] slCode=' + rec.get('slCode') + ' ledgerCode=' + rec.get('ledgerCode') + ' ledgerGroupName=' + rec.get('ledgerGroupName') + ' polls=' + __glPollCount0);"
                         + "          console.log('FULL GRID RECORD: ' + JSON.stringify(rec.getData()));"
                         + "          window.__slSearchDone = true; window.__slSearchFound = true;"
-                        + "        }, 600);"
+                        + "        }"
+                        + "        setTimeout(__pollGlRow0, 600);"
                         + "      }"
                         + "    });"
                         + "  }"
@@ -3235,24 +3272,157 @@ public final class JavascriptExecutorUtils {
                 .executeScript("return window.__slSearchTotalCount !== undefined ? window.__slSearchTotalCount : -1;");
         System.out.println("=== Page-walk complete for SL '" + slName + "' | found=" + pageWalkFound
                 + (Boolean.FALSE.equals(pageWalkFound) ? " | storeTotal=" + slSearchTotalCount : "") + " ===");
+        printSlDebug(driver);
 
-        String verifyResult = verifySelectedSubLedgerRecord(driver, 0);
+        String verifyResult = verifySelectedSubLedgerRecord(driver, 0, gridItemId);
         assertSubLedgerSelected(mode, slName, safeSlId, verifyResult, 0, Boolean.TRUE.equals(pageWalkFound));
         String safeRefSite = (referenceSite == null) ? "" : referenceSite;
         if (!safeRefSite.isEmpty()) {
             ExtentLogger.info("[SL SELECT] ReferenceSite will be set via setSubLedgerReferenceSite | Row=0 | Value=" + safeRefSite);
-            setSubLedgerReferenceSite(driver, 0, safeRefSite);
+            setSubLedgerReferenceSite(driver, 0, safeRefSite, gridItemId);
         } else {
             ExtentLogger.info("[SL SELECT] ReferenceSite not provided, no Reference Site change | Row=0");
         }
         System.out.println("=== END: setSubLedger ===");
     }
 
-    private static String verifySelectedSubLedgerRecord(WebDriver driver, int rowIndex) {
+    /**
+     * Reads the two window debug variables set inside the 600ms setTimeout:
+     *   __slRecData   — JSON of the slCode combo record (what the server returned for this SL)
+     *   __gridRecGl   — ledgerName / ledgerGroupName / ledgerAbbreviation on the grid record
+     *                   *before* the guarded writes, showing what fireEvent('select') set.
+     */
+    private static void printSlDebug(WebDriver driver) {
+        String slRec   = (String) ((JavascriptExecutor) driver)
+                .executeScript("return window.__slRecData   !== undefined ? window.__slRecData   : 'NOT_CAPTURED';");
+        String gridGl  = (String) ((JavascriptExecutor) driver)
+                .executeScript("return window.__gridRecGl   !== undefined ? window.__gridRecGl   : 'NOT_CAPTURED';");
+        String diagStr = (String) ((JavascriptExecutor) driver)
+                .executeScript("return window.__slSearchDiag !== undefined ? JSON.stringify(window.__slSearchDiag) : 'NOT_CAPTURED';");
+        System.out.println("=== [SL_COMBO_RECORD] "     + slRec   + " ===");
+        System.out.println("=== [GL_AFTER_FIRE_EVENT] " + gridGl  + " ===");
+        System.out.println("=== [GL_POLL_DIAG] "        + diagStr + " ===");
+    }
+
+    public static void restoreGlFieldsFromCapture(WebDriver driver, int rowIndex, String gridItemId) {
         String script =
                 "try {" +
-                "  var childGrid = Ext.ComponentQuery.query('gridpanel[itemId=arvch_grid]')[0];" +
-                "  if (!childGrid) return 'ERROR: arvch_grid not found';" +
+                "  var cap = window.__capturedGlRows && window.__capturedGlRows[" + rowIndex + "];" +
+                "  if (!cap) return 'NO_CAPTURE';" +
+                "  var g = Ext.ComponentQuery.query('gridpanel[itemId=" + gridItemId + "]')[0];" +
+                "  if (!g) return 'GRID_NOT_FOUND';" +
+                "  var rec = g.getStore().getAt(" + rowIndex + ");" +
+                "  if (!rec) return 'REC_NOT_FOUND';" +
+                "  if (cap.name)      rec.set('ledgerName',             cap.name);" +
+                "  if (cap.groupName) rec.set('ledgerGroupName',        cap.groupName);" +
+                "  var gg = cap.generalGrpName || cap.groupName || '';" +
+                "  if (gg)            rec.set('generalLedgerGroupName', gg);" +
+                "  if (cap.abbre)     rec.set('ledgerAbbreviation',     cap.abbre);" +
+                "  rec.set('ledgerCode', cap.code);" +
+                "  rec.set('glCode', cap.glCode || cap.code || 0);" +
+                "  if (cap.slCode)    rec.set('slCode',    cap.slCode);" +
+                "  if (cap.slName)    rec.set('slName',    cap.slName);" +
+                "  if (cap.slid)      rec.set('slid',      cap.slid);" +
+                "  if (cap.className) rec.set('className', cap.className);" +
+                "  g.getView().refreshNode(" + rowIndex + ");" +
+                "  return 'RESTORED: ' + rec.get('ledgerName') + ' | ' + rec.get('ledgerGroupName')" +
+                "         + ' | slCode=' + rec.get('slCode') + ' | slid=' + rec.get('slid');" +
+                "} catch(e) { return 'ERROR: ' + e.message; }";
+        Object result = ((JavascriptExecutor) driver).executeScript(script);
+        System.out.println("=== [GL_RESTORE] row=" + rowIndex + " => " + result + " ===");
+    }
+
+    public static void restoreAllGlFieldsFromCapture(WebDriver driver, String gridItemId) {
+        String script =
+                "try {" +
+                "  if (!window.__capturedGlRows) return 'NO_CAPTURE';" +
+                "  var g = Ext.ComponentQuery.query('gridpanel[itemId=" + gridItemId + "]')[0];" +
+                "  if (!g) return 'GRID_NOT_FOUND';" +
+                "  var store = g.getStore(); var view = g.getView(); var results = [];" +
+                "  for (var i = 0; i < window.__capturedGlRows.length; i++) {" +
+                "    var cap = window.__capturedGlRows[i];" +
+                "    if (!cap) continue;" +
+                "    var rec = store.getAt(i); if (!rec) continue;" +
+                "    rec.set('ledgerCode',             cap.code      || 0);" +
+                "    rec.set('glCode',                 cap.glCode || cap.code || 0);" +
+                "    rec.set('ledgerName',             cap.name      || '');" +
+                "    rec.set('glName',                 cap.name      || '');" +
+                "    rec.set('ledgerGroupName',        cap.groupName || '');" +
+                "    var gg = cap.generalGrpName || cap.groupName || '';" +
+                "    rec.set('generalLedgerGroupName', gg);" +
+                "    rec.set('ledgerAbbreviation',     cap.abbre     || '');" +
+                "    rec.set('generalLedgerAbbre',     cap.abbre     || '');" +
+                "    rec.set('tdsApp',                 cap.tdsApp    || '');" +
+                "    rec.set('TDSdeduct',              cap.TDSdeduct || '');" +
+                "    rec.set('deductTDS',              cap.deductTDS || '');" +
+                "    if (view) view.refreshNode(i);" +
+                "    results.push('row=' + i + ' code=' + rec.get('ledgerCode') + ' glCode=' + rec.get('glCode') + ' grp=' + gg + ' tds=' + (rec.get('tdsApp') || ''));" +
+                "  }" +
+                "  return 'PRE_SAVE_GL: ' + results.join('; ');" +
+                "} catch(e) { return 'ERROR: ' + e.message; }";
+        Object result = ((JavascriptExecutor) driver).executeScript(script);
+        ExtentLogger.info("[GL_PRE_SAVE_RESTORE] " + result);
+    }
+
+    /**
+     * Override the "Deduct TDS" value on a sub-ledger grid row from test data.
+     *
+     * <p>App rule: the Deduct TDS field is only editable when the supplier has TDS
+     * configured server-side (i.e., {@code tdsApp == 'Y'}). When TDS is not applicable
+     * (tdsApp is 'N', null, or empty), the field is locked to "No" and any override is
+     * ignored — the framework logs a warning and skips.</p>
+     *
+     * <p>When the override is accepted, all three TDS field names on the grid record
+     * ({@code tdsApp / TDSdeduct / deductTDS}) and the corresponding entry in
+     * {@code window.__capturedGlRows[rowIndex]} are updated, so the pre-save restore
+     * in {@link #restoreAllGlFieldsFromCapture(WebDriver, String)} preserves the
+     * override instead of clobbering it.</p>
+     */
+    public static void setDeductTdsForRow(WebDriver driver, int rowIndex, String value, String gridItemId) {
+        if (value == null || value.trim().isEmpty()) return;
+        String safeValue = value.trim();
+        String script =
+                "try {" +
+                "  var g = Ext.ComponentQuery.query('gridpanel[itemId=" + gridItemId + "]')[0];" +
+                "  if (!g) return 'GRID_NOT_FOUND';" +
+                "  var rec = g.getStore().getAt(" + rowIndex + ");" +
+                "  if (!rec) return 'REC_NOT_FOUND';" +
+                "  var currentTdsApp = rec.get('tdsApp');" +
+                "  if (currentTdsApp !== 'Y') {" +
+                "    return 'LOCKED: tdsApp=' + (currentTdsApp || 'null') + ' — Deduct TDS not editable';" +
+                "  }" +
+                "  rec.set('tdsApp',    '" + safeValue + "');" +
+                "  rec.set('TDSdeduct', '" + safeValue + "');" +
+                "  rec.set('deductTDS', '" + safeValue + "');" +
+                "  if (window.__capturedGlRows && window.__capturedGlRows[" + rowIndex + "]) {" +
+                "    window.__capturedGlRows[" + rowIndex + "].tdsApp    = '" + safeValue + "';" +
+                "    window.__capturedGlRows[" + rowIndex + "].TDSdeduct = '" + safeValue + "';" +
+                "    window.__capturedGlRows[" + rowIndex + "].deductTDS = '" + safeValue + "';" +
+                "  }" +
+                "  g.getView().refreshNode(" + rowIndex + ");" +
+                "  return 'APPLIED: row=' + " + rowIndex + " + ' value=' + '" + safeValue + "';" +
+                "} catch(e) { return 'ERROR: ' + e.message; }";
+        Object result = ((JavascriptExecutor) driver).executeScript(script);
+        String resultStr = String.valueOf(result);
+        if (resultStr.startsWith("LOCKED")) {
+            ExtentLogger.warning("[DEDUCT_TDS] Override ignored on row=" + rowIndex
+                    + " — " + resultStr + " | requestedValue=" + safeValue);
+        } else if (resultStr.startsWith("ERROR") || resultStr.startsWith("GRID_NOT_FOUND") || resultStr.startsWith("REC_NOT_FOUND")) {
+            ExtentLogger.warning("[DEDUCT_TDS] Failed to apply override on row=" + rowIndex + " — " + resultStr);
+        } else {
+            ExtentLogger.info("[DEDUCT_TDS] " + resultStr);
+        }
+    }
+
+    private static String verifySelectedSubLedgerRecord(WebDriver driver, int rowIndex) {
+        return verifySelectedSubLedgerRecord(driver, rowIndex, "arvch_grid");
+    }
+
+    private static String verifySelectedSubLedgerRecord(WebDriver driver, int rowIndex, String gridItemId) {
+        String script =
+                "try {" +
+                "  var childGrid = Ext.ComponentQuery.query('gridpanel[itemId=" + gridItemId + "]')[0];" +
+                "  if (!childGrid) return 'ERROR: " + gridItemId + " not found';" +
                 "  var rec = childGrid.getStore().getAt(" + rowIndex + ");" +
                 "  if (!rec) return 'ERROR: record not found at row " + rowIndex + "';" +
                 "  return rec.get('slName') + '|' + rec.get('slid') + '|' + rec.get('slCode')" +
@@ -3310,10 +3480,14 @@ public final class JavascriptExecutorUtils {
      * Call this before setSubLedgerForRow() for any row index > 0.
      */
     public static void addSubLedgerRow(WebDriver driver) {
+        addSubLedgerRow(driver, "arvch_grid");
+    }
+
+    public static void addSubLedgerRow(WebDriver driver, String gridItemId) {
         String script =
                 "try {"
-                        + "  var childGrid = Ext.ComponentQuery.query('gridpanel[itemId=arvch_grid]')[0];"
-                        + "  if (!childGrid) throw new Error('arvch_grid not found');"
+                        + "  var childGrid = Ext.ComponentQuery.query('gridpanel[itemId=" + gridItemId + "]')[0];"
+                        + "  if (!childGrid) throw new Error('" + gridItemId + " not found');"
                         + "  var store = childGrid.getStore();"
                         + "  store.add({});"
                         + "  console.log('Added new subledger row, total=' + store.getCount());"
@@ -3325,10 +3499,14 @@ public final class JavascriptExecutorUtils {
     }
 
     /**
-     * Sets the subledger name on a specific row (rowIndex) in arvch_grid.
+     * Sets the subledger name on a specific row (rowIndex) in the specified grid.
      * For row 0 use setSubLedger(); for subsequent rows use this method after addSubLedgerRow().
      */
     public static void setSubLedgerForRow(WebDriver driver, int rowIndex, String slName, String slId, String referenceSite) {
+        setSubLedgerForRow(driver, rowIndex, slName, slId, referenceSite, "arvch_grid");
+    }
+
+    public static void setSubLedgerForRow(WebDriver driver, int rowIndex, String slName, String slId, String referenceSite, String gridItemId) {
         slName = (slName != null) ? slName.trim() : "";
         slId   = (slId   != null) ? slId.trim()   : "";
         if (slName.isEmpty()) {
@@ -3344,8 +3522,8 @@ public final class JavascriptExecutorUtils {
 
         String clickScript =
                 "try {"
-                        + "  var childGrid = Ext.ComponentQuery.query('gridpanel[itemId=arvch_grid]')[0];"
-                        + "  if (!childGrid) throw new Error('arvch_grid not found');"
+                        + "  var childGrid = Ext.ComponentQuery.query('gridpanel[itemId=" + gridItemId + "]')[0];"
+                        + "  if (!childGrid) throw new Error('" + gridItemId + " not found');"
                         + "  var view = childGrid.getView();"
                         + "  var rowEl = view.getNode(" + rowIndex + ");"
                         + "  if (!rowEl) throw new Error('child grid row " + rowIndex + " DOM node not found');"
@@ -3369,7 +3547,7 @@ public final class JavascriptExecutorUtils {
         String selectScript =
                 "window.__slSearchDone = false; window.__slSearchFound = false;"
                         + "try {"
-                        + "  var childGrid = Ext.ComponentQuery.query('gridpanel[itemId=arvch_grid]')[0];"
+                        + "  var childGrid = Ext.ComponentQuery.query('gridpanel[itemId=" + gridItemId + "]')[0];"
                         + "  var combo = Ext.ComponentQuery.query('combo[name=slCode]')[0];"
                         + "  if (!combo) throw new Error('slCode combo not found after cell click');"
                         + "  var PAGE_SIZE = 25;"
@@ -3403,23 +3581,61 @@ public final class JavascriptExecutorUtils {
                         + "          }"
                         + "          return;"
                         + "        }"
+                        + "        window.__slRecData = JSON.stringify(slRec.getData());"
                         + "        combo.select(slRec);"
                         + "        combo.fireEvent('select', combo, slRec);"
-                        + "        setTimeout(function() {"
+                        + "        combo.blur();"
+                        + "        var __glPollCountR = 0;"
+                        + "        var __glPollStartR = Date.now();"
+                        + "        function __pollGlRowR() {"
                         + "          var rec = childGrid.getStore().getAt(targetRow);"
-                        + "          if (!rec) { console.error('child grid rec at row ' + targetRow + ' not found'); window.__slSearchDone = true; window.__slSearchFound = false; return; }"
-                        + "          rec.set('slCode',             slRec.get('slCode'));"
-                        + "          rec.set('slName',             slRec.get('slName'));"
-                        + "          rec.set('slid',               slRec.get('slid'));"
-                        + "          rec.set('className',          slRec.get('className'));"
-                        + "          rec.set('ledgerCode',         slRec.get('glCode')                 || 0);"
-                        + "          rec.set('ledgerName',         slRec.get('glName')                 || '');"
-                        + "          rec.set('ledgerGroupName',    slRec.get('generalLedgerGroupName') || '');"
-                        + "          rec.set('ledgerAbbreviation', slRec.get('generalLedgerAbbre')     || '');"
+                        + "          if (!rec) { window.__slSearchDone = true; window.__slSearchFound = false; return; }"
+                        + "          rec.set('ledgerCode', slRec.get('glCode') || rec.get('ledgerCode') || 0);"
+                        + "          rec.set('glCode',     slRec.get('glCode') || rec.get('ledgerCode') || 0);"
+                        + "          var glName  = slRec.get('glName');"
+                        + "          var glGrp   = slRec.get('generalLedgerGroupName');"
+                        + "          var glAbbre = slRec.get('generalLedgerAbbre');"
+                        + "          if (glName)  rec.set('ledgerName',             glName);"
+                        + "          if (glGrp) { rec.set('ledgerGroupName',        glGrp);"
+                        + "                       rec.set('generalLedgerGroupName', glGrp); }"
+                        + "          if (glAbbre) rec.set('ledgerAbbreviation',     glAbbre);"
+                        + "          var glReady = rec.get('ledgerCode') > 0 && (rec.get('generalLedgerGroupName') || '') !== '' && !Ext.Ajax.isLoading();"
+                        + "          if (!glReady && __glPollCountR < 30) { __glPollCountR++; setTimeout(__pollGlRowR, 400); return; }"
+                        + "          rec.set('slCode',    slRec.get('slCode'));"
+                        + "          rec.set('slName',    slRec.get('slName'));"
+                        + "          rec.set('slid',      slRec.get('slid'));"
+                        + "          rec.set('className', slRec.get('className'));"
+                        + "          var tdsAppFromSl = slRec.get('tdsApp');"
+                        + "          if (tdsAppFromSl != null) {"
+                        + "            rec.set('tdsApp',    tdsAppFromSl);"
+                        + "            rec.set('TDSdeduct', tdsAppFromSl);"
+                        + "            rec.set('deductTDS', tdsAppFromSl);"
+                        + "          }"
+                        + "          window.__gridRecGl = 'row=' + targetRow + ' | ledgerName=' + (rec.get('ledgerName') || 'EMPTY')"
+                        + "            + ' | ledgerGroupName=' + (rec.get('ledgerGroupName') || 'EMPTY')"
+                        + "            + ' | ledgerCode=' + rec.get('ledgerCode') + ' | slCode=' + rec.get('slCode') + ' | polls=' + __glPollCountR + ' | ms=' + (Date.now() - __glPollStartR);"
+                        + "          window.__slSearchDiag = { lastLedgerCode: rec.get('ledgerCode'), lastLedgerName: rec.get('ledgerName'), lastLedgerGroupName: rec.get('ledgerGroupName'), lastAjaxLoading: Ext.Ajax.isLoading(), polls: __glPollCountR, ms: (Date.now() - __glPollStartR) };"
+                        + "          window.__capturedGlRows = window.__capturedGlRows || [];"
+                        + "          window.__capturedGlRows[targetRow] = {"
+                        + "            name:           rec.get('ledgerName')             || '',"
+                        + "            groupName:      rec.get('ledgerGroupName')        || '',"
+                        + "            generalGrpName: rec.get('generalLedgerGroupName') || '',"
+                        + "            abbre:          rec.get('ledgerAbbreviation')     || '',"
+                        + "            code:           rec.get('ledgerCode')             || 0,"
+                        + "            glCode:         rec.get('glCode')                 || 0,"
+                        + "            slCode:         rec.get('slCode')                 || 0,"
+                        + "            slName:         rec.get('slName')                 || '',"
+                        + "            slid:           rec.get('slid')                   || '',"
+                        + "            className:      rec.get('className')              || '',"
+                        + "            tdsApp:         rec.get('tdsApp')                 || '',"
+                        + "            TDSdeduct:      rec.get('TDSdeduct')              || '',"
+                        + "            deductTDS:      rec.get('deductTDS')              || ''"
+                        + "          };"
                         + "          childGrid.getView().refreshNode(targetRow);"
-                        + "          console.log('DONE row=' + targetRow + ' slCode=' + rec.get('slCode'));"
+                        + "          console.log('[CAPTURED] row=' + targetRow + ' slCode=' + rec.get('slCode') + ' ledgerCode=' + rec.get('ledgerCode') + ' polls=' + __glPollCountR);"
                         + "          window.__slSearchDone = true; window.__slSearchFound = true;"
-                        + "        }, 600);"
+                        + "        }"
+                        + "        setTimeout(__pollGlRowR, 600);"
                         + "      }"
                         + "    });"
                         + "  }"
@@ -3442,13 +3658,14 @@ public final class JavascriptExecutorUtils {
                 .executeScript("return window.__slSearchTotalCount !== undefined ? window.__slSearchTotalCount : -1;");
         System.out.println("=== Page-walk complete for row=" + rowIndex + " SL='" + slName + "' | found=" + pageWalkFound
                 + (Boolean.FALSE.equals(pageWalkFound) ? " | storeTotal=" + slSearchTotalCount : "") + " ===");
+        printSlDebug(driver);
 
-        String verifyResult = verifySelectedSubLedgerRecord(driver, rowIndex);
+        String verifyResult = verifySelectedSubLedgerRecord(driver, rowIndex, gridItemId);
         assertSubLedgerSelected(mode, slName, safeSlId, verifyResult, rowIndex, Boolean.TRUE.equals(pageWalkFound));
         String safeRefSite = (referenceSite == null) ? "" : referenceSite;
         if (!safeRefSite.isEmpty()) {
             ExtentLogger.info("[SL SELECT] ReferenceSite will be set via setSubLedgerReferenceSite | Row=" + rowIndex + " | Value=" + safeRefSite);
-            setSubLedgerReferenceSite(driver, rowIndex, safeRefSite);
+            setSubLedgerReferenceSite(driver, rowIndex, safeRefSite, gridItemId);
         } else {
             ExtentLogger.info("[SL SELECT] ReferenceSite not provided, no Reference Site change | Row=" + rowIndex);
         }
@@ -3456,6 +3673,10 @@ public final class JavascriptExecutorUtils {
     }
 
     public static void setSubLedgerReferenceSite(WebDriver driver, int rowIndex, String referenceSiteName) {
+        setSubLedgerReferenceSite(driver, rowIndex, referenceSiteName, "arvch_grid");
+    }
+
+    public static void setSubLedgerReferenceSite(WebDriver driver, int rowIndex, String referenceSiteName, String gridItemId) {
         System.out.println("=== START: setSubLedgerReferenceSite row=" + rowIndex + " site='" + referenceSiteName + "' ===");
 
         // ── setSubLedgerReferenceSite — JavaScript Strategy ──────────────────────────
@@ -3478,8 +3699,8 @@ public final class JavascriptExecutorUtils {
         // ─────────────────────────────────────────────────────────────────────────────────
         String selectScript =
                 "try {"
-                        + "  var childGrid = Ext.ComponentQuery.query('gridpanel[itemId=arvch_grid]')[0];"
-                        + "  if (!childGrid) throw new Error('arvch_grid not found');"
+                        + "  var childGrid = Ext.ComponentQuery.query('gridpanel[itemId=" + gridItemId + "]')[0];"
+                        + "  if (!childGrid) throw new Error('" + gridItemId + " not found');"
 
                         + "  var cols = childGrid.getColumnManager().getColumns();"
                         + "  var refSiteCol = null;"
@@ -3489,7 +3710,7 @@ public final class JavascriptExecutorUtils {
                         + "  if (!refSiteCol) throw new Error('referenceSiteCode column not found');"
 
                         + "  var plugin = childGrid.editingPlugin;"
-                        + "  if (!plugin) throw new Error('editingPlugin not found on arvch_grid');"
+                        + "  if (!plugin) throw new Error('editingPlugin not found on " + gridItemId + "');"
 
                         // Open the editor so the app configures the store with SL-specific params.
                         // Pass the record object instead of the integer rowIndex to avoid the
@@ -3619,16 +3840,21 @@ public final class JavascriptExecutorUtils {
         String debugJson = (String) ((JavascriptExecutor) driver).executeScript(debugScript);
         System.out.println("=== RefSite DEBUG row=" + rowIndex + " target='" + referenceSiteName + "' => " + debugJson + " ===");
 
-        String verifyResult = verifySelectedReferenceSite(driver, rowIndex);
+        String verifyResult = verifySelectedReferenceSite(driver, rowIndex, gridItemId);
         logReferenceSiteSelection(referenceSiteName, verifyResult, rowIndex);
+        restoreGlFieldsFromCapture(driver, rowIndex, gridItemId);
         System.out.println("=== END: setSubLedgerReferenceSite ===");
     }
 
     private static String verifySelectedReferenceSite(WebDriver driver, int rowIndex) {
+        return verifySelectedReferenceSite(driver, rowIndex, "arvch_grid");
+    }
+
+    private static String verifySelectedReferenceSite(WebDriver driver, int rowIndex, String gridItemId) {
         String script =
                 "try {" +
-                "  var childGrid = Ext.ComponentQuery.query('gridpanel[itemId=arvch_grid]')[0];" +
-                "  if (!childGrid) return 'ERROR: arvch_grid not found';" +
+                "  var childGrid = Ext.ComponentQuery.query('gridpanel[itemId=" + gridItemId + "]')[0];" +
+                "  if (!childGrid) return 'ERROR: " + gridItemId + " not found';" +
                 "  var rec = childGrid.getStore().getAt(" + rowIndex + ");" +
                 "  if (!rec) return 'ERROR: record not found at row " + rowIndex + "';" +
                 "  return rec.get('referenceSiteName') + '|' + rec.get('referenceSiteCode');" +
@@ -3637,14 +3863,18 @@ public final class JavascriptExecutorUtils {
     }
 
     /**
-     * Reads the Reference Site name currently stored in the arvch_grid record at the given row.
+     * Reads the Reference Site name currently stored in the grid record at the given row.
      * Used after Pass 2 (setSubLedgerReferenceSite) in DB mode to capture the UI-auto-set value
      * so subsequent clickAdjust / clickPaymentButton calls use the correct XPath discriminator.
      */
     public static String getSubLedgerReferenceSiteName(WebDriver driver, int rowIndex) {
+        return getSubLedgerReferenceSiteName(driver, rowIndex, "arvch_grid");
+    }
+
+    public static String getSubLedgerReferenceSiteName(WebDriver driver, int rowIndex, String gridItemId) {
         String script =
                 "try {" +
-                "  var grid = Ext.ComponentQuery.query('gridpanel[itemId=arvch_grid]')[0];" +
+                "  var grid = Ext.ComponentQuery.query('gridpanel[itemId=" + gridItemId + "]')[0];" +
                 "  if (!grid) return '';" +
                 "  var rec = grid.getStore().getAt(" + rowIndex + ");" +
                 "  if (!rec) return '';" +

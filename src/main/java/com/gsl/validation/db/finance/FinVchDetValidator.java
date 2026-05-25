@@ -12,6 +12,7 @@ import com.gsl.model.finance.FinVchMain;
 import com.gsl.reports.ReportLogger;
 import com.gsl.testdata.Finance.Operations.Vouchers.ARVoucher.PaymentInformation;
 import com.gsl.testdata.Finance.Operations.Vouchers.ARVoucher.SubLedgerInformation;
+import com.gsl.testdata.Finance.Operations.Vouchers.Common.VoucherPaymentInfo;
 import com.gsl.testdata.dto.MergedFinanceArVoucherData;
 import org.assertj.core.api.SoftAssertions;
 import org.testng.Assert;
@@ -108,7 +109,7 @@ public class FinVchDetValidator {
 
     private void validatePaymentDetails(SoftAssertions soft, long vchcode,
                                          List<SubLedgerInformation> inputLines,
-                                         List<PaymentInformation> paymentList,
+                                         List<? extends VoucherPaymentInfo> paymentList,
                                          String cashBankName,
                                          Map<Long, String> slNames,
                                          Map<Long, String> glNames) {
@@ -121,10 +122,10 @@ public class FinVchDetValidator {
         }
         String cashBankSrctype = cashBankGl != null ? cashBankGl.getSrctype() : null;
 
-        // Build lineNo → PaymentInformation map for O(1) lookup
-        Map<String, PaymentInformation> paymentByLineNo = new HashMap<>();
+        // Build lineNo → VoucherPaymentInfo map for O(1) lookup
+        Map<String, VoucherPaymentInfo> paymentByLineNo = new HashMap<>();
         if (paymentList != null) {
-            for (PaymentInformation p : paymentList) {
+            for (VoucherPaymentInfo p : paymentList) {
                 if (p.getLineNo() != null && !p.getLineNo().isBlank())
                     paymentByLineNo.put(p.getLineNo().trim(), p);
             }
@@ -167,7 +168,7 @@ public class FinVchDetValidator {
             }
 
             // Step 4: find PaymentInformation for this line via lineNo
-            PaymentInformation paymentInfo = (line.getLineNo() != null)
+            VoucherPaymentInfo paymentInfo = (line.getLineNo() != null)
                     ? paymentByLineNo.get(line.getLineNo().trim()) : null;
 
             // Step 5: derive expected payment_mode DB code
@@ -181,7 +182,7 @@ public class FinVchDetValidator {
                             + " glname=" + finGl.getGlname() + "(glcode=" + finGl.getGlcode() + ")")
                     .isEqualTo(expectedCode);
 
-            // Step 7: validate instrument details for rows with explicit PaymentInformation
+            // Step 7: validate instrument details for rows with explicit payment info
             validateInstrumentDetails(soft, row, paymentInfo, finSl, finGl);
         }
     }
@@ -197,14 +198,8 @@ public class FinVchDetValidator {
      *   srctype 'B' (Bank GL) → 'C'  (system default Cheque)
      */
     private String resolveExpectedPaymentCode(String cashBankSrctype,
-                                               PaymentInformation paymentInfo) {
-        if (paymentInfo != null && paymentInfo.getPaymentMode() != null)
-            return paymentInfo.getPaymentMode().dbCode();
-
-        if ("C".equalsIgnoreCase(cashBankSrctype))
-            return PaymentSelectionType.CASH.dbCode();      // 'H'
-
-        return PaymentSelectionType.CHEQUE.dbCode();        // 'C'
+                                               VoucherPaymentInfo paymentInfo) {
+        return PaymentModeResolver.resolve(cashBankSrctype, paymentInfo);
     }
 
     /**
@@ -221,7 +216,7 @@ public class FinVchDetValidator {
      * correlation with the Extent Report and log file.
      */
     private void validateInstrumentDetails(SoftAssertions soft, FinVchDet row,
-                                            PaymentInformation paymentInfo,
+                                            VoucherPaymentInfo paymentInfo,
                                             FinSl finSl, FinGl finGl) {
         // No explicit payment info for this line → skip instrument validation
         if (paymentInfo == null) return;

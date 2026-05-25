@@ -1,5 +1,6 @@
 package com.gsl.pages.Common;
 
+import com.gsl.enums.FinanceSaveHeaderType;
 import com.gsl.enums.WaitType;
 import com.gsl.pages.Finance.Operations.ArVoucherListPage;
 import com.gsl.pages.Inventory.Product_Definition.ItemListPage;
@@ -10,6 +11,7 @@ import com.gsl.utils.Selenium.SeleniumActions;
 import com.gsl.utils.Selenium.SeleniumUtils;
 import org.openqa.selenium.By;
 import org.testng.Assert;
+import org.testng.asserts.SoftAssert;
 
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
@@ -43,14 +45,13 @@ public class DocumentMessageBox {
     }
 
     /**
-     * Validate if the message status is success
+     * Validate if the message status is success. Accepts any header listed in
+     * {@link FinanceSaveHeaderType} (e.g., "Success", "Result"). The Ginesys
+     * voucher save popup returns "Result" with a "Created Successfully" body for
+     * AR/AP vouchers — we accept that as success.
      */
     public boolean isSuccess() {
-        String header = getHeaderStatus();
-        if (header != null) {
-            header = header.trim();
-        }
-        return "success".equalsIgnoreCase(header);
+        return FinanceSaveHeaderType.isAcceptable(getHeaderStatus());
     }
 
     /**
@@ -66,24 +67,60 @@ public class DocumentMessageBox {
     }
 
     /**
-     * High-level verification method with TestNG assertions
-     * Returns header + document number
+     * High-level verification with hard TestNG assertions. Use when the caller does not
+     * own a {@link SoftAssert} (e.g., non-finance flows). Header check is hard; doc-number
+     * check is hard.
      */
     public DocumentSaveResult verifyDocumentSave() {
         JavascriptExecutorUtils.waitForPageLoad();
         JavascriptExecutorUtils.waitForExtJS();
         String status = getHeaderStatus();
-        System.out.println("status is"+status );
+        String messageText = getMessageText();
+        ExtentLogger.info("Save response — Header: " + status + " | Message: " + messageText);
         Assert.assertNotNull(status, "Header status was not found");
-        Assert.assertTrue(isSuccess(), "Document save was not successful. Header: " + status);
-
-        System.out.println("Document Save Status: " + status);
+        Assert.assertTrue(isSuccess(),
+                "Document save was not successful. Header: " + status + " | Message: " + messageText);
 
         String documentNo = extractDocumentNo();
         Assert.assertNotNull(documentNo,
-                "Document number was not found. Message text: " + getMessageText());
+                "Document number was not found. Message text: " + messageText);
 
-        System.out.println("Extracted Document No: " + documentNo);
+        ExtentLogger.pass("Extracted Document No: " + documentNo);
+        return new DocumentSaveResult(status, documentNo);
+    }
+
+    /**
+     * High-level verification for AR/AP voucher flows. The header check is recorded on the
+     * supplied {@link SoftAssert} so UI + DB validation can still run when the header is an
+     * unexpected variant. The document-number extraction is the strongest signal that the
+     * server actually persisted the voucher, so it remains a hard assertion — if no
+     * document number is found, there is no point continuing.
+     *
+     * <p>The caller is responsible for invoking {@code softAssert.assertAll()} at the end of
+     * the test so any deferred header mismatch surfaces as the final failure reason.</p>
+     */
+    public DocumentSaveResult verifyDocumentSave(SoftAssert softAssert) {
+        JavascriptExecutorUtils.waitForPageLoad();
+        JavascriptExecutorUtils.waitForExtJS();
+        String status = getHeaderStatus();
+        String messageText = getMessageText();
+        ExtentLogger.info("Save response — Header: " + status + " | Message: " + messageText);
+
+        if (status == null) {
+            ExtentLogger.warning("Header status was not found on save popup — recorded on soft assert");
+            softAssert.assertNotNull(status, "Header status was not found on save popup");
+        } else if (!isSuccess()) {
+            ExtentLogger.warning("Save header '" + status + "' is not in FinanceSaveHeaderType. "
+                    + "Message: " + messageText + " — continuing with UI + DB validation; "
+                    + "soft-assert will fail at end of test.");
+            softAssert.fail("Unexpected save header '" + status + "'. Message: " + messageText
+                    + ". Update FinanceSaveHeaderType if this is a new acceptable variant.");
+        }
+
+        String documentNo = extractDocumentNo();
+        Assert.assertNotNull(documentNo,
+                "Document number was not found. Message text: " + messageText);
+
         ExtentLogger.pass("Extracted Document No: " + documentNo);
         return new DocumentSaveResult(status, documentNo);
     }

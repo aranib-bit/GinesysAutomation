@@ -38,6 +38,10 @@ public final class ExtentReport {
         }
     }
 
+    public static ExtentReports getExtentReports() {
+        return extent;
+    }
+
     public static void flushReports() {
         extent.flush();
     }

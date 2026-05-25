@@ -9,6 +9,7 @@ import com.gsl.browser.BrowserLogRecord;
 import com.gsl.browser.LogAttachment;
 import com.gsl.config.ConfigFactory;
 import com.gsl.diagnostics.DiagnosticReport;
+import com.gsl.diagnostics.FailureBundleOrchestrator;
 import com.gsl.diagnostics.section.BrowserLogSection;
 import com.gsl.diagnostics.section.EventLogSection;
 import com.gsl.diagnostics.section.HtmlCaptureSection;
@@ -29,11 +30,16 @@ import com.gsl.remote.model.LogFetchResponse;
 import com.gsl.remote.model.OSType;
 import com.gsl.remote.parser.RegexLogParser;
 import com.gsl.remote.retry.RetryPolicy;
+import com.gsl.reports.ActionTrailBuffer;
 import com.gsl.reports.ArVoucherDescriptionBuilder;
 import com.gsl.reports.ExtentLogger;
 import com.gsl.reports.ExtentManager;
 import com.gsl.reports.ExtentReport;
 import com.gsl.reports.PreSuiteHealthCheck;
+import com.gsl.reports.ReportConfigRenderer;
+import com.gsl.reports.RuntimeProfileBuilder;
+import com.gsl.reports.RuntimeProfileHolder;
+import com.gsl.reports.profile.RuntimeExecutionProfile;
 import com.gsl.testdata.InvocationData;
 import com.gsl.testdata.dto.MergedFinanceArVoucherData;
 import com.gsl.utils.Log;
@@ -50,6 +56,8 @@ import org.testng.ITestResult;
 import java.time.Instant;
 import java.util.Arrays;
 import java.util.List;
+import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicInteger;
 
 public class TestListener implements ITestListener, ISuiteListener {
 
@@ -70,11 +78,39 @@ public class TestListener implements ITestListener, ISuiteListener {
     // onTestStart → onTestSuccess/onTestFailure without creating an ExtentTest node.
     private static final ThreadLocal<String> frameworkCheckLabel = new ThreadLocal<>();
 
+    // Tracks how many validation <test> blocks remain; snapshot is created when the
+    // last one finishes so it appears immediately after rule-validation in the report.
+    private final AtomicInteger pendingValidationContexts = new AtomicInteger(0);
+    private final AtomicBoolean snapshotCreated          = new AtomicBoolean(false);
+
     // ── Suite-level lifecycle — fires ONCE per <suite>, not once per <test> ──────
 
     @Override
     public void onStart(ISuite suite) {
         ExtentReport.initReports();
+
+        // Build the runtime profile ONCE — frozen for the entire suite.
+        // Done here (ISuiteListener.onStart) so config files are read before any
+        // <test> block starts and any mid-run file changes are ignored.
+        RuntimeExecutionProfile profile = RuntimeProfileBuilder.build();
+        RuntimeProfileHolder.set(profile);
+
+        // Count <test> blocks whose name contains "validation" (case-insensitive).
+        // The snapshot node is created after ALL of them finish, so it appears
+        // immediately after rule-validation in the Extent report rather than at the end.
+        int validationCount = (int) suite.getXmlSuite().getTests().stream()
+                .filter(t -> t.getName().toLowerCase().contains("validation"))
+                .count();
+        pendingValidationContexts.set(validationCount);
+
+        ReportConfigRenderer.renderDashboard(ExtentReport.getExtentReports(), profile);
+        try {
+            String snapshotPath = ReportConfigRenderer.generateJsonSnapshot(profile);
+            Log.info("[ReportConfig] Runtime snapshot written to: {}", snapshotPath);
+        } catch (Exception e) {
+            Log.warn("[ReportConfig] Snapshot generation failed: {}", e.getMessage());
+        }
+
         boolean healthy;
         try {
             healthy = PreSuiteHealthCheck.run(ExtentReport.extent);
@@ -89,6 +125,15 @@ public class TestListener implements ITestListener, ISuiteListener {
 
     @Override
     public void onFinish(ISuite suite) {
+        // Fallback: if no validation <test> blocks existed in this suite file
+        // (e.g. testng-regression.xml), create the snapshot now so it is never missing.
+        if (snapshotCreated.compareAndSet(false, true)) {
+            RuntimeExecutionProfile profile = RuntimeProfileHolder.get();
+            if (profile != null) {
+                ExtentReport.createTest("Execution Configuration Snapshot");
+                ReportConfigRenderer.renderAllSections(profile);
+            }
+        }
         ExtentReport.flushReports();
     }
 
@@ -102,6 +147,20 @@ public class TestListener implements ITestListener, ISuiteListener {
     @Override
     public void onFinish(ITestContext context) {
         Log.info("SUITE FINISHED: {}", context.getName());
+
+        // When the last validation <test> block finishes, inject the snapshot node.
+        // Validation tests complete in milliseconds while Selenium tests are still
+        // launching browsers, so the node lands right after rule-validation in the report.
+        if (context.getName().toLowerCase().contains("validation")
+                && pendingValidationContexts.decrementAndGet() == 0
+                && snapshotCreated.compareAndSet(false, true)) {
+            RuntimeExecutionProfile profile = RuntimeProfileHolder.get();
+            if (profile != null) {
+                ExtentReport.createTest("Execution Configuration Snapshot");
+                ReportConfigRenderer.renderAllSections(profile);
+                ExtentReport.flushReports();
+            }
+        }
     }
 
     // ── Per-test callbacks ────────────────────────────────────────────────────────
@@ -115,18 +174,25 @@ public class TestListener implements ITestListener, ISuiteListener {
         TestContextManager.setExecutionId();
         TestContextManager.setBrowser(ConfigFactory.getConfig().browser());
         TestContextManager.setEnv(ConfigFactory.getConfig().env());
+        com.gsl.reports.ActionTrailBuffer.clear();
         Log.info("TEST STARTED: {}", methodName);
 
-        // @FrameworkValidation methods are pre-execution checks, not test cases.
-        // Skip ExtentTest creation; their outcome is recorded via onTestSuccess/Failure.
+        // @FrameworkValidation methods are pre-execution validation checks.
+        // Create a visible ExtentTest node so they appear in the dashboard count,
+        // then return early (pass/fail is logged via onTestSuccess/Failure).
         boolean isFrameworkValidation = result.getMethod()
                 .getConstructorOrMethod().getMethod()
                 .isAnnotationPresent(FrameworkValidation.class);
 
         if (isFrameworkValidation) {
             Object[] p = result.getParameters();
-            String domain = (p.length > 0) ? String.valueOf(p[0]) : methodName;
+            String domain   = (p.length > 0) ? String.valueOf(p[0]) : methodName;
+            String execType = (p.length > 1) ? String.valueOf(p[1]) : "";
             frameworkCheckLabel.set(domain);
+            // Create a visible ExtentTest node (outcome logged via onTestSuccess/Failure)
+            String title = "Rule Validation [" + domain + "]"
+                    + (execType.isBlank() ? "" : " — " + execType);
+            ExtentReport.createTest(title);
             return;
         }
 
@@ -167,14 +233,19 @@ public class TestListener implements ITestListener, ISuiteListener {
             TestContextManager.setTestCaseId(tcId);
 
             String prefix = (tcId != null) ? "[" + tcId + "] " : "";
-            String title = prefix
-                    + (richName != null ? richName : result.getMethod().getDescription())
+
+            // Title: human-readable sentence after the ID; technical params go to description
+            String sentence = (arData != null) ? ArVoucherDescriptionBuilder.build(arData) : null;
+            String titleText = (sentence != null && !sentence.isBlank())
+                    ? sentence
+                    : (richName != null ? richName : result.getMethod().getDescription());
+            String title = prefix + titleText
                     + " [" + invData.getInvocationIndex() + "/" + invData.getTotalInvocations() + "]";
             ExtentReport.createTest(title);
 
-            // P2: Set a human-readable sentence description on the test node
-            if (arData != null) {
-                ExtentReport.setTestDescription(ArVoucherDescriptionBuilder.build(arData));
+            // Description: technical parameter string (SEL_DOC | [Bank GL] | ...)
+            if (richName != null) {
+                ExtentReport.setTestDescription(richName);
             }
 
         } else {
@@ -203,9 +274,10 @@ public class TestListener implements ITestListener, ISuiteListener {
                 ConfigFactory.getConfig().env(),
                 Thread.currentThread().getName()));
 
-        // Inject JS logger at test start so all console activity during the test is captured
+        // Inject JS logger and reset log buffers so this test sees only its own activity
         if (ConfigFactory.getConfig().browserLogsEnabled() && DriverManager.getDriver() != null) {
             AdvancedJsLogger.inject();
+            AdvancedJsLogger.clearLogs();
         }
 
         // Reset network log buffer so this test only sees its own traffic
@@ -217,14 +289,18 @@ public class TestListener implements ITestListener, ISuiteListener {
         String label = frameworkCheckLabel.get();
         if (label != null) {
             ExtentReport.extent.setSystemInfo("Rule Validation [" + label + "]", "PASSED");
+            ExtentLogger.pass("All validation rules passed for domain: " + label);
             frameworkCheckLabel.remove();
             Log.info("FRAMEWORK CHECK PASSED: {}", label);
+            ExtentReport.flushReports();
+            TestContextManager.clear();
             return;
         }
         Log.info("TEST PASSED: {}", result.getName());
         ExtentLogger.pass(result.getName() + " is passed");
 
         try {
+            ActionTrailBuffer.record("Logs & Diagnostics");
             FailureBundleOrchestrator.onSuccess(result).attachToReport();
         } catch (Exception e) {
             Log.warn("[TestListener] Diagnostic report attachment failed on success: {}", e.getMessage());
@@ -240,8 +316,11 @@ public class TestListener implements ITestListener, ISuiteListener {
         if (label != null) {
             String msg = result.getThrowable() != null ? result.getThrowable().getMessage() : "unknown";
             ExtentReport.extent.setSystemInfo("Rule Validation [" + label + "]", "FAILED: " + msg);
+            ExtentLogger.fail("Validation rules FAILED for domain: " + label + " — " + msg);
             frameworkCheckLabel.remove();
             Log.error("FRAMEWORK CHECK FAILED [{}]: {}", label, msg);
+            ExtentReport.flushReports();
+            TestContextManager.clear();
             return;
         }
         Log.error("TEST FAILED: {}", result.getName());
@@ -251,9 +330,15 @@ public class TestListener implements ITestListener, ISuiteListener {
         ExtentLogger.fail(result.getName() + " FAILED");
 
         try {
+            ActionTrailBuffer.record("Logs & Diagnostics");
             FailureBundleOrchestrator.onFailure(result).attachToReport();
         } catch (Exception e) {
             Log.warn("[TestListener] Diagnostic report attachment failed on failure: {}", e.getMessage());
+        }
+
+        String snapshotPath = ReportConfigRenderer.getSnapshotPath();
+        if (snapshotPath != null) {
+            ExtentLogger.info("<b>Runtime Snapshot:</b> " + snapshotPath);
         }
 
         ExtentReport.flushReports();

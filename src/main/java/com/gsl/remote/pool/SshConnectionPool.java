@@ -177,7 +177,7 @@ public final class SshConnectionPool {
 
     // ── Shared host-key verification logic ────────────────────────────────────
 
-    static void applyHostKeyVerification(SSHClient ssh, String mode) {
+    public static void applyHostKeyVerification(SSHClient ssh, String mode) {
         switch (mode == null ? "ACCEPT_NEW" : mode.toUpperCase(Locale.ROOT)) {
             case "STRICT" -> {
                 try {

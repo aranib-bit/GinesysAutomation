@@ -208,4 +208,11 @@ public class SelectDocumentVariant {
      */
     @Builder.Default
     int backDateDays = 30;
+
+    /**
+     * Execution bucket this variant belongs to.
+     * {@code null} means the variant runs in all groups (legacy / untagged).
+     * Set via {@link ArVoucherExecutionGroup}.
+     */
+    ArVoucherExecutionGroup executionGroup;
 }

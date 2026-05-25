@@ -2,9 +2,13 @@ package com.gsl.reports;
 
 import com.aventstack.extentreports.ExtentTest;
 import com.aventstack.extentreports.MediaEntityBuilder;
+import com.gsl.browser.CustomMetricsObserverInjector;
+import com.gsl.browser.injector.FrontendDiagnosticsInjectorFactory;
+import com.gsl.config.ConfigFactory;
 import com.gsl.driver.DriverManager;
 import com.gsl.utils.Log;
 import com.gsl.utils.Selenium.ScreenshotUtils;
+import org.openqa.selenium.JavascriptExecutor;
 
 public final class StepExecutor {
 
@@ -26,6 +30,25 @@ public final class StepExecutor {
      * because ExtentManager's ThreadLocal is temporarily swapped.
      */
     public static void step(String stepName, StepAction action) {
+        // Record step in action trail buffer for failure diagnostics
+        ActionTrailBuffer.record(stepName);
+
+        // Push step context into the browser so AdvancedJsLogger timing correlation works,
+        // and re-inject CustomMetrics observers in case a full-page navigation wiped them.
+        try {
+            if (DriverManager.getDriver() != null) {
+                ((JavascriptExecutor) DriverManager.getDriver()).executeScript(
+                    "window._fwCurrentStep = arguments[0]; window._fwStepStartMs = Date.now();",
+                    stepName);
+                if (ConfigFactory.getConfig().customMetricsEnabled()) {
+                    CustomMetricsObserverInjector.inject(DriverManager.getDriver());
+                }
+                if (ConfigFactory.getConfig().frontendDiagnosticsEnabled()) {
+                    FrontendDiagnosticsInjectorFactory.get().inject(DriverManager.getDriver());
+                }
+            }
+        } catch (Exception ignored) {}
+
         ExtentTest parent = ExtentManager.getExtentTest();
         ExtentTest node   = parent.createNode(stepName);
         ExtentManager.setExtentTest(node);

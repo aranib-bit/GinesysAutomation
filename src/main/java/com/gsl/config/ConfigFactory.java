@@ -16,4 +16,8 @@ public final class ConfigFactory {
     public static DataBaseConfig getDataBaseConfig() {
         return ConfigCache.getOrCreate(DataBaseConfig.class);
     }
+
+    public static AppLogPathsConfig getAppLogPathsConfig() {
+        return ConfigCache.getOrCreate(AppLogPathsConfig.class);
+    }
 }

@@ -2,34 +2,59 @@ package com.gsl.pages.Finance.Operations.Common;
 
 import com.gsl.enums.PaymentSelectionType;
 import com.gsl.enums.WaitType;
-import com.gsl.testdata.Finance.Operations.Vouchers.ARVoucher.PaymentInformation;
+import com.gsl.pages.enums.Finance.Operations.Common.PaymentInfoLabel;
+import com.gsl.testdata.Finance.Operations.Vouchers.Common.VoucherPaymentInfo;
 import com.gsl.utils.Selenium.JavascriptExecutorUtils;
 import com.gsl.utils.Selenium.SeleniumUtils;
 import org.openqa.selenium.By;
 
-public class PaymentInformationPopup {
+/**
+ * Abstract base for the Payment Information popup shared by AR and AP Voucher.
+ *
+ * Implements the Template Method pattern:
+ *   fillAndSubmit() defines the fixed algorithm;
+ *   setInstrumentNo() and setDrawnOn() are abstract steps whose behaviour
+ *   differs between AR and AP and are implemented by each concrete subclass.
+ *
+ * Label strings are sourced from PaymentInfoLabel so a UI label change
+ * requires editing only the enum, not every XPath.
+ */
+public abstract class PaymentInformationPopup {
 
-    private static final By PAYMENT_MODE_TRIGGER   = By.xpath(
-            "//span[normalize-space()='Payment Mode:']/ancestor::label" +
-            "/following-sibling::div[contains(@class,'x-form-item-body')]" +
-            "//div[contains(@class,'x-form-arrow-trigger')]");
-    private static final String PAYMENT_MODE_OPTION = "//li[@role='option' and normalize-space()='%s']";
+    private static final By PAYMENT_MODE_TRIGGER = By.xpath(
+            "//span[normalize-space()='" + PaymentInfoLabel.PAYMENT_MODE.label() + "']/ancestor::label"
+            + "/following-sibling::div[contains(@class,'x-form-item-body')]"
+            + "//div[contains(@class,'x-form-arrow-trigger')]");
 
-    private static final By INSTRUMENT_NO   = By.xpath(
-            "//span[normalize-space()='Instrument No.:'] /ancestor::div[contains(@class,'x-form-item')] /descendant::input[@data-ref='inputEl' and @aria-disabled='false']");
+    private static final String PAYMENT_MODE_OPTION =
+            "//li[@role='option' and normalize-space()='%s']";
 
-    private static final By INSTRUMENT_DATE = By.xpath(
-            "//span[normalize-space()='Instrument Date:'] /ancestor::div[contains(@class,'x-form-item')] /descendant::input[@data-ref='inputEl' and @aria-disabled='false']");
+    protected static final By INSTRUMENT_NO = By.xpath(
+            "//span[normalize-space()='" + PaymentInfoLabel.INSTRUMENT_NO.label() + "']"
+            + " /ancestor::div[contains(@class,'x-form-item')]"
+            + " /descendant::input[@data-ref='inputEl' and @aria-disabled='false']");
 
-    private static final By DRAWN_ON        = By.xpath(
-            "//span[normalize-space()='Drawn on:']/ancestor::label" +
-            "/following-sibling::div[contains(@class,'x-form-item-body')]//input[@data-ref='inputEl']");
+    protected static final By INSTRUMENT_DATE = By.xpath(
+            "//span[normalize-space()='" + PaymentInfoLabel.INSTRUMENT_DATE.label() + "']"
+            + " /ancestor::div[contains(@class,'x-form-item')]"
+            + " /descendant::input[@data-ref='inputEl' and @aria-disabled='false']");
 
-    private static final By REFERENCE       = By.xpath(
-            "//span[normalize-space()='Reference:'] /ancestor::label /following-sibling::div[contains(@class,'x-form-item-body')] //input[contains(@class,'x-form-text') and not(@disabled) and not(@tabindex)]");
+    private static final By REFERENCE = By.xpath(
+            "//span[normalize-space()='" + PaymentInfoLabel.REFERENCE.label() + "']"
+            + " /ancestor::label /following-sibling::div[contains(@class,'x-form-item-body')]"
+            + " //input[contains(@class,'x-form-text') and not(@disabled) and not(@tabindex)]");
 
-    private static final By OK_BUTTON       = By.xpath(
-            "//div[contains(@class,'x-window')]//span[normalize-space()='OK']/ancestor::a[contains(@class,'x-btn') and @aria-hidden='false']");
+    protected static final By OK_BUTTON = By.xpath(
+            "//div[contains(@class,'x-window')]//span[normalize-space()='OK']"
+            + "/ancestor::a[contains(@class,'x-btn') and @aria-hidden='false']");
+
+    // ── Abstract steps — AR and AP implement these differently ───────────────
+
+    public abstract PaymentInformationPopup setInstrumentNo(String instrumentNo);
+
+    public abstract PaymentInformationPopup setDrawnOn(String drawnOn);
+
+    // ── Shared steps ─────────────────────────────────────────────────────────
 
     public PaymentInformationPopup selectPaymentMode(PaymentSelectionType mode) {
         SeleniumUtils.click(PAYMENT_MODE_TRIGGER, WaitType.CLICKABLE, "PAYMENT_MODE_TRIGGER");
@@ -40,39 +65,17 @@ public class PaymentInformationPopup {
         return this;
     }
 
-    public PaymentInformationPopup setInstrumentNo(String instrumentNo) {
-        if (instrumentNo == null || instrumentNo.isBlank()) return this;
-        SeleniumUtils.sendKeys(INSTRUMENT_NO, WaitType.CLICKABLE, instrumentNo, "INSTRUMENT_NO");
-        SeleniumUtils.pressTab(INSTRUMENT_NO, "INSTRUMENT_NO");   // triggers app auto-population of Instrument Date with voucher date
-        JavascriptExecutorUtils.waitForExtJS();
-        return this;
-    }
-
     public PaymentInformationPopup setInstrumentDate(String instrumentDate) {
         if (instrumentDate == null || instrumentDate.isBlank()) return this;
-
-        // Wait for field to become enabled after Instrument No triggers auto-population
         SeleniumUtils.waitForInputReady(INSTRUMENT_DATE);
-
-        // Read auto-populated value via DOM property (ExtJS sets value as property, not attribute)
         String currentDate = SeleniumUtils.getDomProperty(INSTRUMENT_DATE, "value", "INSTRUMENT_DATE");
-
-        // Skip if already matches desired date
         if (instrumentDate.trim().equalsIgnoreCase(currentDate != null ? currentDate.trim() : "")) {
             System.out.println("ℹ️ Instrument Date already matches: " + instrumentDate + " — skipping.");
             return this;
         }
-
         System.out.println("✏️ Updating Instrument Date from [" + currentDate + "] to [" + instrumentDate + "]");
         SeleniumUtils.clear(INSTRUMENT_DATE, "INSTRUMENT_DATE");
         SeleniumUtils.sendKeys(INSTRUMENT_DATE, WaitType.CLICKABLE, instrumentDate, "INSTRUMENT_DATE");
-        JavascriptExecutorUtils.waitForExtJS();
-        return this;
-    }
-
-    public PaymentInformationPopup setDrawnOn(String drawnOn) {
-        if (drawnOn == null || drawnOn.isBlank()) return this;
-        SeleniumUtils.sendKeys(DRAWN_ON, WaitType.CLICKABLE, drawnOn, "DRAWN_ON");
         JavascriptExecutorUtils.waitForExtJS();
         return this;
     }
@@ -88,7 +91,9 @@ public class PaymentInformationPopup {
         JavascriptExecutorUtils.waitForExtJS();
     }
 
-    public void fillAndSubmit(PaymentInformation payment) {
+    // ── Template method — algorithm fixed here, variant steps delegated ───────
+
+    public void fillAndSubmit(VoucherPaymentInfo payment) {
         selectPaymentMode(payment.getPaymentMode())
                 .setInstrumentNo(payment.getInstrumentNo())
                 .setInstrumentDate(payment.getInstrumentDate())

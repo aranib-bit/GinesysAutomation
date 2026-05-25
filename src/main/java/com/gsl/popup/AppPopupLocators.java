@@ -23,5 +23,9 @@ final class AppPopupLocators {
     static final By MESSAGEBOX_DISMISS_BTN = By.xpath(
             "//div[contains(@class,'x-message-box')]//span[text()='OK' or text()='Close']");
 
+    // All visible action buttons inside the messagebox — 2+ means page flow must choose
+    static final By MESSAGEBOX_ACTION_BTNS = By.xpath(
+            "//div[contains(@class,'x-message-box')]//a[contains(@class,'x-btn')]");
+
     private AppPopupLocators() {}
 }

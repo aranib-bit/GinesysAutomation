@@ -17,13 +17,14 @@ import java.util.concurrent.ThreadLocalRandom;
  *
  * <h3>Variant ordering in {@code DbArVoucherDataSource.load()}</h3>
  * <pre>
- *  Group 0 — {@link #mandatoryBaselineVariant}      : 1 baseline per SL category (system + user)
- *  Group 1 — {@link #group1Variants()}              : Reference uniqueness (static, 2 variants) — Bank GL
- *  Group 2 — {@link #forSystemClassificationType}   : System SL types (cmpcode=1) — 10 variants each
- *             {@link #forUserDefinedClassificationType} : User-defined SL types (cmpcode=0) — 3 variants each
+ *  Group 0 — {@link #mandatoryBaselineVariant}      : 1 baseline per SL category (system + user)   → MANDATORY
+ *  Group 1 — {@link #group1Variants()}              : Reference uniqueness (static, 2 variants)     → REGRESSION_PHASE1
+ *  Group 2 — {@link #forSystemClassificationType}   : System SL types (cmpcode=1) — 10 variants ea  → REGRESSION_PHASE2
+ *             {@link #forUserDefinedClassificationType} : User-defined SL types (cmpcode=0) — 3 ea   → REGRESSION_PHASE2
  *  Groups 3–8 — {@link #groups3to8Variants()}       : Customer site, SL/Doc count, Amount mode,
- *                                                     Grid relation, Payment mode, Date — Bank GL
- *  Cash GL — {@link #cashGlVariants()}              : Explicit Cash GL variants
+ *                                                     Grid relation, Payment mode, Date             → mixed Phase1/Phase2
+ *  Cash GL — {@link #cashGlVariants()}              : Explicit Cash GL variants                     → mixed Mandatory/Phase2
+ *  Phase-3 — {@link #specificDocTypeVariant()}      : INV-only document type filter                 → REGRESSION_PHASE3
  * </pre>
  *
  * <p>All Bank GL variants use {@link CashBankType#BANK}; Cash GL variants use {@link CashBankType#CASH}.
@@ -65,6 +66,40 @@ public final class SelectDocumentCombinations {
                 .paymentMode(PaymentMode.NONE)
                 .dateMode(DateMode.CURRENT_DATE)
                 .allowDuplicateReference(false)
+                .executionGroup(cls.getCmpcode() == 1
+                        ? ArVoucherExecutionGroup.MANDATORY
+                        : ArVoucherExecutionGroup.REGRESSION_PHASE1)
+                .build();
+    }
+
+    /**
+     * Returns MAND-06: Bank GL, 1SL × 1Doc, Amt:FULL, Pmt:UniqueRandom(CHEQUE/NEFT_RTGS), Date:TODAY.
+     *
+     * <p>Only called for the system-defined SL classification (cmpcode=1).
+     * Payment mode resolves to CHEQUE or NEFT_RTGS at runtime — never NONE or CASH —
+     * exercising the Bank GL payment-detail row path under the mandatory tier.
+     *
+     * @param cls system-defined AdmCls (cmpcode=1)
+     * @return one mandatory Bank GL random-payment {@link SelectDocumentVariant}
+     */
+    public static SelectDocumentVariant mandatoryBankRandomVariant(AdmCls cls) {
+        String label = cls.getClsname() + "(" + cls.cmpLabel() + ")";
+        String id    = "SD_MAND_BANK_RANDOM_" + cls.getClsname().toUpperCase().replace(" ", "_");
+        return SelectDocumentVariant.builder()
+                .variantId(id)
+                .testCaseName("SEL_DOC | [Bank GL] | " + label
+                        + " | Mandatory | 1SL-1Doc | Amt:FULL | Grid:EQUAL"
+                        + " | Pmt:UniqueRandom(CHEQUE/NEFT_RTGS) | Date:TODAY")
+                .glType(CashBankType.BANK)
+                .slClsCode(cls.getClscode())
+                .customerTypeSl(cls.isCustomerType())
+                .slCount(1).docsPerSl(1)
+                .amountMode(AmountMode.FULL)
+                .gridRelation(GridRelation.EQUAL)
+                .paymentMode(PaymentMode.RANDOM)
+                .dateMode(DateMode.CURRENT_DATE)
+                .allowDuplicateReference(false)
+                .executionGroup(ArVoucherExecutionGroup.MANDATORY)
                 .build();
     }
 
@@ -77,7 +112,7 @@ public final class SelectDocumentCombinations {
     public static List<SelectDocumentVariant> group1Variants() {
         return List.of(
 
-            // Finance module — duplicate reference is allowed by the application
+            // Finance module — duplicate reference is allowed by the application  [REG-12]
             SelectDocumentVariant.builder()
                 .variantId("SD_REF_FIN")
                 .testCaseName("SEL_DOC | [Bank GL] | Ref:Finance-Dup | 1SL-1Doc | Amt:FULL | Grid:EQUAL | Pmt:NONE | Date:TODAY")
@@ -88,6 +123,7 @@ public final class SelectDocumentCombinations {
                 .paymentMode(PaymentMode.NONE)
                 .dateMode(DateMode.CURRENT_DATE)
                 .allowDuplicateReference(true)
+                .executionGroup(ArVoucherExecutionGroup.REGRESSION_PHASE1)
                 .build(),
 
             // Non-Finance module — reference must be unique in finvchmain
@@ -101,6 +137,7 @@ public final class SelectDocumentCombinations {
                 .paymentMode(PaymentMode.NONE)
                 .dateMode(DateMode.CURRENT_DATE)
                 .allowDuplicateReference(false)
+                .executionGroup(ArVoucherExecutionGroup.REGRESSION_PHASE1)
                 .build()
         );
     }
@@ -228,6 +265,7 @@ public final class SelectDocumentCombinations {
             .dateMode(date)
             .backDateDays(date == DateMode.BACK_DATED ? backDateDays : 30)
             .allowDuplicateReference(false)
+            .executionGroup(ArVoucherExecutionGroup.REGRESSION_PHASE2)
             .build();
     }
 
@@ -236,6 +274,21 @@ public final class SelectDocumentCombinations {
     /**
      * Returns all non-classification static variants (Groups 3–8), all using Bank GLs.
      * Cash GL variants are in {@link #cashGlVariants()}.
+     *
+     * <p>Execution group per variant:
+     * <ul>
+     *   <li>Group 3  (customer refsite configs)       → REGRESSION_PHASE2</li>
+     *   <li>Group 4  (SL/doc count) 1SL               → REGRESSION_PHASE1</li>
+     *   <li>Group 4  (SL/doc count) multi-SL          → REGRESSION_PHASE2</li>
+     *   <li>Group 5  (amount modes) FULL/PARTIAL       → REGRESSION_PHASE1</li>
+     *   <li>Group 5  (amount modes) MIX               → REGRESSION_PHASE2</li>
+     *   <li>Group 6  (grid relation) EQUAL            → REGRESSION_PHASE1</li>
+     *   <li>Group 6  (grid relation) LESS/GREATER     → REGRESSION_PHASE2</li>
+     *   <li>Group 7  (payment modes) NONE/CHEQUE/NEFT → REGRESSION_PHASE1</li>
+     *   <li>Group 7  (payment modes) MIX              → REGRESSION_PHASE2</li>
+     *   <li>Group 8  (date) TODAY                     → REGRESSION_PHASE1</li>
+     *   <li>Group 8  (date) BACKDATE                  → REGRESSION_PHASE2</li>
+     * </ul>
      */
     public static List<SelectDocumentVariant> groups3to8Variants() {
         return List.of(
@@ -260,6 +313,7 @@ public final class SelectDocumentCombinations {
                 .paymentMode(PaymentMode.NONE)
                 .dateMode(DateMode.CURRENT_DATE)
                 .allowDuplicateReference(false)
+                .executionGroup(ArVoucherExecutionGroup.REGRESSION_PHASE2)
                 .build(),
 
             SelectDocumentVariant.builder()
@@ -275,6 +329,7 @@ public final class SelectDocumentCombinations {
                 .paymentMode(PaymentMode.NONE)
                 .dateMode(DateMode.CURRENT_DATE)
                 .allowDuplicateReference(false)
+                .executionGroup(ArVoucherExecutionGroup.REGRESSION_PHASE2)
                 .build(),
 
             SelectDocumentVariant.builder()
@@ -290,6 +345,7 @@ public final class SelectDocumentCombinations {
                 .paymentMode(PaymentMode.NONE)
                 .dateMode(DateMode.CURRENT_DATE)
                 .allowDuplicateReference(false)
+                .executionGroup(ArVoucherExecutionGroup.REGRESSION_PHASE2)
                 .build(),
 
             SelectDocumentVariant.builder()
@@ -305,6 +361,7 @@ public final class SelectDocumentCombinations {
                 .paymentMode(PaymentMode.NONE)
                 .dateMode(DateMode.CURRENT_DATE)
                 .allowDuplicateReference(false)
+                .executionGroup(ArVoucherExecutionGroup.REGRESSION_PHASE2)
                 .build(),
 
             // ─── Group 4: SL count × Document count combinations ─────────────────────
@@ -319,6 +376,7 @@ public final class SelectDocumentCombinations {
                 .paymentMode(PaymentMode.NONE)
                 .dateMode(DateMode.CURRENT_DATE)
                 .allowDuplicateReference(false)
+                .executionGroup(ArVoucherExecutionGroup.REGRESSION_PHASE1)
                 .build(),
 
             SelectDocumentVariant.builder()
@@ -331,6 +389,7 @@ public final class SelectDocumentCombinations {
                 .paymentMode(PaymentMode.NONE)
                 .dateMode(DateMode.CURRENT_DATE)
                 .allowDuplicateReference(false)
+                .executionGroup(ArVoucherExecutionGroup.REGRESSION_PHASE1)
                 .build(),
 
             SelectDocumentVariant.builder()
@@ -343,6 +402,7 @@ public final class SelectDocumentCombinations {
                 .paymentMode(PaymentMode.NONE)
                 .dateMode(DateMode.CURRENT_DATE)
                 .allowDuplicateReference(false)
+                .executionGroup(ArVoucherExecutionGroup.REGRESSION_PHASE2)
                 .build(),
 
             SelectDocumentVariant.builder()
@@ -355,6 +415,7 @@ public final class SelectDocumentCombinations {
                 .paymentMode(PaymentMode.NONE)
                 .dateMode(DateMode.CURRENT_DATE)
                 .allowDuplicateReference(false)
+                .executionGroup(ArVoucherExecutionGroup.REGRESSION_PHASE2)
                 .build(),
 
             // ─── Group 5: Received amount modes ──────────────────────────────────────
@@ -369,6 +430,7 @@ public final class SelectDocumentCombinations {
                 .paymentMode(PaymentMode.NONE)
                 .dateMode(DateMode.CURRENT_DATE)
                 .allowDuplicateReference(false)
+                .executionGroup(ArVoucherExecutionGroup.REGRESSION_PHASE1)
                 .build(),
 
             SelectDocumentVariant.builder()
@@ -381,6 +443,7 @@ public final class SelectDocumentCombinations {
                 .paymentMode(PaymentMode.NONE)
                 .dateMode(DateMode.CURRENT_DATE)
                 .allowDuplicateReference(false)
+                .executionGroup(ArVoucherExecutionGroup.REGRESSION_PHASE1)
                 .build(),
 
             SelectDocumentVariant.builder()
@@ -393,6 +456,7 @@ public final class SelectDocumentCombinations {
                 .paymentMode(PaymentMode.NONE)
                 .dateMode(DateMode.CURRENT_DATE)
                 .allowDuplicateReference(false)
+                .executionGroup(ArVoucherExecutionGroup.REGRESSION_PHASE2)
                 .build(),
 
             // ─── Group 6: Grid Amount Cr vs selected document amount ──────────────────
@@ -407,6 +471,7 @@ public final class SelectDocumentCombinations {
                 .paymentMode(PaymentMode.NONE)
                 .dateMode(DateMode.CURRENT_DATE)
                 .allowDuplicateReference(false)
+                .executionGroup(ArVoucherExecutionGroup.REGRESSION_PHASE1)
                 .build(),
 
             SelectDocumentVariant.builder()
@@ -420,6 +485,7 @@ public final class SelectDocumentCombinations {
                 .dateMode(DateMode.CURRENT_DATE)
                 .allowDuplicateReference(false)
                 .expectValidationError(false)
+                .executionGroup(ArVoucherExecutionGroup.REGRESSION_PHASE2)
                 .build(),
 
             SelectDocumentVariant.builder()
@@ -433,6 +499,7 @@ public final class SelectDocumentCombinations {
                 .dateMode(DateMode.CURRENT_DATE)
                 .allowDuplicateReference(false)
                 .expectValidationError(false)
+                .executionGroup(ArVoucherExecutionGroup.REGRESSION_PHASE2)
                 .build(),
 
             // ─── Group 7: Payment modes (Bank GL) ────────────────────────────────────
@@ -447,6 +514,7 @@ public final class SelectDocumentCombinations {
                 .paymentMode(PaymentMode.NONE)
                 .dateMode(DateMode.CURRENT_DATE)
                 .allowDuplicateReference(false)
+                .executionGroup(ArVoucherExecutionGroup.REGRESSION_PHASE1)
                 .build(),
 
             SelectDocumentVariant.builder()
@@ -459,6 +527,7 @@ public final class SelectDocumentCombinations {
                 .paymentMode(PaymentMode.CHEQUE)
                 .dateMode(DateMode.CURRENT_DATE)
                 .allowDuplicateReference(false)
+                .executionGroup(ArVoucherExecutionGroup.REGRESSION_PHASE1)
                 .build(),
 
             SelectDocumentVariant.builder()
@@ -471,6 +540,7 @@ public final class SelectDocumentCombinations {
                 .paymentMode(PaymentMode.NEFT_RTGS)
                 .dateMode(DateMode.CURRENT_DATE)
                 .allowDuplicateReference(false)
+                .executionGroup(ArVoucherExecutionGroup.REGRESSION_PHASE1)
                 .build(),
 
             SelectDocumentVariant.builder()
@@ -483,6 +553,7 @@ public final class SelectDocumentCombinations {
                 .paymentMode(PaymentMode.MIX)
                 .dateMode(DateMode.CURRENT_DATE)
                 .allowDuplicateReference(false)
+                .executionGroup(ArVoucherExecutionGroup.REGRESSION_PHASE2)
                 .build(),
 
             // ─── Group 8: Document date ───────────────────────────────────────────────
@@ -499,6 +570,7 @@ public final class SelectDocumentCombinations {
                 .paymentMode(PaymentMode.NONE)
                 .dateMode(DateMode.CURRENT_DATE)
                 .allowDuplicateReference(false)
+                .executionGroup(ArVoucherExecutionGroup.REGRESSION_PHASE1)
                 .build(),
 
             SelectDocumentVariant.builder()
@@ -511,6 +583,7 @@ public final class SelectDocumentCombinations {
                 .paymentMode(PaymentMode.NONE)
                 .dateMode(DateMode.BACK_DATED)
                 .allowDuplicateReference(false)
+                .executionGroup(ArVoucherExecutionGroup.REGRESSION_PHASE2)
                 .build()
         );
     }
@@ -522,6 +595,13 @@ public final class SelectDocumentCombinations {
      *
      * <p>All variants use {@link CashBankType#CASH} and {@link PaymentMode#CASH},
      * ensuring every SL line carries {@code payment_mode='H'} in the DB.
+     *
+     * <ul>
+     *   <li>SD_CASH_1SL_1DOC_FULL  → MANDATORY (MAND-05)</li>
+     *   <li>SD_CASH_1SL_1DOC_PART  → REGRESSION_PHASE2 (REG-18C backdate cash)</li>
+     *   <li>SD_CASH_1SL_MULTI_DOC  → REGRESSION_PHASE2 (REG-19A)</li>
+     *   <li>SD_CASH_MULTI_SL       → REGRESSION_PHASE2 (REG-19B)</li>
+     * </ul>
      */
     public static List<SelectDocumentVariant> cashGlVariants() {
         int backDays = ThreadLocalRandom.current().nextInt(1, 61);
@@ -538,6 +618,7 @@ public final class SelectDocumentCombinations {
                 .paymentMode(PaymentMode.CASH)
                 .dateMode(DateMode.CURRENT_DATE)
                 .allowDuplicateReference(false)
+                .executionGroup(ArVoucherExecutionGroup.MANDATORY)
                 .build(),
 
             SelectDocumentVariant.builder()
@@ -551,6 +632,7 @@ public final class SelectDocumentCombinations {
                 .dateMode(DateMode.BACK_DATED)
                 .backDateDays(backDays)
                 .allowDuplicateReference(false)
+                .executionGroup(ArVoucherExecutionGroup.REGRESSION_PHASE2)
                 .build(),
 
             SelectDocumentVariant.builder()
@@ -563,6 +645,7 @@ public final class SelectDocumentCombinations {
                 .paymentMode(PaymentMode.CASH)
                 .dateMode(DateMode.CURRENT_DATE)
                 .allowDuplicateReference(false)
+                .executionGroup(ArVoucherExecutionGroup.REGRESSION_PHASE2)
                 .build(),
 
             SelectDocumentVariant.builder()
@@ -575,7 +658,36 @@ public final class SelectDocumentCombinations {
                 .paymentMode(PaymentMode.CASH)
                 .dateMode(DateMode.CURRENT_DATE)
                 .allowDuplicateReference(false)
+                .executionGroup(ArVoucherExecutionGroup.REGRESSION_PHASE2)
                 .build()
         );
+    }
+
+    // ─── Phase-3: Specific document type filter ───────────────────────────────
+
+    /**
+     * Returns the INV-only document type filter variant (REG-09).
+     *
+     * <p>Requires {@code ArVoucherFixtureOptions#docTypeFilter = "INV"} to be wired into
+     * the pending-document DB query in {@code ArVoucherTemplateLoader}, restricting
+     * selected documents to Invoice type only.
+     *
+     * <p>Runtime pattern: SL1-3(INV), SL2-2(INV) — all selected documents must be INV.
+     */
+    public static SelectDocumentVariant specificDocTypeVariant() {
+        return SelectDocumentVariant.builder()
+                .variantId("SD_SPECIFIC_DOC_INV")
+                .testCaseName("SEL_DOC | [Bank GL] | Specific Doc Type (INV) | SL1-3(INV),SL2-2(INV) | Amt:FULL | Grid:EQUAL | Pmt:RANDOM | Date:TODAY")
+                .glType(CashBankType.BANK)
+                .slCount(2).docsPerSl(3)
+                .amountMode(AmountMode.FULL)
+                .gridRelation(GridRelation.EQUAL)
+                .paymentMode(PaymentMode.RANDOM)
+                .dateMode(DateMode.CURRENT_DATE)
+                .allowDuplicateReference(false)
+                .executionGroup(ArVoucherExecutionGroup.REGRESSION_PHASE3)
+                .build();
+        // NOTE: ArVoucherFixtureOptions.docTypeFilter must be set to "INV" for this variant.
+        // The pending-document query in ArVoucherTemplateLoader must filter AND entype = 'INV'.
     }
 }

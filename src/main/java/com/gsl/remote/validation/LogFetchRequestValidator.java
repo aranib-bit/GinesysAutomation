@@ -12,7 +12,9 @@ import java.util.regex.Pattern;
  */
 public final class LogFetchRequestValidator {
 
-    private static final Pattern SHELL_UNSAFE  = Pattern.compile("[;&|><$`\\\\]");
+    // Backslash is intentionally excluded: it is the standard Windows path separator and
+    // is safe inside PowerShell single-quoted strings (PS has no backslash escape in '...').
+    private static final Pattern SHELL_UNSAFE  = Pattern.compile("[;&|><$`]");
     private static final Pattern HOSTNAME_SAFE = Pattern.compile(
             "^[a-zA-Z0-9][a-zA-Z0-9.\\-]{0,253}$");
 

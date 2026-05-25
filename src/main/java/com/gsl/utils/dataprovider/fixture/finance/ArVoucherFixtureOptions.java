@@ -60,6 +60,18 @@ public class ArVoucherFixtureOptions {
     private final long slClsCode = 0L;
 
     /**
+     * Optional document-type filter applied to the pending-document query.
+     * When non-null, only documents matching {@code v_pending_adj.entype = docTypeFilter}
+     * are fetched. Examples: {@code "INV"} (Invoice), {@code "DN"} (Debit Note).
+     * {@code null} (default) = no filter — all document types are accepted.
+     *
+     * <p>Used by Phase-3 variant REG-09 (specific doc type). Requires the pending-document
+     * query in {@code ArVoucherTemplateLoader} to apply {@code AND entype = :docTypeFilter}
+     * when this field is non-null.
+     */
+    private final String docTypeFilter;
+
+    /**
      * Returns an instance with the default limits.
      *
      * <p>{@code documentCount} reads {@code doc.selector.documentcount.default} from

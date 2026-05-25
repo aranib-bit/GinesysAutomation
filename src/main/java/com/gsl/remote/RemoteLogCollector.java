@@ -1,6 +1,7 @@
 package com.gsl.remote;
 
 import com.gsl.config.ConfigFactory;
+import com.gsl.config.RawPropertyReader;
 import com.gsl.diagnostics.section.ServerRole;
 import com.gsl.remote.detect.OsDetector;
 import com.gsl.remote.fetcher.LogFetcher;
@@ -16,6 +17,7 @@ import com.gsl.utils.Log;
 import java.time.Instant;
 import java.util.*;
 import java.util.concurrent.*;
+import java.util.stream.Collectors;
 
 /**
  * Phase 5 orchestrator — collects remote logs from APP and DB servers concurrently.
@@ -93,12 +95,15 @@ public final class RemoteLogCollector {
         try {
             List<String> keywords = keywords();
 
-            // Detect OS — SSH probe with 5-second timeout; failure → WINDOWS
-            Credentials sshCreds = Credentials.fromSshEnv();
+            // Detect OS — SSH probe uses env-var-only creds (no config context in OsDetector)
             int sshPort = sshPortFor(role);
-            OSType osType = OsDetector.detect(host, sshPort, sshCreds);
+            OSType osType = OsDetector.detect(host, sshPort, Credentials.fromSshEnv());
 
-            Credentials creds = (osType == OSType.LINUX) ? sshCreds : Credentials.fromWinRmEnv();
+            // Resolve effective credentials: env vars take priority, config.properties is fallback
+            Credentials creds = (osType == OSType.LINUX)
+                    ? Credentials.fromSshEnvOrConfig(sshUsernameFor(role), sshPasswordFor(role))
+                    : Credentials.fromWinRmEnvOrConfig(winrmUsernameFor(role), winrmPasswordFor(role));
+
             if (creds == null) {
                 Log.warn("[RemoteLogCollector] No credentials for {} ({}) — skipping", role.label, osType);
                 return null;
@@ -106,12 +111,28 @@ public final class RemoteLogCollector {
 
             LogFetchRequest request = buildRequest(role, host, osType, creds, start, end);
             LogFetcher fetcher = selectFetcher(osType, keywords, start, end);
-            return fetcher.fetch(request);
+            LogFetchResponse raw = fetcher.fetch(request);
+            return raw.toBuilder()
+                    .configuredPaths(request.getLogPaths())
+                    .timeWindowStart(request.getStartUtc())
+                    .timeWindowEnd(request.getEndUtc())
+                    .build();
 
         } catch (Exception e) {
             Log.warn("[RemoteLogCollector] Collection failed for {} host={}: {}",
                     role.label, host, e.getMessage());
-            return null;
+            // Return a non-null response so the report shows the actual error rather than
+            // a misleading "set credentials" skip message.
+            return LogFetchResponse.builder()
+                    .entries(List.of())
+                    .stderr("Log collection failed: " + e.getMessage())
+                    .exitCode(-1)
+                    .retriesUsed(0)
+                    .durationMs(0)
+                    .configuredPaths(logPaths(role))
+                    .timeWindowStart(start)
+                    .timeWindowEnd(end)
+                    .build();
         }
     }
 
@@ -162,19 +183,38 @@ public final class RemoteLogCollector {
     private List<String> logPaths(ServerRole role) {
         boolean isApp = role == ServerRole.APP;
 
-        // New per-server config keys take priority; fall back to legacy shared keys
-        String raw = isApp
-                ? firstNonBlank(ConfigFactory.getConfig().remoteAppServerLogPaths(),
-                                ConfigFactory.getConfig().remoteLogsAppLogPaths())
-                : firstNonBlank(ConfigFactory.getConfig().remoteDbServerLogPaths(),
-                                ConfigFactory.getConfig().remoteLogsDbLogPaths());
+        // File-based config takes priority for APP server: one path per line, backslashes safe.
+        if (isApp) {
+            String fileName = ConfigFactory.getConfig().remoteAppServerLogPathsFile();
+            if (fileName != null && !fileName.isBlank()) {
+                List<String> paths = RawPropertyReader.readAllRawValues(fileName);
+                if (!paths.isEmpty()) return paths;
+                Log.warn("[RemoteLogCollector] '{}' not found or empty — falling back to config key", fileName);
+            }
+        }
+
+        // Read log paths via RawPropertyReader to preserve Windows backslashes verbatim.
+        // Java's Properties.load() treats '\' as an escape character, silently dropping
+        // backslashes (e.g. C:\GSL → C:GSL) and converting \t → TAB, \n → newline.
+        String primaryKey = isApp ? "remote.app.server.log.paths" : "remote.db.server.log.paths";
+        String legacyKey  = isApp ? "remote.logs.app.log.paths"   : "remote.logs.db.log.paths";
+        String defaultVal = isApp ? "/var/log/ginesys/app.log"    : "/var/log/postgresql/postgresql.log";
+
+        String raw = firstNonBlank(
+                RawPropertyReader.readRaw(primaryKey, null),
+                firstNonBlank(
+                        RawPropertyReader.readRaw(legacyKey, null),
+                        defaultVal));
 
         return Arrays.asList(raw.split(",\\s*"));
     }
 
     private List<String> keywords() {
-        return Arrays.asList(
-                ConfigFactory.getConfig().remoteLogsKeywords().split(",\\s*"));
+        String raw = ConfigFactory.getConfig().remoteLogsKeywords();
+        if (raw == null || raw.isBlank()) return List.of();
+        return Arrays.stream(raw.split(",\\s*"))
+                .filter(k -> !k.isBlank())
+                .collect(Collectors.toList());
     }
 
     private static int sshPortFor(ServerRole role) {
@@ -187,6 +227,30 @@ public final class RemoteLogCollector {
         return (role == ServerRole.APP)
                 ? ConfigFactory.getConfig().remoteAppServerWinrmPort()
                 : ConfigFactory.getConfig().remoteDbServerWinrmPort();
+    }
+
+    private static String winrmUsernameFor(ServerRole role) {
+        return (role == ServerRole.APP)
+                ? ConfigFactory.getConfig().remoteAppServerWinrmUsername()
+                : ConfigFactory.getConfig().remoteDbServerWinrmUsername();
+    }
+
+    private static String winrmPasswordFor(ServerRole role) {
+        return (role == ServerRole.APP)
+                ? ConfigFactory.getConfig().remoteAppServerWinrmPassword()
+                : ConfigFactory.getConfig().remoteDbServerWinrmPassword();
+    }
+
+    private static String sshUsernameFor(ServerRole role) {
+        return (role == ServerRole.APP)
+                ? ConfigFactory.getConfig().remoteAppServerSshUsername()
+                : ConfigFactory.getConfig().remoteDbServerSshUsername();
+    }
+
+    private static String sshPasswordFor(ServerRole role) {
+        return (role == ServerRole.APP)
+                ? ConfigFactory.getConfig().remoteAppServerSshPassword()
+                : ConfigFactory.getConfig().remoteDbServerSshPassword();
     }
 
     private static String firstNonBlank(String primary, String fallback) {

@@ -1,7 +1,7 @@
 package com.gsl.enums;
 
 public enum PopupType {
-    ERROR, WARNING, INFO, SUCCESS, SECURITY, SESSION_TIMEOUT, UNKNOWN;
+    ERROR, WARNING, INFO, SUCCESS, CONFIRM, SECURITY, SESSION_TIMEOUT, UNKNOWN;
 
     public static PopupType fromHeader(String header) {
         if (header == null || header.isBlank()) return UNKNOWN;
@@ -10,6 +10,7 @@ public enum PopupType {
         if (h.contains("WARNING"))                            return WARNING;
         if (h.contains("INFO"))                               return INFO;
         if (h.contains("SUCCESS"))                            return SUCCESS;
+        if (h.contains("CONFIRM"))                            return CONFIRM;
         if (h.contains("ACCESS DENIED") || h.contains("UNAUTHORIZED")) return SECURITY;
         if (h.contains("SESSION")       || h.contains("EXPIRED"))      return SESSION_TIMEOUT;
         return UNKNOWN;

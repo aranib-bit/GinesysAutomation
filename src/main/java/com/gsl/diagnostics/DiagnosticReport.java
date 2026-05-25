@@ -1,6 +1,7 @@
 package com.gsl.diagnostics;
 
 import com.gsl.reports.ExtentLogger;
+import com.gsl.utils.Log;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -45,7 +46,10 @@ public final class DiagnosticReport {
                 .filter(DiagnosticSection::hasData)
                 .collect(Collectors.toList());
 
-        if (active.isEmpty()) return;
+        if (active.isEmpty()) {
+            Log.debug("[DiagnosticReport] All sections reported no data — Logs & Diagnostics node skipped.");
+            return;
+        }
 
         // Subtitle line listing which sections are present
         String outerSummary = active.stream()
