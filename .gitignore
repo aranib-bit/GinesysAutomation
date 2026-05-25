@@ -36,3 +36,22 @@ build/
 
 ### Mac OS ###
 .DS_Store
+
+### Custom: Reports and Logs ###
+# Ignore all HTML report files
+*.html
+**/*.html
+
+# Ignore reports folder and all contents
+reports/
+/reports/
+reports/**/*
+
+# Ignore logs folder and all contents
+logs/
+/logs/
+logs/**/*
+
+# Also ignore the specific JSON report I saw in your example
+/reports/js-errors/
+*.json
