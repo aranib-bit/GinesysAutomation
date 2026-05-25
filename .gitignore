@@ -52,6 +52,12 @@ logs/
 /logs/
 logs/**/*
 
+# Ignore OLD LOGS AND REPORTS folder (with spaces in name)
+OLD\ LOGS\ AND\ REPORTS/
+/OLD\ LOGS\ AND\ REPORTS/
+**/OLD\ LOGS\ AND\ REPORTS/
+OLD\ LOGS\ AND\ REPORTS/**/*
+
 # Also ignore the specific JSON report I saw in your example
 /reports/js-errors/
 *.json
