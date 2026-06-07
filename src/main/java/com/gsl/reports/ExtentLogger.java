@@ -4,6 +4,8 @@ import com.aventstack.extentreports.ExtentTest;
 import com.aventstack.extentreports.MediaEntityBuilder;
 import com.aventstack.extentreports.markuputils.Markup;
 import com.gsl.driver.DriverManager;
+import com.gsl.enums.LogCategory;
+import com.gsl.enums.ReportSeverity;
 import com.gsl.utils.Selenium.ScreenshotUtils;
 
 public final class ExtentLogger {
@@ -19,11 +21,15 @@ public final class ExtentLogger {
         if (ExtentManager.getExtentTest() == null) return;
         if (DriverManager.getDriver() != null) {
             try {
+                // File-on-disk capture: keeps only the path string in the live Extent model
+                // (vs. ~1.3× the raw PNG bytes when embedded as base64).
                 ExtentManager.getExtentTest().fail(message,
-                        MediaEntityBuilder.createScreenCaptureFromBase64String(ScreenshotUtils.getScreenshot()).build());
+                        MediaEntityBuilder.createScreenCaptureFromPath(ScreenshotUtils.saveScreenshot(message)).build());
             } catch (org.openqa.selenium.WebDriverException wde) {
                 // Session is dead — fall back to text-only to prevent AOP infinite loop
                 ExtentManager.getExtentTest().fail(message + " [screenshot unavailable: " + wde.getMessage().split("\n")[0] + "]");
+            } catch (Exception screenshotEx) {
+                ExtentManager.getExtentTest().fail(message + " [screenshot save failed: " + screenshotEx.getMessage() + "]");
             }
         } else {
             ExtentManager.getExtentTest().fail(message);
@@ -43,6 +49,17 @@ public final class ExtentLogger {
         try {
             ExtentManager.getExtentTest().fail(message,
                     MediaEntityBuilder.createScreenCaptureFromBase64String(base64).build());
+        } catch (Exception e) {
+            ExtentManager.getExtentTest().fail(message);
+        }
+    }
+
+    /** Attaches a pre-saved screenshot file (by path) to a failure log entry. */
+    public static void failWithScreenshotPath(String message, String filePath) {
+        if (ExtentManager.getExtentTest() == null) return;
+        try {
+            ExtentManager.getExtentTest().fail(message,
+                    MediaEntityBuilder.createScreenCaptureFromPath(filePath).build());
         } catch (Exception e) {
             ExtentManager.getExtentTest().fail(message);
         }
@@ -72,6 +89,72 @@ public final class ExtentLogger {
     public static void infoTable(String[][] table) {
         ExtentManager.getExtentTest().info(buildScrollableTable(table));
     }
+
+    // ── Categorized logging with color-coded badges ────────────────────────────
+
+    /**
+     * Logs a message prefixed with a colored category badge.
+     * Severity defaults to MEDIUM — no severity badge is shown.
+     */
+    public static void infoCategorized(LogCategory category, String message) {
+        infoCategorized(category, ReportSeverity.MEDIUM, message);
+    }
+
+    /**
+     * Logs a message prefixed with colored category and (non-MEDIUM) severity badges.
+     * MEDIUM severity is the silent default — its badge is suppressed to avoid noise.
+     */
+    public static void infoCategorized(LogCategory category, ReportSeverity severity, String message) {
+        if (ExtentManager.getExtentTest() == null) return;
+        StringBuilder html = new StringBuilder();
+        String catColor = categoryColor(category);
+        html.append("<span style='background:").append(catColor)
+            .append(";color:white;padding:1px 7px;border-radius:3px;")
+            .append("font-size:10px;font-weight:bold;margin-right:5px;vertical-align:middle;'>")
+            .append(category.name()).append("</span>");
+        if (severity != ReportSeverity.MEDIUM) {
+            String sevColor = severityColor(severity);
+            html.append("<span style='background:").append(sevColor)
+                .append(";color:white;padding:1px 6px;border-radius:3px;")
+                .append("font-size:10px;font-weight:bold;margin-right:5px;vertical-align:middle;'>")
+                .append(severity.name()).append("</span>");
+        }
+        html.append("<span style='vertical-align:middle;'>").append(escapeHtml(message)).append("</span>");
+        String htmlStr = html.toString();
+        ExtentManager.getExtentTest().info((Markup) () -> htmlStr);
+    }
+
+    private static String categoryColor(LogCategory cat) {
+        return switch (cat) {
+            case BUSINESS   -> "#1565c0";
+            case UI_ACTION  -> "#00695c";
+            case VALIDATION -> "#2e7d32";
+            case DB         -> "#283593";
+            case NETWORK    -> "#6a1b9a";
+            case JS         -> "#e65100";
+            case PERF       -> "#bf360c";
+            case FRAMEWORK  -> "#424242";
+            case RCA        -> "#b71c1c";
+        };
+    }
+
+    private static String severityColor(ReportSeverity sev) {
+        return switch (sev) {
+            case CRITICAL -> "#b71c1c";
+            case HIGH     -> "#e65100";
+            case MEDIUM   -> "#1565c0";
+            case LOW      -> "#616161";
+            case TRACE    -> "#9e9e9e";
+        };
+    }
+
+    private static String escapeHtml(String input) {
+        if (input == null) return "";
+        return input.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
+                    .replace("\"", "&quot;").replace("'", "&#39;");
+    }
+
+    // ── Table rendering ────────────────────────────────────────────────────────
 
     private static Markup buildScrollableTable(String[][] table) {
         StringBuilder sb = new StringBuilder();

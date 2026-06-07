@@ -339,7 +339,7 @@ public class AdmClsQuery {
      * <p>{@code cmpCode = 1} → system-defined SLs (Customer, Supplier, etc.)
      * <p>{@code cmpCode = 0} → user-defined SLs (TDS, Staff, etc.)
      *
-     * <p>Used by FIFO, REF_SITEWISE, and NO_ADJUSTMENT mandatory baseline placeholders
+     * <p>Used by FIFO, REF_SITEWISE, and DOC_NO_ADJUSTMENT mandatory baseline placeholders
      * that need to scope to a specific SL category without pinning a concrete {@code clscode}.
      *
      * @param jdbi    active JDBI instance

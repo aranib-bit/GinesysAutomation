@@ -1,5 +1,6 @@
 package com.gsl.pages.Common;
 
+import com.gsl.enums.Finance.Operations.Common.DocumentMessageBoxMessage;
 import com.gsl.enums.FinanceSaveHeaderType;
 import com.gsl.enums.WaitType;
 import com.gsl.pages.Finance.Operations.ArVoucherListPage;
@@ -24,6 +25,7 @@ public class DocumentMessageBox {
     private static final By CLOSE_BUTTON       = By.xpath("//*[@class='mdi mdi-24px mdi-close']");
     private static final By DISCARD_YES_BUTTON = By.xpath("//span[text()='Yes']");
     private static final By PROCEED_BUTTON     = By.xpath("//span[text()='Proceed']");
+    private static final By CONTINUE_BUTTON    = By.xpath("//span[text()='Continue']");
     private static final By LOADER             = By.xpath("//div[contains(@class,'x-mask-msg-text') and normalize-space()='Loading...']");
 
     // Regex pattern for extracting Document No
@@ -175,6 +177,24 @@ public class DocumentMessageBox {
         SeleniumUtils.click(NO_BUTTON, WaitType.CLICKABLE, "NO_BUTTON");
         JavascriptExecutorUtils.waitForPageLoad();
         JavascriptExecutorUtils.waitForExtJS();
+    }
+
+    public void clickNo() {
+        SeleniumUtils.click(NO_BUTTON, WaitType.CLICKABLE, "NO_BUTTON");
+        JavascriptExecutorUtils.waitForPageLoad();
+        JavascriptExecutorUtils.waitForExtJS();
+    }
+
+    public void clickContinue() {
+        SeleniumUtils.click(CONTINUE_BUTTON, WaitType.CLICKABLE, "CONTINUE_BUTTON");
+        // Wait for the TDS prompt to dismiss before the caller waits for the next popup
+        SeleniumUtils.elementDisappear(MESSAGE_TEXT, "TDS_PROMPT_MESSAGEBOX");
+    }
+
+    public void verifyMessage(DocumentMessageBoxMessage expected) {
+        String actual = getMessageText();
+        Assert.assertTrue(actual.contains(expected.getText()),
+                "Expected message box to contain: [" + expected.getText() + "] but got: [" + actual + "]");
     }
 
     public void closeGRC() {

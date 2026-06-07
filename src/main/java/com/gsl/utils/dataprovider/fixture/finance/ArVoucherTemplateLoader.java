@@ -65,7 +65,7 @@ public final class ArVoucherTemplateLoader {
                 .referenceSitewiseFIFOList(List.of())
                 .paymentInformationList(payments)
                 .paymentProvided(false)
-                .needsIgnoreProceed(computeNeedsIgnoreProceed(subLedgers, payments, refs.getCashBankType()))
+                .needsPaymentInfoWarning(computeNeedsPaymentInfoWarning(subLedgers, payments, refs.getCashBankType()))
                 .invocationIndex(1)
                 .totalInvocations(1)
                 .build();
@@ -168,20 +168,20 @@ public final class ArVoucherTemplateLoader {
                 .referenceSitewiseFIFOList(List.of())
                 .paymentInformationList(payments)
                 .paymentProvided(!payments.isEmpty())
-                .needsIgnoreProceed(computeNeedsIgnoreProceed(subLedgers, payments, refs.getCashBankType()))
+                .needsPaymentInfoWarning(computeNeedsPaymentInfoWarning(subLedgers, payments, refs.getCashBankType()))
                 .gridRelation(variant.getGridRelation())
                 .invocationIndex(1)
                 .totalInvocations(1)
                 .build();
     }
 
-    // ─── Template 0: NO_ADJUSTMENT ───────────────────────────────────────────
+    // ─── Template 0: DOC_NO_ADJUSTMENT ──────────────────────────────────────
     /**
      * Builds test data for the "no adjustment" scenario — mandatory fields only.
      * One SL line, amountCr = total pending for that SL, no adjustment type set,
      * no payment rows (Bank GL triggers "Ignore & Proceed" on save).
      */
-    public static MergedFinanceArVoucherData noAdjustmentTemplate(LiveDbRefs refs) {
+    public static MergedFinanceArVoucherData docNoAdjustmentTemplate(LiveDbRefs refs) {
         String id = "DB_NO_ADJ";
         List<SubLedgerInformation> subLedgers = buildSubLedgers(
                 refs.getPendingSlNames(), null,
@@ -196,7 +196,7 @@ public final class ArVoucherTemplateLoader {
                 .referenceSitewiseFIFOList(List.of())
                 .paymentInformationList(payments)
                 .paymentProvided(false)
-                .needsIgnoreProceed(computeNeedsIgnoreProceed(subLedgers, payments, refs.getCashBankType()))
+                .needsPaymentInfoWarning(computeNeedsPaymentInfoWarning(subLedgers, payments, refs.getCashBankType()))
                 .invocationIndex(1)
                 .totalInvocations(1)
                 .build();
@@ -225,7 +225,7 @@ public final class ArVoucherTemplateLoader {
                 .referenceSitewiseFIFOList(List.of())
                 .paymentInformationList(payments)
                 .paymentProvided(!payments.isEmpty())
-                .needsIgnoreProceed(computeNeedsIgnoreProceed(subLedgers, payments, refs.getCashBankType()))
+                .needsPaymentInfoWarning(computeNeedsPaymentInfoWarning(subLedgers, payments, refs.getCashBankType()))
                 .invocationIndex(1)
                 .totalInvocations(1)
                 .build();
@@ -253,7 +253,7 @@ public final class ArVoucherTemplateLoader {
                 .referenceSitewiseFIFOList(List.of())
                 .paymentInformationList(payments)
                 .paymentProvided(!payments.isEmpty())
-                .needsIgnoreProceed(computeNeedsIgnoreProceed(subLedgers, payments, refs.getCashBankType()))
+                .needsPaymentInfoWarning(computeNeedsPaymentInfoWarning(subLedgers, payments, refs.getCashBankType()))
                 .invocationIndex(1)
                 .totalInvocations(1)
                 .build();
@@ -420,7 +420,7 @@ public final class ArVoucherTemplateLoader {
      *
      * @param cashBankType the GL type — {@link CashBankType#CASH} or {@link CashBankType#BANK}
      */
-    private static boolean computeNeedsIgnoreProceed(
+    private static boolean computeNeedsPaymentInfoWarning(
             List<SubLedgerInformation> subLedgers,
             List<PaymentInformation> payments,
             CashBankType cashBankType) {

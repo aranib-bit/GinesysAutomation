@@ -3118,6 +3118,57 @@ public final class JavascriptExecutorUtils {
         setSubLedger(driver, slName, slId, referenceSite, "arvch_grid");
     }
 
+    /**
+     * NATIVE sub-ledger selection support: open the inline Sub-Ledger combo editor on the
+     * given grid row and return the combo's real {@code inputEl} DOM id so Selenium can type
+     * into it and pick from the dropdown via genuine user interaction.
+     *
+     * <p>Unlike {@link #setSubLedger}, this does NOT inject values with {@code rec.set} — it
+     * only opens the editor. The caller types the name and clicks a real {@code <li role=option>},
+     * which fires the application's own combo {@code select} handler, triggering the GL + TDS
+     * applicability evaluation that injection bypasses (so TDS-deduction rows render the
+     * "Calc. Amount" button instead of "TDS not appl.").</p>
+     *
+     * @return the combo input element id, or {@code null} if the editor could not be opened.
+     */
+    public static String openSubLedgerComboEditor(WebDriver driver, int rowIndex, String gridItemId) {
+        String clickScript =
+                "try {" +
+                "  var g = Ext.ComponentQuery.query('gridpanel[itemId=" + gridItemId + "]')[0];" +
+                "  if (!g) return 'ERR:grid';" +
+                "  var rowEl = g.getView().getNode(" + rowIndex + ");" +
+                "  if (!rowEl) return 'ERR:row';" +
+                "  var cols = g.getColumnManager().getColumns();" +
+                "  var idx = -1; for (var i=0;i<cols.length;i++){ if(cols[i].dataIndex==='slCode'){ idx=i; break; } }" +
+                "  if (idx < 0) return 'ERR:col';" +
+                "  var cells = rowEl.querySelectorAll('td.x-grid-cell');" +
+                "  if (cells.length <= idx) return 'ERR:cells';" +
+                "  cells[idx].click();" +
+                "  return 'CLICKED';" +
+                "} catch(e){ return 'ERR:' + e.message; }";
+        Object clicked = ((JavascriptExecutor) driver).executeScript(clickScript);
+        if (!"CLICKED".equals(String.valueOf(clicked))) {
+            ExtentLogger.warning("[SL_NATIVE] Could not open Sub-Ledger editor on row " + rowIndex + " — " + clicked);
+            return null;
+        }
+        try { Thread.sleep(600); } catch (InterruptedException e) { Thread.currentThread().interrupt(); }
+        String idScript =
+                "try {" +
+                "  var c = Ext.ComponentQuery.query('combo[name=slCode]')[0];" +
+                "  if (!c) return '';" +
+                "  c.expand();" +
+                "  return (c.inputEl && c.inputEl.dom) ? c.inputEl.dom.id : '';" +
+                "} catch(e){ return ''; }";
+        Object inputId = ((JavascriptExecutor) driver).executeScript(idScript);
+        String id = (inputId == null) ? "" : String.valueOf(inputId);
+        if (id.isEmpty()) {
+            ExtentLogger.warning("[SL_NATIVE] Sub-Ledger combo input id not found after opening editor on row " + rowIndex);
+            return null;
+        }
+        ExtentLogger.info("[SL_NATIVE] Sub-Ledger editor open on row " + rowIndex + " — inputId=" + id);
+        return id;
+    }
+
     public static void setSubLedger(WebDriver driver, String slName, String slId, String referenceSite, String gridItemId) {
         slName = (slName != null) ? slName.trim() : "";
         slId   = (slId   != null) ? slId.trim()   : "";
@@ -3212,17 +3263,21 @@ public final class JavascriptExecutorUtils {
                         + "          if (glGrp) { rec.set('ledgerGroupName',        glGrp);"
                         + "                       rec.set('generalLedgerGroupName', glGrp); }"
                         + "          if (glAbbre) rec.set('ledgerAbbreviation',     glAbbre);"
-                        + "          var glReady = rec.get('ledgerCode') > 0 && (rec.get('generalLedgerGroupName') || '') !== '' && !Ext.Ajax.isLoading();"
+                        + "          var rawTdsFlag = slRec.get('tdsApp') || '';"
+                        + "          var needTdsInfo = rawTdsFlag === 'Y' || rawTdsFlag.toUpperCase() === 'YES';"
+                        + "          var tdsInfoOk = !needTdsInfo || rec.get('tdsInfo') != null;"
+                        + "          var glReady = rec.get('ledgerCode') > 0 && (rec.get('generalLedgerGroupName') || '') !== '' && !Ext.Ajax.isLoading() && tdsInfoOk;"
                         + "          if (!glReady && __glPollCount0 < 30) { __glPollCount0++; setTimeout(__pollGlRow0, 400); return; }"
                         + "          rec.set('slCode',    slRec.get('slCode'));"
                         + "          rec.set('slName',    slRec.get('slName'));"
                         + "          rec.set('slid',      slRec.get('slid'));"
                         + "          rec.set('className', slRec.get('className'));"
-                        + "          var tdsAppFromSl = slRec.get('tdsApp');"
-                        + "          if (tdsAppFromSl != null) {"
-                        + "            rec.set('tdsApp',    tdsAppFromSl);"
-                        + "            rec.set('TDSdeduct', tdsAppFromSl);"
-                        + "            rec.set('deductTDS', tdsAppFromSl);"
+                        + "          var tdsRaw = slRec.get('tdsApp');"
+                        + "          if (tdsRaw != null && tdsRaw !== '') {"
+                        + "            var normTds = (tdsRaw === 'Y' || tdsRaw.toUpperCase() === 'YES') ? 'Yes' : 'No';"
+                        + "            rec.set('tdsApp',    tdsRaw);"   // preserve raw server flag (e.g. 'YES') so the app renders 'Calc. Amount'
+                        + "            rec.set('TDSdeduct', normTds);"
+                        + "            rec.set('deductTDS', normTds);"
                         + "          }"
                         + "          window.__gridRecGl = 'ledgerName=' + (rec.get('ledgerName') || 'EMPTY')"
                         + "            + ' | ledgerGroupName=' + (rec.get('ledgerGroupName') || 'EMPTY')"
@@ -3245,6 +3300,7 @@ public final class JavascriptExecutorUtils {
                         + "            deductTDS:      rec.get('deductTDS')              || ''"
                         + "          };"
                         + "          childGrid.getView().refreshNode(0);"
+                        + "          window.__fullGridRec0 = JSON.stringify(rec.getData());"
                         + "          console.log('[CAPTURED] slCode=' + rec.get('slCode') + ' ledgerCode=' + rec.get('ledgerCode') + ' ledgerGroupName=' + rec.get('ledgerGroupName') + ' polls=' + __glPollCount0);"
                         + "          console.log('FULL GRID RECORD: ' + JSON.stringify(rec.getData()));"
                         + "          window.__slSearchDone = true; window.__slSearchFound = true;"
@@ -3287,21 +3343,39 @@ public final class JavascriptExecutorUtils {
     }
 
     /**
-     * Reads the two window debug variables set inside the 600ms setTimeout:
-     *   __slRecData   — JSON of the slCode combo record (what the server returned for this SL)
-     *   __gridRecGl   — ledgerName / ledgerGroupName / ledgerAbbreviation on the grid record
-     *                   *before* the guarded writes, showing what fireEvent('select') set.
+     * Reads all window debug variables set inside the GL poll and logs them to both
+     * the system console and the ExtentReport for diagnosis:
+     *   __slRecData      — full JSON of the slCode combo record (what the server sent for this SL)
+     *   __fullGridRec0   — full JSON of grid row-0 record after GL poll completes (all fields)
+     *   __gridRecGl      — concise GL summary (ledgerName/group/code/polls)
+     *   __slSearchDiag   — structured poll diagnostics object
+     *   capturedTds      — tdsApp/TDSdeduct/deductTDS as captured in __capturedGlRows[0]
      */
     private static void printSlDebug(WebDriver driver) {
-        String slRec   = (String) ((JavascriptExecutor) driver)
-                .executeScript("return window.__slRecData   !== undefined ? window.__slRecData   : 'NOT_CAPTURED';");
-        String gridGl  = (String) ((JavascriptExecutor) driver)
-                .executeScript("return window.__gridRecGl   !== undefined ? window.__gridRecGl   : 'NOT_CAPTURED';");
+        String slRec = (String) ((JavascriptExecutor) driver)
+                .executeScript("return window.__slRecData !== undefined ? window.__slRecData : 'NOT_CAPTURED';");
+        String gridGl = (String) ((JavascriptExecutor) driver)
+                .executeScript("return window.__gridRecGl !== undefined ? window.__gridRecGl : 'NOT_CAPTURED';");
         String diagStr = (String) ((JavascriptExecutor) driver)
                 .executeScript("return window.__slSearchDiag !== undefined ? JSON.stringify(window.__slSearchDiag) : 'NOT_CAPTURED';");
-        System.out.println("=== [SL_COMBO_RECORD] "     + slRec   + " ===");
-        System.out.println("=== [GL_AFTER_FIRE_EVENT] " + gridGl  + " ===");
-        System.out.println("=== [GL_POLL_DIAG] "        + diagStr + " ===");
+        String fullRec = (String) ((JavascriptExecutor) driver)
+                .executeScript("return window.__fullGridRec0 !== undefined ? window.__fullGridRec0 : 'NOT_CAPTURED';");
+        String capturedTds = (String) ((JavascriptExecutor) driver)
+                .executeScript(
+                        "var c = window.__capturedGlRows && window.__capturedGlRows[0];" +
+                        "return c ? JSON.stringify({tdsApp: c.tdsApp, TDSdeduct: c.TDSdeduct, deductTDS: c.deductTDS}) : 'NO_CAPTURE';");
+
+        System.out.println("=== [SL_COMBO_RECORD] "         + slRec      + " ===");
+        System.out.println("=== [FULL_GRID_REC_AFTER_POLL] " + fullRec    + " ===");
+        System.out.println("=== [CAPTURED_TDS] "             + capturedTds + " ===");
+        System.out.println("=== [GL_AFTER_FIRE_EVENT] "      + gridGl     + " ===");
+        System.out.println("=== [GL_POLL_DIAG] "             + diagStr    + " ===");
+
+        ExtentLogger.info("[SL_COMBO_RECORD] "         + slRec);
+        ExtentLogger.info("[FULL_GRID_REC_AFTER_POLL] " + fullRec);
+        ExtentLogger.info("[CAPTURED_TDS] "             + capturedTds);
+        ExtentLogger.info("[GL_AFTER_FIRE_EVENT] "      + gridGl);
+        ExtentLogger.info("[GL_POLL_DIAG] "             + diagStr);
     }
 
     public static void restoreGlFieldsFromCapture(WebDriver driver, int rowIndex, String gridItemId) {
@@ -3367,15 +3441,15 @@ public final class JavascriptExecutorUtils {
     /**
      * Override the "Deduct TDS" value on a sub-ledger grid row from test data.
      *
-     * <p>App rule: the Deduct TDS field is only editable when the supplier has TDS
-     * configured server-side (i.e., {@code tdsApp == 'Y'}). When TDS is not applicable
-     * (tdsApp is 'N', null, or empty), the field is locked to "No" and any override is
-     * ignored — the framework logs a warning and skips.</p>
+     * <p>Behaviour:</p>
+     * <ol>
+     *   <li>If the grid cell already shows the requested value (after vendor selection), skip — no edit needed.</li>
+     *   <li>Otherwise open the inline cell editor via the ExtJS {@code editingPlugin.startEdit()} —
+     *       equivalent to a double-click — then set the Yes/No combo value and complete the edit.</li>
+     * </ol>
      *
-     * <p>When the override is accepted, all three TDS field names on the grid record
-     * ({@code tdsApp / TDSdeduct / deductTDS}) and the corresponding entry in
-     * {@code window.__capturedGlRows[rowIndex]} are updated, so the pre-save restore
-     * in {@link #restoreAllGlFieldsFromCapture(WebDriver, String)} preserves the
+     * <p>The corresponding entry in {@code window.__capturedGlRows[rowIndex]} is also updated so the
+     * pre-save restore in {@link #restoreAllGlFieldsFromCapture(WebDriver, String)} preserves the
      * override instead of clobbering it.</p>
      */
     public static void setDeductTdsForRow(WebDriver driver, int rowIndex, String value, String gridItemId) {
@@ -3383,34 +3457,48 @@ public final class JavascriptExecutorUtils {
         String safeValue = value.trim();
         String script =
                 "try {" +
+                // ── Phase 1: locate grid and record ──────────────────────────────────
                 "  var g = Ext.ComponentQuery.query('gridpanel[itemId=" + gridItemId + "]')[0];" +
                 "  if (!g) return 'GRID_NOT_FOUND';" +
                 "  var rec = g.getStore().getAt(" + rowIndex + ");" +
                 "  if (!rec) return 'REC_NOT_FOUND';" +
-                "  var currentTdsApp = rec.get('tdsApp');" +
-                "  if (currentTdsApp !== 'Y') {" +
-                "    return 'LOCKED: tdsApp=' + (currentTdsApp || 'null') + ' — Deduct TDS not editable';" +
+                // ── Phase 2: skip if already the right value ──────────────────────────
+                "  var cur = rec.get('TDSdeduct') || rec.get('deductTDS') || '';" +
+                "  var norm = (cur === 'Y' || cur.toUpperCase() === 'YES') ? 'Yes' : (cur ? 'No' : '');" +
+                "  if (norm === '" + safeValue + "') {" +
+                "    return 'ALREADY_SET: row=" + rowIndex + " value=" + safeValue + "';" +
                 "  }" +
-                "  rec.set('tdsApp',    '" + safeValue + "');" +
-                "  rec.set('TDSdeduct', '" + safeValue + "');" +
-                "  rec.set('deductTDS', '" + safeValue + "');" +
+                // ── Phase 3: find the TDSdeduct/deductTDS column ─────────────────────
+                "  var cols = g.getColumns();" +
+                "  var tdsCol = null;" +
+                "  for (var ci = 0; ci < cols.length; ci++) {" +
+                "    var di = cols[ci].dataIndex || '';" +
+                "    if (di === 'TDSdeduct' || di === 'deductTDS') { tdsCol = cols[ci]; break; }" +
+                "  }" +
+                "  if (!tdsCol) return 'COL_NOT_FOUND: TDSdeduct/deductTDS';" +
+                // ── Phase 4: open inline editor (equiv. double-click) ─────────────────
+                "  var plugin = g.editingPlugin;" +
+                "  if (!plugin) return 'EDITING_PLUGIN_NOT_FOUND';" +
+                "  plugin.startEdit(rec, tdsCol);" +
+                "  var field = plugin.activeEditor && plugin.activeEditor.field;" +
+                "  if (!field) return 'ACTIVE_EDITOR_NOT_FOUND';" +
+                "  field.setValue('" + safeValue + "');" +
+                "  plugin.completeEdit();" +
+                // ── Phase 5: update capture cache and refresh row ─────────────────────
                 "  if (window.__capturedGlRows && window.__capturedGlRows[" + rowIndex + "]) {" +
-                "    window.__capturedGlRows[" + rowIndex + "].tdsApp    = '" + safeValue + "';" +
                 "    window.__capturedGlRows[" + rowIndex + "].TDSdeduct = '" + safeValue + "';" +
                 "    window.__capturedGlRows[" + rowIndex + "].deductTDS = '" + safeValue + "';" +
                 "  }" +
-                "  g.getView().refreshNode(" + rowIndex + ");" +
-                "  return 'APPLIED: row=' + " + rowIndex + " + ' value=' + '" + safeValue + "';" +
+                "  g.getView().refreshNode(rec);" +
+                "  return 'APPLIED: row=" + rowIndex + " value=" + safeValue + "';" +
                 "} catch(e) { return 'ERROR: ' + e.message; }";
         Object result = ((JavascriptExecutor) driver).executeScript(script);
         String resultStr = String.valueOf(result);
-        if (resultStr.startsWith("LOCKED")) {
-            ExtentLogger.warning("[DEDUCT_TDS] Override ignored on row=" + rowIndex
-                    + " — " + resultStr + " | requestedValue=" + safeValue);
-        } else if (resultStr.startsWith("ERROR") || resultStr.startsWith("GRID_NOT_FOUND") || resultStr.startsWith("REC_NOT_FOUND")) {
-            ExtentLogger.warning("[DEDUCT_TDS] Failed to apply override on row=" + rowIndex + " — " + resultStr);
-        } else {
+        if (resultStr.startsWith("ALREADY_SET") || resultStr.startsWith("APPLIED")) {
             ExtentLogger.info("[DEDUCT_TDS] " + resultStr);
+        } else {
+            ExtentLogger.warning("[DEDUCT_TDS] Failed to apply on row=" + rowIndex
+                    + " — " + resultStr + " | requestedValue=" + safeValue);
         }
     }
 
@@ -3599,17 +3687,21 @@ public final class JavascriptExecutorUtils {
                         + "          if (glGrp) { rec.set('ledgerGroupName',        glGrp);"
                         + "                       rec.set('generalLedgerGroupName', glGrp); }"
                         + "          if (glAbbre) rec.set('ledgerAbbreviation',     glAbbre);"
-                        + "          var glReady = rec.get('ledgerCode') > 0 && (rec.get('generalLedgerGroupName') || '') !== '' && !Ext.Ajax.isLoading();"
+                        + "          var rawTdsFlag = slRec.get('tdsApp') || '';"
+                        + "          var needTdsInfo = rawTdsFlag === 'Y' || rawTdsFlag.toUpperCase() === 'YES';"
+                        + "          var tdsInfoOk = !needTdsInfo || rec.get('tdsInfo') != null;"
+                        + "          var glReady = rec.get('ledgerCode') > 0 && (rec.get('generalLedgerGroupName') || '') !== '' && !Ext.Ajax.isLoading() && tdsInfoOk;"
                         + "          if (!glReady && __glPollCountR < 30) { __glPollCountR++; setTimeout(__pollGlRowR, 400); return; }"
                         + "          rec.set('slCode',    slRec.get('slCode'));"
                         + "          rec.set('slName',    slRec.get('slName'));"
                         + "          rec.set('slid',      slRec.get('slid'));"
                         + "          rec.set('className', slRec.get('className'));"
-                        + "          var tdsAppFromSl = slRec.get('tdsApp');"
-                        + "          if (tdsAppFromSl != null) {"
-                        + "            rec.set('tdsApp',    tdsAppFromSl);"
-                        + "            rec.set('TDSdeduct', tdsAppFromSl);"
-                        + "            rec.set('deductTDS', tdsAppFromSl);"
+                        + "          var tdsRaw = slRec.get('tdsApp');"
+                        + "          if (tdsRaw != null && tdsRaw !== '') {"
+                        + "            var normTds = (tdsRaw === 'Y' || tdsRaw.toUpperCase() === 'YES') ? 'Yes' : 'No';"
+                        + "            rec.set('tdsApp',    tdsRaw);"   // preserve raw server flag (e.g. 'YES') so the app renders 'Calc. Amount'
+                        + "            rec.set('TDSdeduct', normTds);"
+                        + "            rec.set('deductTDS', normTds);"
                         + "          }"
                         + "          window.__gridRecGl = 'row=' + targetRow + ' | ledgerName=' + (rec.get('ledgerName') || 'EMPTY')"
                         + "            + ' | ledgerGroupName=' + (rec.get('ledgerGroupName') || 'EMPTY')"
@@ -3632,6 +3724,8 @@ public final class JavascriptExecutorUtils {
                         + "            deductTDS:      rec.get('deductTDS')              || ''"
                         + "          };"
                         + "          childGrid.getView().refreshNode(targetRow);"
+                        + "          window.__fullGridRecN = window.__fullGridRecN || {};"
+                        + "          window.__fullGridRecN[targetRow] = JSON.stringify(rec.getData());"
                         + "          console.log('[CAPTURED] row=' + targetRow + ' slCode=' + rec.get('slCode') + ' ledgerCode=' + rec.get('ledgerCode') + ' polls=' + __glPollCountR);"
                         + "          window.__slSearchDone = true; window.__slSearchFound = true;"
                         + "        }"
@@ -3911,6 +4005,48 @@ public final class JavascriptExecutorUtils {
         long configured = ConfigFactory.getConfig().extjsTimeout();
         long min        = ConfigFactory.getConfig().extjsMinTimeout();
         return Math.max(min, configured);
+    }
+
+    /**
+     * Opens the Reference Site Name combo editor in the "Ref. Site-wise FIFO Set-Off" popup.
+     *
+     * <p>Locates the visible FIFO window via ExtJS component query (no fragile DOM id needed),
+     * adds a blank record to the store when it is empty, then calls
+     * {@code plugin.startEdit(rec, col0)} — the same reliable approach used by
+     * {@link #openSubLedgerComboEditor} for the SubLedger grid.</p>
+     *
+     * @return the combo {@code inputEl.dom.id} that Selenium can type into,
+     *         or a string starting with {@code "ERR:"} on failure
+     */
+    public static String openFifoRefSiteComboEditor(WebDriver driver) {
+        String script =
+                "try {" +
+                "  var wins = Ext.ComponentQuery.query('window');" +
+                "  var win = null;" +
+                "  for (var i = 0; i < wins.length; i++) {" +
+                "    if (wins[i].isVisible() && wins[i].title && wins[i].title.indexOf('FIFO') >= 0)" +
+                "      { win = wins[i]; break; }" +
+                "  }" +
+                "  if (!win) return 'ERR:no_window';" +
+                "  var grids = win.query('gridpanel');" +
+                "  if (!grids || !grids.length) return 'ERR:no_grid';" +
+                "  var grid = grids[0];" +
+                "  var plugin = grid.editingPlugin || grid.findPlugin('cellediting');" +
+                "  if (!plugin) return 'ERR:no_plugin';" +
+                "  var store = grid.getStore();" +
+                "  if (store.getCount() === 0) { store.add({}); }" +
+                "  var rec = store.getAt(0);" +
+                "  if (!rec) return 'ERR:no_rec';" +
+                "  var cols = grid.getColumnManager().getColumns();" +
+                "  if (!cols || !cols.length) return 'ERR:no_cols';" +
+                // Pass record object (not integer 0) to avoid the ExtJS falsy-zero bug in startEdit
+                "  plugin.startEdit(rec, cols[0]);" +
+                "  var combo = plugin.activeEditor && plugin.activeEditor.field;" +
+                "  if (!combo) return 'ERR:no_combo';" +
+                "  return combo.inputEl && combo.inputEl.dom ? combo.inputEl.dom.id : 'ERR:no_input_id';" +
+                "} catch(e) { return 'ERR:' + e.message; }";
+        Object result = ((JavascriptExecutor) driver).executeScript(script);
+        return result != null ? result.toString() : "ERR:null";
     }
 
 }

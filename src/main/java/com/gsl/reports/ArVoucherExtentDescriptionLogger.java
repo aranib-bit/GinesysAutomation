@@ -65,7 +65,7 @@ public final class ArVoucherExtentDescriptionLogger {
         sb.append(String.format("  Doc Date        = %s%n", docDate));
         sb.append(String.format("  Reference       = %s%n", nullSafe(doc.getReference())));
         sb.append(String.format("  Remarks         = %s%n", nullSafe(doc.getRemarks())));
-        sb.append(String.format("  Ignore&Proceed  = %s%n", data.isNeedsIgnoreProceed() ? "YES" : "NO"));
+        sb.append(String.format("  Pmt Info Warning= %s%n", data.isNeedsPaymentInfoWarning() ? "YES" : "NO"));
 
         // Sub-Ledgers
         sb.append("------------------------------------------------------------\n");
@@ -142,7 +142,7 @@ public final class ArVoucherExtentDescriptionLogger {
             { "Doc Date",         docDate },
             { "Reference",        nullSafe(doc.getReference()) },
             { "Remarks",          nullSafe(doc.getRemarks()) },
-            { "Ignore & Proceed", data.isNeedsIgnoreProceed() ? "YES" : "NO" },
+            { "Payment Info Warning", data.isNeedsPaymentInfoWarning() ? "YES" : "NO" },
         };
         ExtentLogger.info("<b>Test Data &#8212; Header</b>");
         ExtentLogger.infoTable(table);

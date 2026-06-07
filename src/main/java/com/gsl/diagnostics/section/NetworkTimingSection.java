@@ -55,6 +55,7 @@ public final class NetworkTimingSection implements DiagnosticSection {
               .append(" &nbsp; <b>Type:</b> ").append(esc(snap.getMimeType()))
               .append("</div>");
 
+            sb.append(buildWaterfallBar(snap));
             sb.append(buildTimingTable(snap));
 
             if (snap.getServerTiming() != null && !snap.getServerTiming().isEmpty()) {
@@ -72,6 +73,85 @@ public final class NetworkTimingSection implements DiagnosticSection {
             sb.append("</div>");
         }
         return sb.toString();
+    }
+
+    // ── Waterfall bar ─────────────────────────────────────────────────────────
+
+    /**
+     * Renders a colour-coded horizontal waterfall bar showing the relative contribution
+     * of each timing phase for the given request snapshot.
+     *
+     * Phases and colours:
+     *   Queueing  → #9e9e9e  |  Stalled    → #bdbdbd  |  DNS     → #1565c0
+     *   SSL       → #00695c  |  Connect    → #4527a0  |  Sent    → #2e7d32
+     *   TTFB      → #e65100  |  Download   → #c62828
+     *
+     * Returns an empty string when the total of all phases is zero (cached response).
+     */
+    private static String buildWaterfallBar(NetworkTimingSnapshot snap) {
+        Map<String, Double> t = snap.getTimings();
+
+        double queueing  = snap.getQueueingMs();
+        double stalled   = snap.getStalledMs();
+        double dns       = phaseDuration(t, "dnsStart",     "dnsEnd");
+        double ssl       = phaseDuration(t, "sslStart",     "sslEnd");
+        double connect   = phaseDuration(t, "connectStart", "connectEnd");
+        double sent      = phaseDuration(t, "sendStart",    "sendEnd");
+        double sendStart = t.getOrDefault("sendStart", -1.0);
+        double recvEnd   = t.getOrDefault("receiveHeadersEnd", -1.0);
+        double ttfb      = (sendStart >= 0 && recvEnd >= 0) ? Math.max(0, recvEnd - sendStart) : 0;
+        double download  = snap.getContentDownloadMs();
+
+        double total = queueing + stalled + dns + ssl + connect + sent + ttfb + download;
+        if (total <= 0) return "";
+
+        record Phase(String name, double ms, String color) {}
+        List<Phase> phases = List.of(
+                new Phase("Queueing",  queueing, "#9e9e9e"),
+                new Phase("Stalled",   stalled,  "#bdbdbd"),
+                new Phase("DNS",       dns,      "#1565c0"),
+                new Phase("SSL",       ssl,      "#00695c"),
+                new Phase("Connect",   connect,  "#4527a0"),
+                new Phase("Sent",      sent,     "#2e7d32"),
+                new Phase("TTFB",      ttfb,     "#e65100"),
+                new Phase("Download",  download, "#c62828")
+        );
+
+        StringBuilder sb = new StringBuilder();
+        sb.append("<div style='margin-bottom:6px;'>")
+          .append("<div style='font-size:11px;font-weight:600;margin-bottom:4px;color:#444;'>")
+          .append("Request Waterfall</div>")
+          // Bar row
+          .append("<div style='display:flex;height:14px;border-radius:3px;overflow:hidden;width:100%;'>");
+
+        for (Phase p : phases) {
+            if (p.ms() <= 0) continue;
+            int pct = (int) Math.max(1, Math.round(p.ms() / total * 100));
+            sb.append("<div style='width:").append(pct).append("%;background:").append(p.color())
+              .append(";height:14px;' title='").append(p.name()).append(": ")
+              .append(String.format("%.2f", p.ms())).append("ms'></div>");
+        }
+        sb.append("</div>");
+
+        // Legend
+        sb.append("<div style='display:flex;flex-wrap:wrap;gap:6px;margin-top:4px;font-size:10px;font-family:monospace;'>");
+        for (Phase p : phases) {
+            if (p.ms() <= 0) continue;
+            sb.append("<span>")
+              .append("<span style='display:inline-block;width:10px;height:10px;background:")
+              .append(p.color()).append(";border-radius:2px;vertical-align:middle;margin-right:3px;'></span>")
+              .append(p.name()).append(" ").append(String.format("%.2f", p.ms())).append("ms")
+              .append("</span>");
+        }
+        sb.append("</div></div>");
+
+        return sb.toString();
+    }
+
+    private static double phaseDuration(Map<String, Double> t, String startKey, String endKey) {
+        double start = t.getOrDefault(startKey, -1.0);
+        double end   = t.getOrDefault(endKey,   -1.0);
+        return (start >= 0 && end >= 0) ? Math.max(0, end - start) : 0;
     }
 
     // ── Timing table ──────────────────────────────────────────────────────────

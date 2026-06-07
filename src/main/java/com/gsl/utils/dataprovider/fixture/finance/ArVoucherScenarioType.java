@@ -21,9 +21,9 @@ import java.util.function.Supplier;
  */
 public enum ArVoucherScenarioType {
 
-    NO_ADJUSTMENT(
-            ArVoucherTemplateLoader::noAdjustmentTemplate,
-            ArVoucherPredicateFactory.NO_ADJUSTMENT_BEHAVIOR
+    DOC_NO_ADJUSTMENT(
+            ArVoucherTemplateLoader::docNoAdjustmentTemplate,
+            ArVoucherPredicateFactory.DOC_NO_ADJUSTMENT_BEHAVIOR
     ),
 
     SELECT_DOCUMENT(

@@ -46,7 +46,7 @@ public abstract class PaymentInformationPopup {
 
     protected static final By OK_BUTTON = By.xpath(
             "//div[contains(@class,'x-window')]//span[normalize-space()='OK']"
-            + "/ancestor::a[contains(@class,'x-btn') and @aria-hidden='false']");
+            + "/ancestor::a[contains(@class,'x-btn') and not(@aria-hidden='true')]");
 
     // ── Abstract steps — AR and AP implement these differently ───────────────
 

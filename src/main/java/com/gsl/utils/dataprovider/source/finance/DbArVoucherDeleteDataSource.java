@@ -78,7 +78,7 @@ public class DbArVoucherDeleteDataSource implements TestDataSource<MergedFinance
                 .referenceSitewiseFIFOList(List.of())
                 .paymentInformationList(List.of())
                 .paymentProvided(false)
-                .needsIgnoreProceed(false)
+                .needsPaymentInfoWarning(false)
                 .invocationIndex(1)
                 .totalInvocations(1)
                 .build();

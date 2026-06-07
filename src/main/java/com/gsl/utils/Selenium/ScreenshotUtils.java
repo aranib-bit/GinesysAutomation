@@ -1,15 +1,72 @@
 package com.gsl.utils.Selenium;
 
 import com.gsl.driver.DriverManager;
+import org.openqa.selenium.Dimension;
+import org.openqa.selenium.JavascriptExecutor;
 import org.openqa.selenium.OutputType;
 import org.openqa.selenium.TakesScreenshot;
 
+import java.io.IOException;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.nio.file.Paths;
+
 public final class ScreenshotUtils {
+
+    private static final Path SCREENSHOT_DIR =
+            Paths.get(System.getProperty("user.dir"), "reports", "screenshots");
 
     private ScreenshotUtils() {
     }
 
     public static String getScreenshot() {
         return ((TakesScreenshot) DriverManager.getDriver()).getScreenshotAs(OutputType.BASE64);
+    }
+
+    /**
+     * Captures the current browser screen to a PNG on disk under reports/screenshots/
+     * and returns the absolute file path. Prefer this over {@link #getScreenshot()} for
+     * Extent attachments — file-path references are ~80 bytes vs a base64 PNG which is
+     * ~1.3× the raw bytes held inside the live ExtentReports model until suite flush.
+     */
+    public static String saveScreenshot(String stepLabel) {
+        try {
+            byte[] bytes = ((TakesScreenshot) DriverManager.getDriver())
+                    .getScreenshotAs(OutputType.BYTES);
+            Files.createDirectories(SCREENSHOT_DIR);
+            String safeLabel = (stepLabel == null ? "step" : stepLabel)
+                    .replaceAll("[^A-Za-z0-9_-]", "_");
+            if (safeLabel.length() > 60) safeLabel = safeLabel.substring(0, 60);
+            String fileName = safeLabel + "_" + System.currentTimeMillis()
+                    + "_T" + Thread.currentThread().getId() + ".png";
+            Path file = SCREENSHOT_DIR.resolve(fileName);
+            Files.write(file, bytes);
+            return file.toAbsolutePath().toString();
+        } catch (IOException e) {
+            throw new RuntimeException("Failed to write screenshot file", e);
+        }
+    }
+
+    /**
+     * Captures the screenshot to disk (same as {@link #saveScreenshot}) and additionally
+     * collects page-context metadata (URL, scroll position, viewport) via lightweight JS
+     * calls.  Metadata capture is best-effort — failures are silently swallowed so that a
+     * dead or slow browser session never prevents the screenshot from being attached.
+     */
+    public static ScreenshotMetadata saveScreenshotWithMetadata(String stepLabel) {
+        String filePath = saveScreenshot(stepLabel);  // throws on real IO failure
+        String pageUrl  = "";
+        long   scrollY  = 0;
+        String viewport = "";
+        try {
+            org.openqa.selenium.WebDriver driver = DriverManager.getDriver();
+            pageUrl = driver.getCurrentUrl();
+            Object rawScroll = ((JavascriptExecutor) driver).executeScript("return window.pageYOffset;");
+            if (rawScroll instanceof Number n) scrollY = n.longValue();
+            Dimension dim = driver.manage().window().getSize();
+            viewport = dim.getWidth() + "x" + dim.getHeight();
+        } catch (Exception ignored) {}
+        return new ScreenshotMetadata(filePath, pageUrl, scrollY, viewport,
+                stepLabel != null ? stepLabel : "");
     }
 }

@@ -31,16 +31,22 @@ import com.gsl.remote.model.OSType;
 import com.gsl.remote.parser.RegexLogParser;
 import com.gsl.remote.retry.RetryPolicy;
 import com.gsl.reports.ActionTrailBuffer;
+import com.gsl.reports.ApVoucherDescriptionBuilder;
 import com.gsl.reports.ArVoucherDescriptionBuilder;
+import com.gsl.reports.RetryHistoryBuffer;
+import com.gsl.reports.StepDurationBuffer;
+import com.gsl.reports.WaitDurationBuffer;
 import com.gsl.reports.ExtentLogger;
 import com.gsl.reports.ExtentManager;
 import com.gsl.reports.ExtentReport;
+import com.gsl.reports.FailureSummaryRenderer;
 import com.gsl.reports.PreSuiteHealthCheck;
 import com.gsl.reports.ReportConfigRenderer;
 import com.gsl.reports.RuntimeProfileBuilder;
 import com.gsl.reports.RuntimeProfileHolder;
 import com.gsl.reports.profile.RuntimeExecutionProfile;
 import com.gsl.testdata.InvocationData;
+import com.gsl.testdata.dto.MergedFinanceApVoucherData;
 import com.gsl.testdata.dto.MergedFinanceArVoucherData;
 import com.gsl.utils.Log;
 import com.gsl.utils.TestContextManager;
@@ -87,6 +93,7 @@ public class TestListener implements ITestListener, ISuiteListener {
 
     @Override
     public void onStart(ISuite suite) {
+        Log.logHeap("suite-start:" + suite.getName());
         ExtentReport.initReports();
 
         // Build the runtime profile ONCE — frozen for the entire suite.
@@ -135,6 +142,7 @@ public class TestListener implements ITestListener, ISuiteListener {
             }
         }
         ExtentReport.flushReports();
+        Log.logHeap("suite-finish:" + suite.getName());
     }
 
     // ── Test-context lifecycle — fires once per <test> element ───────────────────
@@ -175,6 +183,9 @@ public class TestListener implements ITestListener, ISuiteListener {
         TestContextManager.setBrowser(ConfigFactory.getConfig().browser());
         TestContextManager.setEnv(ConfigFactory.getConfig().env());
         com.gsl.reports.ActionTrailBuffer.clear();
+        StepDurationBuffer.clear();
+        WaitDurationBuffer.clear();
+        RetryHistoryBuffer.clear();
         Log.info("TEST STARTED: {}", methodName);
 
         // @FrameworkValidation methods are pre-execution validation checks.
@@ -215,6 +226,11 @@ public class TestListener implements ITestListener, ISuiteListener {
                 .map(p -> (MergedFinanceArVoucherData) p)
                 .findFirst()
                 .orElse(null);
+        MergedFinanceApVoucherData apData = Arrays.stream(params)
+                .filter(p -> p instanceof MergedFinanceApVoucherData)
+                .map(p -> (MergedFinanceApVoucherData) p)
+                .findFirst()
+                .orElse(null);
 
         if (invData != null) {
 
@@ -223,6 +239,13 @@ public class TestListener implements ITestListener, ISuiteListener {
                 String tcName = arData.getMasterTestData().getTestcasename();
                 if (tcName != null && !tcName.isBlank()
                         && !tcName.equalsIgnoreCase("createArVoucher")) {
+                    richName = tcName;
+                }
+            } else if (apData != null && apData.getMasterTestData() != null) {
+                String tcName = apData.getMasterTestData().getTestcasename();
+                if (tcName != null && !tcName.isBlank()
+                        && !tcName.equalsIgnoreCase("createApVoucherAdvancePayment")
+                        && !tcName.equalsIgnoreCase("createApVoucherDocumentPayment")) {
                     richName = tcName;
                 }
             }
@@ -235,7 +258,9 @@ public class TestListener implements ITestListener, ISuiteListener {
             String prefix = (tcId != null) ? "[" + tcId + "] " : "";
 
             // Title: human-readable sentence after the ID; technical params go to description
-            String sentence = (arData != null) ? ArVoucherDescriptionBuilder.build(arData) : null;
+            String sentence = (arData != null) ? ArVoucherDescriptionBuilder.build(arData)
+                            : (apData != null) ? ApVoucherDescriptionBuilder.build(apData)
+                            : null;
             String titleText = (sentence != null && !sentence.isBlank())
                     ? sentence
                     : (richName != null ? richName : result.getMethod().getDescription());
@@ -328,6 +353,14 @@ public class TestListener implements ITestListener, ISuiteListener {
                 result.getThrowable() != null ? result.getThrowable().getMessage() : "no throwable");
         // One top-level status marker; full exception details are in the StepExecutor child node.
         ExtentLogger.fail(result.getName() + " FAILED");
+
+        // Compact failure summary — exception, last step, environment fingerprint.
+        // Rendered before the full diagnostic bundle so it's the first thing visible on scroll.
+        try {
+            FailureSummaryRenderer.render(result);
+        } catch (Exception summaryEx) {
+            Log.warn("[TestListener] Failure summary render failed: {}", summaryEx.getMessage());
+        }
 
         try {
             ActionTrailBuffer.record("Logs & Diagnostics");

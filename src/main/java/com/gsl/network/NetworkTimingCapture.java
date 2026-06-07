@@ -1,5 +1,6 @@
 package com.gsl.network;
 
+import com.gsl.config.ConfigFactory;
 import com.gsl.config.FrameworkConfig;
 import com.gsl.model.network.CallFrameEntry;
 import com.gsl.model.network.NetworkTimingSnapshot;
@@ -36,6 +37,10 @@ public final class NetworkTimingCapture {
     private static final Logger LOG = LogManager.getLogger(NetworkTimingCapture.class);
 
     private NetworkTimingCapture() {}
+
+    /** Ring-buffer cap — configurable via {@code network.capture.max.snapshots} (default 150). */
+    private static final int MAX_SNAPSHOTS =
+            ConfigFactory.getConfig().networkCaptureMaxSnapshots();
 
     private static final ThreadLocal<Deque<NetworkTimingSnapshot>> snapshots =
             ThreadLocal.withInitial(ConcurrentLinkedDeque::new);
@@ -98,11 +103,11 @@ public final class NetworkTimingCapture {
         pending.get().values().stream()
                 .filter(ctx -> ctx.status > 0)
                 .forEach(ctx -> snapshots.get().addLast(buildSnapshot(ctx, 0.0, 0L)));
-        pending.get().clear();
-        allCookiesCache.get().clear();
 
         List<NetworkTimingSnapshot> result = new ArrayList<>(snapshots.get());
-        snapshots.get().clear();
+        snapshots.remove();
+        pending.remove();
+        allCookiesCache.remove();
         return result;
     }
 
@@ -182,7 +187,10 @@ public final class NetworkTimingCapture {
             double loadedMono = event.getTimestamp().toJson().doubleValue();
             long   bytes      = event.getEncodedDataLength().longValue();
 
-            snapshots.get().addLast(buildSnapshot(ctx, loadedMono, bytes));
+            NetworkTimingSnapshot snap = buildSnapshot(ctx, loadedMono, bytes);
+            Deque<NetworkTimingSnapshot> q = snapshots.get();
+            if (q.size() >= MAX_SNAPSHOTS) q.pollFirst(); // ring-buffer eviction — drop oldest
+            q.addLast(snap);
         });
     }
 

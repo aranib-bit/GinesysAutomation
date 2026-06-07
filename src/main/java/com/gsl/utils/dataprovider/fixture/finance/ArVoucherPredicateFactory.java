@@ -3,12 +3,14 @@ package com.gsl.utils.dataprovider.fixture.finance;
 import com.gsl.pages.Common.DocumentMessageBox;
 import com.gsl.pages.Finance.Operations.ArVoucherAdd;
 import com.gsl.pages.Finance.Operations.Common.DocumentPopup;
+import com.gsl.pages.Finance.Operations.Common.PaymentInfoCheckWarning;
 import com.gsl.pages.HomePage;
 import com.gsl.reports.ReportLogger;
 import com.gsl.reports.StepExecutor;
 import com.gsl.testdata.Finance.Operations.Vouchers.ARVoucher.SelectDocument;
 import com.gsl.testdata.dto.MergedFinanceArVoucherData;
 import com.gsl.utils.Log;
+import org.testng.asserts.SoftAssert;
 
 import com.gsl.model.finance.FinPost;
 import com.gsl.validation.db.finance.ARVoucherDbValidator;
@@ -42,6 +44,7 @@ public final class ArVoucherPredicateFactory {
     public static final Supplier<BiPredicate<MergedFinanceArVoucherData, ArVoucherAdd>>
         SELECT_DOCUMENT_BEHAVIOR = () -> (data, page) -> {
 
+            final SoftAssert softAssert          = new SoftAssert();
             final String[] docNoRef              = new String[1];
             final Map<String, FinPost>[] preRef  = new Map[1];
             final Map<String, FinPost>[] postRef = new Map[1];
@@ -68,10 +71,11 @@ public final class ArVoucherPredicateFactory {
 
                 saveStartTime[0] = LocalDateTime.now();
                 DocumentPopup savePopup = page.clickSave();
-                DocumentMessageBox messageBox = data.isNeedsIgnoreProceed()
-                        ? savePopup.verifyWarningMessage().clickIgnoreProceed()
+                DocumentMessageBox messageBox = data.isNeedsPaymentInfoWarning()
+                        ? savePopup.verifyPaymentInfoCheckWarning(PaymentInfoCheckWarning.AR_VOUCHER)
+                                   .clickProceed(PaymentInfoCheckWarning.AR_VOUCHER)
                         : savePopup.waitForMessageBox();
-                docNoRef[0] = messageBox.extractDocumentNo();
+                docNoRef[0] = messageBox.verifyDocumentSave(softAssert).getDocumentNo();
                 Log.info("Extracted Document No: {}", docNoRef[0]);
 
                 postRef[0] = stateCapture.captureInvoiceState(invoiceNos);
@@ -93,6 +97,8 @@ public final class ArVoucherPredicateFactory {
                                 .build());
                 ReportLogger.pass("DB validated. Document No: " + docNoRef[0]);
             });
+
+            StepExecutor.step("Finalize save assertions", softAssert::assertAll);
 
             return docNoRef[0] != null;
         };
@@ -104,6 +110,7 @@ public final class ArVoucherPredicateFactory {
     public static final Supplier<BiPredicate<MergedFinanceArVoucherData, ArVoucherAdd>>
         FIFO_SETOFF_BEHAVIOR = () -> (data, page) -> {
 
+            final SoftAssert softAssert          = new SoftAssert();
             final String[] docNoRef              = new String[1];
             final Map<String, FinPost>[] preRef  = new Map[1];
             final Map<String, FinPost>[] postRef = new Map[1];
@@ -130,10 +137,11 @@ public final class ArVoucherPredicateFactory {
 
                 saveStartTime[0] = LocalDateTime.now();
                 DocumentPopup savePopup = page.clickSave();
-                DocumentMessageBox messageBox = data.isNeedsIgnoreProceed()
-                        ? savePopup.verifyWarningMessage().clickIgnoreProceed()
+                DocumentMessageBox messageBox = data.isNeedsPaymentInfoWarning()
+                        ? savePopup.verifyPaymentInfoCheckWarning(PaymentInfoCheckWarning.AR_VOUCHER)
+                                   .clickProceed(PaymentInfoCheckWarning.AR_VOUCHER)
                         : savePopup.waitForMessageBox();
-                docNoRef[0] = messageBox.extractDocumentNo();
+                docNoRef[0] = messageBox.verifyDocumentSave(softAssert).getDocumentNo();
                 Log.info("Extracted Document No: {}", docNoRef[0]);
 
                 postRef[0] = stateCapture.captureInvoiceState(invoiceNos);
@@ -155,6 +163,8 @@ public final class ArVoucherPredicateFactory {
                                 .build());
                 ReportLogger.pass("DB validated. Document No: " + docNoRef[0]);
             });
+
+            StepExecutor.step("Finalize save assertions", softAssert::assertAll);
 
             return docNoRef[0] != null;
         };
@@ -166,6 +176,7 @@ public final class ArVoucherPredicateFactory {
     public static final Supplier<BiPredicate<MergedFinanceArVoucherData, ArVoucherAdd>>
         REF_SITEWISE_FIFO_BEHAVIOR = () -> (data, page) -> {
 
+            final SoftAssert softAssert          = new SoftAssert();
             final String[] docNoRef              = new String[1];
             final Map<String, FinPost>[] preRef  = new Map[1];
             final Map<String, FinPost>[] postRef = new Map[1];
@@ -192,10 +203,11 @@ public final class ArVoucherPredicateFactory {
 
                 saveStartTime[0] = LocalDateTime.now();
                 DocumentPopup savePopup = page.clickSave();
-                DocumentMessageBox messageBox = data.isNeedsIgnoreProceed()
-                        ? savePopup.verifyWarningMessage().clickIgnoreProceed()
+                DocumentMessageBox messageBox = data.isNeedsPaymentInfoWarning()
+                        ? savePopup.verifyPaymentInfoCheckWarning(PaymentInfoCheckWarning.AR_VOUCHER)
+                                   .clickProceed(PaymentInfoCheckWarning.AR_VOUCHER)
                         : savePopup.waitForMessageBox();
-                docNoRef[0] = messageBox.extractDocumentNo();
+                docNoRef[0] = messageBox.verifyDocumentSave(softAssert).getDocumentNo();
                 Log.info("Extracted Document No: {}", docNoRef[0]);
 
                 postRef[0] = stateCapture.captureInvoiceState(invoiceNos);
@@ -218,17 +230,20 @@ public final class ArVoucherPredicateFactory {
                 ReportLogger.pass("DB validated. Document No: " + docNoRef[0]);
             });
 
+            StepExecutor.step("Finalize save assertions", softAssert::assertAll);
+
             return docNoRef[0] != null;
         };
 
     /**
-     * NO_ADJUSTMENT behavior:
+     * DOC_NO_ADJUSTMENT behavior:
      * Fill header → fill sub-ledger rows (no adjustment) → Save.
      * The "Ignore & Proceed" dialog fires when Bank GL and no payment rows are present.
      */
     public static final Supplier<BiPredicate<MergedFinanceArVoucherData, ArVoucherAdd>>
-        NO_ADJUSTMENT_BEHAVIOR = () -> (data, page) -> {
+        DOC_NO_ADJUSTMENT_BEHAVIOR = () -> (data, page) -> {
 
+            final SoftAssert softAssert          = new SoftAssert();
             final String[] docNoRef              = new String[1];
             final Map<String, FinPost>[] preRef  = new Map[1];
             final Map<String, FinPost>[] postRef = new Map[1];
@@ -255,10 +270,11 @@ public final class ArVoucherPredicateFactory {
 
                 saveStartTime[0] = LocalDateTime.now();
                 DocumentPopup savePopup = page.clickSave();
-                DocumentMessageBox messageBox = data.isNeedsIgnoreProceed()
-                        ? savePopup.verifyWarningMessage().clickIgnoreProceed()
+                DocumentMessageBox messageBox = data.isNeedsPaymentInfoWarning()
+                        ? savePopup.verifyPaymentInfoCheckWarning(PaymentInfoCheckWarning.AR_VOUCHER)
+                                   .clickProceed(PaymentInfoCheckWarning.AR_VOUCHER)
                         : savePopup.waitForMessageBox();
-                docNoRef[0] = messageBox.extractDocumentNo();
+                docNoRef[0] = messageBox.verifyDocumentSave(softAssert).getDocumentNo();
                 Log.info("Extracted Document No: {}", docNoRef[0]);
 
                 postRef[0] = stateCapture.captureInvoiceState(invoiceNos);
@@ -280,6 +296,8 @@ public final class ArVoucherPredicateFactory {
                                 .build());
                 ReportLogger.pass("DB validated. Document No: " + docNoRef[0]);
             });
+
+            StepExecutor.step("Finalize save assertions", softAssert::assertAll);
 
             return docNoRef[0] != null;
         };

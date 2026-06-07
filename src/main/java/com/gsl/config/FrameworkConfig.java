@@ -40,6 +40,16 @@ public interface FrameworkConfig extends Config {
     @DefaultValue("EXCEL")
     String testDataSource();
 
+    /**
+     * JAVASCRIPT | NATIVE — sub-ledger selection strategy for vouchers.
+     * NATIVE drives the real grid combo so the app evaluates TDS applicability
+     * itself (required for TDS-deduction scenarios); JAVASCRIPT injects store
+     * values directly (faster, but skips the app's TDS evaluation).
+     */
+    @Key("subledger.selection.mode")
+    @DefaultValue("JAVASCRIPT")
+    String subLedgerSelectionMode();
+
     /** App login username used in DB mode (must match hrdemp.abbre in the database). */
     @Key("appusername")
     String username();
@@ -63,7 +73,7 @@ public interface FrameworkConfig extends Config {
     @DefaultValue("10")
     long extjsMinTimeout();
 
-    /** Max retries for the non-critical warning-message text read in verifyWarningMessage().
+    /** Max retries for the non-critical warning-message text read in verifyPaymentInfoCheckWarning().
      *  Each attempt uses a 3-second timeout; default is 2. Configurable in config.properties. */
     @Key("warning.msg.max.retries")
     @DefaultValue("2")
@@ -217,6 +227,14 @@ public interface FrameworkConfig extends Config {
     @Key("network.callstack.log.on")
     @DefaultValue("failure")
     String networkCallstackLogOn();
+
+    /**
+     * Maximum number of network timing snapshots retained per test thread.
+     * Oldest entries are evicted when the cap is reached (ring-buffer behaviour).
+     */
+    @Key("network.capture.max.snapshots")
+    @DefaultValue("150")
+    int networkCaptureMaxSnapshots();
 
     /** Include request and response headers in the captured record. */
     @Key("network.capture.headers")
@@ -757,4 +775,60 @@ public interface FrameworkConfig extends Config {
     @Key("frontend.diagnostics.reflow.detection.enabled")
     @DefaultValue("true")
     boolean frontendReflowDetectionEnabled();
+
+    // ── Step Timeline ─────────────────────────────────────────────────────────
+
+    /** Master switch — renders a horizontal bar chart of step durations in the report. */
+    @Key("step.timeline.enabled")
+    @DefaultValue("true")
+    boolean stepTimelineEnabled();
+
+    /** ALL (pass + fail) | FAIL (failures only). */
+    @Key("step.timeline.capture.mode")
+    @DefaultValue("ALL")
+    String stepTimelineCaptureMode();
+
+    /** Duration (ms) above which a step bar is coloured orange in the timeline. */
+    @Key("step.timeline.warn.ms")
+    @DefaultValue("3000")
+    long stepTimelineWarnMs();
+
+    // ── Wait Analysis ─────────────────────────────────────────────────────────
+
+    /** Master switch — tracks time spent inside WaitUtils calls and renders a table. */
+    @Key("wait.analysis.enabled")
+    @DefaultValue("true")
+    boolean waitAnalysisEnabled();
+
+    /** ALL | FAIL. */
+    @Key("wait.analysis.capture.mode")
+    @DefaultValue("ALL")
+    String waitAnalysisCaptureMode();
+
+    /** Wait duration (ms) above which the entry is flagged as "SLOW" in the report. */
+    @Key("wait.analysis.slow.threshold.ms")
+    @DefaultValue("5000")
+    long waitAnalysisSlowThresholdMs();
+
+    /** Minimum total test duration (seconds) required to include the Wait Analysis section. 0 = no gate. */
+    @Key("wait.analysis.min.test.duration.seconds")
+    @DefaultValue("0")
+    int waitAnalysisMinTestDurationSeconds();
+
+    // ── Retry / Flaky Analytics ───────────────────────────────────────────────
+
+    /** Max retry attempts per test method. 0 = retry disabled (default). */
+    @Key("retry.max.count")
+    @DefaultValue("0")
+    int retryMaxCount();
+
+    /** Master switch — renders flaky/retry summary in the diagnostic bundle. */
+    @Key("flaky.summary.enabled")
+    @DefaultValue("true")
+    boolean flakySummaryEnabled();
+
+    /** flakyScore = (retryAttempts / retryMaxCount) * 100. Score above this → HIGH badge. */
+    @Key("flaky.score.warn.threshold")
+    @DefaultValue("50")
+    int flakyScoreWarnThreshold();
 }

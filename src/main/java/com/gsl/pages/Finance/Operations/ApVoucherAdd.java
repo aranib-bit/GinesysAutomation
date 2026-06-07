@@ -7,6 +7,7 @@ import com.gsl.pages.pagecomponent.Finance.Common.CashBankParent;
 import com.gsl.pages.pagecomponent.Finance.Operations.APVoucher.APVoucherDocumentInformation;
 import com.gsl.pages.pagecomponent.Finance.Operations.APVoucher.APVoucherFooter;
 import com.gsl.pages.pagecomponent.Finance.Operations.APVoucher.APVoucherSubLedgerInformation;
+import com.gsl.enums.VoucherDomain;
 import com.gsl.pages.pagecomponent.Finance.Operations.APVoucher.APVoucherTdsAndNetPayable;
 import com.gsl.testdata.Finance.Operations.Vouchers.APVoucher.DocumentInformation;
 import com.gsl.testdata.dto.MergedFinanceApVoucherData;
@@ -25,7 +26,7 @@ public class ApVoucherAdd implements CashBankParent {
     public ApVoucherAdd() {
         this.apVoucherDocumentInformation  = new APVoucherDocumentInformation(this);
         this.apVoucherSubLedgerInformation = new APVoucherSubLedgerInformation();
-        this.apVoucherTdsAndNetPayable     = new APVoucherTdsAndNetPayable();
+        this.apVoucherTdsAndNetPayable     = new APVoucherTdsAndNetPayable(VoucherDomain.AP);
         this.apVoucherFooter               = new APVoucherFooter();
     }
 

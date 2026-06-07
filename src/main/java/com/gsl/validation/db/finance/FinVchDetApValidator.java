@@ -19,6 +19,7 @@ import org.testng.Assert;
 
 import java.math.BigDecimal;
 import java.time.LocalDate;
+import java.util.Optional;
 import java.time.LocalTime;
 import java.time.format.DateTimeFormatter;
 import java.time.format.DateTimeParseException;
@@ -84,7 +85,9 @@ public class FinVchDetApValidator {
 
             if (inputLines != null)
                 for (SubLedgerInformation line : inputLines)
-                    validateSubLedgerLine(soft, line, rows, vchcode);
+                    validateSubLedgerLine(soft, line, rows, vchcode, data);
+
+            validateTdsApp(soft, rows, data.isTdsProvided(), vchcode);
 
             validatePaymentDetails(soft, vchcode, inputLines, data.getPaymentInformationList(),
                     cashBankName, slNames, glNames);
@@ -210,17 +213,44 @@ public class FinVchDetApValidator {
         }
     }
 
+    // ── tds_app assertion (Y = TDS provided, N = not provided) ───────────────
+
+    private static void validateTdsApp(SoftAssertions soft, List<FinVchDet> rows,
+                                        boolean tdsProvided, long vchcode) {
+        String expected = tdsProvided ? "Y" : "N";
+        for (FinVchDet row : rows) {
+            soft.assertThat(row.getTdsApp())
+                    .as("[Level 2] finvchdet.tds_app expected [" + expected
+                            + "] (tdsProvided=" + tdsProvided + ")"
+                            + " for vchcode [" + vchcode + "] slcode=" + row.getSlcode())
+                    .isEqualToIgnoringCase(expected);
+        }
+    }
+
     // ── Sub-ledger line amount check (Dr side) ────────────────────────────────
 
     private void validateSubLedgerLine(SoftAssertions soft, SubLedgerInformation line,
-                                        List<FinVchDet> rows, long vchcode) {
-        BigDecimal dr = line.getAmountDr();  // AP: Debit amount
+                                        List<FinVchDet> rows, long vchcode,
+                                        MergedFinanceApVoucherData data) {
+        BigDecimal dr = line.getAmountDr();  // AP: Debit amount (gross)
         if (dr == null) return;
+
+        // For Advance vouchers with TDS, the DB stores Net Payable (gross − TDS), not the gross amount.
+        if (data.isTdsProvided() && data.isOnAccount()) {
+            Optional<BigDecimal> netPayable = data.getNetPayableForLine(line.getLineNo());
+            if (netPayable.isPresent()) {
+                dr = netPayable.get();
+                ReportLogger.info("[Level 2] Advance+TDS: using NetPayable=" + dr
+                        + " for lineNo='" + line.getLineNo() + "' (DB damount validation)");
+            }
+        }
+
+        final BigDecimal expectedAmount = dr;
         FinVchDet match = rows.stream()
-                .filter(d -> d.getDamount() != null && d.getDamount().compareTo(dr) == 0)
+                .filter(d -> d.getDamount() != null && d.getDamount().compareTo(expectedAmount) == 0)
                 .findFirst().orElse(null);
         soft.assertThat(match)
-                .as("[Level 2] No finvchdet row with damount=" + dr + " for vchcode [" + vchcode + "]")
+                .as("[Level 2] No finvchdet row with damount=" + expectedAmount + " for vchcode [" + vchcode + "]")
                 .isNotNull();
         if (match != null && line.getLedgerNarration() != null
                 && !line.getLedgerNarration().isBlank())
@@ -256,7 +286,7 @@ public class FinVchDetApValidator {
                 str(r.getGlcode()),  glNames.getOrDefault(r.getGlcode(), "—"),
                 str(r.getRefno()),   str(r.getDamount()), str(r.getCamount()),
                 str(r.getChqno()),   str(r.getChqdt()),   str(r.getPaymentMode()),
-                str(r.getTdsApp()),  str(r.getNarration())
+                tdsAppLabel(r.getTdsApp()),  str(r.getNarration())
             };
         }
         return table;
@@ -264,6 +294,12 @@ public class FinVchDetApValidator {
 
     private static String str(Object o) { return o == null ? "—" : o.toString(); }
     private static String str(long v)   { return String.valueOf(v); }
+
+    private static String tdsAppLabel(String v) {
+        if ("Y".equalsIgnoreCase(v)) return "true";
+        if ("N".equalsIgnoreCase(v)) return "false";
+        return v == null ? "—" : v;
+    }
 
     private static final List<DateTimeFormatter> INSTR_DATE_FORMATS = Arrays.asList(
             DateTimeFormatter.ofPattern("dd/MM/yyyy"),

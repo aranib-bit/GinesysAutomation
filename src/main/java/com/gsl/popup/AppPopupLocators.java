@@ -9,9 +9,12 @@ import org.openqa.selenium.By;
  */
 final class AppPopupLocators {
 
-    // Outer messagebox container — only visible when a dialog is active
+    // Outer messagebox container — role=alertdialog is only set on the actively displayed dialog,
+    // disambiguating from hidden x-message-box shells ExtJS keeps in the DOM
     static final By MESSAGEBOX_CONTAINER = By.xpath(
-            "//div[contains(@class,'x-message-box') and not(contains(@class,'x-hide-display'))]");
+            "//div[@role='alertdialog'"
+            + " and contains(@class,'x-message-box')"
+            + " and not(contains(@class,'x-hide-display'))]");
 
     // Header title (e.g., "Success", "Error", "Adjustment Failed")
     static final By MESSAGEBOX_HEADER = By.id("messagebox-1001_header-title-textEl");

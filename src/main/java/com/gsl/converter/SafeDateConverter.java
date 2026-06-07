@@ -1,6 +1,8 @@
 package com.gsl.converter;
 
 import io.github.sskorol.converters.IConverter;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
 
 import java.time.LocalDate;
 import java.time.format.DateTimeFormatter;
@@ -10,13 +12,16 @@ import java.util.List;
 
 public class SafeDateConverter implements IConverter<LocalDate> {
 
+    private static final Logger log = LogManager.getLogger(SafeDateConverter.class);
+
     // Allowed date formats — add or remove patterns as needed
     private static final List<DateTimeFormatter> SUPPORTED_FORMATS = Arrays.asList(
             DateTimeFormatter.ofPattern("dd-MM-yyyy"),
             DateTimeFormatter.ofPattern("MM-dd-yyyy"),
             DateTimeFormatter.ofPattern("dd/MM/yyyy"),
             DateTimeFormatter.ofPattern("MM/dd/yyyy"),
-            DateTimeFormatter.ofPattern("yyyy-MM-dd")
+            DateTimeFormatter.ofPattern("yyyy-MM-dd"),
+            DateTimeFormatter.ofPattern("yyyy/MM/dd")
     );
 
     @Override
@@ -35,7 +40,8 @@ public class SafeDateConverter implements IConverter<LocalDate> {
             }
         }
 
-        // No matching pattern
+        // No matching pattern — log so the bad cell value is visible in test output
+        log.warn("SafeDateConverter: could not parse '{}' with any known format — documentdate will be null", value);
         return null;
     }
 

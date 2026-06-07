@@ -3,8 +3,8 @@ package com.gsl.pages.pagecomponent.Finance.Operations.Common;
 import com.gsl.enums.VoucherDomain;
 import com.gsl.enums.WaitType;
 import com.gsl.pages.Finance.Operations.Common.PaymentInformationPopup;
-import com.gsl.pages.enums.Finance.Operations.APVoucher.APVoucherGridColumnHeader;
-import com.gsl.pages.enums.Finance.Operations.ARVoucher.ARVoucherGridColumnHeader;
+import com.gsl.pages.enums.Finance.Operations.Common.CommonVoucherGridColumnHeader;
+import com.gsl.pages.enums.Finance.Operations.Common.SubLedgerGridButtonLabel;
 import com.gsl.pages.pagecomponent.Finance.Common.AdjustmentEntryParent;
 import com.gsl.utils.Selenium.JavascriptExecutorUtils;
 import com.gsl.utils.Selenium.SeleniumUtils;
@@ -21,17 +21,11 @@ import org.openqa.selenium.By;
  */
 public abstract class VoucherSubLedgerInformationBase implements AdjustmentEntryParent {
 
-    // ── Static constants — identical for AR and AP ────────────────────────────
-
-    private static final String COL_REF_SITE =
-            "//span[normalize-space()='Reference Site']/ancestor::div[contains(@id,'gridcolumn')]/@id";
-
-    private static final String COL_SL_ID =
-            "//span[normalize-space()='Sub Ledger Id']/ancestor::div[contains(@id,'gridcolumn')]/@id";
-
-    // ── Per-type field — resolved from VoucherDomain ─────────────────────────
+    // ── Per-domain fields — resolved once in constructor ──────────────────────
 
     private final String colSubLedger;
+    private final String colRefSite;
+    private final String colSlId;
 
     // ── XPath templates — built once in constructor ───────────────────────────
 
@@ -41,43 +35,35 @@ public abstract class VoucherSubLedgerInformationBase implements AdjustmentEntry
     private final String PAYMENT_BUTTON_TEMPLATE_WITH_SLID;
 
     protected VoucherSubLedgerInformationBase(VoucherDomain domain) {
-        this.colSubLedger = resolveSubLedgerColumn(domain);
+        this.colSubLedger = domain.getSubLedgerColumnHeader().columnIdXPath();
+        this.colRefSite   = CommonVoucherGridColumnHeader.REFERENCE_SITE.resolveFor(domain).columnIdXPath();
+        this.colSlId      = CommonVoucherGridColumnHeader.SUB_LEDGER_ID.resolveFor(domain).columnIdXPath();
 
         SUBLEDGERADJUSTBUTTON_TEMPLATE =
                 "//tr[td[@data-columnid=" + colSubLedger + "]/div[text()='%s']" +
-                " and td[@data-columnid=" + COL_REF_SITE + "]/div[normalize-space()='%s']]" +
-                "//td[@data-columnid=" + COL_REF_SITE + "]/following-sibling::td/div//button[normalize-space()='Adjust']";
+                " and td[@data-columnid=" + colRefSite + "]/div[normalize-space()='%s']]" +
+                "//td[@data-columnid=" + colRefSite + "]/following-sibling::td/div//button[normalize-space()='" +
+                SubLedgerGridButtonLabel.ADJUST.label() + "']";
 
         SUBLEDGERADJUSTBUTTON_TEMPLATE_WITH_SLID =
                 "//tr[td[@data-columnid=" + colSubLedger + "]/div[text()='%s']" +
-                " and td[@data-columnid=" + COL_REF_SITE + "]/div[normalize-space()='%s']" +
-                " and td[@data-columnid=" + COL_SL_ID + "]/div[normalize-space()='%s']]" +
-                "//td[@data-columnid=" + COL_REF_SITE + "]/following-sibling::td/div//button[normalize-space()='Adjust']";
+                " and td[@data-columnid=" + colRefSite + "]/div[normalize-space()='%s']" +
+                " and td[@data-columnid=" + colSlId + "]/div[normalize-space()='%s']]" +
+                "//td[@data-columnid=" + colRefSite + "]/following-sibling::td/div//button[normalize-space()='" +
+                SubLedgerGridButtonLabel.ADJUST.label() + "']";
 
         PAYMENT_BUTTON_TEMPLATE =
                 "//tr[td[@data-columnid=" + colSubLedger + "]/div[text()='%s']" +
-                " and td[@data-columnid=" + COL_REF_SITE + "]/div[normalize-space()='%s']]" +
-                "//td[@data-columnid=" + COL_REF_SITE + "]/following-sibling::td/div//button[normalize-space()='Cheque/RTGS']";
+                " and td[@data-columnid=" + colRefSite + "]/div[normalize-space()='%s']]" +
+                "//td[@data-columnid=" + colRefSite + "]/following-sibling::td/div//button[normalize-space()='" +
+                SubLedgerGridButtonLabel.CHEQUE_RTGS.label() + "']";
 
         PAYMENT_BUTTON_TEMPLATE_WITH_SLID =
                 "//tr[td[@data-columnid=" + colSubLedger + "]/div[text()='%s']" +
-                " and td[@data-columnid=" + COL_REF_SITE + "]/div[normalize-space()='%s']" +
-                " and td[@data-columnid=" + COL_SL_ID + "]/div[normalize-space()='%s']]" +
-                "//td[@data-columnid=" + COL_REF_SITE + "]/following-sibling::td/div//button[normalize-space()='Cheque/RTGS']";
-    }
-
-    /**
-     * Resolves the Sub Ledger column header XPath for the given voucher domain.
-     * AR grid: "Sub Ledger" | AP grid: "Sub-Ledger"
-     * Mirrors resolveDocumentDate(VoucherDomain) in VoucherDocumentInformationBase.
-     */
-    private static String resolveSubLedgerColumn(VoucherDomain domain) {
-        switch (domain) {
-            case AR: return ARVoucherGridColumnHeader.SUB_LEDGER.columnIdXPath();
-            case AP: return APVoucherGridColumnHeader.SUB_LEDGER.columnIdXPath();
-            default: throw new IllegalArgumentException(
-                    "No Sub Ledger column header defined for voucher domain: " + domain);
-        }
+                " and td[@data-columnid=" + colRefSite + "]/div[normalize-space()='%s']" +
+                " and td[@data-columnid=" + colSlId + "]/div[normalize-space()='%s']]" +
+                "//td[@data-columnid=" + colRefSite + "]/following-sibling::td/div//button[normalize-space()='" +
+                SubLedgerGridButtonLabel.CHEQUE_RTGS.label() + "']";
     }
 
     // ── Protected methods — inherited by AR and AP subclasses ─────────────────

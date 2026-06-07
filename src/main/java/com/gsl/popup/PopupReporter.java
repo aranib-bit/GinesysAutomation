@@ -18,8 +18,8 @@ public final class PopupReporter {
         // P7: Prominent failure marker FIRST so it's visible in the test summary panel
         String failMsg = "⚠ Unexpected Popup on [" + actionName + "] — "
                 + popup.popupType() + " | Header: " + popup.header();
-        if (popup.screenshotBase64() != null) {
-            ExtentLogger.failWithBase64Screenshot(failMsg, popup.screenshotBase64());
+        if (popup.screenshotPath() != null) {
+            ExtentLogger.failWithScreenshotPath(failMsg, popup.screenshotPath());
         } else {
             ExtentLogger.fail(failMsg);
         }

@@ -12,6 +12,7 @@
 -->
 <suite name="AR Voucher — Regression Phase-3" parallel="tests" thread-count="4">
     <listeners>
+        <listener class-name="com.gsl.listeners.RetryAnnotationTransformer"/>
         <listener class-name="com.gsl.listeners.TestListener"/>
         <listener class-name="com.gsl.listeners.SuiteDataLoader"/>
     </listeners>

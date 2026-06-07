@@ -11,24 +11,28 @@ import org.openqa.selenium.WebDriver;
 import org.openqa.selenium.WebElement;
 import org.openqa.selenium.support.ui.ExpectedConditions;
 import org.openqa.selenium.support.ui.WebDriverWait;
+
 import java.time.Duration;
+import java.util.List;
 
 public class DocumentPopup {
 
     // ── Button text registry ─────────────────────────────────────────────────
 
     public enum ButtonText {
-        IGNORE_AND_PROCEED("Ignore & Proceed"),
-        OK_GO_AHEAD        ("OK, Go Ahead"),
+        IGNORE_AND_PROCEED   ("Ignore & Proceed"),
+        OK_GO_AHEAD          ("Ok, Go Ahead"),
+        OK_GO_AHEAD_CAPS_START ("OK, Go Ahead"),
         PROCEED_ANYWAY     ("Proceed Anyway"),
-        STAY               ("Stay");
+        STAY               ("Stay"),
+        CLOSE              ("Close");
 
         private final String label;
         ButtonText(String label) { this.label = label; }
         public String getLabel() { return label; }
 
         public By locator() {
-            return By.xpath("//span[normalize-space()='" + label + "']");
+            return By.xpath("//span[@data-ref='btnInnerEl' and normalize-space()='" + label + "']");
         }
     }
 
@@ -53,38 +57,32 @@ public class DocumentPopup {
 
     // ── Locators ─────────────────────────────────────────────────────────────
 
-    private static final By MESSAGE_TEXT = By.xpath("//*[@id='messagebox-1001-msg']");
-    private static final By YES_BUTTON   = By.xpath("//span[text()='Yes']");
+    private static final By MESSAGE_TEXT  = By.xpath("//*[@id='messagebox-1001-msg']");
+    private static final By CONTINUE_BTN  = By.xpath("//span[normalize-space()='Continue']");
+    private static final By YES_BUTTON    = By.xpath("//span[text()='Yes']");
 
     // ── Save-confirmation path ────────────────────────────────────────────────
 
     /**
-     * Verifies the warning popup message before acting on it.
-     * Waits for the "Ignore & Proceed" button to be visible (confirming the warning is shown),
-     * then reads the message text for diagnostic purposes.
-     * Returns {@code this} for fluent chaining with {@link #clickIgnoreProceed()}.
+     * Waits for the payment-info-check warning dialog specific to the given voucher type,
+     * then reads the message text for diagnostics.
+     * Returns {@code this} for fluent chaining with {@link #clickProceed(PaymentInfoCheckWarning)}.
+     *
+     * <p>AR Voucher: waits for "Ignore &amp; Proceed" button.
+     * <p>AP Voucher: waits for "Yes" button.
      */
-    public DocumentPopup verifyWarningMessage() {
+    public DocumentPopup verifyPaymentInfoCheckWarning(PaymentInfoCheckWarning warning) {
         WebDriver driver = DriverManager.getDriver();
         WebDriverWait wait = new WebDriverWait(driver, Duration.ofSeconds(ConfigFactory.getConfig().timeout()));
 
-        System.out.println("Waiting for warning popup (Ignore & Proceed) to appear...");
-        wait.until(ExpectedConditions.visibilityOfElementLocated(ButtonText.IGNORE_AND_PROCEED.locator()));
-        System.out.println("Warning popup confirmed visible — 'Ignore & Proceed' button is present.");
+        System.out.println("Waiting for payment-info-check warning dialog (" + warning + ")...");
+        wait.until(ExpectedConditions.visibilityOfElementLocated(warning.proceedLocator()));
+        System.out.println("Payment info warning dialog confirmed visible for " + warning);
 
-        // Attempt to log the warning message text for diagnostic purposes.
-        // This is intentionally non-blocking: if the XPath does not match the
-        // app's actual DOM structure the click must still proceed, so no assertion
-        // is made here. The presence of the "Ignore & Proceed" button is sufficient
-        // proof that the expected warning popup appeared.
-        //
-        // IMPORTANT: do NOT call SeleniumUtils.getText() here. That method is
-        // AOP-intercepted; a TimeoutException inside it causes LoggingAspect to call
-        // ExtentLogger.fail() and mark the test FAIL before the local catch fires.
-        // Using WebDriverWait directly keeps the exception inside this try-catch.
+        // Non-blocking message-text read for diagnostics — same AOP caveat as before.
         try {
-            By warningMsgLocator = By.xpath(
-                    "//span[normalize-space()='Ignore & Proceed']"
+            By msgLocator = By.xpath(
+                    "//span[normalize-space()='" + warning.getMessageSubstring().replace("'", "\\'") + "']"
                     + "/ancestor::div[contains(@class,'x-message-box')]"
                     + "//div[contains(@class,'x-component-default')]");
             int maxRetries = ConfigFactory.getConfig().warningMsgMaxRetries();
@@ -92,14 +90,11 @@ public class DocumentPopup {
             for (int attempt = 0; attempt < maxRetries && msgEl == null; attempt++) {
                 try {
                     msgEl = new WebDriverWait(driver, Duration.ofSeconds(3))
-                            .until(ExpectedConditions.visibilityOfElementLocated(warningMsgLocator));
-                } catch (Exception ignored) {
-                    // retry
-                }
+                            .until(ExpectedConditions.visibilityOfElementLocated(msgLocator));
+                } catch (Exception ignored) {}
             }
-            if (msgEl != null) {
+            if (msgEl != null)
                 System.out.println("Warning popup message: " + msgEl.getAttribute("innerText"));
-            }
         } catch (Exception e) {
             System.out.println("Could not read warning message text (non-fatal): " + e.getMessage());
         }
@@ -108,55 +103,128 @@ public class DocumentPopup {
     }
 
     /**
-     * Post-save path for Cash GLs or Bank GLs where all sub-ledger lines have complete
-     * payment info with instrument numbers. No "Ignore & Proceed" popup is expected —
-     * waits directly for the save-confirmation message box.
-     * Also handles an unexpected "Ignore & Proceed" dialog if the instrument number
-     * warning appears on this path.
+     * Waits for the validation error popup and asserts the message contains the expected text.
+     * Used by negative-scenario test cases to confirm that the expected form-validation error
+     * is displayed after clicking Save (see {@code ApVoucherPredicateFactory.NEGATIVE_FORM_VALIDATION_BEHAVIOR}).
+     *
+     * <p>Throws {@link AssertionError} when the popup text does NOT contain {@code expectedMessage}.
+     * Returns {@code this} for fluent chaining.
+     *
+     * @param expectedMessage the substring expected to appear in the validation error popup
+     * @return {@code this} for fluent chaining
+     */
+    public DocumentPopup verifyErrorMessage(String expectedMessage) {
+        WebDriver driver = DriverManager.getDriver();
+        WebDriverWait wait = new WebDriverWait(driver, Duration.ofSeconds(ConfigFactory.getConfig().timeout()));
+
+        System.out.println("Waiting for validation error popup to appear...");
+        wait.until(ExpectedConditions.visibilityOfElementLocated(MESSAGE_TEXT));
+        String actualMessage = driver.findElement(MESSAGE_TEXT).getText();
+        System.out.println("Validation error popup message: " + actualMessage);
+
+        if (actualMessage == null || !actualMessage.contains(expectedMessage)) {
+            throw new AssertionError(
+                    "Expected validation error popup to contain: [" + expectedMessage + "]"
+                    + " but got: [" + actualMessage + "]");
+        }
+        return this;
+    }
+
+    /**
+     * Post-save path when payment details are provided — no payment-info-check warning
+     * is expected, so this waits directly for the first message box to appear.
+     *
+     * <p>Popup sequence handled:
+     * <ol>
+     *   <li>Wait for message box to appear.</li>
+     *   <li>If instrument-number warning detected, click proceed and wait for next popup.</li>
+     *   <li>If TDS Auto Journal prompt detected (Continue button present), click Continue
+     *       and wait for the document-save success popup.</li>
+     * </ol>
      */
     public DocumentMessageBox waitForMessageBox() {
         WebDriver driver = DriverManager.getDriver();
         WebDriverWait wait = new WebDriverWait(driver, Duration.ofSeconds(ConfigFactory.getConfig().timeout()));
 
-        System.out.println("Waiting directly for message box (no Ignore & Proceed popup expected)");
+        System.out.println("Waiting for message box after save");
         wait.until(ExpectedConditions.visibilityOfElementLocated(MESSAGE_TEXT));
         System.out.println("Messagebox is now visible");
 
-        // If the app unexpectedly shows the "instrument number" warning dialog,
-        // click Ignore & Proceed, then wait for the actual save-result messagebox.
+        // If the app unexpectedly shows the payment-info-check warning dialog,
+        // auto-detect AR vs AP variant and click the appropriate proceed button.
         try {
             String msgText = driver.findElement(MESSAGE_TEXT).getText();
             if (msgText != null && msgText.contains("instrument number")) {
-                System.out.println("Instrument number warning detected — clicking Ignore & Proceed");
-                SeleniumUtils.click(ButtonText.IGNORE_AND_PROCEED.locator(), WaitType.CLICKABLE, "IGNOREPROCEED");
-                wait.until(ExpectedConditions.invisibilityOfElementLocated(ButtonText.IGNORE_AND_PROCEED.locator()));
+                PaymentInfoCheckWarning detected = msgText.contains(
+                        PaymentInfoCheckWarning.AP_VOUCHER.getMessageSubstring())
+                        ? PaymentInfoCheckWarning.AP_VOUCHER
+                        : PaymentInfoCheckWarning.AR_VOUCHER;
+                System.out.println("Payment info warning detected (" + detected + ") — clicking proceed");
+                SeleniumUtils.click(detected.proceedLocator(), WaitType.CLICKABLE, "PAYMENT_WARN_AUTO");
                 wait.until(ExpectedConditions.visibilityOfElementLocated(MESSAGE_TEXT));
-                System.out.println("Success messagebox is now visible after Ignore & Proceed");
+                System.out.println("Messagebox visible after payment info proceed.");
             }
         } catch (Exception e) {
             System.out.println("Instrument number dialog check skipped (non-fatal): " + e.getMessage());
         }
 
+        // If TDS Auto Journal prompt is showing, click Continue and wait for success popup.
+        handleTdsAutoJournalPromptIfPresent(wait, driver);
+
         return new DocumentMessageBox();
     }
 
     /**
-     * Post-save path for Case 2 (Bank with payment info missing for some subledger lines).
-     * Clicks "Ignore & Proceed" then waits for the save-confirmation message box.
+     * Clicks the proceed button for the given payment-info-check warning, then waits for
+     * the next popup.
+     *
+     * <p>Popup sequence handled:
+     * <ol>
+     *   <li>Click the proceed button (Ignore &amp; Proceed for AR; Yes for AP).</li>
+     *   <li>Wait for the next message box to appear.</li>
+     *   <li>If TDS Auto Journal prompt detected (Continue button present), click Continue
+     *       and wait for the document-save success popup.</li>
+     * </ol>
+     *
+     * <p>AR Voucher: clicks "Ignore &amp; Proceed".
+     * <p>AP Voucher: clicks "Yes".
      */
-    public DocumentMessageBox clickIgnoreProceed() {
+    public DocumentMessageBox clickProceed(PaymentInfoCheckWarning warning) {
         WebDriver driver = DriverManager.getDriver();
         WebDriverWait wait = new WebDriverWait(driver, Duration.ofSeconds(ConfigFactory.getConfig().timeout()));
 
-        System.out.println("Inside ignore & proceed");
-        SeleniumUtils.click(ButtonText.IGNORE_AND_PROCEED.locator(), WaitType.CLICKABLE, "IGNOREPROCEED");
+        System.out.println("Clicking proceed for " + warning + "...");
+        SeleniumUtils.click(warning.proceedLocator(), WaitType.CLICKABLE, "PAYMENT_WARN_PROCEED");
 
-        // messagebox-1001-msg does not exist during Ignore & Proceed dialog
-        // Wait for it to appear as the Save confirmation dialog
         wait.until(ExpectedConditions.visibilityOfElementLocated(MESSAGE_TEXT));
-        System.out.println("Messagebox is now visible");
+        System.out.println("Messagebox is now visible after payment info proceed.");
+
+        // If TDS Auto Journal prompt is showing next, click Continue and wait for success popup.
+        handleTdsAutoJournalPromptIfPresent(wait, driver);
 
         return new DocumentMessageBox();
+    }
+
+    /**
+     * Clicks the reject button (e.g. "No" on AP Voucher payment warning) and stays on the form.
+     * Use for negative test cases that verify the user can cancel the save.
+     */
+    public void clickReject(PaymentInfoCheckWarning warning) {
+        if (!warning.hasRejectButton())
+            throw new UnsupportedOperationException(warning + " has no reject button");
+        System.out.println("Clicking reject for " + warning + "...");
+        SeleniumUtils.click(warning.rejectLocator(), WaitType.CLICKABLE, "PAYMENT_WARN_REJECT");
+    }
+
+    /**
+     * Clicks the cancel button if available for the given warning type.
+     * Provision for future cancel-button scenarios.
+     */
+    public void clickCancel(PaymentInfoCheckWarning warning) {
+        if (!warning.hasCancelButton())
+            throw new UnsupportedOperationException(warning + " has no cancel button");
+        System.out.println("Clicking cancel for " + warning + "...");
+        SeleniumUtils.click(warning.cancelLocator(), WaitType.CLICKABLE, "PAYMENT_WARN_CANCEL");
     }
 
     // ── Grid>Adj confirmation path (Proceed Anyway / Stay) ───────────────────
@@ -178,5 +246,38 @@ public class DocumentPopup {
     public AdjustmentEntry clickStay() {
         SeleniumUtils.click(ButtonText.STAY.locator(), WaitType.CLICKABLE, "Stay");
         return adjustmentEntry;
+    }
+
+    // ── Private helpers ───────────────────────────────────────────────────────
+
+    /**
+     * After a message box becomes visible, checks whether the TDS Auto Journal confirmation
+     * prompt is showing by searching for the Continue button.
+     *
+     * <p>Popup sequence (when TDS Provided = Yes and Auto-Release check was not performed
+     * in the testing app):
+     * <ol>
+     *   <li>Continue button detected → click it.</li>
+     *   <li>Wait for the TDS prompt to close.</li>
+     *   <li>Wait for the document-save success popup to appear.</li>
+     * </ol>
+     *
+     * <p>If no Continue button is present this method is a no-op — the caller proceeds
+     * directly to {@link DocumentMessageBox#verifyDocumentSave}.
+     */
+    private void handleTdsAutoJournalPromptIfPresent(WebDriverWait wait, WebDriver driver) {
+        try {
+            List<WebElement> continueBtns = driver.findElements(CONTINUE_BTN);
+            if (!continueBtns.isEmpty() && continueBtns.get(0).isDisplayed()) {
+                System.out.println("TDS Auto Journal prompt detected — clicking Continue");
+                SeleniumUtils.click(CONTINUE_BTN, WaitType.CLICKABLE, "TDS_AUTO_JOURNAL_CONTINUE");
+                // Wait for the TDS prompt to close, then wait for the success popup
+                wait.until(ExpectedConditions.invisibilityOfElementLocated(MESSAGE_TEXT));
+                wait.until(ExpectedConditions.visibilityOfElementLocated(MESSAGE_TEXT));
+                System.out.println("Success messagebox is now visible after TDS Auto Journal Continue.");
+            }
+        } catch (Exception e) {
+            System.out.println("TDS Auto Journal Continue check skipped (non-fatal): " + e.getMessage());
+        }
     }
 }

@@ -1,5 +1,7 @@
 package com.gsl.reports;
 
+import com.gsl.enums.LogCategory;
+import com.gsl.enums.ReportSeverity;
 import com.gsl.utils.Log;
 
 public final class ReportLogger {
@@ -48,6 +50,45 @@ public final class ReportLogger {
         Log.error(message, t);
         ExtentLogger.fail(message + " — " + t.getClass().getSimpleName() + ": " + t.getMessage());
     }
+
+    // ── Categorized overloads — badge + Log4j2 ────────────────────────────────
+
+    /**
+     * Logs to Extent with a colored category badge and to Log4j2 with a [CATEGORY] prefix.
+     * Severity defaults to MEDIUM (badge suppressed).
+     */
+    public static void info(LogCategory category, String message) {
+        Log.info("[{}] {}", category.name(), message);
+        ExtentLogger.infoCategorized(category, message);
+    }
+
+    /**
+     * Logs to Extent with colored category + severity badges and to Log4j2 with both prefixes.
+     * MEDIUM severity suppresses the severity badge in Extent but still logs the level to file.
+     */
+    public static void info(LogCategory category, ReportSeverity severity, String message) {
+        Log.info("[{}][{}] {}", category.name(), severity.name(), message);
+        ExtentLogger.infoCategorized(category, severity, message);
+    }
+
+    /**
+     * Logs a CRITICAL severity entry to Extent (red badges) and Log4j2 ERROR.
+     * Use for blocking failures, data corruption, or unexpected app state.
+     */
+    public static void critical(LogCategory category, String message) {
+        Log.error("[{}][CRITICAL] {}", category.name(), message);
+        ExtentLogger.infoCategorized(category, ReportSeverity.CRITICAL, message);
+    }
+
+    /**
+     * Logs a HIGH severity entry — business-rule failure, unexpected state.
+     */
+    public static void high(LogCategory category, String message) {
+        Log.warn("[{}][HIGH] {}", category.name(), message);
+        ExtentLogger.infoCategorized(category, ReportSeverity.HIGH, message);
+    }
+
+    // ── Table ─────────────────────────────────────────────────────────────────
 
     /**
      * Logs a 2-D table to:

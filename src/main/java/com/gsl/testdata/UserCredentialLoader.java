@@ -37,7 +37,10 @@ public final class UserCredentialLoader {
                 return credentials;
             }
         } catch (Exception e) {
-            Log.error("[UserCredentialLoader] Failed to read '{}': {}", path, e.getMessage(), e);
+            String hint = (e.getMessage() != null && e.getMessage().contains("forward slash"))
+                    ? " — xlsx ZIP structure is corrupt; re-save the file in Excel/LibreOffice to repair."
+                    : "";
+            Log.error("[UserCredentialLoader] Failed to read '{}': {}{}", path, e.getMessage(), hint, e);
             return List.of();
         }
     }

@@ -1,8 +1,10 @@
 package com.gsl.pages.pagecomponent.Finance.Operations.APVoucher;
 
 import com.google.common.util.concurrent.Uninterruptibles;
+import com.gsl.config.ConfigFactory;
 import com.gsl.driver.DriverManager;
 import com.gsl.enums.AdjustmentType;
+import com.gsl.enums.Finance.Operations.APVoucher.DeductTdsClearConfirmAction;
 import com.gsl.enums.PaymentSelectionType;
 import com.gsl.enums.WaitType;
 import com.gsl.pages.Finance.Operations.Common.AdjustmentEntry;
@@ -17,9 +19,14 @@ import com.gsl.utils.BigDecimalUtils;
 import com.gsl.utils.Log;
 import com.gsl.utils.Selenium.JavascriptExecutorUtils;
 import com.gsl.utils.Selenium.SeleniumUtils;
+import com.gsl.pages.enums.Finance.Operations.APVoucher.APVoucherGridColumnHeader;
+import com.gsl.pages.enums.Finance.Operations.Common.CommonVoucherGridColumnHeader;
+import com.gsl.reports.ExtentLogger;
 import org.openqa.selenium.By;
 import org.openqa.selenium.JavascriptExecutor;
 import org.openqa.selenium.WebDriver;
+import org.openqa.selenium.WebElement;
+import org.openqa.selenium.interactions.Actions;
 
 import java.math.BigDecimal;
 import java.util.List;
@@ -48,6 +55,39 @@ public class APVoucherSubLedgerInformation extends VoucherSubLedgerInformationBa
     private static final String SUBLEDGERSELECTION_XPATH = "//span[text()='%s']";
 
     private static final String AP_GRID_ITEM_ID = "apvch_grid";
+
+    // ── Column ID XPaths for native Deduct TDS cell targeting ────────────────────
+    // COL_AP_SL / COL_REF_SITE / COL_SL_ID use columnIdXPath() — those columns have auto-generated ExtJS IDs.
+    // COL_DEDUCT_TDS is the literal itemId: data-columnid="deductTDS" in the DOM (not gridcolumn-NNNN).
+    private static final String COL_AP_SL      = APVoucherGridColumnHeader.SUB_LEDGER.columnIdXPath();
+    private static final String COL_REF_SITE   = CommonVoucherGridColumnHeader.REFERENCE_SITE.resolveFor(VoucherDomain.AP).columnIdXPath();
+    private static final String COL_SL_ID      = CommonVoucherGridColumnHeader.SUB_LEDGER_ID.resolveFor(VoucherDomain.AP).columnIdXPath();
+    private static final String COL_DEDUCT_TDS = "deductTDS";
+
+    // Row anchored by SL name + ref site (same pattern as PAYMENT_BUTTON_TEMPLATE in VoucherSubLedgerInformationBase)
+    private static final String DEDUCT_TDS_CELL =
+            "//tr[td[@data-columnid=" + COL_AP_SL + "]/div[text()='%s']"
+            + " and td[@data-columnid=" + COL_REF_SITE + "]/div[normalize-space()='%s']]"
+            + "//td[@data-columnid='" + COL_DEDUCT_TDS + "']";
+
+    private static final String DEDUCT_TDS_CELL_WITH_SLID =
+            "//tr[td[@data-columnid=" + COL_AP_SL + "]/div[text()='%s']"
+            + " and td[@data-columnid=" + COL_REF_SITE + "]/div[normalize-space()='%s']"
+            + " and td[@data-columnid=" + COL_SL_ID + "]/div[normalize-space()='%s']]"
+            + "//td[@data-columnid='" + COL_DEDUCT_TDS + "']";
+
+    // Active ExtJS inline editor trigger — targets the arrow div rendered by ExtJS combo in this app version
+    private static final By DEDUCT_TDS_TRIGGER = By.xpath(
+            "//div[contains(@class,'x-editor') and not(contains(@class,'x-hide-display'))]" +
+            "//div[contains(@class,'x-form-arrow-trigger')]");
+
+    // Picker options scoped to comboDeductTDS — data-boundview prevents cross-dropdown collision
+    private static final By DEDUCT_TDS_OPTION_YES = By.xpath(
+            "//li[@data-boundview='comboDeductTDS-picker' and normalize-space()='Yes']");
+
+    private static final By DEDUCT_TDS_OPTION_NO = By.xpath(
+            "//li[@data-boundview='comboDeductTDS-picker' and normalize-space()='No']");
+
 
     // ── Public API ────────────────────────────────────────────────────────────
 
@@ -116,8 +156,13 @@ public class APVoucherSubLedgerInformation extends VoucherSubLedgerInformationBa
                 throw new RuntimeException("Interrupted setting sub-ledger amount on row " + i, e);
             }
             if (sl.getDeductTds() != null && !sl.getDeductTds().trim().isEmpty()) {
-                JavascriptExecutorUtils.setDeductTdsForRow(
-                        DriverManager.getDriver(), i, sl.getDeductTds().trim(), AP_GRID_ITEM_ID);
+                if ("NATIVE".equalsIgnoreCase(ConfigFactory.getConfig().subLedgerSelectionMode())) {
+                    setDeductTdsNative(sl.getDeductTds().trim(), slName, refSite, slId,
+                            sl.getDeductTdsConfirmAction(), sl.getAmountDr(), i);
+                } else {
+                    JavascriptExecutorUtils.setDeductTdsForRow(
+                            DriverManager.getDriver(), i, sl.getDeductTds().trim(), AP_GRID_ITEM_ID);
+                }
             }
             Log.debug("Row {} | SL={} | AmtDr={} | DeductTDS={}",
                     i, sl.getSubLedger(), sl.getAmountDr(), sl.getDeductTds());
@@ -189,11 +234,27 @@ public class APVoucherSubLedgerInformation extends VoucherSubLedgerInformationBa
                 }
 
             } else if (adjType == AdjustmentType.REFERENCE_SITEWISE_FIFO_SETOFF) {
+                String lineNo = row.getLineNo();
+                List<com.gsl.testdata.Finance.Operations.Vouchers.APVoucher.ReferenceSitewiseFIFOsetoff> fifoRows =
+                        data.getReferenceSitewiseFIFOList() != null
+                        ? data.getReferenceSitewiseFIFOList() : List.of();
+                List<com.gsl.testdata.Finance.Operations.Vouchers.APVoucher.ReferenceSitewiseFIFOsetoff> refSites =
+                        fifoRows.stream()
+                                .filter(r -> lineNo != null && lineNo.equalsIgnoreCase(r.getLineNo()))
+                                .collect(Collectors.toList());
+                com.gsl.pages.Finance.Operations.Common.ReferenceSiteWiseFIFOPopup fifoPopup =
+                        adjustmentEntry.openReferenceSiteWiseFIFOPopup();
+                for (com.gsl.testdata.Finance.Operations.Vouchers.APVoucher.ReferenceSitewiseFIFOsetoff rs : refSites) {
+                    fifoPopup.selectAndAutoAdjust(rs.getReferenceSiteName(), rs.getSiteName());
+                }
+                com.gsl.pages.Finance.Operations.Common.AdjustmentAmountSnapshot snapshot =
+                        adjustmentEntry.captureAmounts();
+                Log.info("RefSiteFIFO amounts — txn={} adj={} pending={}",
+                         snapshot.getTransactionAmount(), snapshot.getAdjustedAmount(), snapshot.getPendingToAdjust());
                 if (needsConfirmation) {
-                    adjustmentEntry.referenceSiteWiseFIFO().showReferenceSiteSummary()
-                            .clickOKExpectingConfirmation().clickProceedAnyway();
+                    adjustmentEntry.clickOKExpectingConfirmation().clickProceedAnyway();
                 } else {
-                    adjustmentEntry.referenceSiteWiseFIFO().showReferenceSiteSummary().clickOK();
+                    adjustmentEntry.clickOK();
                 }
 
             } else if (adjType == AdjustmentType.FIFO_SETOFF) {
@@ -217,11 +278,143 @@ public class APVoucherSubLedgerInformation extends VoucherSubLedgerInformationBa
     }
 
     private void setSubLedgerName(String subledgerName, String id, String referenceSite, int rowIndex) {
+        if ("NATIVE".equalsIgnoreCase(ConfigFactory.getConfig().subLedgerSelectionMode())) {
+            setSubLedgerNameNative(subledgerName, id, referenceSite, rowIndex);
+            return;
+        }
         if (rowIndex == 0) {
             JavascriptExecutorUtils.setSubLedger(DriverManager.getDriver(), subledgerName, id, referenceSite, AP_GRID_ITEM_ID);
         } else {
             JavascriptExecutorUtils.setSubLedgerForRow(DriverManager.getDriver(), rowIndex, subledgerName, id, referenceSite, AP_GRID_ITEM_ID);
         }
+    }
+
+    /**
+     * NATIVE sub-ledger selection: open the real inline grid combo, type the sub-ledger name,
+     * and click the matching dropdown option — exactly as a user would. This makes the
+     * application run its own combo {@code select} handler, which evaluates TDS applicability
+     * and renders the "Calc. Amount" button (the JS-injection path does not, leaving rows as
+     * "TDS not appl."). Reuses the proven {@code <li role='option'>} picker pattern from
+     * {@link com.gsl.pages.pagecomponent.Finance.Operations.APVoucher.APVoucherTdsAndNetPayable}.
+     */
+    private void setSubLedgerNameNative(String subledgerName, String id, String referenceSite, int rowIndex) {
+        String inputId = JavascriptExecutorUtils.openSubLedgerComboEditor(
+                DriverManager.getDriver(), rowIndex, AP_GRID_ITEM_ID);
+        if (inputId == null || inputId.isEmpty()) {
+            throw new IllegalStateException(
+                    "[SL_NATIVE] Could not open Sub-Ledger combo editor on row " + rowIndex
+                    + " for '" + subledgerName + "'");
+        }
+
+        // Type the name into the real combo input — the app's remote query filters the
+        // grid-style picker (Name | Id | Class Name columns) as we type.
+        By comboInput = By.id(inputId);
+        SeleniumUtils.clear(comboInput, "SL_COMBO_INPUT");
+        SeleniumUtils.sendKeys(comboInput, WaitType.VISIBLE, subledgerName, "SL_COMBO_INPUT");
+        JavascriptExecutorUtils.waitForExtJS();
+
+        // Click the matching row in the grid picker. Sub-ledger names are NOT unique
+        // (e.g. the same supplier can appear with different Ids), so disambiguate by
+        // Name + Id when an Id is provided. Same picker structure as CashBankPopup.
+        By option = subLedgerPickerRow(subledgerName, id);
+        SeleniumUtils.click(option, WaitType.CLICKABLE, "SL_OPTION_" + subledgerName);
+        // Let the application's combo select handler run its GL + TDS-applicability evaluation.
+        JavascriptExecutorUtils.waitForExtJS();
+        JavascriptExecutorUtils.waitForPageLoad();
+        JavascriptExecutorUtils.waitForComponentReady();
+
+        Log.debug("[SL_NATIVE] Selected SL='{}' (id='{}') on row {}", subledgerName, id, rowIndex);
+
+        if (referenceSite != null && !referenceSite.trim().isEmpty()) {
+            setSubLedgerReferenceSite(referenceSite, rowIndex);
+        }
+    }
+
+    /**
+     * NATIVE Deduct TDS selection: double-click the Deduct TDS cell for the given sub-ledger row,
+     * click the dropdown trigger arrow, and select Yes/No — exactly as a user would.
+     * Row is located by SL name + reference site (+ optional slId), matching the same
+     * {@code data-columnid} anchor pattern as {@code PAYMENT_BUTTON_TEMPLATE}.
+     * Skips silently when the cell already shows the requested value.
+     *
+     * <p>When changing Yes → No, a confirmation popup appears:
+     * "Calculated TDS and Payable amount will get cleared. Do you want to proceed?"
+     * The {@code confirmAction} parameter controls which button to click:
+     * {@code PROCEED} → "Ok, Go Ahead", {@code CANCEL} → "Close", {@code null} → defaults to PROCEED.
+     */
+    private void setDeductTdsNative(String value, String slName, String refSite, String slId,
+                                     DeductTdsClearConfirmAction confirmAction,
+                                     BigDecimal amountDr, int rowIndex) {
+        By cellLocator = By.xpath(
+                (slId != null && !slId.isBlank())
+                        ? String.format(DEDUCT_TDS_CELL_WITH_SLID, slName, refSite, slId)
+                        : String.format(DEDUCT_TDS_CELL, slName, refSite));
+
+        String current = SeleniumUtils.getText(cellLocator, "DEDUCT_TDS_CELL");
+        if (value.equalsIgnoreCase(current != null ? current.trim() : "")) {
+            ExtentLogger.info("[DEDUCT_TDS_NATIVE] ALREADY_SET: sl=" + slName + " value=" + value);
+            return;
+        }
+
+        WebElement cell = DriverManager.getDriver().findElement(cellLocator);
+        new Actions(DriverManager.getDriver()).doubleClick(cell).perform();
+        JavascriptExecutorUtils.waitForExtJS();
+
+        SeleniumUtils.click(DEDUCT_TDS_TRIGGER, WaitType.CLICKABLE, "DEDUCT_TDS_TRIGGER");
+
+        By option = "Yes".equalsIgnoreCase(value) ? DEDUCT_TDS_OPTION_YES : DEDUCT_TDS_OPTION_NO;
+        SeleniumUtils.click(option, WaitType.CLICKABLE, "DEDUCT_TDS_OPTION_" + value);
+
+        // TAB fires the cell blur event which triggers the confirmation popup (Yes→No only).
+        // TAB is sent to the cell (not the option) — the dropdown is already closed after the click,
+        // so the option <li> is no longer interactable; the cell retains focus.
+        // No JS page-ready wait here — the modal is already appearing; JS waits crash when a
+        // modal dialog is open. The handler's built-in 3-retry × 3s wait covers popup detection.
+        if ("No".equalsIgnoreCase(value)) {
+            SeleniumUtils.pressTab(cellLocator, "DEDUCT_TDS_CELL");
+            TdsPayableClearConfirmHandler.handle(confirmAction, slName);
+            // App clears Amount(Dr) when popup is confirmed — re-apply the original value
+            if (amountDr != null) {
+                try {
+                    setSubLedgerAmount(amountDr.toPlainString(), rowIndex);
+                    ExtentLogger.info("[DEDUCT_TDS_NATIVE] Amount(Dr) re-applied after TDS clear: "
+                            + amountDr.toPlainString() + " — row=" + rowIndex);
+                } catch (InterruptedException e) {
+                    Thread.currentThread().interrupt();
+                    throw new RuntimeException(
+                            "Interrupted re-applying Amount(Dr) after TDS clear on row " + rowIndex, e);
+                }
+            }
+        }
+
+        JavascriptExecutorUtils.waitForExtJS();
+        ExtentLogger.info("[DEDUCT_TDS_NATIVE] APPLIED: sl=" + slName + " value=" + value);
+    }
+
+    /**
+     * Build the locator for a row in the Sub-Ledger grid picker (the dropdown opened from the
+     * inline combo). The picker is a paged grid with Name / Id / Class Name columns inside an
+     * {@code x-grid-item-container} — the same structure used by
+     * {@link com.gsl.pages.pagecomponent.Finance.Common.CashBankPopup}.
+     *
+     * <p>When an {@code id} is supplied, match a row that contains BOTH the exact Name and the
+     * exact Id (sub-ledger names are not unique), then click the Name cell within that row.
+     * Otherwise match by Name only.</p>
+     */
+    private By subLedgerPickerRow(String name, String id) {
+        String n = name.trim();
+        // The SL dropdown is an ExtJS boundlist: div.x-boundlist-floating → div.x-boundlist-item
+        // (role=option) → table.combooverflowfinance with one td per column. Each cell carries a
+        // clean @data-qtip value, so matching on data-qtip is highlight-proof (the visible text
+        // wraps the typed substring in a highlight span; the attribute does not). Click the
+        // x-boundlist-item itself (the option element, top layer) to avoid the grid-view interception.
+        String base = "//div[contains(@class,'x-boundlist-floating')]"
+                + "//div[contains(@class,'x-boundlist-item')";
+        if (id != null && !id.trim().isEmpty()) {       // unique: match Name + Id (slid)
+            return By.xpath(base + " and .//td[@data-qtip=\"" + n + "\"]"
+                                 + " and .//td[@data-qtip=\"" + id.trim() + "\"]]");
+        }
+        return By.xpath(base + " and .//td[@data-qtip=\"" + n + "\"]]");   // name only
     }
 
     private void addSubLedgerRow() {

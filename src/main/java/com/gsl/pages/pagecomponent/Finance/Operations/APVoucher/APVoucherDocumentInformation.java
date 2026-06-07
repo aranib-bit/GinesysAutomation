@@ -1,7 +1,6 @@
 package com.gsl.pages.pagecomponent.Finance.Operations.APVoucher;
 
-import com.gsl.enums.WaitType;
-import com.gsl.pages.Finance.Operations.Common.DocumentPopup;
+import com.gsl.enums.Finance.Operations.APVoucher.OnAccountClearConfirmAction;
 import com.gsl.enums.VoucherDomain;
 import com.gsl.pages.enums.Finance.Operations.General.VoucherDocumentFormLabel;
 import com.gsl.pages.pagecomponent.Finance.Common.CashBankParent;
@@ -29,24 +28,22 @@ public class APVoucherDocumentInformation extends VoucherDocumentInformationBase
      */
     public APVoucherDocumentInformation fillDocumentHeader(DocumentInformation docInfo) {
         setDocScheme(docInfo.getVoucherno());
-        setDocumentDate(docInfo.getDocumentdate().format(java.time.format.DateTimeFormatter.ofPattern("dd/MM/yyyy")));
+        setDocumentDate(formatDate(docInfo.getDocumentdate()));
         setReference(docInfo.getReference());
         clickCashBankSearch();
         selectCashBank(docInfo.getCashbank());
-        setOnAccount(docInfo.isOnAccount());
+        setOnAccount(docInfo.isOnAccount(), docInfo.getOnAccountConfirmAction());
         setRemarks(docInfo.getRemarks());
         return this;
     }
 
-    private void setOnAccount(boolean onAccount) {
+    private void setOnAccount(boolean onAccount, OnAccountClearConfirmAction confirmAction) {
         if (onAccount) {
             ExtJsUtils.selectExtJsRadio(VoucherDocumentFormLabel.ON_ACCOUNT, "Yes");
-            // Warning: "All Sub ledger, adjustments, TDS and payment details will get cleared."
-            SeleniumUtils.click(DocumentPopup.ButtonText.OK_GO_AHEAD.locator(),
-                    WaitType.CLICKABLE, "ON_ACCOUNT_WARNING_OK");
         } else {
             ExtJsUtils.selectExtJsRadio(VoucherDocumentFormLabel.ON_ACCOUNT, "No");
         }
+        OnAccountClearConfirmHandler.handleIfPresent(confirmAction);
     }
 
     public String getOnAccount() {

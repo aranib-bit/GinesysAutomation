@@ -32,4 +32,15 @@ public class TdsAndNetPayable {
 
     @Column(name = "Populate TDS Exception Rate")
     private String populateTdsExceptionRate;
+
+    /**
+     * Drives which TDS Applicable Amount scenario is exercised for this row.
+     * Values: GROSS_EQUALS_TDS | PARTIAL_EDIT | CLEAR_ERROR_THEN_PARTIAL_EDIT
+     *
+     * <p>Blank/null → resolved to GROSS_EQUALS_TDS by
+     * {@link com.gsl.businesslogic.Finance.Operations.APVoucher.TdsApplicableAmountBusinessLogic#resolve}
+     * — existing Excel rows with no value in this column are unaffected.
+     */
+    @Column(name = "TDS Applicable Amount Behaviour")
+    private String tdsApplicableAmountBehaviour;
 }

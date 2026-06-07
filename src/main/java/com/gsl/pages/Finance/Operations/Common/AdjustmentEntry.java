@@ -1,5 +1,6 @@
 package com.gsl.pages.Finance.Operations.Common;
 
+import com.gsl.pages.enums.Finance.Operations.Common.CommonVoucherGridColumnHeader;
 import org.openqa.selenium.By;
 import org.openqa.selenium.TimeoutException;
 import org.openqa.selenium.support.ui.ExpectedConditions;
@@ -63,7 +64,7 @@ public class AdjustmentEntry {
     private static final String ADJUSTED_AMOUNT_CELL_BASE_XPATH =
             "//div[normalize-space()='%s']/ancestor::tr" +
             "//td[count(//div[contains(@class,'x-column-header')]" +
-            "[.//span[normalize-space()='Adjusted Amount']]" +
+            "[.//span[normalize-space()='" + CommonVoucherGridColumnHeader.ADJUSTED_AMOUNT.headerText() + "']]" +
             "/preceding-sibling::div[contains(@class,'x-column-header')]) + 1]";
 
     private static final String ADJUSTED_AMOUNT_BY_DOC_XPATH =
@@ -122,6 +123,19 @@ public class AdjustmentEntry {
     public AdjustmentEntry referenceSiteWiseFIFO() {
         SeleniumUtils.click(REF_SITE_FIFO_OPTION, WaitType.CLICKABLE, "Reference Site Wise FIFO Option");
         return this;
+    }
+
+    /** Clicks the menu item and returns a ready-to-use popup object. */
+    public ReferenceSiteWiseFIFOPopup openReferenceSiteWiseFIFOPopup() {
+        SeleniumUtils.click(REF_SITE_FIFO_OPTION, WaitType.CLICKABLE, "Reference Site Wise FIFO Option");
+        JavascriptExecutorUtils.waitForExtJS();
+        return new ReferenceSiteWiseFIFOPopup();
+    }
+
+    /** Captures Transaction Amount, Adjusted Amount, Pending to Adjust from the Adjustment Entry footer. */
+    public AdjustmentAmountSnapshot captureAmounts() {
+        return new AdjustmentAmountSnapshot(
+                getTransactionAmount(), getAdjustedAmount(), getPendingToAdjust());
     }
 
     public AdjustmentEntry showReferenceSiteSummary() {

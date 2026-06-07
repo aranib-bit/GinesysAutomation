@@ -24,6 +24,17 @@ public final class ExtentReport {
             "}"
         );
         extent.attachReporter(sparkReporter);
+
+        // Emergency flush on JVM shutdown (OOM, SIGTERM, etc.) — best-effort so any
+        // already-created test nodes are written to the HTML file even if TestNG
+        // callbacks never fire.
+        Runtime.getRuntime().addShutdownHook(new Thread(() -> {
+            try {
+                if (extent != null) extent.flush();
+            } catch (Throwable ignored) {
+                // Heap may already be exhausted; nothing more we can do.
+            }
+        }, "extent-shutdown-flush"));
     }
 
     /**

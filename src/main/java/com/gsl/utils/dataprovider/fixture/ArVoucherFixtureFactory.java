@@ -25,7 +25,7 @@ public class ArVoucherFixtureFactory {
     private static final BiPredicate<ArVoucherScenarioType, String> SHOULD_RUN =
             (scenario, methodName) -> switch (methodName) {
                 case "createArVoucher" ->
-                        scenario == ArVoucherScenarioType.NO_ADJUSTMENT
+                        scenario == ArVoucherScenarioType.DOC_NO_ADJUSTMENT
                                 || scenario == ArVoucherScenarioType.SELECT_DOCUMENT
                                 || scenario == ArVoucherScenarioType.FIFO_SETOFF
                                 || scenario == ArVoucherScenarioType.REFERENCE_SITEWISE_FIFO;

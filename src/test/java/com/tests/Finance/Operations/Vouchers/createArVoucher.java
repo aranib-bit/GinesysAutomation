@@ -15,6 +15,8 @@ import com.gsl.pages.Finance.Operations.ArVoucherAdd;
 import com.gsl.testdata.dto.MergedFinanceArVoucherData;
 import com.gsl.driver.DriverManager;
 import com.gsl.pages.Finance.Operations.Common.DocumentPopup;
+import com.gsl.flow.Finance.Operations.ARVoucher.TdsAutoReleaseFlow;
+import com.gsl.pages.Finance.Operations.Common.PaymentInfoCheckWarning;
 import com.gsl.testdata.Finance.Operations.Vouchers.ARVoucher.SelectDocument;
 import com.gsl.testdata.UserCredential;
 import com.gsl.reports.ArVoucherExtentDescriptionLogger;
@@ -30,6 +32,7 @@ import com.gsl.validation.db.finance.StateCapture;
 import com.gsl.validation.db.finance.VoucherDbContext;
 import com.tests.WebTest;
 import org.testng.annotations.Test;
+import org.testng.asserts.SoftAssert;
 
 import java.time.LocalDateTime;
 import java.util.Collections;
@@ -83,6 +86,7 @@ public class CreateArVoucher extends WebTest {
         final MergedFinanceArVoucherData testData = data;
 
         // Cross-step object holders
+        final SoftAssert softAssert = new SoftAssert();
         final HomePage[]          homeRef       = new HomePage[1];
         final ArVoucherListPage[] listRef       = new ArVoucherListPage[1];
         final ArVoucherAdd[]      addRef        = new ArVoucherAdd[1];
@@ -136,11 +140,16 @@ public class CreateArVoucher extends WebTest {
 
             saveStartTime[0] = LocalDateTime.now();
             DocumentPopup savePopup = addRef[0].clickSave();
-            com.gsl.pages.Common.DocumentMessageBox messageBox = testData.isNeedsIgnoreProceed()
-                    ? savePopup.verifyWarningMessage().clickIgnoreProceed()
+            com.gsl.pages.Common.DocumentMessageBox messageBox = testData.isNeedsPaymentInfoWarning()
+                    ? savePopup.verifyPaymentInfoCheckWarning(PaymentInfoCheckWarning.AR_VOUCHER)
+                               .clickProceed(PaymentInfoCheckWarning.AR_VOUCHER)
                     : savePopup.waitForMessageBox();
 
-            docNoRef[0] = messageBox.extractDocumentNo();
+            if (testData.isTdsProvided()) {
+                messageBox = TdsAutoReleaseFlow.execute(messageBox);
+            }
+
+            docNoRef[0] = messageBox.verifyDocumentSave(softAssert).getDocumentNo();
             Log.info("Extracted Document No: {}", docNoRef[0]);
 
             postRef[0] = stateCapture.captureInvoiceState(invoiceNos);
@@ -168,5 +177,7 @@ public class CreateArVoucher extends WebTest {
                             .build());
             ReportLogger.pass("DB validated. Document No: " + docNoRef[0]);
         });
+
+        StepExecutor.step("Finalize save assertions", softAssert::assertAll);
     }
 }

@@ -15,6 +15,7 @@
 -->
 <suite name="AR Voucher — Full Regression" parallel="tests" thread-count="10">
     <listeners>
+        <listener class-name="com.gsl.listeners.RetryAnnotationTransformer"/>
         <listener class-name="com.gsl.listeners.TestListener"/>
         <listener class-name="com.gsl.listeners.SuiteDataLoader"/>
     </listeners>

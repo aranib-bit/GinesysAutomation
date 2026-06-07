@@ -1,6 +1,7 @@
 package com.gsl.reports;
 
 import com.gsl.testdata.Finance.Operations.Vouchers.APVoucher.PaymentInformation;
+import com.gsl.testdata.Finance.Operations.Vouchers.APVoucher.ReferenceSitewiseFIFOsetoff;
 import com.gsl.testdata.Finance.Operations.Vouchers.APVoucher.SelectDocument;
 import com.gsl.testdata.Finance.Operations.Vouchers.APVoucher.SubLedgerInformation;
 import com.gsl.testdata.Finance.Operations.Vouchers.APVoucher.TdsAndNetPayable;
@@ -36,6 +37,7 @@ public final class ApVoucherExtentDescriptionLogger {
         logHeaderTable(data);
         logSubLedgersTable(data);
         logSelectDocsTable(data);
+        logFifoTable(data);
         logTdsTable(data);
         logPaymentsTable(data);
     }
@@ -52,6 +54,7 @@ public final class ApVoucherExtentDescriptionLogger {
         sb.append("============================================================\n");
         sb.append("[ApVoucherExtentDescriptionLogger] Test Data Summary\n");
         sb.append("------------------------------------------------------------\n");
+        sb.append(String.format("  Scenario        = %s%n", nullSafe(data.getScenarioType())));
         sb.append(String.format("  TestCase ID     = %s%n", nullSafe(master.getTestcaseid())));
         sb.append(String.format("  TestCase Name   = %s%n", nullSafe(master.getTestcasename())));
         sb.append(String.format("  Owner Site      = %s%n", nullSafe(doc.getOwnersite())));
@@ -62,7 +65,7 @@ public final class ApVoucherExtentDescriptionLogger {
         sb.append(String.format("  Remarks         = %s%n", nullSafe(doc.getRemarks())));
         sb.append(String.format("  On Account      = %s%n", data.isOnAccount() ? "YES" : "NO"));
         sb.append(String.format("  TDS Provided    = %s%n", data.isTdsProvided() ? "YES" : "NO"));
-        sb.append(String.format("  Ignore&Proceed  = %s%n", data.isNeedsIgnoreProceed() ? "YES" : "NO"));
+        sb.append(String.format("  Pmt Info Warning= %s%n", data.isNeedsPaymentInfoWarning() ? "YES" : "NO"));
 
         // Sub-Ledgers
         sb.append("------------------------------------------------------------\n");
@@ -75,7 +78,7 @@ public final class ApVoucherExtentDescriptionLogger {
                 String pmt = sl.getPaymentSelection() != null
                         ? sl.getPaymentSelection().toString() : "";
                 sb.append(String.format(
-                        "    [%s] %s (id=%s) | type=%s | GL=%s | adjType=%s | amount=%s | pmt=%s%n",
+                        "    [%s] %s (id=%s) | slClass=%s | GL=%s | adjType=%s | amount=%s | pmt=%s%n",
                         nullSafe(sl.getLineNo()),
                         nullSafe(sl.getSubLedger()),
                         nullSafe(sl.getId()),
@@ -149,6 +152,7 @@ public final class ApVoucherExtentDescriptionLogger {
                 ? doc.getDocumentdate().format(DATE_FMT) : "";
         String[][] table = {
             { "Field",            "Value" },
+            { "Scenario",         nullSafe(data.getScenarioType()) },
             { "TestCase ID",      nullSafe(master.getTestcaseid()) },
             { "TestCase Name",    nullSafe(master.getTestcasename()) },
             { "Owner Site",       nullSafe(doc.getOwnersite()) },
@@ -159,7 +163,7 @@ public final class ApVoucherExtentDescriptionLogger {
             { "Remarks",          nullSafe(doc.getRemarks()) },
             { "On Account",       data.isOnAccount() ? "YES" : "NO" },
             { "TDS Provided",     data.isTdsProvided() ? "YES" : "NO" },
-            { "Ignore & Proceed", data.isNeedsIgnoreProceed() ? "YES" : "NO" },
+            { "Payment Info Warning", data.isNeedsPaymentInfoWarning() ? "YES" : "NO" },
         };
         ExtentLogger.info("<b>Test Data &#8212; Header</b>");
         ExtentLogger.infoTable(table);
@@ -174,7 +178,7 @@ public final class ApVoucherExtentDescriptionLogger {
             return;
         }
         String[][] table = new String[1 + sls.size()][7];
-        table[0] = new String[]{ "Line#", "Sub-Ledger", "SL Type", "GL", "Adj Type", "Amount Dr", "Payment Mode" };
+        table[0] = new String[]{ "Line#", "Sub-Ledger", "Sub Ledger Class Name", "GL", "Adj Type", "Amount Dr", "Payment Mode" };
         for (int i = 0; i < sls.size(); i++) {
             SubLedgerInformation sl = sls.get(i);
             table[i + 1] = new String[]{
@@ -211,6 +215,26 @@ public final class ApVoucherExtentDescriptionLogger {
             };
         }
         ExtentLogger.info("<b>Selected Documents</b>");
+        ExtentLogger.infoTable(table);
+    }
+
+    // ─── Section 3b: Reference Site wise FIFO Set-Off ────────────────────────
+
+    private static void logFifoTable(MergedFinanceApVoucherData data) {
+        List<ReferenceSitewiseFIFOsetoff> fifoList = data.getReferenceSitewiseFIFOList();
+        if (fifoList == null || fifoList.isEmpty()) return;
+        String[][] table = new String[1 + fifoList.size()][4];
+        table[0] = new String[]{ "SL Line#", "Reference Site Name", "Site Name", "Adj Amount" };
+        for (int i = 0; i < fifoList.size(); i++) {
+            ReferenceSitewiseFIFOsetoff r = fifoList.get(i);
+            table[i + 1] = new String[]{
+                nullSafe(r.getLineNo()),
+                nullSafe(r.getReferenceSiteName()),
+                nullSafe(r.getSiteName()),
+                r.getAdjustmentAmount() != null ? r.getAdjustmentAmount().toPlainString() : ""
+            };
+        }
+        ExtentLogger.info("<b>Reference Site wise FIFO Set-Off</b>");
         ExtentLogger.infoTable(table);
     }
 

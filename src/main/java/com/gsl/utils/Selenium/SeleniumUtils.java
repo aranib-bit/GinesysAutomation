@@ -24,7 +24,7 @@ public class SeleniumUtils {
         WebElement element = waitUntilElementPresent(by);
         clickWithOverlayRetry(element, elementName);
         ExtentLogger.info(elementName + " is clicked successfully");
-        WaitUtils.waitForExtMask();
+        WaitUtils.waitForExtMask(elementName);
         PopupMonitor.checkAfterAction(elementName);
     }
 
@@ -41,7 +41,7 @@ public class SeleniumUtils {
         }
         clickWithOverlayRetry(element, elementName);
         ExtentLogger.info(elementName + " is clicked successfully");
-        WaitUtils.waitForExtMask();
+        WaitUtils.waitForExtMask(elementName);
         PopupMonitor.checkAfterAction(elementName);
     }
 
@@ -59,7 +59,7 @@ public class SeleniumUtils {
         }
         clickWithOverlayRetry(ready, elementName);
         ExtentLogger.info(elementName + " is clicked successfully");
-        WaitUtils.waitForExtMask();
+        WaitUtils.waitForExtMask(elementName);
         PopupMonitor.checkAfterAction(elementName);
     }
 
@@ -217,7 +217,7 @@ public class SeleniumUtils {
         else                                      element = waitUntilElementVisible(by);
         clickWithOverlayRetry(element, elementName);
         ExtentLogger.info(elementName + " is clicked successfully");
-        WaitUtils.waitForExtMask();
+        WaitUtils.waitForExtMask(elementName);
         PopupMonitor.noteAfterAction(elementName);
     }
 

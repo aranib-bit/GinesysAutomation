@@ -8,6 +8,9 @@ import com.gsl.config.FrameworkConfig;
 import com.gsl.diagnostics.section.*;
 import com.gsl.diagnostics.section.frontend.FrontendPerformanceSection;
 import com.gsl.diagnostics.section.frontend.FrontendPerformanceSectionFactory;
+import com.gsl.reports.RetryHistoryBuffer;
+import com.gsl.reports.StepDurationBuffer;
+import com.gsl.reports.WaitDurationBuffer;
 import com.gsl.reports.ExtentLogger;
 import com.gsl.driver.DriverManager;
 import com.gsl.network.NetworkCaptureManager;
@@ -49,6 +52,7 @@ public final class FailureBundleOrchestrator {
         WebDriver driver = DriverManager.getDriver();
         Instant   start  = Instant.ofEpochMilli(result.getStartMillis());
         Instant   end    = Instant.now();
+        long testDurationSeconds = (end.toEpochMilli() - result.getStartMillis()) / 1000;
 
         // Fetch browser logs and network logs first — needed by correlator + exporter
         List<BrowserLogRecord> jsLogs  = fetchBrowserLogs(driver);
@@ -77,6 +81,10 @@ public final class FailureBundleOrchestrator {
                 .add(networkTimingSection(true))
                 // ── Action trail ──────────────────────────────────────────────
                 .add(new ActionTrailSection(ActionTrailBuffer.getForDisplay(), ActionTrailBuffer.totalCaptured()))
+                // ── Phase 2: Step timeline, wait analysis, flaky summary ───────
+                .add(stepTimelineSection(true))
+                .add(waitAnalysisSection(true, testDurationSeconds))
+                .add(flakySummarySection())
                 // ── Performance timing ────────────────────────────────────────
                 .add(performanceTimingSection(driver))
                 // ── Custom Metrics (web.dev Performance APIs) ─────────────────
@@ -118,6 +126,7 @@ public final class FailureBundleOrchestrator {
         WebDriver driver = DriverManager.getDriver();
         Instant   start  = Instant.ofEpochMilli(result.getStartMillis());
         Instant   end    = Instant.now();
+        long testDurationSeconds = (end.toEpochMilli() - result.getStartMillis()) / 1000;
 
         List<BrowserLogRecord> jsLogs  = fetchBrowserLogs(driver);
 
@@ -131,6 +140,10 @@ public final class FailureBundleOrchestrator {
                 .add(networkLogSectionForPass(result))
                 .add(networkTimingSection(false))
                 .add(actionTrailSectionForPass())
+                // ── Phase 2: Step timeline, wait analysis, flaky summary ───────
+                .add(stepTimelineSection(false))
+                .add(waitAnalysisSection(false, testDurationSeconds))
+                .add(flakySummarySection())
                 .add(performanceTimingSection(driver))
                 // Custom Metrics on pass only when capture.mode=ALL
                 .add(passCustomMetrics)
@@ -391,5 +404,36 @@ public final class FailureBundleOrchestrator {
         } catch (Exception e) {
             return CaptureMode.NEVER;
         }
+    }
+
+    // ── Phase 2: Step Timeline, Wait Analysis, Flaky Summary ─────────────────
+
+    private static DiagnosticSection stepTimelineSection(boolean isFailure) {
+        FrameworkConfig cfg = ConfigFactory.getConfig();
+        if (!cfg.stepTimelineEnabled()) return null;
+        if (!isFailure && !"ALL".equalsIgnoreCase(cfg.stepTimelineCaptureMode())) return null;
+        java.util.List<StepDurationBuffer.StepRecord> records = StepDurationBuffer.getAll();
+        if (records.isEmpty()) return null;
+        return new StepTimelineSection(records, cfg.stepTimelineWarnMs());
+    }
+
+    private static DiagnosticSection waitAnalysisSection(boolean isFailure, long testDurationSeconds) {
+        FrameworkConfig cfg = ConfigFactory.getConfig();
+        if (!cfg.waitAnalysisEnabled()) return null;
+        if (!isFailure && !"ALL".equalsIgnoreCase(cfg.waitAnalysisCaptureMode())) return null;
+        int minSec = cfg.waitAnalysisMinTestDurationSeconds();
+        if (minSec > 0 && testDurationSeconds < minSec) return null;
+        java.util.List<WaitDurationBuffer.WaitRecord> records = WaitDurationBuffer.getAll();
+        if (records.isEmpty()) return null;
+        return new WaitAnalysisSection(records, cfg.waitAnalysisSlowThresholdMs());
+    }
+
+    private static DiagnosticSection flakySummarySection() {
+        FrameworkConfig cfg = ConfigFactory.getConfig();
+        if (!cfg.flakySummaryEnabled()) return null;
+        if (cfg.retryMaxCount() <= 0) return null;
+        java.util.List<RetryHistoryBuffer.RetryRecord> records = RetryHistoryBuffer.getAll();
+        if (records.isEmpty()) return null;
+        return new FlakySummarySection(records, cfg.retryMaxCount(), cfg.flakyScoreWarnThreshold());
     }
 }

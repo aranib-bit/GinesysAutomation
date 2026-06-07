@@ -184,7 +184,7 @@ public class ExcelArVoucherDataSource implements TestDataSource<MergedFinanceArV
                             ? glDao.findByGlName(doc.getCashbank()) : null;
                     boolean isBank = cashBankGl != null && "B".equalsIgnoreCase(cashBankGl.getSrctype());
 
-                    boolean needsIgnoreProceed = isBank && (!allLinesHavePayment || anyInstrumentNoMissing);
+                    boolean needsPaymentInfoWarning = isBank && (!allLinesHavePayment || anyInstrumentNoMissing);
 
                     return IntStreamEx.range(1, totalInvocations + 1)
                             .mapToObj(invIdx ->
@@ -196,7 +196,7 @@ public class ExcelArVoucherDataSource implements TestDataSource<MergedFinanceArV
                                             .referenceSitewiseFIFOList(fifoSet)
                                             .paymentInformationList(payments)
                                             .paymentProvided(paymentProvided)
-                                            .needsIgnoreProceed(needsIgnoreProceed)
+                                            .needsPaymentInfoWarning(needsPaymentInfoWarning)
                                             .invocationIndex(globalCounter.incrementAndGet())
                                             .totalInvocations(grandTotal)
                                             // scenarioType intentionally null — Excel mode

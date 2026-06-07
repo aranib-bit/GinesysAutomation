@@ -10,11 +10,14 @@ import com.gsl.network.pattern.FinanceApiPattern;
 import com.gsl.pages.Finance.Operations.ApVoucherAdd;
 import com.gsl.pages.Finance.Operations.ApVoucherListPage;
 import com.gsl.pages.Finance.Operations.Common.DocumentPopup;
+import com.gsl.pages.Finance.Operations.Common.PaymentInfoCheckWarning;
 import com.gsl.pages.HomePage;
 import com.gsl.pages.LoginPage;
 import com.gsl.pages.enums.Finance.MainMenuType;
 import com.gsl.pages.enums.Finance.Operations.OperationsMenuType;
 import com.gsl.reports.ApVoucherExtentDescriptionLogger;
+import com.gsl.reports.DbGatheringExtentLogger;
+import com.gsl.utils.dataprovider.source.finance.DbApVoucherDataSource;
 import com.gsl.reports.ReportLogger;
 import com.gsl.reports.StepExecutor;
 import com.gsl.testdata.Finance.Operations.Vouchers.APVoucher.SelectDocument;
@@ -53,6 +56,23 @@ public class CreateApVoucher extends WebTest {
 
         Log.info("Create AP Voucher (Advance Payment) from UI");
         Log.info("Running test for: {}", data.getMasterTestData().getTestcaseid());
+
+        // ── Lazy DB load — runs before steps so full data is ready ───────────────
+        if (data.getScenarioType() != null
+                && (data.getSubLedgerInformationList() == null
+                    || data.getSubLedgerInformationList().isEmpty())) {
+            Log.debug("[DB mode] Placeholder detected for scenario={}", data.getScenarioType());
+            try {
+                data = DbApVoucherDataSource.loadFreshForScenario(data, "createApVoucherAdvancePayment");
+            } catch (IllegalStateException e) {
+                throw new org.testng.SkipException(
+                        "[CreateApVoucher] Skipping — insufficient test data for scenario '"
+                        + data.getScenarioType() + "': " + e.getMessage());
+            }
+        }
+
+        // ── P3: Log DB data-gathering section (no-op in Excel mode) ─────────────
+        DbGatheringExtentLogger.log(data);
 
         ApVoucherExtentDescriptionLogger.log(data);
 
@@ -109,8 +129,9 @@ public class CreateApVoucher extends WebTest {
         StepExecutor.step("Save AP Voucher", () -> {
             saveStartTime[0] = LocalDateTime.now();
             DocumentPopup savePopup = addRef[0].clickSave();
-            com.gsl.pages.Common.DocumentMessageBox messageBox = testData.isNeedsIgnoreProceed()
-                    ? savePopup.verifyWarningMessage().clickIgnoreProceed()
+            com.gsl.pages.Common.DocumentMessageBox messageBox = testData.isNeedsPaymentInfoWarning()
+                    ? savePopup.verifyPaymentInfoCheckWarning(PaymentInfoCheckWarning.AP_VOUCHER)
+                               .clickProceed(PaymentInfoCheckWarning.AP_VOUCHER)
                     : savePopup.waitForMessageBox();
 
             com.gsl.pages.Common.DocumentMessageBox.DocumentSaveResult saveResult =
@@ -157,6 +178,23 @@ public class CreateApVoucher extends WebTest {
 
         Log.info("Create AP Voucher (Document Payment) from UI");
         Log.info("Running test for: {}", data.getMasterTestData().getTestcaseid());
+
+        // ── Lazy DB load — runs before steps so full data is ready ───────────────
+        if (data.getScenarioType() != null
+                && (data.getSubLedgerInformationList() == null
+                    || data.getSubLedgerInformationList().isEmpty())) {
+            Log.debug("[DB mode] Placeholder detected for scenario={}", data.getScenarioType());
+            try {
+                data = DbApVoucherDataSource.loadFreshForScenario(data, "createApVoucherDocumentPayment");
+            } catch (IllegalStateException e) {
+                throw new org.testng.SkipException(
+                        "[CreateApVoucher] Skipping — insufficient test data for scenario '"
+                        + data.getScenarioType() + "': " + e.getMessage());
+            }
+        }
+
+        // ── P3: Log DB data-gathering section (no-op in Excel mode) ─────────────
+        DbGatheringExtentLogger.log(data);
 
         ApVoucherExtentDescriptionLogger.log(data);
 
@@ -216,8 +254,9 @@ public class CreateApVoucher extends WebTest {
 
             saveStartTime[0] = LocalDateTime.now();
             DocumentPopup savePopup = addRef[0].clickSave();
-            com.gsl.pages.Common.DocumentMessageBox messageBox = testData.isNeedsIgnoreProceed()
-                    ? savePopup.verifyWarningMessage().clickIgnoreProceed()
+            com.gsl.pages.Common.DocumentMessageBox messageBox = testData.isNeedsPaymentInfoWarning()
+                    ? savePopup.verifyPaymentInfoCheckWarning(PaymentInfoCheckWarning.AP_VOUCHER)
+                               .clickProceed(PaymentInfoCheckWarning.AP_VOUCHER)
                     : savePopup.waitForMessageBox();
 
             com.gsl.pages.Common.DocumentMessageBox.DocumentSaveResult saveResult =

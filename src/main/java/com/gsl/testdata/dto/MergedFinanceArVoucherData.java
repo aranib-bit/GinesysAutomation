@@ -32,7 +32,8 @@ public class MergedFinanceArVoucherData implements InvocationData {
 
     // Derived flags
     private boolean paymentProvided;
-    private boolean needsIgnoreProceed;
+    private boolean needsPaymentInfoWarning;
+    private boolean tdsProvided;
 
     /** Grid Amount Cr vs total adjustment entry amount relationship.
      *  DB mode: set from SelectDocumentVariant.gridRelation.

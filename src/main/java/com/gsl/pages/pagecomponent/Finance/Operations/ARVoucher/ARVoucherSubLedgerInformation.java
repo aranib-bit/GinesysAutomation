@@ -62,7 +62,7 @@ public class ARVoucherSubLedgerInformation extends VoucherSubLedgerInformationBa
      *
      * @param data         full test data (carries subledger list, select docs, payment list)
      * @param includeRetry true  → run Pass 2 reference-site re-apply + row-0 retry + read-back
-     *                     false → Pass 1 only (used for NO_ADJUSTMENT scenarios)
+     *                     false → Pass 1 only (used for DOC_NO_ADJUSTMENT scenarios)
      */
     public ARVoucherSubLedgerInformation fillSubLedgerRows(
             MergedFinanceArVoucherData data, boolean includeRetry) {

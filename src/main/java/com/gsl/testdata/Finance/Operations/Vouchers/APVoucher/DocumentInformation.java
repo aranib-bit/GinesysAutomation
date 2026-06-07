@@ -11,11 +11,18 @@ import lombok.NoArgsConstructor;
 
 import java.time.LocalDate;
 
+/**
+ * <p><b>Optional field note:</b> {@code onAccountConfirm} lives in
+ * {@link DocumentInformationBase}. XlsxReader calls {@code getDeclaredFields()} on
+ * this class only — inherited fields are invisible to it, so the field is never
+ * treated as a required Excel column. It is populated post-load via
+ * {@link #setOnAccountConfirm(String)} by {@code ExcelApVoucherDataSource}.
+ */
 @Getter
 @NoArgsConstructor
 @AllArgsConstructor
 @Sheet(name = "DocumentInformation")
-public class DocumentInformation implements VoucherDocumentHeader {
+public class DocumentInformation extends DocumentInformationBase implements VoucherDocumentHeader {
 
     @Mandatory
     @Column(name = "TestCaseID")

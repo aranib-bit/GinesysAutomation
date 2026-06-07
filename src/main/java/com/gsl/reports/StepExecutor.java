@@ -7,8 +7,10 @@ import com.gsl.browser.injector.FrontendDiagnosticsInjectorFactory;
 import com.gsl.config.ConfigFactory;
 import com.gsl.driver.DriverManager;
 import com.gsl.utils.Log;
+import com.gsl.utils.Selenium.ScreenshotMetadata;
 import com.gsl.utils.Selenium.ScreenshotUtils;
 import org.openqa.selenium.JavascriptExecutor;
+import com.gsl.reports.StepDurationBuffer;
 
 public final class StepExecutor {
 
@@ -54,18 +56,28 @@ public final class StepExecutor {
         ExtentManager.setExtentTest(node);
         Log.info("[STEP] {}", stepName);
 
+        long startMs  = System.currentTimeMillis();
+        long durationMs = 0;
         try {
             action.run();
-            node.pass("Step passed");
-            Log.info("[STEP PASS] {}", stepName);
+            durationMs = System.currentTimeMillis() - startMs;
+            node.pass("Step passed — " + durationMs + "ms");
+            Log.info("[STEP PASS] {} ({}ms)", stepName, durationMs);
+            StepDurationBuffer.record(stepName, durationMs, true);
         } catch (RuntimeException e) {
+            durationMs = System.currentTimeMillis() - startMs;
+            StepDurationBuffer.record(stepName, durationMs, false);
             failNode(node, stepName, e);
             throw e;
         } catch (Exception e) {
+            durationMs = System.currentTimeMillis() - startMs;
+            StepDurationBuffer.record(stepName, durationMs, false);
             failNode(node, stepName, e);
             throw new RuntimeException("Step failed: " + stepName, e);
         } catch (Throwable t) {
             // Catches Errors (e.g. AssertionError, SoftAssertionError) that are not Exception subclasses
+            durationMs = System.currentTimeMillis() - startMs;
+            StepDurationBuffer.record(stepName, durationMs, false);
             failNode(node, stepName, t);
             if (t instanceof Error) throw (Error) t;
             throw new RuntimeException("Step failed: " + stepName, t);
@@ -81,15 +93,19 @@ public final class StepExecutor {
      */
     private static void failNode(ExtentTest node, String stepName, Throwable e) {
         Log.error("[STEP FAIL] {} — {}", stepName, e.getMessage());
-        // Log exception type and message as separate fail entries inside the step node
-        // so they appear at the correct position (not at the top of the test report)
         node.fail("Exception  : " + e.getClass().getSimpleName());
         node.fail("Message    : " + e.getMessage());
         if (DriverManager.getDriver() != null) {
             try {
+                // Capture screenshot + page-context metadata in a single pass.
+                // Metadata (URL, scroll, viewport) aids reproduction without needing a re-run.
+                ScreenshotMetadata meta = ScreenshotUtils.saveScreenshotWithMetadata(stepName);
                 node.fail("Screenshot at failure",
-                        MediaEntityBuilder.createScreenCaptureFromBase64String(
-                                ScreenshotUtils.getScreenshot()).build());
+                        MediaEntityBuilder.createScreenCaptureFromPath(meta.filePath()).build());
+                String annotation = meta.toAnnotation();
+                if (!annotation.isBlank()) {
+                    node.info("Page context: " + annotation);
+                }
             } catch (Exception screenshotEx) {
                 node.fail("Screenshot unavailable: " + screenshotEx.getMessage());
             }

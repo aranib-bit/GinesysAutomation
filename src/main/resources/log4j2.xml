@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<Configuration status="WARN" monitorInterval="30">
+<Configuration status="WARN" monitorInterval="30" shutdownHook="enable">
 
     <Properties>
         <Property name="LOG_DIR">logs</Property>
@@ -52,7 +52,7 @@
         </RollingFile>
 
         <!-- Non-blocking async wrapper for trace writes -->
-        <Async name="AsyncTraceFile" bufferSize="1024" blocking="false">
+        <Async name="AsyncTraceFile" bufferSize="1024" blocking="true">
             <AppenderRef ref="TraceFileAppender"/>
         </Async>
 

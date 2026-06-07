@@ -121,18 +121,18 @@ public class DbArVoucherDataSource implements TestDataSource<MergedFinanceArVouc
                             variant.getVariantId(), variant.getTestCaseName()));
                 }
 
-            } else if (scenario == ArVoucherScenarioType.NO_ADJUSTMENT) {
-                // NO_ADJ_SYSTEM → MANDATORY
-                // NO_ADJ_USER   → REGRESSION_PHASE1
+            } else if (scenario == ArVoucherScenarioType.DOC_NO_ADJUSTMENT) {
+                // DOC_NO_ADJ_SYSTEM → MANDATORY
+                // DOC_NO_ADJ_USER   → REGRESSION_PHASE1
                 if (systemClsCode > 0 && matchesGroup(activeGroup, ArVoucherExecutionGroup.MANDATORY)) {
                     placeholders.add(buildPlaceholder(testMethodName, loginName, loginPwd, scenario,
                             ArVoucherFixtureOptions.forCashBankTypeAndClsCode(CashBankType.BANK, systemClsCode),
-                            "NO_ADJ_SYSTEM", "NO_ADJUSTMENT | [Bank GL] | System SL"));
+                            "DOC_NO_ADJ_SYSTEM", "DOC_NO_ADJUSTMENT | [Bank GL] | System SL"));
                 }
                 if (userClsCode > 0 && matchesGroup(activeGroup, ArVoucherExecutionGroup.REGRESSION_PHASE1)) {
                     placeholders.add(buildPlaceholder(testMethodName, loginName, loginPwd, scenario,
                             ArVoucherFixtureOptions.forCashBankTypeAndClsCode(CashBankType.BANK, userClsCode),
-                            "NO_ADJ_USER", "NO_ADJUSTMENT | [Bank GL] | User SL"));
+                            "DOC_NO_ADJ_USER", "DOC_NO_ADJUSTMENT | [Bank GL] | User SL"));
                 }
 
             } else {
@@ -300,7 +300,7 @@ public class DbArVoucherDataSource implements TestDataSource<MergedFinanceArVouc
                 .referenceSitewiseFIFOList(List.of())
                 .paymentInformationList(List.of())
                 .paymentProvided(false)
-                .needsIgnoreProceed(false)
+                .needsPaymentInfoWarning(false)
                 .invocationIndex(1)
                 .totalInvocations(1)
                 .fixtureOptions(opts)
@@ -418,16 +418,18 @@ public class DbArVoucherDataSource implements TestDataSource<MergedFinanceArVouc
         // 7. AR Voucher doc scheme verified for user's site
         String docSchemeName = findArVoucherDocSchemeName(jdbi, d, siteCodes);
 
-        // 8. Package into LiveDbRefs
-        LiveDbRefs refs = new LiveDbRefs(
-                cashBankName,
-                ownerSiteName,
-                docSchemeName,
-                pendingSlNames,
-                pendingDocsBySlName,
-                slToArApName,
-                targetCashBankType
-        );
+        // 8. Package into LiveDbRefs — AR Voucher has no TDS behaviour or TDS name resolution
+        LiveDbRefs refs = LiveDbRefs.builder()
+                .cashBankName(cashBankName)
+                .ownerSiteName(ownerSiteName)
+                .docSchemeName(docSchemeName)
+                .pendingSlNames(pendingSlNames)
+                .pendingDocsBySlName(pendingDocsBySlName)
+                .slToArApName(slToArApName)
+                .cashBankType(targetCashBankType)
+                .tdsBehaviour(null)     // not applicable for AR Voucher
+                // slToTdsResolution intentionally omitted — defaults to empty map
+                .build();
 
         printRefs(loginName, ecode, refs, pendingDocsBySlName);
 

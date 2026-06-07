@@ -8,6 +8,7 @@ import com.gsl.enums.TestAuthor;
 import com.gsl.pages.Finance.Operations.ArVoucherAdd;
 import com.gsl.pages.Finance.Operations.ArVoucherListPage;
 import com.gsl.pages.Finance.Operations.Common.DocumentPopup;
+import com.gsl.pages.Finance.Operations.Common.PaymentInfoCheckWarning;
 import com.gsl.pages.HomePage;
 import com.gsl.pages.LoginPage;
 import com.gsl.pages.enums.Finance.MainMenuType;
@@ -119,8 +120,9 @@ public class EditArVoucher extends WebTest {
         // ── Step 7: Save ──────────────────────────────────────────────────────────
         StepExecutor.step("Save Edited AR Voucher", () -> {
             DocumentPopup savePopup = editRef[0].clickSave();
-            com.gsl.pages.Common.DocumentMessageBox messageBox = testData.isNeedsIgnoreProceed()
-                    ? savePopup.verifyWarningMessage().clickIgnoreProceed()
+            com.gsl.pages.Common.DocumentMessageBox messageBox = testData.isNeedsPaymentInfoWarning()
+                    ? savePopup.verifyPaymentInfoCheckWarning(PaymentInfoCheckWarning.AR_VOUCHER)
+                               .clickProceed(PaymentInfoCheckWarning.AR_VOUCHER)
                     : savePopup.waitForMessageBox();
 
             docNoRef[0] = messageBox.extractDocumentNo();

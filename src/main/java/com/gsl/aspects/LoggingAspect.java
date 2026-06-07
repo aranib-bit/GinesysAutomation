@@ -114,6 +114,8 @@ public class LoggingAspect {
 
         if (meta != null && locator != null) {
             TRACE.info("{}  → {} | {}", indent(depth), meta.getName(), locator);
+        } else if (locator != null) {
+            TRACE.info("{}  → [xpath] {}", indent(depth), locator);
         }
 
         if ("sendKeys".equalsIgnoreCase(methodName) && value != null) {

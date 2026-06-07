@@ -1,6 +1,7 @@
 package com.gsl.model.finance;
 
 import lombok.Data;
+import org.jdbi.v3.core.mapper.reflect.ColumnName;
 
 /**
  * Maps to finsl — Sub-Ledger master table.
@@ -18,4 +19,7 @@ public class FinSl {
     private long   glcode;     // Parent GL — Sundry Debtors or Sundry Creditors master GL
     private long   clscode;    // FK → admcls.clscode (SL classification type)
     private int    cmpcode;    // 1 = system-defined, 0 = user-defined
+
+    @ColumnName("tds_app")
+    private String tdsApplicable;   // 'Y' = TDS applicable, 'N' = not applicable
 }

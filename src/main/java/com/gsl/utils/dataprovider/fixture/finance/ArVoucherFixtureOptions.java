@@ -48,7 +48,7 @@ public class ArVoucherFixtureOptions {
     private final CashBankType glType;
 
     /**
-     * {@code admcls.clscode} filter for FIFO, REF_SITEWISE, and NO_ADJUSTMENT placeholders.
+     * {@code admcls.clscode} filter for FIFO, REF_SITEWISE, and DOC_NO_ADJUSTMENT placeholders.
      * {@code 0} (default) = no filter — any SL with pending AR is accepted.
      * Positive value = restrict SL lookup to that specific classification code.
      *
@@ -102,7 +102,7 @@ public class ArVoucherFixtureOptions {
 
     /**
      * Returns an instance configured for a specific GL type and SL classification code.
-     * Used for FIFO, REF_SITEWISE, and NO_ADJUSTMENT Bank GL placeholders that scope
+     * Used for FIFO, REF_SITEWISE, and DOC_NO_ADJUSTMENT Bank GL placeholders that scope
      * the SL lookup to a particular system or user-defined classification type.
      *
      * @param type     the target GL type (CASH or BANK)

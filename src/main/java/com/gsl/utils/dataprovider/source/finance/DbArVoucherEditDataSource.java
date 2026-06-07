@@ -125,7 +125,7 @@ public class DbArVoucherEditDataSource implements TestDataSource<MergedFinanceAr
                 .referenceSitewiseFIFOList(List.of())
                 .paymentInformationList(List.of())
                 .paymentProvided(false)
-                .needsIgnoreProceed(false)
+                .needsPaymentInfoWarning(false)
                 .invocationIndex(1)
                 .totalInvocations(1)
                 .build();

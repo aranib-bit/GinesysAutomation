@@ -49,6 +49,6 @@ public final class ActionTrailBuffer {
     }
 
     public static void clear() {
-        TRAIL.get().clear();
+        TRAIL.remove();
     }
 }

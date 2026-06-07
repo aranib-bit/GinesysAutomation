@@ -16,4 +16,16 @@ public final class Log {
     public static void warn(String msg, Object... args)  { logger.warn(msg, args);  }
     public static void error(String msg, Object... args) { logger.error(msg, args); }
     public static void error(String msg, Throwable t)    { logger.error(msg, t);    }
+
+    /**
+     * Logs current JVM heap usage at INFO. Useful at suite start/finish and on OOM
+     * post-mortem to correlate growth against test progress.
+     */
+    public static void logHeap(String label) {
+        Runtime r = Runtime.getRuntime();
+        long used  = (r.totalMemory() - r.freeMemory()) / 1048576L;
+        long total = r.totalMemory() / 1048576L;
+        long max   = r.maxMemory() / 1048576L;
+        logger.info("[HEAP {}] used={} MB / total={} MB / max={} MB", label, used, total, max);
+    }
 }

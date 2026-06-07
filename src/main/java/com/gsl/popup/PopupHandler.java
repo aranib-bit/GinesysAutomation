@@ -126,7 +126,7 @@ public final class PopupHandler {
 
     private static String safeScreenshot() {
         try {
-            return ScreenshotUtils.getScreenshot();
+            return ScreenshotUtils.saveScreenshot("popup");
         } catch (Exception e) {
             return null;
         }

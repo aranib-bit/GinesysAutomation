@@ -2,6 +2,7 @@ package com.gsl.utils.Selenium;
 
 import com.gsl.config.ConfigFactory;
 import com.gsl.driver.DriverManager;
+import com.gsl.reports.WaitDurationBuffer;
 import org.openqa.selenium.*;
 import org.openqa.selenium.support.ui.ExpectedConditions;
 import org.openqa.selenium.support.ui.FluentWait;
@@ -17,36 +18,69 @@ public final class WaitUtils {
     private WaitUtils() {}
 
     public static WebElement fluentWait(By by) {
-        Wait<WebDriver> wait = new FluentWait<>(getDriver())
-                .withTimeout(Duration.ofMillis(ConfigFactory.getConfig().itemscanmaxtimeout()))
-                .pollingEvery(Duration.ofSeconds(2))
-                .ignoring(NoSuchElementException.class)
-                .ignoring(ElementClickInterceptedException.class)
-                .ignoring(ElementNotInteractableException.class);
-
-        return wait.until(ExpectedConditions.elementToBeClickable(by));
+        long startMs = System.currentTimeMillis();
+        try {
+            Wait<WebDriver> wait = new FluentWait<>(getDriver())
+                    .withTimeout(Duration.ofMillis(ConfigFactory.getConfig().itemscanmaxtimeout()))
+                    .pollingEvery(Duration.ofSeconds(2))
+                    .ignoring(NoSuchElementException.class)
+                    .ignoring(ElementClickInterceptedException.class)
+                    .ignoring(ElementNotInteractableException.class);
+            return wait.until(ExpectedConditions.elementToBeClickable(by));
+        } finally {
+            recordIfEnabled("fluentWait(" + by + ")", startMs, "fluentWait");
+        }
     }
 
     public static WebElement waitUntilAjaxAndElementClickable(By by) {
-        WebDriverWait wait = new WebDriverWait(DriverManager.getDriver(), Duration.ofSeconds(ConfigFactory.getConfig().timeout()));
-
-        // Wait for ExtJS AJAX requests to complete
-        wait.until(driver -> (Boolean) ((JavascriptExecutor) driver).executeScript(
-                "return (window.Ext && window.Ext.Ajax && !window.Ext.Ajax.isLoading()) || (!window.Ext || !window.Ext.Ajax);"
-        ));
-
-        // Wait for the element to be clickable
-        return wait.until(ExpectedConditions.elementToBeClickable(by));
+        long startMs = System.currentTimeMillis();
+        try {
+            WebDriverWait wait = new WebDriverWait(DriverManager.getDriver(),
+                    Duration.ofSeconds(ConfigFactory.getConfig().timeout()));
+            wait.until(driver -> (Boolean) ((JavascriptExecutor) driver).executeScript(
+                    "return (window.Ext && window.Ext.Ajax && !window.Ext.Ajax.isLoading()) || (!window.Ext || !window.Ext.Ajax);"
+            ));
+            return wait.until(ExpectedConditions.elementToBeClickable(by));
+        } finally {
+            recordIfEnabled("waitUntilAjaxAndClickable(" + by + ")", startMs, "waitUntilAjaxAndElementClickable");
+        }
     }
 
+    /**
+     * Waits for ExtJS loading masks to disappear.
+     * Records elapsed time to {@link WaitDurationBuffer} when wait analysis is enabled.
+     * Internally delegates to {@link #waitForExtMaskInternal()} so that
+     * {@link #waitForExtJsApp()} can call the inner logic without creating a double entry.
+     */
     public static void waitForExtMask() {
+        long startMs = System.currentTimeMillis();
+        try {
+            waitForExtMaskInternal();
+        } finally {
+            recordIfEnabled("waitForExtMask", startMs, "waitForExtMask");
+        }
+    }
+
+    public static void waitForExtMask(String contextLabel) {
+        long startMs = System.currentTimeMillis();
+        try {
+            waitForExtMaskInternal();
+        } finally {
+            recordIfEnabled(contextLabel, startMs, "waitForExtMask");
+        }
+    }
+
+    /**
+     * Core mask-wait logic — shared by {@link #waitForExtMask()} and
+     * {@link #waitForExtJsApp()} to avoid double-counting in the wait buffer.
+     */
+    private static void waitForExtMaskInternal() {
         try {
             new WebDriverWait(DriverManager.getDriver(), Duration.ofSeconds(extJsTimeout()))
                     .until(ExpectedConditions.invisibilityOfElementLocated(
                             By.cssSelector(".x-mask, .x-mask-msg")
                     ));
         } catch (TimeoutException e) {
-            // If a messagebox dialog is visible the mask won't clear until Yes/No is clicked — expected
             boolean dialogBlocking = !DriverManager.getDriver()
                     .findElements(By.xpath(
                             "//div[contains(@class,'x-message-box') and not(contains(@class,'x-hide-display'))]"))
@@ -56,64 +90,76 @@ public final class WaitUtils {
     }
 
     public static void waitForExtJsApp() {
-        JavascriptExecutorUtils.waitForExtJS();
-        waitForExtMask();
-        JavascriptExecutorUtils.waitForExtLayout();
+        long startMs = System.currentTimeMillis();
+        try {
+            JavascriptExecutorUtils.waitForExtJS();
+            waitForExtMaskInternal();   // internal — no separate buffer entry
+            JavascriptExecutorUtils.waitForExtLayout();
+        } finally {
+            recordIfEnabled("waitForExtJsApp", startMs, "waitForExtJsApp");
+        }
     }
 
     /**
      * Waits for the transient {@code ext-element-*} overlay (and all standard ExtJS masks) to
      * disappear before a click retry.
      *
-     * <p>Phase 1 — {@code .x-mask} / {@code .x-mask-msg}: standard ExtJS loading masks that
-     * appear during server-side processing.
-     *
-     * <p>Phase 2 — {@code div[id^='ext-element-']}: dynamic ExtJS modal backdrop elements
-     * (e.g. {@code ext-element-6}) that intercept pointer events while a dialog is opening.
-     * A JavaScript check is used because CSS attribute selectors with {@code display:block}
-     * are unreliable across ExtJS versions; instead we ask the driver whether any such
-     * element is currently displayed.
-     *
-     * <p>Phase 3 — ExtJS AJAX / layout cycle: ensures the JS event queue is empty after
-     * the overlay has cleared so that the target element is truly interactive.
+     * <p>Phase 1 — {@code .x-mask} / {@code .x-mask-msg}: standard ExtJS loading masks.
+     * <p>Phase 2 — {@code div[id^='ext-element-']}: dynamic ExtJS modal backdrop elements.
+     * <p>Phase 3 — ExtJS AJAX / layout cycle.
      */
     public static void waitForClickOverlay() {
-        // Phase 1: standard mask elements
+        long startMs = System.currentTimeMillis();
         try {
-            new WebDriverWait(DriverManager.getDriver(), Duration.ofSeconds(extJsTimeout()))
-                    .until(ExpectedConditions.invisibilityOfElementLocated(
-                            By.cssSelector(".x-mask, .x-mask-msg")
-                    ));
-        } catch (Exception ignored) { /* not present — proceed */ }
+            // Phase 1: standard mask elements
+            try {
+                new WebDriverWait(DriverManager.getDriver(), Duration.ofSeconds(extJsTimeout()))
+                        .until(ExpectedConditions.invisibilityOfElementLocated(
+                                By.cssSelector(".x-mask, .x-mask-msg")
+                        ));
+            } catch (Exception ignored) { /* not present — proceed */ }
 
-        // Phase 2: ext-element-* backdrop divs (JS check for isDisplayed())
-        try {
-            new WebDriverWait(DriverManager.getDriver(), Duration.ofSeconds(extJsTimeout()))
-                    .until(driver -> {
-                        try {
-                            return (Boolean) ((JavascriptExecutor) driver).executeScript(
-                                    "var els = document.querySelectorAll('div[id^=\"ext-element-\"]');" +
-                                    "for(var i=0;i<els.length;i++){" +
-                                    "  var s=els[i].style;" +
-                                    "  if(s.display!=='none' && s.visibility!=='hidden' && els[i].offsetParent!==null) return false;" +
-                                    "} return true;"
-                            );
-                        } catch (Exception e) { return true; } // session issue — let the retry proceed
-                    });
-        } catch (Exception ignored) { /* timeout — best-effort, let click retry proceed */ }
+            // Phase 2: ext-element-* backdrop divs (JS check for isDisplayed())
+            try {
+                new WebDriverWait(DriverManager.getDriver(), Duration.ofSeconds(extJsTimeout()))
+                        .until(driver -> {
+                            try {
+                                return (Boolean) ((JavascriptExecutor) driver).executeScript(
+                                        "var els = document.querySelectorAll('div[id^=\"ext-element-\"]');" +
+                                        "for(var i=0;i<els.length;i++){" +
+                                        "  var s=els[i].style;" +
+                                        "  if(s.display!=='none' && s.visibility!=='hidden' && els[i].offsetParent!==null) return false;" +
+                                        "} return true;"
+                                );
+                            } catch (Exception e) { return true; }
+                        });
+            } catch (Exception ignored) { /* timeout — best-effort, let click retry proceed */ }
 
-        // Phase 3: ExtJS AJAX + layout cycle
-        JavascriptExecutorUtils.waitForExtJS();
+            // Phase 3: ExtJS AJAX + layout cycle
+            JavascriptExecutorUtils.waitForExtJS();
+        } finally {
+            recordIfEnabled("waitForClickOverlay", startMs, "waitForClickOverlay");
+        }
     }
 
     public static void extSafeClick(By locator) {
+        // Composite method — individual wait calls inside are already instrumented;
+        // do NOT add a WaitDurationBuffer entry here to avoid ambiguous double entries.
         JavascriptExecutorUtils.waitForExtJS();
-        waitForExtMask();
+        waitForExtMaskInternal();
         WebElement element = new WebDriverWait(DriverManager.getDriver(), Duration.ofSeconds(extJsTimeout()))
                 .until(ExpectedConditions.elementToBeClickable(locator));
         element.click();
-        waitForExtMask();
+        waitForExtMaskInternal();
         JavascriptExecutorUtils.waitForExtJS();
+    }
+
+    // ── Helpers ───────────────────────────────────────────────────────────────
+
+    private static void recordIfEnabled(String label, long startMs, String method) {
+        if (ConfigFactory.getConfig().waitAnalysisEnabled()) {
+            WaitDurationBuffer.record(label, System.currentTimeMillis() - startMs, method);
+        }
     }
 
     private static long extJsTimeout() {

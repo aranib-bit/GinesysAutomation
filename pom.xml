@@ -12,6 +12,13 @@
         <maven.compiler.source>17</maven.compiler.source>
         <maven.compiler.target>17</maven.compiler.target>
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
+        <!--
+            Host-adaptive surefire JVM args. MaxRAMPercentage scales heap to the machine
+            (50% of host/container RAM) instead of a fixed -Xmx, so the same pom runs on
+            laptops and Jenkins agents of widely different sizes.
+            Override per-run with -Dtest.jvm.args="-Xmx512m …" for tight environments.
+        -->
+        <test.jvm.args>-XX:MaxRAMPercentage=60.0 -XX:MinRAMPercentage=30.0 -XX:InitialRAMPercentage=25.0 -XX:+UseG1GC -XX:MaxGCPauseMillis=200 -XX:+HeapDumpOnOutOfMemoryError -XX:HeapDumpPath=${project.build.directory}/heapdumps -Xlog:gc*:file=${project.build.directory}/gc.log:time,uptime,level,tags:filecount=5,filesize=10M</test.jvm.args>
     </properties>
     <dependencies>
         <!-- https://mvnrepository.com/artifact/org.seleniumhq.selenium/selenium-java -->
@@ -249,7 +256,7 @@
                     <suiteXmlFiles>
                         <suiteXmlFile>testng.xml</suiteXmlFile>
                     </suiteXmlFiles>
-                    <argLine>--add-opens java.base/java.lang=ALL-UNNAMED</argLine>
+                    <argLine>${test.jvm.args} --add-opens java.base/java.lang=ALL-UNNAMED</argLine>
                 </configuration>
             </plugin>
 
@@ -323,7 +330,7 @@
                             <suiteXmlFiles>
                                 <suiteXmlFile>testng.xml</suiteXmlFile>
                             </suiteXmlFiles>
-                            <argLine>--add-opens java.base/java.lang=ALL-UNNAMED</argLine>
+                            <argLine>${test.jvm.args} --add-opens java.base/java.lang=ALL-UNNAMED</argLine>
                         </configuration>
                     </plugin>
                 </plugins>
@@ -344,7 +351,7 @@
                             <suiteXmlFiles>
                                 <suiteXmlFile>testng-mandatory.xml</suiteXmlFile>
                             </suiteXmlFiles>
-                            <argLine>--add-opens java.base/java.lang=ALL-UNNAMED</argLine>
+                            <argLine>${test.jvm.args} --add-opens java.base/java.lang=ALL-UNNAMED</argLine>
                             <systemPropertyVariables>
                                 <arv.group>MANDATORY</arv.group>
                             </systemPropertyVariables>
@@ -368,7 +375,7 @@
                             <suiteXmlFiles>
                                 <suiteXmlFile>testng-regression-phase1.xml</suiteXmlFile>
                             </suiteXmlFiles>
-                            <argLine>--add-opens java.base/java.lang=ALL-UNNAMED</argLine>
+                            <argLine>${test.jvm.args} --add-opens java.base/java.lang=ALL-UNNAMED</argLine>
                             <systemPropertyVariables>
                                 <arv.group>REGRESSION_PHASE1</arv.group>
                             </systemPropertyVariables>
@@ -392,7 +399,7 @@
                             <suiteXmlFiles>
                                 <suiteXmlFile>testng-regression-phase2.xml</suiteXmlFile>
                             </suiteXmlFiles>
-                            <argLine>--add-opens java.base/java.lang=ALL-UNNAMED</argLine>
+                            <argLine>${test.jvm.args} --add-opens java.base/java.lang=ALL-UNNAMED</argLine>
                             <systemPropertyVariables>
                                 <arv.group>REGRESSION_PHASE2</arv.group>
                             </systemPropertyVariables>
@@ -416,7 +423,7 @@
                             <suiteXmlFiles>
                                 <suiteXmlFile>testng-regression-phase3.xml</suiteXmlFile>
                             </suiteXmlFiles>
-                            <argLine>--add-opens java.base/java.lang=ALL-UNNAMED</argLine>
+                            <argLine>${test.jvm.args} --add-opens java.base/java.lang=ALL-UNNAMED</argLine>
                             <systemPropertyVariables>
                                 <arv.group>REGRESSION_PHASE3</arv.group>
                             </systemPropertyVariables>
@@ -440,7 +447,7 @@
                             <suiteXmlFiles>
                                 <suiteXmlFile>testng-regression.xml</suiteXmlFile>
                             </suiteXmlFiles>
-                            <argLine>--add-opens java.base/java.lang=ALL-UNNAMED</argLine>
+                            <argLine>${test.jvm.args} --add-opens java.base/java.lang=ALL-UNNAMED</argLine>
                             <!-- No arv.group property — DbArVoucherDataSource runs all groups -->
                         </configuration>
                     </plugin>
