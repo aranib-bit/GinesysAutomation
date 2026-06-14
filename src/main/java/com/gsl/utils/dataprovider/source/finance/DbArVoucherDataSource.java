@@ -32,7 +32,7 @@ import com.gsl.database.DocumentSelectionResult;
 import com.gsl.database.DocumentSelector;
 import com.gsl.database.SelectorRequest;
 import com.gsl.enums.DocumentSelectionMode;
-import com.gsl.config.FrameworkConfig;
+import com.gsl.config.WaitConfig;
 import com.gsl.utils.dataprovider.source.TestDataSource;
 import org.jdbi.v3.core.Jdbi;
 
@@ -134,6 +134,17 @@ public class DbArVoucherDataSource implements TestDataSource<MergedFinanceArVouc
                             ArVoucherFixtureOptions.forCashBankTypeAndClsCode(CashBankType.BANK, userClsCode),
                             "DOC_NO_ADJ_USER", "DOC_NO_ADJUSTMENT | [Bank GL] | User SL"));
                 }
+
+            } else if (scenario == ArVoucherScenarioType.NEG_BLANK_CASHBANK
+                    || scenario == ArVoucherScenarioType.NEG_BLANK_SUBLEDGER
+                    || scenario == ArVoucherScenarioType.NEG_BLANK_MANDATORY_REFERENCE
+                    || scenario == ArVoucherScenarioType.BOUND_AMOUNT_MIN_VALID
+                    || scenario == ArVoucherScenarioType.BOUND_AMOUNT_MIN_INVALID) {
+                // T-03 Negative & Boundary — one placeholder each, emitted for every group
+                // (the negative test method's suite block sets no arv.group → activeGroup null).
+                placeholders.add(buildPlaceholder(testMethodName, loginName, loginPwd, scenario,
+                        ArVoucherFixtureOptions.forCashBankType(CashBankType.BANK),
+                        "DB_" + scenario.name(), scenario.name()));
 
             } else {
                 // FIFO_SETOFF / REFERENCE_SITEWISE_FIFO:
@@ -325,6 +336,30 @@ public class DbArVoucherDataSource implements TestDataSource<MergedFinanceArVouc
     public static MergedFinanceArVoucherData loadFreshForScenario(
             MergedFinanceArVoucherData placeholder, String methodName) {
 
+        // Run the DB resolution chain inside a DataLoadScope so the LoggingAspect suppresses
+        // its per-frame red FAIL logging while data is loading (see DataLoadScope). Any
+        // IllegalStateException raised by an inner helper (no usable site / GL / pending docs)
+        // is a data-availability shortfall → convert to a SkipException at this boundary so the
+        // test renders as an amber Skip, not a misleading red Fail. Mirrors DbApVoucherDataSource,
+        // which already throws SkipException at its availability checks.
+        com.gsl.aspects.DataLoadScope.enter();
+        try {
+            return loadFreshForScenarioInternal(placeholder, methodName);
+        } catch (IllegalStateException e) {
+            throw new org.testng.SkipException(
+                    "[DbArVoucherDataSource] Skipping — insufficient test data for scenario '"
+                    + placeholder.getScenarioType() + "' / variant '"
+                    + (placeholder.getMasterTestData() != null
+                            ? placeholder.getMasterTestData().getTestcaseid() : "?")
+                    + "': " + e.getMessage());
+        } finally {
+            com.gsl.aspects.DataLoadScope.exit();
+        }
+    }
+
+    private static MergedFinanceArVoucherData loadFreshForScenarioInternal(
+            MergedFinanceArVoucherData placeholder, String methodName) {
+
         ArVoucherScenarioType scenarioType = placeholder.getScenarioType();
         ArVoucherFixtureOptions opts = placeholder.getFixtureOptions() != null
                 ? placeholder.getFixtureOptions()
@@ -380,7 +415,7 @@ public class DbArVoucherDataSource implements TestDataSource<MergedFinanceArVouc
                 ? variant.getSlClsCode()
                 : opts.getSlClsCode();
 
-        FrameworkConfig fcfg = ConfigFactory.getConfig();
+        WaitConfig fcfg = ConfigFactory.getWaitConfig();
         SelectorRequest selReq = SelectorRequest.builder()
                 .jdbi(jdbi)
                 .ouCodes(ouCodes)

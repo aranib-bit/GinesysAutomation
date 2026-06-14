@@ -100,7 +100,7 @@ public final class NetworkExtentLogger {
              .append("</tr>");
 
             // Headers sub-row
-            boolean captureHeaders = ConfigFactory.getConfig().networkCaptureHeaders();
+            boolean captureHeaders = ConfigFactory.getNetworkConfig().networkCaptureHeaders();
             if (captureHeaders && (!r.requestHeaders().isEmpty() || !r.responseHeaders().isEmpty())) {
                 t.append("<tr style='background:#fafafa;'><td colspan='4' style='").append(TD).append("padding-left:16px;'>")
                  .append(buildHeadersDetail(r))

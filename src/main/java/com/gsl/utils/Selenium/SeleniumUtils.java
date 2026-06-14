@@ -49,7 +49,7 @@ public class SeleniumUtils {
         JavascriptExecutorUtils.waitForPageLoad();
         JavascriptExecutorUtils.waitForExtJS();
         WebElement ready;
-        WebDriverWait wait = new WebDriverWait(DriverManager.getDriver(), Duration.ofSeconds(ConfigFactory.getConfig().timeout()));
+        WebDriverWait wait = WaitUtils.webDriverWait();
         if (waitType == WaitType.CLICKABLE) {
             ready = wait.until(ExpectedConditions.elementToBeClickable(element));
         } else if (waitType == WaitType.VISIBLE) {
@@ -66,15 +66,14 @@ public class SeleniumUtils {
     public static void jsClick(By by, String elementName) {
         JavascriptExecutorUtils.waitForPageLoad();
         JavascriptExecutorUtils.waitForExtJS();
-        WebDriverWait wait = new WebDriverWait(DriverManager.getDriver(), Duration.ofSeconds(ConfigFactory.getConfig().timeout()));
-        WebElement element = wait.until(ExpectedConditions.elementToBeClickable(by));
+        WebElement element = WaitUtils.untilClickable(by);
         JavascriptExecutorUtils.click(element);
         ExtentLogger.info(elementName + " is clicked successfully");
     }
 
     public static WebElement findChildElement(By parentLocator, By childLocator) {
-        WebDriverWait wait = new WebDriverWait(DriverManager.getDriver(), Duration.ofSeconds(ConfigFactory.getConfig().timeout()));
-        return wait.until(ExpectedConditions.presenceOfNestedElementLocatedBy(parentLocator, childLocator));
+        return WaitUtils.webDriverWait()
+                .until(ExpectedConditions.presenceOfNestedElementLocatedBy(parentLocator, childLocator));
     }
 
     public static boolean elementDisappear(By by, String elementName) {
@@ -140,39 +139,35 @@ public class SeleniumUtils {
         return value;
     }
 
+    // Wait wrappers delegate to the centralized WaitUtils (single home for all explicit waits).
+
     private static WebElement waitUntilElementPresent(By by) {
-        WebDriverWait wait = new WebDriverWait(DriverManager.getDriver(), Duration.ofSeconds(ConfigFactory.getConfig().timeout()));
-        return wait.until(ExpectedConditions.presenceOfElementLocated(by));
+        return WaitUtils.untilPresent(by);
     }
 
     private static WebElement waitUntilElementClickable(By by) {
-        WebDriverWait wait = new WebDriverWait(DriverManager.getDriver(), Duration.ofSeconds(ConfigFactory.getConfig().timeout()));
-        return wait.until(ExpectedConditions.elementToBeClickable(by));
+        return WaitUtils.untilClickable(by);
     }
 
-    private static WebElement waitUntilElementClickable(By by,Integer addedtime) {
-        WebDriverWait wait = new WebDriverWait(DriverManager.getDriver(), Duration.ofSeconds(ConfigFactory.getConfig().timeout()).plusSeconds(addedtime));
-        return wait.until(ExpectedConditions.elementToBeClickable(by));
+    private static WebElement waitUntilElementClickable(By by, Integer addedtime) {
+        return WaitUtils.untilClickable(by, ConfigFactory.getConfig().timeout() + addedtime);
     }
 
     private static WebElement waitUntilElementVisible(By by) {
-        WebDriverWait wait = new WebDriverWait(DriverManager.getDriver(), Duration.ofSeconds(ConfigFactory.getConfig().timeout()));
-        return wait.until(ExpectedConditions.visibilityOfElementLocated(by));
+        return WaitUtils.untilVisible(by);
     }
 
     public static boolean isElementPresent(By by, int timeoutInSeconds) {
         try {
-            new WebDriverWait(DriverManager.getDriver(), Duration.ofSeconds(timeoutInSeconds))
-                    .until(ExpectedConditions.visibilityOfElementLocated(by));
+            WaitUtils.untilVisible(by, timeoutInSeconds);
             return true;
         } catch (Exception e) {
             return false;
         }
     }
 
-    private static  boolean waitUntilElementInVisible(By by) {
-        WebDriverWait wait = new WebDriverWait(DriverManager.getDriver(), Duration.ofSeconds(ConfigFactory.getConfig().timeout()));
-        return wait.until(ExpectedConditions.invisibilityOfElementLocated(by));
+    private static boolean waitUntilElementInVisible(By by) {
+        return WaitUtils.untilInvisible(by);
     }
 
     public static String getText(By by, String elementName) {
@@ -221,8 +216,38 @@ public class SeleniumUtils {
         PopupMonitor.noteAfterAction(elementName);
     }
 
+    // ── Opt-in FluentWait click (snappy polling; non-disruptive) ──────────────
+    //
+    // These do NOT replace the existing click()/waitUntil* methods — migrate slow
+    // call sites (e.g. On-Account No→Yes toggle, voucher Save) to fluentClick() to
+    // remove the click gap. The gap on standard click() comes from WebDriverWait's
+    // 500ms default polling stacked across waitForPageLoad + waitForExtJS + clickable
+    // + post-click mask; these helpers poll every polling.millis (default 200ms).
+
+    /**
+     * Opt-in, snappier counterpart to {@link #click(By, WaitType, String)}: gates the prior AJAX
+     * via {@link JavascriptExecutorUtils#waitForExtJS()}, waits for the element with
+     * {@link WaitUtils#fluentClickable(By)} (fast {@code polling.millis} polling), clicks with the
+     * same overlay-retry as the standard path, then uses {@link WaitUtils#waitForExtMaskBestEffort(String)}
+     * — which never fails on a lingering zero-size ExtJS mask. Drop-in for call sites where the
+     * standard click idles too long.
+     */
+    public static void fluentClick(By by, String elementName) {
+        JavascriptExecutorUtils.waitForExtJS();
+        WebElement element = WaitUtils.fluentClickable(by);
+        clickWithOverlayRetry(element, elementName);
+        ExtentLogger.info(elementName + " is clicked successfully");
+        WaitUtils.waitForExtMaskBestEffort(elementName);
+        PopupMonitor.checkAfterAction(elementName);
+    }
+
+    /** {@link ElementMeta} overload of {@link #fluentClick(By, String)}. */
+    public static void fluentClick(By by, ElementMeta meta) {
+        fluentClick(by, meta.getName());
+    }
+
     public static void waitForInputReady(By locator) {
-        WebDriverWait wait = new WebDriverWait(DriverManager.getDriver(), Duration.ofSeconds(10));
+        WebDriverWait wait = WaitUtils.webDriverWait(ConfigFactory.getWaitConfig().interactionWaitSeconds());
         wait.until(driver -> {
             WebElement el = driver.findElement(locator);
             return el.isDisplayed()
@@ -252,7 +277,7 @@ public class SeleniumUtils {
      * caller, not here, so it only appears once on actual success.
      */
     private static void clickWithOverlayRetry(WebElement element, String elementName) {
-        int maxRetries = ConfigFactory.getConfig().clickOverlayRetryMax();
+        int maxRetries = ConfigFactory.getWaitConfig().clickOverlayRetryMax();
 
         for (int attempt = 1; attempt <= maxRetries + 1; attempt++) {
             try {

@@ -15,7 +15,7 @@ public final class NetworkLogAttachment {
     private NetworkLogAttachment() {}
 
     public static void attach() {
-        if (!ConfigFactory.getConfig().enableNetworkLogs()) return;
+        if (!ConfigFactory.getNetworkConfig().enableNetworkLogs()) return;
 
         NetworkCapture  capture  = NetworkCaptureManager.get();
         List<NetworkLogRecord> logs = capture.getLogs();

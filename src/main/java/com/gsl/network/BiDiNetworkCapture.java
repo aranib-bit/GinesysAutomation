@@ -50,7 +50,7 @@ public final class BiDiNetworkCapture implements NetworkCapture {
                 Map<String, String> requestHeaders  = headersFromBiDi(params.getRequest().getHeaders());
                 Map<String, String> responseHeaders = headersFromBiDi(params.getResponseData().getHeaders());
 
-                if (!ConfigFactory.getConfig().networkCaptureFailedOnly() || status >= 400) {
+                if (!ConfigFactory.getNetworkConfig().networkCaptureFailedOnly() || status >= 400) {
                     logs.add(new NetworkLogRecord(
                             url, method, status,
                             requestHeaders, responseHeaders,
@@ -101,7 +101,7 @@ public final class BiDiNetworkCapture implements NetworkCapture {
     // ── Helpers ───────────────────────────────────────────────────────────────
 
     private static boolean matchesFilter(String url) {
-        String raw = ConfigFactory.getConfig().networkCaptureUrlFilter();
+        String raw = ConfigFactory.getNetworkConfig().networkCaptureUrlFilter();
         if (raw == null || raw.isBlank()) return true;
         return Arrays.stream(raw.split(","))
                 .map(String::trim)

@@ -29,6 +29,15 @@ public class ArVoucherFixtureFactory {
                                 || scenario == ArVoucherScenarioType.SELECT_DOCUMENT
                                 || scenario == ArVoucherScenarioType.FIFO_SETOFF
                                 || scenario == ArVoucherScenarioType.REFERENCE_SITEWISE_FIFO;
+
+                // T-03 — negative & boundary scenarios (kept out of the positive createArVoucher run)
+                case "createArVoucherNegativeBoundary" ->
+                        scenario == ArVoucherScenarioType.NEG_BLANK_CASHBANK
+                                || scenario == ArVoucherScenarioType.NEG_BLANK_SUBLEDGER
+                                || scenario == ArVoucherScenarioType.NEG_BLANK_MANDATORY_REFERENCE
+                                || scenario == ArVoucherScenarioType.BOUND_AMOUNT_MIN_VALID
+                                || scenario == ArVoucherScenarioType.BOUND_AMOUNT_MIN_INVALID;
+
                 // Add new test methods here, e.g.:
                 // case "createArVoucherRefSitewise" ->
                 //     scenario == ArVoucherScenarioType.REFERENCE_SITEWISE_FIFO;

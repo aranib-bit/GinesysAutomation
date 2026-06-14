@@ -28,7 +28,7 @@ public final class DbStateSection implements DiagnosticSection {
     private List<String>              columns;
 
     public DbStateSection() {
-        if (!ConfigFactory.getConfig().diagnosticsDbStateEnabled()) return;
+        if (!ConfigFactory.getDiagnosticsConfig().diagnosticsDbStateEnabled()) return;
         collect();
     }
 
@@ -79,7 +79,7 @@ public final class DbStateSection implements DiagnosticSection {
     // ── helpers ───────────────────────────────────────────────────────────────
 
     private void collect() {
-        String sql = ConfigFactory.getConfig().diagnosticsDbStateQuery();
+        String sql = ConfigFactory.getDiagnosticsConfig().diagnosticsDbStateQuery();
         if (sql == null || sql.isBlank()) {
             Log.warn("[DbStateSection] diagnostics.db.state.query is not configured");
             return;

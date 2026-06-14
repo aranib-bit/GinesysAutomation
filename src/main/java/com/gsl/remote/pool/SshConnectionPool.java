@@ -106,10 +106,10 @@ public final class SshConnectionPool {
 
         return pools.computeIfAbsent(poolKey(host, port), k -> {
             GenericObjectPoolConfig<SSHClient> config = new GenericObjectPoolConfig<>();
-            config.setMaxTotal(ConfigFactory.getConfig().remoteSshPoolSize());
+            config.setMaxTotal(ConfigFactory.getRemoteLogConfig().remoteSshPoolSize());
             config.setBlockWhenExhausted(true);
             config.setMaxWaitMillis(
-                    (long) ConfigFactory.getConfig().remoteSshPoolMaxWaitSeconds() * 1_000L);
+                    (long) ConfigFactory.getRemoteLogConfig().remoteSshPoolMaxWaitSeconds() * 1_000L);
             config.setTestOnBorrow(true);
             config.setTimeBetweenEvictionRunsMillis(30_000L);
             config.setMinEvictableIdleTimeMillis(60_000L);

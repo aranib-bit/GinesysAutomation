@@ -1,5 +1,6 @@
 package com.gsl.testdata.dto;
 
+import com.gsl.flow.Finance.Operations.Common.PostSaveDialogHandler;
 import com.gsl.testdata.Finance.Operations.Vouchers.APVoucher.*;
 import com.gsl.testdata.InvocationData;
 import com.gsl.testdata.MasterTestData;
@@ -8,6 +9,7 @@ import com.gsl.utils.dataprovider.fixture.finance.ApVoucherFixtureOptions;
 import com.gsl.utils.dataprovider.fixture.finance.ApVoucherScenarioType;
 import com.gsl.utils.dataprovider.fixture.finance.ApVoucherTag;
 import com.gsl.utils.dataprovider.fixture.finance.NegativeValidation;
+import com.gsl.validation.db.finance.VoucherDbContextBuilder;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Data;
@@ -20,11 +22,15 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
+import java.util.stream.Collectors;
 
 @Data
 @Builder
 @AllArgsConstructor
-public class MergedFinanceApVoucherData implements InvocationData {
+public class MergedFinanceApVoucherData
+        implements InvocationData,
+                   PostSaveDialogHandler.PostSaveSpec,
+                   VoucherDbContextBuilder.InvoiceScoped {
 
     private MasterTestData masterTestData;
 
@@ -85,6 +91,14 @@ public class MergedFinanceApVoucherData implements InvocationData {
     private NegativeValidation expectedValidation;
 
     /**
+     * Cash/Bank GL name used in recovery behaviors (e.g. NEG_BLANK_CASHBANK_ADD_ROW_RECOVER).
+     * {@code null} for non-recovery scenarios.
+     * The header is filled with cashbank=null to trigger the Add Row error; this value is
+     * then set after the popup is dismissed.
+     */
+    private String cashbankForRecovery;
+
+    /**
      * Tag set assigned at placeholder-build time by {@code DbApVoucherDataSource.tagsFor()}.
      * Used by the {@code apv.tag} filter to include/exclude this placeholder.
      * Empty set = no filtering applied (all tags match).
@@ -115,5 +129,18 @@ public class MergedFinanceApVoucherData implements InvocationData {
     @Override
     public int getTotalInvocations() {
         return totalInvocations;
+    }
+
+    /**
+     * Scoped invoice numbers for the finpost pre/post snapshot (Save sub-steps 5a/5e).
+     * Empty for advance payment (no SelectDocument); the document-payment list otherwise.
+     */
+    @Override
+    public List<String> resolveInvoiceNos() {
+        return selectDocumentList != null
+                ? selectDocumentList.stream()
+                        .map(SelectDocument::getDocumentNumber)
+                        .collect(Collectors.toList())
+                : Collections.emptyList();
     }
 }

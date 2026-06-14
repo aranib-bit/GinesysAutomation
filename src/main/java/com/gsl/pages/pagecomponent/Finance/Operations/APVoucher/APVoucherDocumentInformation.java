@@ -30,10 +30,25 @@ public class APVoucherDocumentInformation extends VoucherDocumentInformationBase
         setDocScheme(docInfo.getVoucherno());
         setDocumentDate(formatDate(docInfo.getDocumentdate()));
         setReference(docInfo.getReference());
-        clickCashBankSearch();
-        selectCashBank(docInfo.getCashbank());
+        // T-03 negative scenario NEG_BLANK_CASHBANK leaves Cash/Bank deliberately empty so Save
+        // raises "Cash/Bank is required". Skip the picker entirely when no value is supplied;
+        // positive scenarios always pass a non-blank Cash/Bank, so this is a no-op for them.
+        String cashbank = docInfo.getCashbank();
+        if (cashbank != null && !cashbank.isBlank()) {
+            clickCashBankSearch();
+            selectCashBank(cashbank);
+        }
         setOnAccount(docInfo.isOnAccount(), docInfo.getOnAccountConfirmAction());
         setRemarks(docInfo.getRemarks());
+        return this;
+    }
+
+    /** Fills only the Cash/Bank field — used in recovery behaviors after dismissing an error popup. */
+    public APVoucherDocumentInformation fillCashBankOnly(String cashbank) {
+        if (cashbank != null && !cashbank.isBlank()) {
+            clickCashBankSearch();
+            selectCashBank(cashbank);
+        }
         return this;
     }
 

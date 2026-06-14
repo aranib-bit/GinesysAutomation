@@ -51,7 +51,7 @@ public final class JsErrorJsonExporter {
             Set<String> correlatedUrls,
             WebDriver driver) {
 
-        if (!ConfigFactory.getConfig().jsErrorJsonExportEnabled()) return;
+        if (!ConfigFactory.getReportConfig().jsErrorJsonExportEnabled()) return;
 
         List<BrowserLogRecord> criticals = jsLogs.stream()
                 .filter(r -> r.level() == LogSeverity.CRITICAL)

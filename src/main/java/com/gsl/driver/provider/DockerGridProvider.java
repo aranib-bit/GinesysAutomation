@@ -11,7 +11,7 @@ public final class DockerGridProvider extends SeleniumGridProvider {
 
     @Override
     protected String getGridUrl() {
-        return ConfigFactory.getConfig().dockerGridUrl();
+        return ConfigFactory.getBrowserConfig().dockerGridUrl();
     }
 
     @Override

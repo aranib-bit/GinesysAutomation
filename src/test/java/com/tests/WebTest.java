@@ -111,12 +111,12 @@ public abstract class WebTest extends BaseTest {
             Driver.initDriver();
 
             // ── Inject PerformanceObserver listeners for Custom Metrics ───────────
-            if (ConfigFactory.getConfig().customMetricsEnabled()) {
+            if (ConfigFactory.getDiagnosticsConfig().customMetricsEnabled()) {
                 CustomMetricsObserverInjector.inject(DriverManager.getDriver());
             }
 
             // ── Inject framework-specific frontend performance instrumentation ────
-            if (ConfigFactory.getConfig().frontendDiagnosticsEnabled()) {
+            if (ConfigFactory.getDiagnosticsConfig().frontendDiagnosticsEnabled()) {
                 FrontendDiagnosticsInjectorFactory.get().inject(DriverManager.getDriver());
             }
 

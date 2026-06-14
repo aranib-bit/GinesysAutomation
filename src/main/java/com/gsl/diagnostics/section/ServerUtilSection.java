@@ -76,14 +76,14 @@ public final class ServerUtilSection implements DiagnosticSection {
 
     private boolean enabled() {
         return role == ServerRole.APP
-                ? ConfigFactory.getConfig().diagnosticsAppServerUtilEnabled()
-                : ConfigFactory.getConfig().diagnosticsDbServerUtilEnabled();
+                ? ConfigFactory.getDiagnosticsConfig().diagnosticsAppServerUtilEnabled()
+                : ConfigFactory.getDiagnosticsConfig().diagnosticsDbServerUtilEnabled();
     }
 
     private String serverType() {
         return role == ServerRole.APP
-                ? ConfigFactory.getConfig().diagnosticsAppServerType()
-                : ConfigFactory.getConfig().diagnosticsDbServerType();
+                ? ConfigFactory.getDiagnosticsConfig().diagnosticsAppServerType()
+                : ConfigFactory.getDiagnosticsConfig().diagnosticsDbServerType();
     }
 
     private static String exec(String... cmd) {

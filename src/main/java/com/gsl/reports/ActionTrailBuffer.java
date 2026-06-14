@@ -17,7 +17,7 @@ import java.util.List;
 public final class ActionTrailBuffer {
 
     private static final int BUFFER_SIZE =
-            ConfigFactory.getConfig().actionTrailBufferSize();
+            ConfigFactory.getDiagnosticsConfig().actionTrailBufferSize();
 
     private static final ThreadLocal<ArrayDeque<String>> TRAIL =
             ThreadLocal.withInitial(() -> new ArrayDeque<>(Math.max(BUFFER_SIZE, 1)));
@@ -38,7 +38,7 @@ public final class ActionTrailBuffer {
 
     /** Last N entries for ExtentReport display, respecting action.trail.display.limit. */
     public static List<String> getForDisplay() {
-        int limit = ConfigFactory.getConfig().actionTrailDisplayLimit();
+        int limit = ConfigFactory.getDiagnosticsConfig().actionTrailDisplayLimit();
         ArrayDeque<String> q = TRAIL.get();
         return q.stream().skip(Math.max(0, q.size() - limit)).toList();
     }

@@ -1,0 +1,77 @@
+package com.gsl.config;
+
+import com.gsl.config.converter.StringToBrowserConverter;
+import com.gsl.config.converter.StringToRunModeConverter;
+import com.gsl.enums.Browser;
+import com.gsl.enums.RunMode;
+import org.aeonbits.owner.Config;
+
+@Config.Sources("file:${user.dir}/src/test/resources/config/browser.properties")
+public interface BrowserConfig extends Config {
+
+    /** Raw string — preserved for backward compat. Prefer browserType() for typed access. */
+    String browser();
+
+    /** Raw string — preserved for backward compat. Prefer runMode() for typed access. */
+    String runmode();
+
+    /** Typed Browser enum converted from the browser property via StringToBrowserConverter. */
+    @Key("browser")
+    @Config.ConverterClass(StringToBrowserConverter.class)
+    Browser browserType();
+
+    /** Typed RunMode enum converted from the runmode property via StringToRunModeConverter. */
+    @Key("runmode")
+    @Config.ConverterClass(StringToRunModeConverter.class)
+    RunMode runMode();
+
+    String remoteurl();
+
+    @Key("headless")
+    @DefaultValue("false")
+    boolean headless();
+
+    @Key("incognito")
+    @DefaultValue("false")
+    boolean incognito();
+
+    @Key("acceptInsecureCerts")
+    @DefaultValue("false")
+    boolean acceptInsecureCerts();
+
+    @Key("network.mode")
+    @DefaultValue("CDP")
+    String networkMode();
+
+    @Key("grid.url")
+    @DefaultValue("http://localhost:4444/wd/hub")
+    String gridUrl();
+
+    @Key("docker.grid.url")
+    @DefaultValue("http://localhost:4444/wd/hub")
+    String dockerGridUrl();
+
+    @Key("browserstack.username")
+    @DefaultValue("")
+    String browserStackUsername();
+
+    @Key("browserstack.accesskey")
+    @DefaultValue("")
+    String browserStackAccessKey();
+
+    @Key("browserstack.build.name")
+    @DefaultValue("CI Build")
+    String browserStackBuildName();
+
+    @Key("lambdatest.username")
+    @DefaultValue("")
+    String lambdaTestUsername();
+
+    @Key("lambdatest.accesskey")
+    @DefaultValue("")
+    String lambdaTestAccessKey();
+
+    @Key("application.type")
+    @DefaultValue("extjs")
+    String applicationType();
+}

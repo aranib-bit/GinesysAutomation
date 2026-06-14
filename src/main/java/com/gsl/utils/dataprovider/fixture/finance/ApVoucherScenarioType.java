@@ -76,6 +76,19 @@ public enum ApVoucherScenarioType {
             true
     ),
 
+    // ─── Multi-SL Advance Payment ─────────────────────────────────────────────
+
+    /**
+     * Two SL lines with Bank GL and mixed payment information (NEFT/RTGS + Cheque).
+     * Exercises the multi-row payment popup flow end-to-end.
+     * Regression Phase 2 baseline for multi-SL advance scenarios.
+     */
+    ADVANCE_MULTI_SL_WITH_PAYMENT(
+            ApVoucherTemplateLoader::advanceMultiSlWithPaymentTemplate,
+            ApVoucherPredicateFactory.ADVANCE_NO_TDS_BEHAVIOR,
+            true
+    ),
+
     // ─── Document Payment (On Account = No) ──────────────────────────────────
 
     /**
@@ -115,6 +128,94 @@ public enum ApVoucherScenarioType {
     DOC_REFERENCE_SITEWISE_FIFO(
             ApVoucherTemplateLoader::docRefSitewiseFifoTemplate,
             ApVoucherPredicateFactory.DOC_REFERENCE_SITEWISE_FIFO_BEHAVIOR,
+            false
+    ),
+
+    // ─── T-03 Negative scenarios (expect a validation-error popup) ────────────
+    // All run on the advance path so a usable vendor SL is resolved without needing
+    // pending documents; each template mutates exactly one field to trigger its error.
+
+    /** Save with no Cash/Bank GL selected → "Cash/Bank is required". */
+    NEG_BLANK_CASHBANK(
+            ApVoucherTemplateLoader::negBlankCashbankTemplate,
+            ApVoucherPredicateFactory.NEGATIVE_FORM_VALIDATION_BEHAVIOR,
+            true
+    ),
+
+    /**
+     * FIN-AP-ADD-NEG-01 T-1: Click Add Row without Cash/Bank selected →
+     * Error popup "Please select cash/bank ledger first." — assert header + body, dismiss, discard.
+     */
+    NEG_BLANK_CASHBANK_ADD_ROW(
+            ApVoucherTemplateLoader::negBlankCashbankAddRowTemplate,
+            ApVoucherPredicateFactory.NEG_BLANK_CASHBANK_ADD_ROW_BEHAVIOR,
+            true
+    ),
+
+    /**
+     * FIN-AP-ADD-NEG-01 T-2: Same Add Row error, then fills Cash/Bank and saves successfully
+     * (proves form is recoverable without a page reload).
+     */
+    NEG_BLANK_CASHBANK_ADD_ROW_RECOVER(
+            ApVoucherTemplateLoader::negBlankCashbankAddRowRecoverTemplate,
+            ApVoucherPredicateFactory.NEG_BLANK_CASHBANK_ADD_ROW_RECOVER_BEHAVIOR,
+            true
+    ),
+
+    /** Save with no Sub-Ledger row filled (empty grid) → "Sub-Ledger is required". T-1: dismiss OK → discard → logout. */
+    NEG_BLANK_SUBLEDGER(
+            ApVoucherTemplateLoader::negBlankSubledgerTemplate,
+            ApVoucherPredicateFactory.NEGATIVE_FORM_VALIDATION_BEHAVIOR,
+            true
+    ),
+
+    /** T-2: same blank-SL error, but after dismissing OK the test fills SL rows and saves successfully. */
+    NEG_BLANK_SUBLEDGER_RECOVER(
+            ApVoucherTemplateLoader::negBlankSubledgerRecoverTemplate,
+            ApVoucherPredicateFactory.NEG_BLANK_SUBLEDGER_RECOVER_BEHAVIOR,
+            true
+    ),
+
+    // ─── T-03 Boundary pair: blank reference allowed ──────────────────────────
+
+    /**
+     * Two AP Vouchers with no Reference — both must save successfully.
+     * Confirms blank reference is allowed (AP does not enforce mandatory reference).
+     */
+    BLANK_REFERENCE_ALLOWED(
+            ApVoucherTemplateLoader::blankReferenceAllowedTemplate,
+            ApVoucherPredicateFactory.BOUNDARY_PASS_BEHAVIOR,
+            true
+    ),
+
+    // ─── T-03 Boundary pair: minimum line amount ──────────────────────────────
+    // VALID = smallest positive amount (saves); INVALID = zero (rejected).
+
+    /** Advance with the smallest positive amount (0.01) — must save successfully. */
+    BOUND_AMOUNT_MIN_VALID(
+            ApVoucherTemplateLoader::boundAmountMinValidTemplate,
+            ApVoucherPredicateFactory.BOUNDARY_PASS_BEHAVIOR,
+            true
+    ),
+
+    /** Advance with a zero line amount — error dialog + inline row tooltip (two-step inline validation flow). */
+    BOUND_AMOUNT_MIN_INVALID(
+            ApVoucherTemplateLoader::boundAmountMinInvalidTemplate,
+            ApVoucherPredicateFactory.INLINE_VALIDATION_BEHAVIOR,
+            true
+    ),
+
+    /** On Account No, sub-ledger added with zero amount, no document adjusted → error dialog + inline tooltip. */
+    DOC_AMOUNT_NOT_ADJUSTED_INVALID(
+            ApVoucherTemplateLoader::docAmountNotAdjustedTemplate,
+            ApVoucherPredicateFactory.DOC_INLINE_VALIDATION_BEHAVIOR,
+            false
+    ),
+
+    /** On Account No, document adjusted (amount auto-populated) → clicking Amount cell shows read-only dialog. */
+    DOC_AMOUNT_READ_ONLY(
+            ApVoucherTemplateLoader::docAmountReadOnlyTemplate,
+            ApVoucherPredicateFactory.DOC_AMOUNT_READ_ONLY_BEHAVIOR,
             false
     );
 

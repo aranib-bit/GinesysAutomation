@@ -1,6 +1,6 @@
 package com.gsl.diagnostics.section;
 
-import com.gsl.config.FrameworkConfig;
+import com.gsl.config.DiagnosticsConfig;
 import com.gsl.diagnostics.DiagnosticSection;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
@@ -54,7 +54,7 @@ public final class CustomMetricsSection implements DiagnosticSection {
     private final boolean                   captured;
 
     @SuppressWarnings("unchecked")
-    public CustomMetricsSection(WebDriver driver, FrameworkConfig config) {
+    public CustomMetricsSection(WebDriver driver, DiagnosticsConfig config) {
         this.userTimingWarnMs     = config.customMetricsUserTimingWarnMs();
         this.serverTimingEnabled  = config.customMetricsServerTimingEnabled();
         this.longAnimFrameEnabled = config.customMetricsLongAnimationFrameEnabled();

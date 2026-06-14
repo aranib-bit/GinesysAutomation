@@ -42,6 +42,12 @@ public enum DocumentMessageBoxMessage {
     AUTO_TDS_JOURNAL_PROMPT(
             "Auto TDS Journal will be created for this voucher. Do you want to continue?",
             PopupType.CONFIRM
+    ),
+
+    /** Appears when user clicks the Amount cell after a document has been adjusted — single OK button. */
+    DOC_AMOUNT_READ_ONLY_INFO(
+            "Document is adjusted against the selected sub ledger, amount can not be modified manually.",
+            PopupType.INFO
     );
 
     private final String text;

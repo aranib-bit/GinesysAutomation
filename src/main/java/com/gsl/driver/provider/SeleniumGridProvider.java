@@ -30,7 +30,7 @@ public class SeleniumGridProvider implements ExecutionProvider {
 
     /** Overridden by DockerGridProvider to use docker.grid.url. */
     protected String getGridUrl() {
-        return ConfigFactory.getConfig().gridUrl();
+        return ConfigFactory.getBrowserConfig().gridUrl();
     }
 
     protected AbstractDriverOptions<?> buildOptions(Browser browser) {

@@ -3,7 +3,29 @@ package com.gsl.reports;
 import com.aventstack.extentreports.ExtentReports;
 import com.aventstack.extentreports.ExtentTest;
 import com.aventstack.extentreports.reporter.ExtentSparkReporter;
+import com.gsl.config.ConfigFactory;
+import com.gsl.config.ReportConfig;
 import com.gsl.constants.FrameworkConstants;
+import com.gsl.enums.AppOperation;
+import com.gsl.enums.ISubModule;
+import com.gsl.pages.enums.topmenucomponent.MainModuleType;
+import com.gsl.utils.Log;
+import org.testng.ITestResult;
+
+import java.io.IOException;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.nio.file.Paths;
+import java.nio.file.StandardOpenOption;
+import java.time.Instant;
+import java.time.LocalDate;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.atomic.AtomicInteger;
+
+import static com.gsl.enums.AppOperation.*;
+import static com.gsl.pages.enums.Finance.Operations.OperationsMenuType.*;
+import static com.gsl.pages.enums.Finance.Setup.SetupMenuType.*;
+import static com.gsl.pages.enums.topmenucomponent.MainModuleType.*;
 
 public final class ExtentReport {
 
@@ -11,6 +33,18 @@ public final class ExtentReport {
     }
 
     public static ExtentReports extent;
+
+    // ── R-02: Per-shard ExtentReports instances ───────────────────────────────
+    private static final ConcurrentHashMap<ShardKey, ExtentReports> SHARD_EXTENTS =
+            new ConcurrentHashMap<>();
+
+    // ── R-01: Batched flush + crash-safe delta append ─────────────────────────
+
+    private static final AtomicInteger FLUSH_COUNTER = new AtomicInteger(0);
+    private static       Path          DELTA_FILE_PATH;
+    private static final Object        DELTA_LOCK    = new Object();
+
+    // ─────────────────────────────────────────────────────────────────────────
 
     public static void initReports() {
         extent = new ExtentReports();
@@ -31,11 +65,172 @@ public final class ExtentReport {
         Runtime.getRuntime().addShutdownHook(new Thread(() -> {
             try {
                 if (extent != null) extent.flush();
+                SHARD_EXTENTS.values().forEach(e -> {
+                    try { e.flush(); } catch (Throwable ignored) {}
+                });
             } catch (Throwable ignored) {
                 // Heap may already be exhausted; nothing more we can do.
             }
         }, "extent-shutdown-flush"));
+
+        // R-01 Tier 1: create crash-safe delta file (one JSON line per test)
+        DELTA_FILE_PATH = Paths.get(FrameworkConstants.getReportDir(), "live", "run_delta.ndjson");
+        try {
+            Files.createDirectories(DELTA_FILE_PATH.getParent());
+            Files.writeString(DELTA_FILE_PATH, "", StandardOpenOption.CREATE,
+                StandardOpenOption.TRUNCATE_EXISTING);
+            Log.info("[ExtentReport] Delta file initialized: {}", DELTA_FILE_PATH);
+        } catch (IOException e) {
+            Log.warn("[ExtentReport] Could not create delta file: {}", e.getMessage());
+        }
+
+        // R-02: Register per-module/submodule/operation shard files
+        initShards();
     }
+
+    private static void initShards() {
+        // Finance › Vouchers
+        register(FINANCE, ARVOUCHER,     ADD, MODIFY, DELETE, RELEASE, REVERT, PRINT, AUTORELEASE);
+        register(FINANCE, APVOUCHER,     ADD, MODIFY, DELETE, RELEASE, REVERT, PRINT, AUTORELEASE, WORKBENCH);
+        register(FINANCE, ITEM,          ADD, MODIFY, DELETE, RELEASE, REVERT, PRINT, AUTORELEASE);
+        register(FINANCE, CATEGORY,      ADD, MODIFY, DELETE, RELEASE, REVERT, PRINT, AUTORELEASE);
+        register(FINANCE, BRS,           NONE);
+
+        // Finance › Journals
+        register(FINANCE, GENJOURNAL,    ADD, MODIFY, DELETE, RELEASE, REVERT, PRINT, AUTORELEASE);
+        register(FINANCE, ARAPJOURNAL,   ADD, MODIFY, DELETE, RELEASE, REVERT, PRINT, AUTORELEASE);
+        register(FINANCE, DEBITJOURNAL,  ADD, MODIFY, DELETE, RELEASE, REVERT, PRINT, AUTORELEASE);
+        register(FINANCE, CREDITJOURNAL, ADD, MODIFY, DELETE, RELEASE, REVERT, PRINT, AUTORELEASE);
+        register(FINANCE, DOCADJUST,     QUICKSETOFF);
+
+        // Finance › Retail Journals
+        register(FINANCE, POSJOURNAL,    NONE);
+        register(FINANCE, GVJOURNALS,    NONE);
+
+        // Finance › TDS
+        register(FINANCE, TDSJOURNAL,    ADD, MODIFY, DELETE, RELEASE, REVERT, PRINT, AUTORELEASE);
+        register(FINANCE, TDSREVJOURNAL, ADD, MODIFY, DELETE, RELEASE, REVERT, PRINT, AUTORELEASE);
+
+        // Finance › Setup › Chart of Accounts
+        register(FINANCE, ACCOUNTGROUP,       ADD, MODIFY, DELETE, EDITGRP, EDITLEGGRP, EDITLEGSEQ);
+        register(FINANCE, ACCOUNTCLASS,        ADD, MODIFY);
+        register(FINANCE, LEDGER,              ADD, MODIFY, DELETE);
+        register(FINANCE, SUBLEDGEROTHERS,     ADD, MODIFY);
+        register(FINANCE, SUBLEDGEREMPLOYEES,  ADD, MODIFY);
+        register(FINANCE, NARRATION,           ADD, MODIFY, DELETE);
+
+        // Finance › Setup › TDS
+        register(FINANCE, TDSSOURCE,    ADD, MODIFY);
+        register(FINANCE, TDSSECTION,   ADD, MODIFY);
+        register(FINANCE, TDSAGENCY,    ADD, MODIFY);
+
+        // Finance › Setup › Cheque
+        register(FINANCE, CHEQUEBOOK,   ADD, MODIFY, DELETE);
+        register(FINANCE, PRINTCHEQUE,  NONE);
+
+        // Finance › Setup › Budget & Opening
+        register(FINANCE, FINANCIALBUDGET,  NONE);
+        register(FINANCE, OPENINGLEDGER,    ADD, MODIFY, DELETE);
+        register(FINANCE, OPENINGSUBLEDGER, ADD, MODIFY, DELETE);
+    }
+
+    private static void register(MainModuleType mod, ISubModule sm, AppOperation... ops) {
+        for (AppOperation op : ops) {
+            createShardFile(mod, sm, op);
+        }
+    }
+
+    private static void createShardFile(MainModuleType mod, ISubModule sm, AppOperation op) {
+        String dir  = mod.getName().toLowerCase()
+                         .replace(" & ", "_and_").replace(" ", "_");
+        String slug = sm.getShortCode().toLowerCase()
+                + (op == NONE ? "" : "_" + op.name().toLowerCase());
+        String path = FrameworkConstants.getReportDir() + "/" + dir + "/"
+                + slug + "_" + LocalDate.now() + ".html";
+
+        try {
+            Files.createDirectories(Paths.get(FrameworkConstants.getReportDir(), dir));
+        } catch (IOException e) {
+            Log.warn("[ExtentReport] Could not create shard dir {}: {}", dir, e.getMessage());
+        }
+
+        ExtentSparkReporter spark = new ExtentSparkReporter(path);
+        spark.config().setDocumentTitle(sm.getName()
+            + (op == NONE ? "" : " — " + op.getDisplayName()));
+        spark.config().setCss(
+            ".col-timestamp{min-width:160px!important;white-space:nowrap!important}");
+
+        ExtentReports shardExtent = new ExtentReports();
+        shardExtent.attachReporter(spark);
+        SHARD_EXTENTS.put(new ShardKey(mod, sm, op), shardExtent);
+    }
+
+    // ─────────────────────────────────────────────────────────────────────────
+
+    /**
+     * R-01 entry point — replaces direct flushReports() calls after each test.
+     * Appends one JSON line to the crash-safe delta file (Tier 1, always, ~1 ms),
+     * then does a full HTML flush every flushBatchSize tests (Tier 2).
+     */
+    public static void recordTestResult(ITestResult result, String status) {
+        appendToDelta(result, status);
+
+        // R-02: accumulate per-shard stats for summary.html
+        ExtentTest shardTest = ExtentManager.getShardTest();
+        if (shardTest != null) {
+            // Determine the ShardKey by reverse-looking up which shard has this test node.
+            // We stored it under the key used in createTest(name, module, subModule, op),
+            // so we track it via a separate ThreadLocal in ExtentManager.
+            ShardKey currentKey = ExtentManager.getCurrentShardKey();
+            if (currentKey != null) {
+                SummaryReportBuilder.record(currentKey, status);
+            }
+        }
+
+        int count = FLUSH_COUNTER.incrementAndGet();
+        ReportConfig cfg = ConfigFactory.getReportConfig();
+        if (!cfg.flushBatchEnabled()) {
+            // Batching disabled — flush the full HTML report after every test case.
+            flushReports();
+            Log.debug("[ExtentReport] Per-test flush at test #{} (batch disabled)", count);
+        } else {
+            int batchSize = cfg.flushBatchSize();
+            if (count % batchSize == 0) {
+                flushReports();
+                Log.debug("[ExtentReport] Batch flush at test #{}", count);
+            }
+        }
+    }
+
+    private static void appendToDelta(ITestResult result, String status) {
+        if (DELTA_FILE_PATH == null) return;
+        try {
+            String line = buildDeltaJson(result, status) + "\n";
+            synchronized (DELTA_LOCK) {
+                Files.writeString(DELTA_FILE_PATH, line,
+                    StandardOpenOption.APPEND, StandardOpenOption.CREATE);
+            }
+        } catch (IOException e) {
+            Log.warn("[ExtentReport] Delta append failed: {}", e.getMessage());
+        }
+    }
+
+    private static String buildDeltaJson(ITestResult result, String status) {
+        return String.format(
+            "{\"testName\":\"%s\",\"status\":\"%s\",\"durationMs\":%d,\"timestamp\":\"%s\"}",
+            escapeJson(result.getName()),
+            status,
+            result.getEndMillis() - result.getStartMillis(),
+            Instant.now().toString()
+        );
+    }
+
+    private static String escapeJson(String s) {
+        if (s == null) return "";
+        return s.replace("\\", "\\\\").replace("\"", "\\\"");
+    }
+
+    // ─────────────────────────────────────────────────────────────────────────
 
     /**
      * P2: Sets the descriptive sentence on the current thread's ExtentTest node.
@@ -55,6 +250,9 @@ public final class ExtentReport {
 
     public static void flushReports() {
         extent.flush();
+        SHARD_EXTENTS.values().forEach(e -> {
+            try { e.flush(); } catch (Exception ignored) {}
+        });
     }
 
     public static void createTest(String testCaseName) {
@@ -62,7 +260,46 @@ public final class ExtentReport {
         ExtentManager.setExtentTest(test);
     }
 
-    public static void assignAuthor(Enum author) {
+    /**
+     * R-02: Attach the current test to its matching shard report. The summary-report
+     * node is created once by {@link #createTest(String)} in onTestStart and reused
+     * here (creating it again would duplicate the test in the summary report). The
+     * shard test is tracked separately via ExtentManager.setShardTest().
+     */
+    public static void createTest(String testCaseName,
+                                  MainModuleType module,
+                                  ISubModule subModule,
+                                  AppOperation operation) {
+        // Main report node was already created by createTest(String) in onTestStart;
+        // reuse it (do NOT create a second one) to avoid duplicate entries in the
+        // summary report. This overload only attaches the matching shard node.
+
+        // Shard report node — mirror the same test in the per-operation shard
+        ShardKey key = new ShardKey(module, subModule, operation);
+        ExtentReports shardExtent = SHARD_EXTENTS.get(key);
+        if (shardExtent == null) {
+            // Fallback: NONE shard (BRS, POSJOURNAL, etc.)
+            shardExtent = SHARD_EXTENTS.get(new ShardKey(module, subModule, NONE));
+        }
+        if (shardExtent != null) {
+            ExtentTest shardTest = shardExtent.createTest(testCaseName);
+            ExtentManager.setShardTest(shardTest);
+            // track resolved key (NONE fallback resolves to different key than requested)
+            ShardKey resolvedKey = SHARD_EXTENTS.containsKey(key) ? key
+                    : new ShardKey(module, subModule, NONE);
+            ExtentManager.setCurrentShardKey(resolvedKey);
+        } else {
+            ExtentManager.setShardTest(null);
+            ExtentManager.setCurrentShardKey(null);
+            Log.warn("[ExtentReport] No shard registered for {}/{}/{}", module, subModule, operation);
+        }
+    }
+
+    public static ConcurrentHashMap<ShardKey, ExtentReports> getShardExtents() {
+        return SHARD_EXTENTS;
+    }
+
+    public static void assignAuthor(Enum<?> author) {
         ExtentManager.getExtentTest().assignAuthor(author.toString());
     }
 

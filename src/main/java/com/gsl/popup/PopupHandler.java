@@ -4,6 +4,7 @@ import com.gsl.config.ConfigFactory;
 import com.gsl.driver.DriverManager;
 import com.gsl.enums.PopupType;
 import com.gsl.utils.Selenium.ScreenshotUtils;
+import com.gsl.utils.Selenium.WaitUtils;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 import org.openqa.selenium.JavascriptExecutor;
@@ -34,9 +35,8 @@ public final class PopupHandler {
      */
     public static PopupResult detectPopup() {
         try {
-            int timeoutMs = ConfigFactory.getConfig().popupDetectionTimeoutMs();
-            WebDriverWait wait = new WebDriverWait(
-                    DriverManager.getDriver(), Duration.ofMillis(timeoutMs));
+            int timeoutMs = ConfigFactory.getWaitConfig().popupDetectionTimeoutMs();
+            WebDriverWait wait = WaitUtils.webDriverWaitMillis(timeoutMs);
             WebElement container = wait.until(
                     ExpectedConditions.visibilityOfElementLocated(AppPopupLocators.MESSAGEBOX_CONTAINER));
 

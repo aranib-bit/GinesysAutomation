@@ -15,6 +15,7 @@ public final class ExtentLogger {
 
     public static void pass(String message) {
         if (ExtentManager.getExtentTest() != null) ExtentManager.getExtentTest().pass(message);
+        if (ExtentManager.getShardTest()  != null) ExtentManager.getShardTest().pass(message);
     }
 
     public static void fail(String message) {
@@ -23,25 +24,42 @@ public final class ExtentLogger {
             try {
                 // File-on-disk capture: keeps only the path string in the live Extent model
                 // (vs. ~1.3× the raw PNG bytes when embedded as base64).
+                String screenshotPath = ScreenshotUtils.saveScreenshot(message);
                 ExtentManager.getExtentTest().fail(message,
-                        MediaEntityBuilder.createScreenCaptureFromPath(ScreenshotUtils.saveScreenshot(message)).build());
+                        MediaEntityBuilder.createScreenCaptureFromPath(screenshotPath).build());
+                if (ExtentManager.getShardTest() != null) {
+                    ExtentManager.getShardTest().fail(message,
+                            MediaEntityBuilder.createScreenCaptureFromPath(screenshotPath).build());
+                }
             } catch (org.openqa.selenium.WebDriverException wde) {
-                // Session is dead — fall back to text-only to prevent AOP infinite loop
-                ExtentManager.getExtentTest().fail(message + " [screenshot unavailable: " + wde.getMessage().split("\n")[0] + "]");
+                String msg = message + " [screenshot unavailable: " + wde.getMessage().split("\n")[0] + "]";
+                ExtentManager.getExtentTest().fail(msg);
+                if (ExtentManager.getShardTest() != null) ExtentManager.getShardTest().fail(msg);
             } catch (Exception screenshotEx) {
-                ExtentManager.getExtentTest().fail(message + " [screenshot save failed: " + screenshotEx.getMessage() + "]");
+                String msg = message + " [screenshot save failed: " + screenshotEx.getMessage() + "]";
+                ExtentManager.getExtentTest().fail(msg);
+                if (ExtentManager.getShardTest() != null) ExtentManager.getShardTest().fail(msg);
             }
         } else {
             ExtentManager.getExtentTest().fail(message);
+            if (ExtentManager.getShardTest() != null) ExtentManager.getShardTest().fail(message);
         }
     }
 
     public static void info(String message) {
         if (ExtentManager.getExtentTest() != null) ExtentManager.getExtentTest().info(message);
+        if (ExtentManager.getShardTest()  != null) ExtentManager.getShardTest().info(message);
+    }
+
+    /** Logs an explicit SKIP entry (amber) — use for data-unavailability skips, not failures. */
+    public static void skip(String message) {
+        if (ExtentManager.getExtentTest() != null) ExtentManager.getExtentTest().skip(message);
+        if (ExtentManager.getShardTest()  != null) ExtentManager.getShardTest().skip(message);
     }
 
     public static void warning(String message) {
         if (ExtentManager.getExtentTest() != null) ExtentManager.getExtentTest().warning(message);
+        if (ExtentManager.getShardTest()  != null) ExtentManager.getShardTest().warning(message);
     }
 
     public static void failWithBase64Screenshot(String message, String base64) {

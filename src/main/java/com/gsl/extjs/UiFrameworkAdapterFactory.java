@@ -19,7 +19,7 @@ public final class UiFrameworkAdapterFactory {
     private UiFrameworkAdapterFactory() {}
 
     public static UiFrameworkAdapter get() {
-        String type = ConfigFactory.getConfig().applicationType().toLowerCase().trim();
+        String type = ConfigFactory.getBrowserConfig().applicationType().toLowerCase().trim();
         return switch (type) {
             case "react"   -> new ReactUiAdapter();
             case "angular" -> new AngularUiAdapter();

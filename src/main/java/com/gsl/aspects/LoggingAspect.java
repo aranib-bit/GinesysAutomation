@@ -133,7 +133,18 @@ public class LoggingAspect {
             TRACE.error("{}[{}] [TRACE_ID={}] [ERROR]  {}.{}() — {}",
                     indent(depth), ts, traceId(), className, methodName, e.getMessage());
             Log.error("[AOP] Exception in {}.{}: {}", className, methodName, e.getMessage());
-            if (ExtentManager.hasTest()) {
+            // Don't paint the Extent node red for a skip:
+            //  • A TestNG SkipException is itself a skip signal, not a failure.
+            //  • While DataLoadScope is active, any exception (typically an IllegalStateException
+            //    raised deep in the DB resolution chain) is a data-availability shortfall that the
+            //    data source converts to a SkipException at its boundary. Suppressing the fail here
+            //    stops one red FAIL (+ screenshot) being logged per advised frame the raw exception
+            //    unwinds through before that conversion happens — which is what made amber skips
+            //    render as misleading red fails (ExtentReports shows a node at its highest-severity
+            //    log: FAIL > WARNING/SKIP).
+            if (ExtentManager.hasTest()
+                    && !(e instanceof org.testng.SkipException)
+                    && !DataLoadScope.isActive()) {
                 ExtentLogger.fail("[AOP] " + className + "." + methodName + ": " + e.getMessage());
             }
             throw e;
@@ -159,7 +170,12 @@ public class LoggingAspect {
         try {
             return pjp.proceed();
         } catch (Throwable e) {
-            if (ExtentManager.hasTest()) {
+            // SkipException = skipped step (e.g. test-data unavailable), not a failure.
+            // Likewise, anything thrown inside an active DataLoadScope is a skip-bound
+            // data-availability shortfall \u2014 don't log it as a red FAIL.
+            if (ExtentManager.hasTest()
+                    && !(e instanceof org.testng.SkipException)
+                    && !DataLoadScope.isActive()) {
                 ExtentLogger.fail("Failed: " + logStep.value() + " \u2014 " + e.getMessage());
             }
             throw e;

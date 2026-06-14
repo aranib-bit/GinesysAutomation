@@ -21,7 +21,7 @@ public final class StepDurationBuffer {
     public record StepRecord(String stepName, long durationMs, boolean passed) {}
 
     private static final int BUFFER_SIZE =
-            ConfigFactory.getConfig().actionTrailBufferSize();
+            ConfigFactory.getDiagnosticsConfig().actionTrailBufferSize();
 
     private static final ThreadLocal<ArrayDeque<StepRecord>> DURATIONS =
             ThreadLocal.withInitial(() -> new ArrayDeque<>(Math.max(BUFFER_SIZE, 1)));

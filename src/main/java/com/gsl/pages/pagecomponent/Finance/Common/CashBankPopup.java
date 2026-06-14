@@ -1,8 +1,10 @@
 package com.gsl.pages.pagecomponent.Finance.Common;
 
 import com.google.common.util.concurrent.Uninterruptibles;
+import com.gsl.config.ConfigFactory;
 import com.gsl.driver.DriverManager;
 import com.gsl.enums.WaitType;
+import com.gsl.utils.Selenium.WaitUtils;
 import com.gsl.pages.Finance.Operations.ArVoucherAdd;
 import com.gsl.pages.pagecomponent.Procurement.Operations.GoodsReceiveChallan.GoodsReceiveChallanGeneral;
 import com.gsl.reports.ExtentLogger;
@@ -17,10 +19,14 @@ import java.time.Duration;
 import java.util.concurrent.TimeUnit;
 
 public class CashBankPopup {
-    private static final By CASHBANKSEARCHBOX=By.xpath("//span[normalize-space()='Search:']/ancestor::label/following-sibling::div//input[contains(@id,'textfield') and contains(@id,'-inputEl')]");
-    private static final String CASHBANKSELECTION = "//div[contains(@class,'x-grid-item-container')]//tr//td[count(//div[@role='columnheader'][.//span[text()='Name']]/preceding-sibling::div)+1]//div[normalize-space()='%s']";
-    private static final By CASHBANKPOPUPOKBUTTON=By.xpath("//span[contains(@id, 'button') and contains(@id, 'btnInnerEl') and text() = 'K']");
-    private static final By CASHBANKPOPUPCANCELBUTTON=By.xpath("//span[contains(@id, 'button') and contains(@id, 'btnInnerEl') and text() = 'ancel']");
+
+    private static final class Loc {
+        static final By CASHBANKSEARCHBOX = By.xpath("//span[normalize-space()='Search:']/ancestor::label/following-sibling::div//input[contains(@id,'textfield') and contains(@id,'-inputEl')]");
+        static final String CASHBANKSELECTION = "//div[contains(@class,'x-grid-item-container')]//tr//td[count(//div[@role='columnheader'][.//span[text()='Name']]/preceding-sibling::div)+1]//div[normalize-space()='%s']";
+        // ExtJS truncated-text workarounds — keep as-is until UI rendering changes
+        static final By CASHBANKPOPUPOKBUTTON     = By.xpath("//span[contains(@id, 'button') and contains(@id, 'btnInnerEl') and text() = 'K']");
+        static final By CASHBANKPOPUPCANCELBUTTON = By.xpath("//span[contains(@id, 'button') and contains(@id, 'btnInnerEl') and text() = 'ancel']");
+    }
 
     private final CashBankParent parentPage;
 
@@ -29,22 +35,22 @@ public class CashBankPopup {
     }
 
     public CashBankPopup sendCashBankSearch(String cashbank){
-        SeleniumUtils.sendKeys(CASHBANKSEARCHBOX,cashbank,"CASHBANKSEARCHBOX");
+        SeleniumUtils.sendKeys(Loc.CASHBANKSEARCHBOX, cashbank, "CASHBANKSEARCHBOX");
         return this;
     }
 
     private By getCashBankSelection(String cashbank) {
-        String xpath = String.format(CASHBANKSELECTION, cashbank);
+        String xpath = String.format(Loc.CASHBANKSELECTION, cashbank);
         System.out.println("Generated XPath: " + xpath); // <-- Print it
         return By.xpath(xpath);
     }
 
     public CashBankParent selectCashBank(String cashbankname) {
         WebDriver driver = DriverManager.getDriver();
-        SeleniumUtils.sendKeys(CASHBANKSEARCHBOX, cashbankname, "CASHBANKSEARCHBOX");
+        SeleniumUtils.sendKeys(Loc.CASHBANKSEARCHBOX, cashbankname, "CASHBANKSEARCHBOX");
 
         By selectionBy = getCashBankSelection(cashbankname);
-        WebDriverWait wait = new WebDriverWait(driver, Duration.ofSeconds(30));
+        WebDriverWait wait = WaitUtils.webDriverWait(ConfigFactory.getWaitConfig().popupWaitSeconds());
 
         // Wait for the grid row to appear after ExtJS search reload
         wait.until(ExpectedConditions.presenceOfElementLocated(selectionBy));
@@ -72,12 +78,12 @@ public class CashBankPopup {
             }
         }
 
-        SeleniumUtils.click(CASHBANKPOPUPOKBUTTON, WaitType.CLICKABLE, "OK");
+        SeleniumUtils.click(Loc.CASHBANKPOPUPOKBUTTON, WaitType.CLICKABLE, "OK");
         return parentPage;
     }
 
     public CashBankParent cancel() {
-        SeleniumUtils.click(CASHBANKPOPUPCANCELBUTTON, WaitType.CLICKABLE, "Cancel");
+        SeleniumUtils.click(Loc.CASHBANKPOPUPCANCELBUTTON, WaitType.CLICKABLE, "Cancel");
         return parentPage;
     }
 

@@ -55,6 +55,19 @@ public class ApVoucherFixtureFactory {
                         scenario == ApVoucherScenarioType.ADVANCE_WITH_TDS_NO_NATURE
                                 || scenario == ApVoucherScenarioType.ADVANCE_WITH_TDS_SINGLE_NATURE;
 
+                // T-03 — negative & boundary scenarios (advance-path + document-path validation)
+                case "createApVoucherNegativeBoundary" ->
+                        scenario == ApVoucherScenarioType.NEG_BLANK_CASHBANK
+                                || scenario == ApVoucherScenarioType.NEG_BLANK_SUBLEDGER
+                                || scenario == ApVoucherScenarioType.NEG_BLANK_SUBLEDGER_RECOVER
+                                || scenario == ApVoucherScenarioType.BLANK_REFERENCE_ALLOWED
+                                || scenario == ApVoucherScenarioType.BOUND_AMOUNT_MIN_VALID
+                                || scenario == ApVoucherScenarioType.BOUND_AMOUNT_MIN_INVALID
+                        || scenario == ApVoucherScenarioType.NEG_BLANK_CASHBANK_ADD_ROW
+                        || scenario == ApVoucherScenarioType.NEG_BLANK_CASHBANK_ADD_ROW_RECOVER
+                        || scenario == ApVoucherScenarioType.DOC_AMOUNT_NOT_ADJUSTED_INVALID
+                        || scenario == ApVoucherScenarioType.DOC_AMOUNT_READ_ONLY;
+
                 // Any unrecognised method name gets nothing — intentionally no catch-all
                 default -> false;
             };

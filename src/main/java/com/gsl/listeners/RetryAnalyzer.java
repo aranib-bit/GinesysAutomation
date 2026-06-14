@@ -22,7 +22,7 @@ import org.testng.ITestResult;
  */
 public class RetryAnalyzer implements IRetryAnalyzer {
 
-    private final int maxRetries = ConfigFactory.getConfig().retryMaxCount();
+    private final int maxRetries = ConfigFactory.getExecutionConfig().retryMaxCount();
 
     /** Per-thread attempt counter — reset to 0 after the last retry to handle re-use. */
     private final ThreadLocal<Integer> attempt = ThreadLocal.withInitial(() -> 0);

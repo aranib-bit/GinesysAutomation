@@ -131,7 +131,7 @@ public class ApVoucherFixtureOptions {
      * Use as the starting point when no specific configuration is required.
      */
     public static ApVoucherFixtureOptions defaults() {
-        int floor = com.gsl.config.ConfigFactory.getConfig().docSelectorDocumentCountDefault();
+        int floor = com.gsl.config.ConfigFactory.getWaitConfig().docSelectorDocumentCountDefault();
         return ApVoucherFixtureOptions.builder()
                 .subLedgerCount(1)
                 .documentCount(Math.max(1, floor))
@@ -203,7 +203,7 @@ public class ApVoucherFixtureOptions {
      * @param type the target GL type (CASH or BANK)
      */
     public static ApVoucherFixtureOptions forCashBankType(CashBankType type) {
-        int floor = com.gsl.config.ConfigFactory.getConfig().docSelectorDocumentCountDefault();
+        int floor = com.gsl.config.ConfigFactory.getWaitConfig().docSelectorDocumentCountDefault();
         return ApVoucherFixtureOptions.builder()
                 .subLedgerCount(1)
                 .documentCount(Math.max(1, floor))
@@ -221,7 +221,7 @@ public class ApVoucherFixtureOptions {
      * @param clsCode admcls.clscode to filter pending vendor SLs (0 = no filter)
      */
     public static ApVoucherFixtureOptions forCashBankTypeAndClsCode(CashBankType type, long clsCode) {
-        int floor = com.gsl.config.ConfigFactory.getConfig().docSelectorDocumentCountDefault();
+        int floor = com.gsl.config.ConfigFactory.getWaitConfig().docSelectorDocumentCountDefault();
         return ApVoucherFixtureOptions.builder()
                 .subLedgerCount(1)
                 .documentCount(Math.max(1, floor))
@@ -263,6 +263,22 @@ public class ApVoucherFixtureOptions {
                 .glType(glType)
                 .tdsApplicable(true)
                 .tdsNatureMode(TdsNatureMode.SINGLE_NATURE)
+                .build();
+    }
+
+    /**
+     * Returns an instance for a multi-sub-ledger Advance Payment scenario.
+     * Requests 2 SL rows from the DB so the template can produce 2 lines with
+     * independent payment information (e.g. NEFT/RTGS + Cheque).
+     *
+     * @param glType target GL type (CASH or BANK)
+     */
+    public static ApVoucherFixtureOptions forAdvanceMultiSl(CashBankType glType) {
+        return builder()
+                .subLedgerCount(2)
+                .documentCount(0)
+                .glType(glType)
+                .tdsApplicable(false)
                 .build();
     }
 

@@ -1,13 +1,33 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE suite SYSTEM "http://testng.org/testng-1.0.dtd">
-<suite name="AP Voucher Suite" parallel="tests" thread-count="10">
+<!--
+  Threading model (the scheduler IS TestNG's parallel data-provider pool):
+  - data-provider-thread-count="4" MUST be on <suite> — TestNG only reads this attribute at
+    the suite level. On <test> it is silently ignored and defaults to 10, which is what
+    previously spawned 10-13 simultaneous setUp() calls and tripped UserPoolAcquisitionTimeoutException.
+  - With runInParallel=true on the DataSupplier, TestNG runs at most 4 scenario rows at once
+    and pulls the next row's setUp ONLY after a running row's tearDown completes. Each of the 4
+    worker threads releases its UserPool user in tearDown before re-acquiring, so the semaphore
+    never blocks — "start 4, then add one per teardown". Pool size 4 == 4 UI users in UsersList.xlsx.
+  - suite parallel="none" prevents an extra suite/test-level thread pool. <test> parallel="methods"
+    lets the two AP methods overlap; both share the single suite-wide DP pool of 4.
+-->
+<suite name="AP Voucher Suite" parallel="none" data-provider-thread-count="4">
     <listeners>
         <listener class-name="com.gsl.listeners.RetryAnnotationTransformer"/>
         <listener class-name="com.gsl.listeners.TestListener"/>
         <listener class-name="com.gsl.listeners.SuiteDataLoader"/>
+        <listener class-name="com.gsl.listeners.AnnotationMethodInterceptor"/>
     </listeners>
 
-    <test name="AP Voucher" parallel="methods" thread-count="4" data-provider-thread-count="4">
+    <test name="AP Voucher" parallel="methods" thread-count="4">
+        <!--
+          apv.group=MANDATORY → 5 rows total (2 AP advance + 3 AP document BANK_SYS).
+          With the suite-level DP pool of 4, 4 rows run and the 5th starts on the first teardown.
+          For full regression (REGRESSION_PHASE1, ~13 rows) the same model holds — TestNG admits
+          only 4 at a time regardless of row count; no timeout tuning needed.
+        -->
+        <parameter name="apv.group" value="MANDATORY"/>
         <classes>
             <class name="com.tests.Finance.Operations.Vouchers.CreateApVoucher"/>
         </classes>

@@ -1,6 +1,7 @@
 package com.gsl.utils.Selenium;
 
 
+import com.gsl.config.ConfigFactory;
 import com.gsl.driver.DriverManager;
 import org.openqa.selenium.*;
 import org.openqa.selenium.interactions.Actions;
@@ -80,7 +81,7 @@ public class SeleniumActions {
     // 🔹 New method: hover on one element, then click another
     public static void moveToElementAndClick(By hoverTarget, By clickTarget) {
         WebDriver driver = DriverManager.getDriver();
-        WebDriverWait wait = new WebDriverWait(driver, Duration.ofSeconds(10));
+        WebDriverWait wait = WaitUtils.webDriverWait(ConfigFactory.getWaitConfig().interactionWaitSeconds());
         Actions actions = new Actions(driver);
 
         int attempts = 0;
@@ -107,7 +108,7 @@ public class SeleniumActions {
 
     public static void clickAndHoldThenClick(By sourceLocator, By targetLocator) {
         WebDriver driver = DriverManager.getDriver();
-        WebDriverWait wait = new WebDriverWait(driver, Duration.ofSeconds(10));
+        WebDriverWait wait = WaitUtils.webDriverWait(ConfigFactory.getWaitConfig().interactionWaitSeconds());
         Actions actions = new Actions(driver);
 
         try {

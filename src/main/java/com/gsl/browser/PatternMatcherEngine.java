@@ -48,13 +48,13 @@ public final class PatternMatcherEngine {
     }
 
     public static boolean isWarning(String message) {
-        List<String> configPatterns = splitConfig(ConfigFactory.getConfig().browserLogsWarningPatterns());
+        List<String> configPatterns = splitConfig(ConfigFactory.getNetworkConfig().browserLogsWarningPatterns());
         return Stream.concat(WARN_PATTERNS_DEFAULT.stream(), configPatterns.stream())
                 .anyMatch(message::contains);
     }
 
     public static boolean isIgnored(String message) {
-        List<String> configPatterns = splitConfig(ConfigFactory.getConfig().browserLogsIgnorePatterns());
+        List<String> configPatterns = splitConfig(ConfigFactory.getNetworkConfig().browserLogsIgnorePatterns());
         return Stream.concat(IGNORE_PATTERNS_DEFAULT.stream(), configPatterns.stream())
                 .anyMatch(message::contains);
     }

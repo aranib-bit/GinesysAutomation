@@ -34,10 +34,16 @@ public enum NegativeValidation {
     /** Saving with no Cash/Bank GL selected. */
     BLANK_CASHBANK("Cash/Bank is required"),
 
+    /** AP Voucher: clicking Add Row in the sub-ledger grid without Cash/Bank selected. */
+    BLANK_CASHBANK_ADD_ROW("Please select cash/bank ledger first."),
+
     // ─── Sub-Ledger field ─────────────────────────────────────────────────────
 
-    /** Saving with no Sub-Ledger selected. */
-    BLANK_SUBLEDGER("Sub-Ledger is required"),
+    /** AR Voucher: saving with no Sub-Ledger row filled (empty grid). */
+    BLANK_SUBLEDGER_AR("There should be atleast one record in Sub Ledger Information section."),
+
+    /** AP Voucher: saving with no Sub-Ledger row filled (empty grid). */
+    BLANK_SUBLEDGER_AP("Their should be atleast one record in Sub-Ledger Detail."),
 
     // ─── Amount validation ────────────────────────────────────────────────────
 
@@ -57,6 +63,43 @@ public enum NegativeValidation {
      * scheme enforces unique references.
      */
     DUPLICATE_REFERENCE_UNIQUE("Reference No. already exists"),
+
+    // ─── Boundary "fail-beyond" messages (T-03) ───────────────────────────────
+    // These pair with a *_VALID boundary scenario (at-limit, saves) and a *_INVALID
+    // scenario (beyond-limit, raises one of these errors). The behaviour layer asserts
+    // the popup text via DocumentPopup.verifyErrorMessage (substring/contains match).
+    //
+    // ⚠️ TODO(T-03): The exact UI text below is UNVERIFIED. Confirm each string against
+    // the running application (trigger the case manually via the Selenium/Playwright MCP,
+    // or read the app's validation resource strings) before relying on these in CI.
+    // verifyErrorMessage does a contains() match, so a wrong literal silently fails the test.
+
+    /** Error dialog shown when Save is clicked and a line has Amount = 0. */
+    ZERO_AMOUNT_DIALOG("Some problems encountered in the detail section."),
+
+    /** Inline row tooltip: blocking severity marker rendered as bold header. */
+    ZERO_AMOUNT_TOOLTIP_STOP("Stop:"),
+
+    /** Inline row tooltip: bold HTML marker — confirms Stop: is bold, not plain text. */
+    ZERO_AMOUNT_TOOLTIP_STOP_BOLD("<b>Stop:</b>"),
+
+    /** Inline row tooltip: blocking line — amount must not be zero or null. */
+    ZERO_AMOUNT_TOOLTIP_AMOUNT("Amount cannot be 0 or null."),
+
+    /** Inline tooltip (On Account No): sub-ledger row has no document adjustment performed. */
+    DOC_NOT_ADJUSTED_TOOLTIP_AMOUNT(
+            "Document adjustment is mandatory for non advance type payment voucher. " +
+            "Adjusted amount should match with the amount of the selected sub ledger."),
+
+    /** Information dialog: amount cell is read-only after a document has been adjusted against the SL. */
+    DOC_AMOUNT_READ_ONLY(
+            "Document is adjusted against the selected sub ledger, amount can not be modified manually."),
+
+    /** Document date set beyond the latest date the scheme/period allows (e.g. a future date). */
+    FUTURE_DATE_NOT_ALLOWED("Document date cannot be a future date"),
+
+    /** Reference text longer than the {@code finvchmain.refno} column / form max length. */
+    REFERENCE_TOO_LONG("Reference No. exceeds the maximum allowed length"),
 
     ;
 

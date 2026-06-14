@@ -128,7 +128,7 @@ public final class SshLogFetcher implements LogFetcher {
                     request.getCredentials(),
                     request.getConnectTimeoutSeconds(),
                     request.getReadTimeoutSeconds(),
-                    ConfigFactory.getConfig().remoteSshHostKeyVerify());
+                    ConfigFactory.getRemoteLogConfig().remoteSshHostKeyVerify());
             return executeCommand(client, request);
         } catch (RemoteCommandException e) {
             throw e;
@@ -186,7 +186,7 @@ public final class SshLogFetcher implements LogFetcher {
     private SSHClient buildClient(LogFetchRequest request) {
         SSHClient ssh = new SSHClient();
         SshConnectionPool.applyHostKeyVerification(
-                ssh, ConfigFactory.getConfig().remoteSshHostKeyVerify());
+                ssh, ConfigFactory.getRemoteLogConfig().remoteSshHostKeyVerify());
         ssh.setConnectTimeout(request.getConnectTimeoutSeconds() * 1_000);
         ssh.setTimeout(request.getReadTimeoutSeconds() * 1_000);
         return ssh;

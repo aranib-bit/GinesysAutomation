@@ -43,10 +43,10 @@ public final class RemoteDriverFactory {
     public static WebDriver getRemoteDriver(String browser) throws MalformedURLException {
         WebDriverData data = WebDriverData.builder()
                 .browserType(Browser.valueOf(browser.trim().toUpperCase()))
-                .gridUrl(ConfigFactory.getConfig().gridUrl())
-                .headless(ConfigFactory.getConfig().headless())
-                .incognito(ConfigFactory.getConfig().incognito())
-                .acceptInsecureCerts(ConfigFactory.getConfig().acceptInsecureCerts())
+                .gridUrl(ConfigFactory.getBrowserConfig().gridUrl())
+                .headless(ConfigFactory.getBrowserConfig().headless())
+                .incognito(ConfigFactory.getBrowserConfig().incognito())
+                .acceptInsecureCerts(ConfigFactory.getBrowserConfig().acceptInsecureCerts())
                 .build();
         return getDriver(data);
     }

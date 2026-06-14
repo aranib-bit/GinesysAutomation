@@ -5,6 +5,7 @@ import com.gsl.driver.DriverManager;
 import com.gsl.enums.WaitType;
 import com.gsl.utils.Selenium.JavascriptExecutorUtils;
 import com.gsl.utils.Selenium.SeleniumUtils;
+import com.gsl.utils.Selenium.WaitUtils;
 import org.openqa.selenium.By;
 import org.openqa.selenium.Keys;
 import org.openqa.selenium.support.ui.ExpectedConditions;
@@ -106,12 +107,34 @@ public class ReferenceSiteWiseFIFOPopup {
         return this;
     }
 
-    /** Clicks Auto Adjust and waits for the popup to disappear. */
+    /**
+     * Clicks Auto Adjust and waits for the popup to disappear.
+     * If the "pending amount" warning appears (grid total > adjusted total),
+     * automatically clicks "Proceed Anyway" before waiting for popup close.
+     */
     public void clickAutoAdjust() {
         SeleniumUtils.click(AUTO_ADJUST_BUTTON, WaitType.CLICKABLE, "RefSiteFIFO_AutoAdjust");
-        new WebDriverWait(DriverManager.getDriver(),
-                Duration.ofSeconds(ConfigFactory.getConfig().extjsTimeout()))
+        JavascriptExecutorUtils.waitForExtJS();
+        handlePendingWarningIfPresent();
+        WaitUtils.webDriverWait(ConfigFactory.getFinanceConfig().extjsTimeout())
                 .until(ExpectedConditions.invisibilityOfElementLocated(POPUP_WINDOW));
+    }
+
+    /**
+     * Checks (with a short 3-second timeout) whether the "There is still Rs. X pending
+     * to be adjusted" warning is present and clicks "Proceed Anyway" if so.
+     * No-op when the warning is absent — normal flow continues.
+     */
+    private void handlePendingWarningIfPresent() {
+        By proceedAnyway = DocumentPopup.ButtonText.PROCEED_ANYWAY.locator();
+        try {
+            WaitUtils.webDriverWait(ConfigFactory.getWaitConfig().shortWaitSeconds())
+                    .until(ExpectedConditions.elementToBeClickable(proceedAnyway));
+            SeleniumUtils.click(proceedAnyway, WaitType.CLICKABLE, "RefSiteFIFO_ProceedAnyway");
+            JavascriptExecutorUtils.waitForExtJS();
+        } catch (Exception ignored) {
+            // Warning popup not present — continue to popup-close wait
+        }
     }
 
     /**

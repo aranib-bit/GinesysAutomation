@@ -4,8 +4,10 @@ import com.gsl.config.ConfigFactory;
 import com.gsl.driver.DriverManager;
 import com.gsl.enums.WaitType;
 import com.gsl.pages.Common.DocumentMessageBox;
+import com.gsl.pages.enums.CommonButton;
 import com.gsl.pages.pagecomponent.Finance.Common.AdjustmentEntryParent;
 import com.gsl.utils.Selenium.SeleniumUtils;
+import com.gsl.utils.Selenium.WaitUtils;
 import org.openqa.selenium.By;
 import org.openqa.selenium.WebDriver;
 import org.openqa.selenium.WebElement;
@@ -57,9 +59,11 @@ public class DocumentPopup {
 
     // ── Locators ─────────────────────────────────────────────────────────────
 
-    private static final By MESSAGE_TEXT  = By.xpath("//*[@id='messagebox-1001-msg']");
-    private static final By CONTINUE_BTN  = By.xpath("//span[normalize-space()='Continue']");
-    private static final By YES_BUTTON    = By.xpath("//span[text()='Yes']");
+    // CONTINUE_BTN → CommonButton.CONTINUE.locator()
+    // YES_BUTTON   → CommonButton.YES.locator()
+    private static final class Loc {
+        static final By MESSAGE_TEXT = By.xpath("//*[@id='messagebox-1001-msg']");
+    }
 
     // ── Save-confirmation path ────────────────────────────────────────────────
 
@@ -73,7 +77,7 @@ public class DocumentPopup {
      */
     public DocumentPopup verifyPaymentInfoCheckWarning(PaymentInfoCheckWarning warning) {
         WebDriver driver = DriverManager.getDriver();
-        WebDriverWait wait = new WebDriverWait(driver, Duration.ofSeconds(ConfigFactory.getConfig().timeout()));
+        WebDriverWait wait = WaitUtils.webDriverWait();
 
         System.out.println("Waiting for payment-info-check warning dialog (" + warning + ")...");
         wait.until(ExpectedConditions.visibilityOfElementLocated(warning.proceedLocator()));
@@ -85,11 +89,11 @@ public class DocumentPopup {
                     "//span[normalize-space()='" + warning.getMessageSubstring().replace("'", "\\'") + "']"
                     + "/ancestor::div[contains(@class,'x-message-box')]"
                     + "//div[contains(@class,'x-component-default')]");
-            int maxRetries = ConfigFactory.getConfig().warningMsgMaxRetries();
+            int maxRetries = ConfigFactory.getWaitConfig().warningMsgMaxRetries();
             WebElement msgEl = null;
             for (int attempt = 0; attempt < maxRetries && msgEl == null; attempt++) {
                 try {
-                    msgEl = new WebDriverWait(driver, Duration.ofSeconds(3))
+                    msgEl = WaitUtils.webDriverWait(ConfigFactory.getWaitConfig().shortWaitSeconds())
                             .until(ExpectedConditions.visibilityOfElementLocated(msgLocator));
                 } catch (Exception ignored) {}
             }
@@ -113,13 +117,13 @@ public class DocumentPopup {
      * @param expectedMessage the substring expected to appear in the validation error popup
      * @return {@code this} for fluent chaining
      */
-    public DocumentPopup verifyErrorMessage(String expectedMessage) {
+    public String verifyErrorMessage(String expectedMessage) {
         WebDriver driver = DriverManager.getDriver();
-        WebDriverWait wait = new WebDriverWait(driver, Duration.ofSeconds(ConfigFactory.getConfig().timeout()));
+        WebDriverWait wait = WaitUtils.webDriverWait();
 
         System.out.println("Waiting for validation error popup to appear...");
-        wait.until(ExpectedConditions.visibilityOfElementLocated(MESSAGE_TEXT));
-        String actualMessage = driver.findElement(MESSAGE_TEXT).getText();
+        wait.until(ExpectedConditions.visibilityOfElementLocated(Loc.MESSAGE_TEXT));
+        String actualMessage = driver.findElement(Loc.MESSAGE_TEXT).getText();
         System.out.println("Validation error popup message: " + actualMessage);
 
         if (actualMessage == null || !actualMessage.contains(expectedMessage)) {
@@ -127,7 +131,27 @@ public class DocumentPopup {
                     "Expected validation error popup to contain: [" + expectedMessage + "]"
                     + " but got: [" + actualMessage + "]");
         }
-        return this;
+        return actualMessage;
+    }
+
+    /**
+     * Asserts that the visible error popup's header contains {@code expectedHeader} (case-sensitive,
+     * substring match). Trims leading/trailing whitespace from the header element text before
+     * comparing — the icon {@code <i>} tag prepends a space in the DOM.
+     *
+     * @param expectedHeader the substring expected in the popup header (e.g. "Error")
+     * @return the trimmed actual header text, for report logging
+     */
+    public String verifyErrorHeader(String expectedHeader) {
+        WebDriver driver = DriverManager.getDriver();
+        WaitUtils.webDriverWait().until(
+                ExpectedConditions.visibilityOfElementLocated(By.id("messagebox-1001_header-title-textEl")));
+        String actual = driver.findElement(By.id("messagebox-1001_header-title-textEl")).getText().trim();
+        if (!actual.contains(expectedHeader)) {
+            throw new AssertionError(
+                    "Expected error popup header to contain: [" + expectedHeader + "] but got: [" + actual + "]");
+        }
+        return actual;
     }
 
     /**
@@ -144,16 +168,16 @@ public class DocumentPopup {
      */
     public DocumentMessageBox waitForMessageBox() {
         WebDriver driver = DriverManager.getDriver();
-        WebDriverWait wait = new WebDriverWait(driver, Duration.ofSeconds(ConfigFactory.getConfig().timeout()));
+        WebDriverWait wait = WaitUtils.webDriverWait();
 
         System.out.println("Waiting for message box after save");
-        wait.until(ExpectedConditions.visibilityOfElementLocated(MESSAGE_TEXT));
+        wait.until(ExpectedConditions.visibilityOfElementLocated(Loc.MESSAGE_TEXT));
         System.out.println("Messagebox is now visible");
 
         // If the app unexpectedly shows the payment-info-check warning dialog,
         // auto-detect AR vs AP variant and click the appropriate proceed button.
         try {
-            String msgText = driver.findElement(MESSAGE_TEXT).getText();
+            String msgText = driver.findElement(Loc.MESSAGE_TEXT).getText();
             if (msgText != null && msgText.contains("instrument number")) {
                 PaymentInfoCheckWarning detected = msgText.contains(
                         PaymentInfoCheckWarning.AP_VOUCHER.getMessageSubstring())
@@ -161,7 +185,7 @@ public class DocumentPopup {
                         : PaymentInfoCheckWarning.AR_VOUCHER;
                 System.out.println("Payment info warning detected (" + detected + ") — clicking proceed");
                 SeleniumUtils.click(detected.proceedLocator(), WaitType.CLICKABLE, "PAYMENT_WARN_AUTO");
-                wait.until(ExpectedConditions.visibilityOfElementLocated(MESSAGE_TEXT));
+                wait.until(ExpectedConditions.visibilityOfElementLocated(Loc.MESSAGE_TEXT));
                 System.out.println("Messagebox visible after payment info proceed.");
             }
         } catch (Exception e) {
@@ -191,12 +215,12 @@ public class DocumentPopup {
      */
     public DocumentMessageBox clickProceed(PaymentInfoCheckWarning warning) {
         WebDriver driver = DriverManager.getDriver();
-        WebDriverWait wait = new WebDriverWait(driver, Duration.ofSeconds(ConfigFactory.getConfig().timeout()));
+        WebDriverWait wait = WaitUtils.webDriverWait();
 
         System.out.println("Clicking proceed for " + warning + "...");
         SeleniumUtils.click(warning.proceedLocator(), WaitType.CLICKABLE, "PAYMENT_WARN_PROCEED");
 
-        wait.until(ExpectedConditions.visibilityOfElementLocated(MESSAGE_TEXT));
+        wait.until(ExpectedConditions.visibilityOfElementLocated(Loc.MESSAGE_TEXT));
         System.out.println("Messagebox is now visible after payment info proceed.");
 
         // If TDS Auto Journal prompt is showing next, click Continue and wait for success popup.
@@ -248,6 +272,15 @@ public class DocumentPopup {
         return adjustmentEntry;
     }
 
+    /**
+     * Clicks the OK button on the validation error popup (after {@link #verifyErrorMessage}).
+     * Used by boundary scenarios that need to stay on the form after dismissing the dialog
+     * (e.g. to hover the row indicator and read the inline tooltip).
+     */
+    public void clickOkOnErrorDialog() {
+        SeleniumUtils.click(CommonButton.OK.locator(), WaitType.CLICKABLE, "ERROR_DIALOG_OK");
+    }
+
     // ── Private helpers ───────────────────────────────────────────────────────
 
     /**
@@ -267,13 +300,13 @@ public class DocumentPopup {
      */
     private void handleTdsAutoJournalPromptIfPresent(WebDriverWait wait, WebDriver driver) {
         try {
-            List<WebElement> continueBtns = driver.findElements(CONTINUE_BTN);
+            List<WebElement> continueBtns = driver.findElements(CommonButton.CONTINUE.locator());
             if (!continueBtns.isEmpty() && continueBtns.get(0).isDisplayed()) {
                 System.out.println("TDS Auto Journal prompt detected — clicking Continue");
-                SeleniumUtils.click(CONTINUE_BTN, WaitType.CLICKABLE, "TDS_AUTO_JOURNAL_CONTINUE");
+                SeleniumUtils.click(CommonButton.CONTINUE.locator(), WaitType.CLICKABLE, "TDS_AUTO_JOURNAL_CONTINUE");
                 // Wait for the TDS prompt to close, then wait for the success popup
-                wait.until(ExpectedConditions.invisibilityOfElementLocated(MESSAGE_TEXT));
-                wait.until(ExpectedConditions.visibilityOfElementLocated(MESSAGE_TEXT));
+                wait.until(ExpectedConditions.invisibilityOfElementLocated(Loc.MESSAGE_TEXT));
+                wait.until(ExpectedConditions.visibilityOfElementLocated(Loc.MESSAGE_TEXT));
                 System.out.println("Success messagebox is now visible after TDS Auto Journal Continue.");
             }
         } catch (Exception e) {

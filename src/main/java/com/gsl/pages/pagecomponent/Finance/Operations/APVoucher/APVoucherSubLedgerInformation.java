@@ -8,8 +8,10 @@ import com.gsl.enums.Finance.Operations.APVoucher.DeductTdsClearConfirmAction;
 import com.gsl.enums.PaymentSelectionType;
 import com.gsl.enums.WaitType;
 import com.gsl.pages.Finance.Operations.Common.AdjustmentEntry;
+import com.gsl.pages.Finance.Operations.Common.DocumentPopup;
 import com.gsl.enums.VoucherDomain;
 import com.gsl.pages.Finance.Operations.Common.SelectDocumentPopup;
+import com.gsl.pages.pagecomponent.Finance.Operations.Common.SubLedgerRowLocator;
 import com.gsl.pages.pagecomponent.Finance.Operations.Common.VoucherSubLedgerInformationBase;
 import com.gsl.testdata.Finance.Operations.Vouchers.APVoucher.PaymentInformation;
 import com.gsl.testdata.Finance.Operations.Vouchers.APVoucher.SelectDocument;
@@ -22,6 +24,9 @@ import com.gsl.utils.Selenium.SeleniumUtils;
 import com.gsl.pages.enums.Finance.Operations.APVoucher.APVoucherGridColumnHeader;
 import com.gsl.pages.enums.Finance.Operations.Common.CommonVoucherGridColumnHeader;
 import com.gsl.reports.ExtentLogger;
+import com.gsl.reports.StepExecutor;
+import com.gsl.reports.SubLedgerRowStepRegistry;
+import com.aventstack.extentreports.ExtentTest;
 import org.openqa.selenium.By;
 import org.openqa.selenium.JavascriptExecutor;
 import org.openqa.selenium.WebDriver;
@@ -46,6 +51,11 @@ public class APVoucherSubLedgerInformation extends VoucherSubLedgerInformationBa
     @Override
     protected PaymentInformationPopup createPaymentPopup() {
         return new ApPaymentInformationPopup();
+    }
+
+    /** Exposes the base Add Row button click for pre-save validation scenarios. */
+    public void clickAddRow() {
+        clickAddRowButton();
     }
 
     private static final By SUBLEDGERNAMEBLANK = By.xpath(
@@ -135,52 +145,88 @@ public class APVoucherSubLedgerInformation extends VoucherSubLedgerInformationBa
     /** Pass 1 (sub-ledger name + amount) and Pass 2 (reference site re-apply). Common to both modes. */
     private void fillSubLedgerBase(List<SubLedgerInformation> sls, boolean includeRetry) {
 
+        // Start each test's row grouping clean (ThreadLocal — safe under parallel="methods").
+        SubLedgerRowStepRegistry.clear();
+
         // ── Pass 1: set sub-ledger name and amount (Dr) ───────────────────────
         for (int i = 0; i < sls.size(); i++) {
-            SubLedgerInformation sl = sls.get(i);
-            if (i > 0) addSubLedgerRow();
+            final int idx = i;
+            final SubLedgerInformation sl = sls.get(i);
             String rawSlName = sl.getSubLedger();
             if (rawSlName == null || rawSlName.trim().isEmpty()) {
                 throw new IllegalArgumentException(
                     "SubLedger name is null/empty at row index " + i
                     + " (TestCaseID='" + sl.getTestCaseID() + "', LineNo='" + sl.getLineNo() + "').");
             }
-            String slName  = rawSlName.trim();
-            String slId    = sl.getId()            != null ? sl.getId().trim()            : "";
-            String refSite = sl.getReferenceSite() != null ? sl.getReferenceSite().trim() : "";
-            try {
-                setSubLedgerName(slName, slId, refSite, i);
-                setSubLedgerAmount(sl.getAmountDr().toPlainString(), i);
-            } catch (InterruptedException e) {
-                Thread.currentThread().interrupt();
-                throw new RuntimeException("Interrupted setting sub-ledger amount on row " + i, e);
-            }
-            if (sl.getDeductTds() != null && !sl.getDeductTds().trim().isEmpty()) {
-                if ("NATIVE".equalsIgnoreCase(ConfigFactory.getConfig().subLedgerSelectionMode())) {
-                    setDeductTdsNative(sl.getDeductTds().trim(), slName, refSite, slId,
-                            sl.getDeductTdsConfirmAction(), sl.getAmountDr(), i);
-                } else {
-                    JavascriptExecutorUtils.setDeductTdsForRow(
-                            DriverManager.getDriver(), i, sl.getDeductTds().trim(), AP_GRID_ITEM_ID);
+            final String slName  = rawSlName.trim();
+            final String slId    = sl.getId()            != null ? sl.getId().trim()            : "";
+            final String refSite = sl.getReferenceSite() != null ? sl.getReferenceSite().trim() : "";
+
+            // Create the per-row group node and register it so the later passes
+            // (reference site, adjustment, payment, TDS) report under this same row.
+            final String rowKey = SubLedgerRowStepRegistry.key(sl.getLineNo(), idx);
+            ExtentTest rowNode = StepExecutor.group(
+                    "SL Row " + (idx + 1) + " — " + slName
+                    + " | Dr: " + sl.getAmountDr()
+                    + " | GL: " + sl.getGeneralLedger());
+            SubLedgerRowStepRegistry.put(rowKey, rowNode);
+
+            StepExecutor.stepUnder(rowNode, "Fill — name / amount", () -> {
+                if (idx > 0) addSubLedgerRow();
+                try {
+                    setSubLedgerName(slName, slId, refSite, idx);
+                    setSubLedgerAmount(sl.getAmountDr().toPlainString(), idx);
+                } catch (InterruptedException e) {
+                    Thread.currentThread().interrupt();
+                    throw new RuntimeException("Interrupted setting sub-ledger amount on row " + idx, e);
                 }
+                Log.debug("Row {} | SL={} | AmtDr={}", idx, sl.getSubLedger(), sl.getAmountDr());
+            });
+
+            if (sl.getDeductTds() != null && !sl.getDeductTds().trim().isEmpty()) {
+                final String deductTds = sl.getDeductTds().trim();
+                StepExecutor.stepUnder(rowNode, "Deduct TDS — " + deductTds, () -> {
+                    if ("NATIVE".equalsIgnoreCase(ConfigFactory.getFinanceConfig().subLedgerSelectionMode())) {
+                        setDeductTdsNative(deductTds, slName, refSite, slId,
+                                sl.getDeductTdsConfirmAction(), sl.getAmountDr(), idx);
+                    } else {
+                        JavascriptExecutorUtils.setDeductTdsForRow(
+                                DriverManager.getDriver(), idx, deductTds, AP_GRID_ITEM_ID);
+                    }
+                });
             }
-            Log.debug("Row {} | SL={} | AmtDr={} | DeductTDS={}",
-                    i, sl.getSubLedger(), sl.getAmountDr(), sl.getDeductTds());
         }
 
         if (includeRetry) {
-            // ── Pass 2: re-apply reference sites ─────────────────────────────
+            // ── Pass 2: change reference site only when explicitly requested ──
             for (int i = 0; i < sls.size(); i++) {
-                String refSite = sls.get(i).getReferenceSite() != null
-                        ? sls.get(i).getReferenceSite() : "";
-                setSubLedgerReferenceSite(refSite, i);
+                final int idx = i;
+                final SubLedgerInformation sl = sls.get(i);
+                final String refSite = sl.getReferenceSite() != null ? sl.getReferenceSite() : "";
+                ExtentTest rowNode = SubLedgerRowStepRegistry.get(
+                        SubLedgerRowStepRegistry.key(sl.getLineNo(), idx));
+                if (sl.isChangeReferenceSite()) {
+                    StepExecutor.stepUnder(rowNode,
+                            "Change Reference Site — " + (refSite.isEmpty() ? "(none)" : refSite),
+                            () -> setSubLedgerReferenceSite(refSite, idx));
+                } else {
+                    ExtentLogger.info("[AP SL RefSite] Row " + idx
+                            + ": skipping Pass-2 set (changeReferenceSite=false) — current value kept");
+                }
             }
-            // Row-0 retry
+            // Row-0 retry — only if that row opted in
             {
-                String refSite = sls.get(0).getReferenceSite() != null
-                        ? sls.get(0).getReferenceSite() : "";
-                setSubLedgerReferenceSite(refSite, 0);
+                final SubLedgerInformation sl0 = sls.get(0);
+                final String refSite = sl0.getReferenceSite() != null ? sl0.getReferenceSite() : "";
+                ExtentTest rowNode = SubLedgerRowStepRegistry.get(
+                        SubLedgerRowStepRegistry.key(sl0.getLineNo(), 0));
+                if (sl0.isChangeReferenceSite()) {
+                    StepExecutor.stepUnder(rowNode,
+                            "Change Reference Site (row-0 retry) — " + (refSite.isEmpty() ? "(none)" : refSite),
+                            () -> setSubLedgerReferenceSite(refSite, 0));
+                }
             }
+            // Read back actual values regardless — captures what the app populated
             for (int i = 0; i < sls.size(); i++) {
                 String actual = getSubLedgerReferenceSite(i);
                 if (actual != null && !actual.isEmpty()) sls.get(i).setReferenceSite(actual);
@@ -196,74 +242,80 @@ public class APVoucherSubLedgerInformation extends VoucherSubLedgerInformationBa
                 .collect(Collectors.toList());
 
         for (SubLedgerInformation row : adjustRows) {
-            String refSite = row.getReferenceSite() != null ? row.getReferenceSite() : "";
-            String slId    = row.getId()            != null ? row.getId()            : "";
-            AdjustmentEntry adjustmentEntry = openAdjustmentEntry(row.getSubLedger(), refSite, slId);
-            AdjustmentType adjType = row.getAdjustmentType();
-            boolean needsConfirmation = false; // AP voucher has no GridRelation confirmation popup
+            final int idx = sls.indexOf(row);
+            final String refSite = row.getReferenceSite() != null ? row.getReferenceSite() : "";
+            final String slId    = row.getId()            != null ? row.getId()            : "";
+            final AdjustmentType adjType = row.getAdjustmentType();
+            ExtentTest rowNode = SubLedgerRowStepRegistry.get(
+                    SubLedgerRowStepRegistry.key(row.getLineNo(), idx));
 
-            if (adjType == AdjustmentType.SELECT_DOCUMENT) {
-                SelectDocumentPopup popup = adjustmentEntry.selectDocument();
-                String lineNo = row.getLineNo();
-                List<SelectDocument> docs = data.getSelectDocumentList().stream()
-                        .filter(d -> lineNo != null && lineNo.equalsIgnoreCase(d.getLineNo()))
-                        .collect(Collectors.toList());
-                for (SelectDocument doc : docs) {
-                    popup.selectDocument(doc.getDocumentNumber());
-                }
-                popup.clickSelect();
-                for (SelectDocument doc : docs) {
-                    BigDecimal excelAmount = doc.getAdjustmentAmount();
-                    if (excelAmount == null || excelAmount.compareTo(BigDecimal.ZERO) == 0) continue;
-                    if (excelAmount.compareTo(BigDecimal.ZERO) < 0) {
-                        throw new IllegalArgumentException(
-                            "Adjustment amount cannot be negative for document ["
-                            + doc.getDocumentNumber() + "]. Got: " + excelAmount.toPlainString());
+            StepExecutor.stepUnder(rowNode, "Adjust — Type: " + adjType, () -> {
+                AdjustmentEntry adjustmentEntry = openAdjustmentEntry(row.getSubLedger(), refSite, slId);
+                boolean needsConfirmation = false; // AP voucher has no GridRelation confirmation popup
+
+                if (adjType == AdjustmentType.SELECT_DOCUMENT) {
+                    SelectDocumentPopup popup = adjustmentEntry.selectDocument();
+                    String lineNo = row.getLineNo();
+                    List<SelectDocument> docs = data.getSelectDocumentList().stream()
+                            .filter(d -> lineNo != null && lineNo.equalsIgnoreCase(d.getLineNo()))
+                            .collect(Collectors.toList());
+                    for (SelectDocument doc : docs) {
+                        popup.selectDocument(doc.getDocumentNumber());
                     }
-                    String uiStr = adjustmentEntry.getAdjustedAmountForDocument(doc.getDocumentNumber());
-                    BigDecimal uiAmount = BigDecimalUtils.safeParse(uiStr);
-                    if (excelAmount.compareTo(uiAmount) != 0) {
-                        adjustmentEntry.setAdjustedAmountForDocument(
-                                doc.getDocumentNumber(), excelAmount.toPlainString());
+                    popup.clickSelect();
+                    for (SelectDocument doc : docs) {
+                        BigDecimal excelAmount = doc.getAdjustmentAmount();
+                        if (excelAmount == null || excelAmount.compareTo(BigDecimal.ZERO) == 0) continue;
+                        if (excelAmount.compareTo(BigDecimal.ZERO) < 0) {
+                            throw new IllegalArgumentException(
+                                "Adjustment amount cannot be negative for document ["
+                                + doc.getDocumentNumber() + "]. Got: " + excelAmount.toPlainString());
+                        }
+                        String uiStr = adjustmentEntry.getAdjustedAmountForDocument(doc.getDocumentNumber());
+                        BigDecimal uiAmount = BigDecimalUtils.safeParse(uiStr);
+                        if (excelAmount.compareTo(uiAmount) != 0) {
+                            adjustmentEntry.setAdjustedAmountForDocument(
+                                    doc.getDocumentNumber(), excelAmount.toPlainString());
+                        }
+                    }
+                    if (needsConfirmation) {
+                        adjustmentEntry.clickOKExpectingConfirmation().clickProceedAnyway();
+                    } else {
+                        adjustmentEntry.clickOK();
+                    }
+
+                } else if (adjType == AdjustmentType.REFERENCE_SITEWISE_FIFO_SETOFF) {
+                    String lineNo = row.getLineNo();
+                    List<com.gsl.testdata.Finance.Operations.Vouchers.APVoucher.ReferenceSitewiseFIFOsetoff> fifoRows =
+                            data.getReferenceSitewiseFIFOList() != null
+                            ? data.getReferenceSitewiseFIFOList() : List.of();
+                    List<com.gsl.testdata.Finance.Operations.Vouchers.APVoucher.ReferenceSitewiseFIFOsetoff> refSites =
+                            fifoRows.stream()
+                                    .filter(r -> lineNo != null && lineNo.equalsIgnoreCase(r.getLineNo()))
+                                    .collect(Collectors.toList());
+                    com.gsl.pages.Finance.Operations.Common.ReferenceSiteWiseFIFOPopup fifoPopup =
+                            adjustmentEntry.openReferenceSiteWiseFIFOPopup();
+                    for (com.gsl.testdata.Finance.Operations.Vouchers.APVoucher.ReferenceSitewiseFIFOsetoff rs : refSites) {
+                        fifoPopup.selectAndAutoAdjust(rs.getReferenceSiteName(), rs.getSiteName());
+                    }
+                    com.gsl.pages.Finance.Operations.Common.AdjustmentAmountSnapshot snapshot =
+                            adjustmentEntry.captureAmounts();
+                    Log.info("RefSiteFIFO amounts — txn={} adj={} pending={}",
+                             snapshot.getTransactionAmount(), snapshot.getAdjustedAmount(), snapshot.getPendingToAdjust());
+                    if (needsConfirmation) {
+                        adjustmentEntry.clickOKExpectingConfirmation().clickProceedAnyway();
+                    } else {
+                        adjustmentEntry.clickOK();
+                    }
+
+                } else if (adjType == AdjustmentType.FIFO_SETOFF) {
+                    if (needsConfirmation) {
+                        adjustmentEntry.fifoSetOff().clickOKExpectingConfirmation().clickProceedAnyway();
+                    } else {
+                        adjustmentEntry.fifoSetOff().clickOK();
                     }
                 }
-                if (needsConfirmation) {
-                    adjustmentEntry.clickOKExpectingConfirmation().clickProceedAnyway();
-                } else {
-                    adjustmentEntry.clickOK();
-                }
-
-            } else if (adjType == AdjustmentType.REFERENCE_SITEWISE_FIFO_SETOFF) {
-                String lineNo = row.getLineNo();
-                List<com.gsl.testdata.Finance.Operations.Vouchers.APVoucher.ReferenceSitewiseFIFOsetoff> fifoRows =
-                        data.getReferenceSitewiseFIFOList() != null
-                        ? data.getReferenceSitewiseFIFOList() : List.of();
-                List<com.gsl.testdata.Finance.Operations.Vouchers.APVoucher.ReferenceSitewiseFIFOsetoff> refSites =
-                        fifoRows.stream()
-                                .filter(r -> lineNo != null && lineNo.equalsIgnoreCase(r.getLineNo()))
-                                .collect(Collectors.toList());
-                com.gsl.pages.Finance.Operations.Common.ReferenceSiteWiseFIFOPopup fifoPopup =
-                        adjustmentEntry.openReferenceSiteWiseFIFOPopup();
-                for (com.gsl.testdata.Finance.Operations.Vouchers.APVoucher.ReferenceSitewiseFIFOsetoff rs : refSites) {
-                    fifoPopup.selectAndAutoAdjust(rs.getReferenceSiteName(), rs.getSiteName());
-                }
-                com.gsl.pages.Finance.Operations.Common.AdjustmentAmountSnapshot snapshot =
-                        adjustmentEntry.captureAmounts();
-                Log.info("RefSiteFIFO amounts — txn={} adj={} pending={}",
-                         snapshot.getTransactionAmount(), snapshot.getAdjustedAmount(), snapshot.getPendingToAdjust());
-                if (needsConfirmation) {
-                    adjustmentEntry.clickOKExpectingConfirmation().clickProceedAnyway();
-                } else {
-                    adjustmentEntry.clickOK();
-                }
-
-            } else if (adjType == AdjustmentType.FIFO_SETOFF) {
-                if (needsConfirmation) {
-                    adjustmentEntry.fifoSetOff().clickOKExpectingConfirmation().clickProceedAnyway();
-                } else {
-                    adjustmentEntry.fifoSetOff().clickOK();
-                }
-            }
+            });
         }
     }
 
@@ -278,7 +330,7 @@ public class APVoucherSubLedgerInformation extends VoucherSubLedgerInformationBa
     }
 
     private void setSubLedgerName(String subledgerName, String id, String referenceSite, int rowIndex) {
-        if ("NATIVE".equalsIgnoreCase(ConfigFactory.getConfig().subLedgerSelectionMode())) {
+        if ("NATIVE".equalsIgnoreCase(ConfigFactory.getFinanceConfig().subLedgerSelectionMode())) {
             setSubLedgerNameNative(subledgerName, id, referenceSite, rowIndex);
             return;
         }
@@ -422,37 +474,91 @@ public class APVoucherSubLedgerInformation extends VoucherSubLedgerInformationBa
     }
 
     private void setSubLedgerReferenceSite(String referenceSite, int rowIndex) {
-        JavascriptExecutorUtils.setSubLedgerReferenceSite(DriverManager.getDriver(), rowIndex, referenceSite, AP_GRID_ITEM_ID);
+        if (referenceSite == null || referenceSite.trim().isEmpty()) return;
+        // Never change Reference Site when the row already has a value (per requirement).
+        // The app auto-populates it after sub-ledger selection; re-opening the editor risks
+        // landing on the wrong cell and is not wanted. Skip without opening any editor.
+        String existing = getSubLedgerReferenceSite(rowIndex);
+        if (existing != null && !existing.trim().isEmpty()) {
+            ExtentLogger.info("[AP SL RefSite] Row " + rowIndex + ": already '" + existing
+                    + "' — not changing (skip).");
+            return;
+        }
+        String inputId = JavascriptExecutorUtils.openReferenceSiteCellEditor(
+                DriverManager.getDriver(), rowIndex, AP_GRID_ITEM_ID);
+        if (inputId == null || inputId.isEmpty()) {
+            ExtentLogger.warning("[AP SL RefSite] Row " + rowIndex
+                    + ": native editor did not open — using JS injection fallback for '" + referenceSite + "'");
+            Log.warn("[SL_REFSITE_NATIVE] AP row {} — falling back to JS injection for '{}'", rowIndex, referenceSite);
+            JavascriptExecutorUtils.setSubLedgerReferenceSite(DriverManager.getDriver(), rowIndex, referenceSite, AP_GRID_ITEM_ID);
+            return;
+        }
+        ExtentLogger.info("[AP SL RefSite] Row " + rowIndex + ": native path — typing '" + referenceSite + "'");
+        By comboInput = By.id(inputId);
+        SeleniumUtils.clear(comboInput, "SL_REFSITE");
+        SeleniumUtils.sendKeys(comboInput, WaitType.VISIBLE, referenceSite, "SL_REFSITE");
+        JavascriptExecutorUtils.waitForExtJS();
+        By option = By.xpath("//li[@role='option'][normalize-space(.)='" + referenceSite + "']");
+        SeleniumUtils.click(option, WaitType.CLICKABLE, "SL_REFSITE_OPTION_" + referenceSite);
+        JavascriptExecutorUtils.waitForExtJS();
+        JavascriptExecutorUtils.waitForPageLoad();
+        ExtentLogger.info("[AP SL RefSite] Row " + rowIndex + ": selected '" + referenceSite + "' via native");
+    }
+
+    /**
+     * Clicks the Amount (Dr) cell for the given sub-ledger row and returns the resulting dialog.
+     * After a document has been adjusted against the SL, clicking the cell raises an Information
+     * dialog ("Document is adjusted against the selected sub ledger, amount can not be modified
+     * manually.") — the returned {@link DocumentPopup} wraps that dialog for assertion.
+     *
+     * <p>The Amount column ID is resolved at runtime via ExtJS so it survives grid re-renders.
+     */
+    public DocumentPopup clickAmountCell(String slName, String slId) {
+        JavascriptExecutor js = (JavascriptExecutor) DriverManager.getDriver();
+        String columnId = (String) js.executeScript(
+                "try {" +
+                "    var grid = Ext.ComponentQuery.query('gridpanel[itemId=" + AP_GRID_ITEM_ID + "]')[0];" +
+                "    if (!grid) return null;" +
+                "    var cols = grid.getColumns();" +
+                "    for (var i = 0; i < cols.length; i++) {" +
+                "        if (cols[i].dataIndex === 'amount') return cols[i].el.id;" +
+                "    }" +
+                "    return null;" +
+                "} catch(e) { return null; }"
+        );
+        if (columnId == null || columnId.isEmpty()) {
+            throw new IllegalStateException(
+                    "Could not resolve Amount (Dr) column ID in grid [" + AP_GRID_ITEM_ID + "]");
+        }
+        By cell = SubLedgerRowLocator.amountCell(slName, slId, columnId);
+        DriverManager.getDriver().findElement(cell).click();
+        return new DocumentPopup();
     }
 
     private String getSubLedgerReferenceSite(int rowIndex) {
         return JavascriptExecutorUtils.getSubLedgerReferenceSiteName(DriverManager.getDriver(), rowIndex, AP_GRID_ITEM_ID);
     }
 
-    // AP Voucher uses Debit amount — grid field name is 'amount' same as AR, but grid itemId may differ.
-    // Verify AP_GRID_ITEM_ID against the live form if amount setting fails.
     private void setSubLedgerAmount(String subLedgerAmount, int rowIndex) throws InterruptedException {
-        JavascriptExecutor js = (JavascriptExecutor) DriverManager.getDriver();
-        Thread.sleep(500);
-        String result = (String) js.executeScript(
-                "try {" +
-                        "    var amount = parseFloat(arguments[0]);" +
-                        "    var rowIndex = parseInt(arguments[1]);" +
-                        "    var childGrid = Ext.ComponentQuery.query('gridpanel[itemId=" + AP_GRID_ITEM_ID + "]')[0];" +
-                        "    if (!childGrid) return 'ERROR: " + AP_GRID_ITEM_ID + " not found';" +
-                        "    var store = childGrid.getStore();" +
-                        "    if (!store || store.getCount() === 0) return 'ERROR: store empty';" +
-                        "    var rec = store.getAt(rowIndex);" +
-                        "    if (!rec) return 'ERROR: row ' + rowIndex + ' not found';" +
-                        "    rec.set('amount', amount);" +
-                        "    return 'SUCCESS: row=' + rowIndex + ' amount=' + rec.get('amount');" +
-                        "} catch(e) {" +
-                        "    return 'ERROR: ' + e.message;" +
-                        "}",
-                subLedgerAmount, rowIndex
-        );
-        System.out.println("AP setSubLedgerAmount[" + rowIndex + "] result: " + result);
-        Thread.sleep(300);
+        String inputId = JavascriptExecutorUtils.openAmountCellEditor(
+                DriverManager.getDriver(), rowIndex, AP_GRID_ITEM_ID);
+        if (inputId == null || inputId.isEmpty()) {
+            throw new IllegalStateException(
+                    "[SL_AMOUNT_NATIVE] Could not open Amount editor on row " + rowIndex
+                    + " for AP grid [" + AP_GRID_ITEM_ID + "]");
+        }
+        By amountInput = By.id(inputId);
+        SeleniumUtils.clear(amountInput, "SL_AMOUNT");
+        SeleniumUtils.sendKeys(amountInput, WaitType.VISIBLE, subLedgerAmount, "SL_AMOUNT");
+        // Tab commits the value to the ExtJS store record — without it the editor stays open
+        // and the typed amount is never written to the underlying record, causing "Amount is required".
+        SeleniumUtils.pressTab(amountInput, "SL_AMOUNT");
+        JavascriptExecutorUtils.waitForExtJS();
+        // Debug read-back: confirm the typed value committed to the store record.
+        String committed = JavascriptExecutorUtils.getSubLedgerAmount(
+                DriverManager.getDriver(), rowIndex, AP_GRID_ITEM_ID);
+        ExtentLogger.info("[SL_AMOUNT_NATIVE] Row " + rowIndex + ": typed='" + subLedgerAmount
+                + "', committed amount='" + committed + "'");
     }
 
     private void handlePaymentInformation(
@@ -460,10 +566,10 @@ public class APVoucherSubLedgerInformation extends VoucherSubLedgerInformationBa
             List<PaymentInformation> paymentList) {
 
         for (SubLedgerInformation subLedger : subLedgerList) {
-            String lineNo = subLedger.getLineNo();
+            final String lineNo = subLedger.getLineNo();
             if (lineNo == null || lineNo.isBlank()) continue;
 
-            PaymentInformation payment = paymentList.stream()
+            final PaymentInformation payment = paymentList.stream()
                     .filter(p -> p.getLineNo() != null
                             && p.getLineNo().equalsIgnoreCase(lineNo)
                             && (subLedger.getTestCaseID() == null || p.getTestCaseID() == null
@@ -473,17 +579,20 @@ public class APVoucherSubLedgerInformation extends VoucherSubLedgerInformationBa
 
             if (payment == null) continue;
 
-            PaymentSelectionType effectiveType = subLedger.getPaymentSelection() != null
+            final PaymentSelectionType effectiveType = subLedger.getPaymentSelection() != null
                     ? subLedger.getPaymentSelection()
                     : payment.getPaymentMode();
 
             if (effectiveType == null) continue;
             if (effectiveType == PaymentSelectionType.CASH) continue;
 
-            String refSite = subLedger.getReferenceSite() != null ? subLedger.getReferenceSite() : "";
-            String slid    = subLedger.getId()            != null ? subLedger.getId()            : "";
-            clickPaymentButton(subLedger.getSubLedger(), refSite, slid).fillAndSubmit(payment);
-            JavascriptExecutorUtils.waitForExtJS();
+            final String refSite = subLedger.getReferenceSite() != null ? subLedger.getReferenceSite() : "";
+            final String slid    = subLedger.getId()            != null ? subLedger.getId()            : "";
+            ExtentTest rowNode = SubLedgerRowStepRegistry.get(lineNo);
+            StepExecutor.stepUnder(rowNode, "Payment — " + effectiveType.label(), () -> {
+                clickPaymentButton(subLedger.getSubLedger(), refSite, slid).fillAndSubmit(payment);
+                JavascriptExecutorUtils.waitForExtJS();
+            });
         }
     }
 }

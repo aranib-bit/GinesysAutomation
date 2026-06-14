@@ -1,0 +1,12 @@
+{"testName":"createApVoucherDocumentPayment","status":"SKIP","durationMs":1425,"timestamp":"2026-06-14T18:47:22.171617500Z"}
+{"testName":"createApVoucherAdvancePayment","status":"FAIL","durationMs":140889,"timestamp":"2026-06-14T18:49:50.515612100Z"}
+{"testName":"createApVoucherAdvancePayment","status":"PASS","durationMs":171679,"timestamp":"2026-06-14T18:50:18.361572600Z"}
+{"testName":"createApVoucherDocumentPayment","status":"SKIP","durationMs":5886,"timestamp":"2026-06-14T18:50:50.627784700Z"}
+{"testName":"createApVoucherDocumentPayment","status":"PASS","durationMs":231907,"timestamp":"2026-06-14T18:51:24.098071500Z"}
+{"testName":"createApVoucherNegativeBoundary","status":"FAIL","durationMs":177780,"timestamp":"2026-06-14T18:51:27.110720300Z"}
+{"testName":"createApVoucherNegativeBoundary","status":"PASS","durationMs":123312,"timestamp":"2026-06-14T18:54:27.490076500Z"}
+{"testName":"createApVoucherNegativeBoundary","status":"PASS","durationMs":115194,"timestamp":"2026-06-14T18:54:28.379643400Z"}
+{"testName":"createApVoucherNegativeBoundary","status":"PASS","durationMs":93408,"timestamp":"2026-06-14T18:54:44.331602800Z"}
+{"testName":"createApVoucherNegativeBoundary","status":"SKIP","durationMs":2027,"timestamp":"2026-06-14T18:55:58.923754500Z"}
+{"testName":"createApVoucherNegativeBoundary","status":"SKIP","durationMs":1724,"timestamp":"2026-06-14T18:56:02.134352800Z"}
+{"testName":"createApVoucherNegativeBoundary","status":"PASS","durationMs":218681,"timestamp":"2026-06-14T18:56:36.852638Z"}

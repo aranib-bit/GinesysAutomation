@@ -10,7 +10,7 @@ public class UniqueChequeGenerator {
     private static final Set<String> generated = ConcurrentHashMap.newKeySet();
 
     public static String generateUnique() {
-        String key = ConfigFactory.getConfig().chequeCountry();
+        String key = ConfigFactory.getFinanceConfig().chequeCountry();
         ChequeNumberStrategy strategy = ChequeStrategyRotator.resolve(key);
         String cheque;
         do {

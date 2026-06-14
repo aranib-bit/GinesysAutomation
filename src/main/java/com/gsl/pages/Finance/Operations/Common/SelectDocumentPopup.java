@@ -4,8 +4,10 @@ import com.google.common.util.concurrent.Uninterruptibles;
 import com.gsl.config.ConfigFactory;
 import com.gsl.driver.DriverManager;
 import com.gsl.enums.WaitType;
+import com.gsl.pages.enums.CommonButton;
 import com.gsl.utils.Selenium.JavascriptExecutorUtils;
 import com.gsl.utils.Selenium.SeleniumUtils;
+import com.gsl.utils.Selenium.WaitUtils;
 import org.openqa.selenium.By;
 import org.openqa.selenium.NoSuchElementException;
 import org.openqa.selenium.WebDriver;
@@ -20,13 +22,15 @@ import com.gsl.utils.Log;
 
 public class SelectDocumentPopup {
 
-    private static final String CHECKBOX_EXTJS_XPATH =
-            "//div[normalize-space()='%s']/ancestor::tr//td[contains(@class,'x-grid-cell-first')]//div[contains(@class,'x-grid-checkcolumn')]";
-    private static final By SELECT_BUTTON = By.xpath("//span[normalize-space()='Select']");
+    // SELECT_BUTTON → CommonButton.SELECT.locator()
+    private static final class Loc {
+        static final String CHECKBOX_EXTJS_XPATH =
+                "//div[normalize-space()='%s']/ancestor::tr//td[contains(@class,'x-grid-cell-first')]//div[contains(@class,'x-grid-checkcolumn')]";
+    }
 
     public SelectDocumentPopup selectDocument(String documentNumber) {
         WebDriver driver = DriverManager.getDriver();
-        By checkboxBy = By.xpath(String.format(CHECKBOX_EXTJS_XPATH, documentNumber));
+        By checkboxBy = By.xpath(String.format(Loc.CHECKBOX_EXTJS_XPATH, documentNumber));
 
         // Reset to top before every search so that:
         //   1st document  → already at top, no visible effect.
@@ -35,7 +39,7 @@ public class SelectDocumentPopup {
         //                   starts from row 0, not from a mid-list position.
         JavascriptExecutorUtils.resetGridScrollToTop();
         Uninterruptibles.sleepUninterruptibly(
-                ConfigFactory.getConfig().selectDocGridLoadBufferMs(), TimeUnit.MILLISECONDS);
+                ConfigFactory.getWaitConfig().selectDocGridLoadBufferMs(), TimeUnit.MILLISECONDS);
 
         WebElement checkbox;
         Log.debug("SelectDocumentPopup: Attempting direct find of checkbox for document [{}]", documentNumber);
@@ -52,7 +56,7 @@ public class SelectDocumentPopup {
             Log.warn("SelectDocumentPopup: jumpGridToDocument scrollTop=[{}] for [{}]", jumpedTo, documentNumber);
             if (jumpedTo >= 0) {
                 Uninterruptibles.sleepUninterruptibly(
-                        ConfigFactory.getConfig().selectDocJumpRenderMs(), TimeUnit.MILLISECONDS);
+                        ConfigFactory.getWaitConfig().selectDocJumpRenderMs(), TimeUnit.MILLISECONDS);
                 try {
                     checkbox = driver.findElement(checkboxBy);
                     Log.warn("SelectDocumentPopup: Checkbox found via direct jump for [{}]", documentNumber);
@@ -69,13 +73,13 @@ public class SelectDocumentPopup {
                 Log.warn("SelectDocumentPopup: Starting proportional scroll-poll loop for [{}] — grid diagnostics: {}",
                         documentNumber, JavascriptExecutorUtils.getGridDiagnostics());
                 int maxAttempts = Math.max(
-                        ConfigFactory.getConfig().selectDocScrollMinAttempts(),
-                        ConfigFactory.getConfig().selectDocScrollMaxAttempts());
+                        ConfigFactory.getWaitConfig().selectDocScrollMinAttempts(),
+                        ConfigFactory.getWaitConfig().selectDocScrollMaxAttempts());
                 for (int attempt = 1; attempt <= maxAttempts && checkbox == null; attempt++) {
                     long newScrollTop = JavascriptExecutorUtils.scrollSelectDocumentGridDown();
                     Log.warn("SelectDocumentPopup: Proportional scroll attempt [{}], scrollTop=[{}] for [{}]", attempt, newScrollTop, documentNumber);
                     Uninterruptibles.sleepUninterruptibly(
-                            ConfigFactory.getConfig().selectDocScrollStepWaitMs(), TimeUnit.MILLISECONDS);
+                            ConfigFactory.getWaitConfig().selectDocScrollStepWaitMs(), TimeUnit.MILLISECONDS);
                     try {
                         checkbox = driver.findElement(checkboxBy);
                         Log.warn("SelectDocumentPopup: Checkbox found at proportional scroll attempt [{}] for [{}]", attempt, documentNumber);
@@ -93,7 +97,7 @@ public class SelectDocumentPopup {
                 Log.warn("SelectDocumentPopup: focusGridRowByDocument returned index=[{}] for [{}]", focusedIdx, documentNumber);
                 if (focusedIdx >= 0) {
                     Uninterruptibles.sleepUninterruptibly(
-                            ConfigFactory.getConfig().selectDocFocusRowRenderMs(), TimeUnit.MILLISECONDS);
+                            ConfigFactory.getWaitConfig().selectDocFocusRowRenderMs(), TimeUnit.MILLISECONDS);
                     try {
                         checkbox = driver.findElement(checkboxBy);
                         Log.warn("SelectDocumentPopup: Checkbox found via focusRow fallback for [{}]", documentNumber);
@@ -110,11 +114,11 @@ public class SelectDocumentPopup {
         }
 
         Log.debug("SelectDocumentPopup: Waiting for checkbox visibility for document [{}]", documentNumber);
-        new WebDriverWait(driver, Duration.ofSeconds(ConfigFactory.getConfig().extjsMinTimeout()))
+        WaitUtils.webDriverWait(ConfigFactory.getFinanceConfig().extjsMinTimeout())
                 .until(ExpectedConditions.visibilityOf(checkbox));
         Log.debug("SelectDocumentPopup: Checkbox is visible for document [{}]", documentNumber);
         Uninterruptibles.sleepUninterruptibly(
-                ConfigFactory.getConfig().selectDocClickBufferMs(), TimeUnit.MILLISECONDS);
+                ConfigFactory.getWaitConfig().selectDocClickBufferMs(), TimeUnit.MILLISECONDS);
 
         Log.debug("SelectDocumentPopup: Attempting click on checkbox for document [{}]", documentNumber);
         try {
@@ -131,7 +135,7 @@ public class SelectDocumentPopup {
     }
 
     public void clickSelect() {
-        SeleniumUtils.click(SELECT_BUTTON, WaitType.CLICKABLE, "SELECT_BUTTON");
+        SeleniumUtils.click(CommonButton.SELECT.locator(), WaitType.CLICKABLE, "SELECT_BUTTON");
         JavascriptExecutorUtils.waitForExtJS();
     }
 }

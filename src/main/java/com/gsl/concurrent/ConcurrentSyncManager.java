@@ -22,7 +22,7 @@ public final class ConcurrentSyncManager {
     }
 
     public static void await(CyclicBarrier barrier, String name) {
-        long timeout = ConfigFactory.getConfig().syncTimeoutSeconds();
+        long timeout = ConfigFactory.getExecutionConfig().syncTimeoutSeconds();
         try {
             barrier.await(timeout, TimeUnit.SECONDS);
         } catch (BrokenBarrierException e) {

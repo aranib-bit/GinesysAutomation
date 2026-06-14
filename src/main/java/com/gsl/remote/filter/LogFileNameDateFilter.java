@@ -108,7 +108,7 @@ public final class LogFileNameDateFilter {
 
     private static ZoneOffset serverZoneOffset() {
         try {
-            String raw = ConfigFactory.getConfig().remoteLogsServerTimezoneOffset();
+            String raw = ConfigFactory.getRemoteLogConfig().remoteLogsServerTimezoneOffset();
             return (raw != null && !raw.isBlank()) ? ZoneOffset.of(raw) : ZoneOffset.UTC;
         } catch (Exception e) {
             return ZoneOffset.UTC;

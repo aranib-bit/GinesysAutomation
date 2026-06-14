@@ -1,7 +1,7 @@
 package com.gsl.driver.provider;
 
+import com.gsl.config.BrowserConfig;
 import com.gsl.config.ConfigFactory;
-import com.gsl.config.FrameworkConfig;
 import com.gsl.driver.BrowserOptions;
 import com.gsl.enums.Browser;
 import com.gsl.utils.TestContextManager;
@@ -25,7 +25,7 @@ public final class LambdaTestProvider implements ExecutionProvider {
     @Override
     public WebDriver createDriver(Browser browser) {
         try {
-            FrameworkConfig cfg = ConfigFactory.getConfig();
+            BrowserConfig cfg = ConfigFactory.getBrowserConfig();
 
             HashMap<String, Object> ltOptions = new HashMap<>();
             ltOptions.put("username",    cfg.lambdaTestUsername());

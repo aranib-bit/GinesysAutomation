@@ -2,6 +2,8 @@ package com.gsl.constants;
 
 import org.openqa.selenium.By;
 
+import java.nio.file.Paths;
+
 public final class FrameworkConstants {
 
     private FrameworkConstants() {
@@ -21,6 +23,10 @@ public final class FrameworkConstants {
             reportPath = System.getProperty("user.dir") + "/index_" + ts + ".html";
         }
         return reportPath;
+    }
+
+    public static String getReportDir() {
+        return Paths.get(getReportPath()).getParent().toString();
     }
 
     public static By getLoadingWindow() {

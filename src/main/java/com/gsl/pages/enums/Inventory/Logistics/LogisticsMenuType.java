@@ -1,17 +1,24 @@
 package com.gsl.pages.enums.Inventory.Logistics;
 
-public enum LogisticsMenuType {
-    INCOMING_LR("LR"),
-    GATE_ENTRY("Gate Entry"),
-    OUTGOING_LR("LR");
+import com.gsl.enums.ISubModule;
+
+public enum LogisticsMenuType implements ISubModule {
+
+    INCOMING_LR ("LR",         "InvLRIn",   "Incoming"),
+    GATE_ENTRY  ("Gate Entry", "InvGateIn", "Incoming"),
+    OUTGOING_LR ("LR",         "InvLROut",  "Outgoing");
 
     private final String name;
+    private final String shortCode;
+    private final String group;
 
-    public String getName() {
-        return name;
+    LogisticsMenuType(String name, String shortCode, String group) {
+        this.name      = name;
+        this.shortCode = shortCode;
+        this.group     = group;
     }
 
-    LogisticsMenuType(String name) {
-        this.name = name;
-    }
+    @Override public String getName()      { return name; }
+    @Override public String getShortCode() { return shortCode; }
+    @Override public String getGroup()     { return group; }
 }

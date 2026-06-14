@@ -3,27 +3,30 @@ package com.gsl.pages.Finance.Operations;
 import com.google.common.util.concurrent.Uninterruptibles;
 import com.gsl.annotations.LogStep;
 import com.gsl.enums.WaitType;
+import com.gsl.pages.enums.CommonButton;
 import com.gsl.utils.Selenium.SeleniumUtils;
 import org.openqa.selenium.By;
 
 import java.util.concurrent.TimeUnit;
 
 public class ArVoucherListPage {
-    private static final By ARVOUCHERADD = By.xpath("//span[text()='Add']");
 
+    // ARVOUCHERADD → CommonButton.ADD.locator()
     // TODO: replace placeholder XPaths below with actual selectors from the live AR Voucher list UI
-    private static final By SEARCH_BOX     = By.xpath("//TODO-search-input");
-    private static final By SEARCH_BUTTON  = By.xpath("//TODO-search-button");
-    private static final By EDIT_ICON      = By.xpath("//TODO-edit-icon-first-row");
-    private static final By DELETE_ICON    = By.xpath("//TODO-delete-icon-first-row");
-    private static final By UNPOST_BUTTON  = By.xpath("//TODO-unpost-button");
-    private static final By CONFIRM_DELETE = By.xpath("//TODO-confirm-delete-button");
+    private static final class Loc {
+        static final By SEARCH_BOX     = By.xpath("//TODO-search-input");
+        static final By SEARCH_BUTTON  = By.xpath("//TODO-search-button");
+        static final By EDIT_ICON      = By.xpath("//TODO-edit-icon-first-row");
+        static final By DELETE_ICON    = By.xpath("//TODO-delete-icon-first-row");
+        static final By UNPOST_BUTTON  = By.xpath("//TODO-unpost-button");
+        static final By CONFIRM_DELETE = By.xpath("//TODO-confirm-delete-button");
+    }
 
     @LogStep("Open New AR Voucher Form")
     public ArVoucherAdd clickAdd(){
         Uninterruptibles.sleepUninterruptibly(5, TimeUnit.SECONDS);
         System.out.println("Inside clickAdd");
-        SeleniumUtils.click(ARVOUCHERADD, WaitType.CLICKABLE,"ARVOUCHERADD");
+        SeleniumUtils.click(CommonButton.ADD.locator(), WaitType.CLICKABLE, "ARVOUCHERADD");
         return new ArVoucherAdd();
     }
 
@@ -36,8 +39,8 @@ public class ArVoucherListPage {
      */
     @LogStep("Search AR Voucher by Document Number")
     public ArVoucherListPage searchByVoucherNo(String voucherNo) {
-        SeleniumUtils.sendKeys(SEARCH_BOX, WaitType.VISIBLE, voucherNo, "SEARCH_BOX");
-        SeleniumUtils.click(SEARCH_BUTTON, WaitType.CLICKABLE, "SEARCH_BUTTON");
+        SeleniumUtils.sendKeys(Loc.SEARCH_BOX, WaitType.VISIBLE, voucherNo, "SEARCH_BOX");
+        SeleniumUtils.click(Loc.SEARCH_BUTTON, WaitType.CLICKABLE, "SEARCH_BUTTON");
         Uninterruptibles.sleepUninterruptibly(2, TimeUnit.SECONDS);
         return this;
     }
@@ -50,7 +53,7 @@ public class ArVoucherListPage {
      */
     @LogStep("Open AR Voucher for Edit")
     public ArVoucherAdd clickEditForVoucher() {
-        SeleniumUtils.click(EDIT_ICON, WaitType.CLICKABLE, "EDIT_ICON");
+        SeleniumUtils.click(Loc.EDIT_ICON, WaitType.CLICKABLE, "EDIT_ICON");
         return new ArVoucherAdd();
     }
 
@@ -62,7 +65,7 @@ public class ArVoucherListPage {
      */
     @LogStep("Click Delete for AR Voucher")
     public ArVoucherListPage clickDeleteForVoucher() {
-        SeleniumUtils.click(DELETE_ICON, WaitType.CLICKABLE, "DELETE_ICON");
+        SeleniumUtils.click(Loc.DELETE_ICON, WaitType.CLICKABLE, "DELETE_ICON");
         return this;
     }
 
@@ -74,7 +77,7 @@ public class ArVoucherListPage {
      */
     @LogStep("Unpost AR Voucher")
     public ArVoucherListPage clickUnpost() {
-        SeleniumUtils.click(UNPOST_BUTTON, WaitType.CLICKABLE, "UNPOST_BUTTON");
+        SeleniumUtils.click(Loc.UNPOST_BUTTON, WaitType.CLICKABLE, "UNPOST_BUTTON");
         return this;
     }
 
@@ -85,7 +88,7 @@ public class ArVoucherListPage {
      */
     @LogStep("Confirm Delete Dialog")
     public ArVoucherListPage confirmDelete() {
-        SeleniumUtils.click(CONFIRM_DELETE, WaitType.CLICKABLE, "CONFIRM_DELETE");
+        SeleniumUtils.click(Loc.CONFIRM_DELETE, WaitType.CLICKABLE, "CONFIRM_DELETE");
         return this;
     }
 }

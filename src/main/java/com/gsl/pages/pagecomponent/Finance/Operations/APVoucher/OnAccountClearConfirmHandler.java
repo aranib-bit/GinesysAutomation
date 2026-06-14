@@ -1,5 +1,6 @@
 package com.gsl.pages.pagecomponent.Finance.Operations.APVoucher;
 
+import com.gsl.config.ConfigFactory;
 import com.gsl.driver.DriverManager;
 import com.gsl.enums.Finance.Operations.APVoucher.OnAccountClearConfirmAction;
 import com.gsl.enums.Finance.Operations.Common.DocumentMessageBoxMessage;
@@ -10,6 +11,7 @@ import com.gsl.reports.ExtentLogger;
 import com.gsl.utils.Log;
 import com.gsl.utils.Selenium.JavascriptExecutorUtils;
 import com.gsl.utils.Selenium.SeleniumUtils;
+import com.gsl.utils.Selenium.WaitUtils;
 import org.openqa.selenium.By;
 import org.openqa.selenium.TimeoutException;
 import org.openqa.selenium.support.ui.ExpectedConditions;
@@ -57,7 +59,7 @@ final class OnAccountClearConfirmHandler {
     static void handleIfPresent(OnAccountClearConfirmAction confirmAction) {
         ExtentLogger.info("[ON_ACCOUNT_CONFIRM] Waiting for popup | locator=" + POPUP_LOCATOR);
         try {
-            new WebDriverWait(DriverManager.getDriver(), Duration.ofSeconds(3))
+            WaitUtils.webDriverWait(ConfigFactory.getWaitConfig().shortWaitSeconds())
                     .until(ExpectedConditions.visibilityOfElementLocated(POPUP_LOCATOR));
 
             // 1. Validate header type via PopupType classifier

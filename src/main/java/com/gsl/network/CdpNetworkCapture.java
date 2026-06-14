@@ -54,7 +54,7 @@ public final class CdpNetworkCapture implements NetworkCapture {
                     Optional.empty(), Optional.empty(), Optional.empty()));
 
             // ── Persist JS logger shim across page navigations (login redirects, etc.) ──
-            if (ConfigFactory.getConfig().browserLogsEnabled()) {
+            if (ConfigFactory.getNetworkConfig().browserLogsEnabled()) {
                 devTools.send(Page.addScriptToEvaluateOnNewDocument(
                         AdvancedJsLogger.getScript(),
                         Optional.empty(), Optional.empty(), Optional.empty()));
@@ -67,7 +67,7 @@ public final class CdpNetworkCapture implements NetworkCapture {
                 e.method        = req.getRequest().getMethod();
                 e.startTime     = System.currentTimeMillis();
                 e.requestHeaders = headersFromMap(req.getRequest().getHeaders().toJson());
-                if (ConfigFactory.getConfig().networkCaptureBody()) {
+                if (ConfigFactory.getNetworkConfig().networkCaptureBody()) {
                     e.requestBody = req.getRequest().getPostData().orElse(null);
                 }
                 pending.put(req.getRequestId().toString(), e);
@@ -84,7 +84,7 @@ public final class CdpNetworkCapture implements NetworkCapture {
                 int                status          = res.getResponse().getStatus();
                 String             responseBody    = null;
 
-                if (ConfigFactory.getConfig().networkCaptureBody()) {
+                if (ConfigFactory.getNetworkConfig().networkCaptureBody()) {
                     try {
                         Network.GetResponseBodyResponse body =
                                 devTools.send(Network.getResponseBody(new RequestId(reqId)));
@@ -96,7 +96,7 @@ public final class CdpNetworkCapture implements NetworkCapture {
                     }
                 }
 
-                if (!ConfigFactory.getConfig().networkCaptureFailedOnly() || status >= 400) {
+                if (!ConfigFactory.getNetworkConfig().networkCaptureFailedOnly() || status >= 400) {
                     logs.add(new NetworkLogRecord(
                             e.url, e.method, status,
                             e.requestHeaders, responseHeaders,
@@ -122,7 +122,7 @@ public final class CdpNetworkCapture implements NetworkCapture {
             });
 
             // Attach timing/cookies/call-stack listeners to the same session
-            NetworkTimingCapture.attachListeners(devTools, ConfigFactory.getConfig());
+            NetworkTimingCapture.attachListeners(devTools);
 
             started = true;
             LOG.debug("[CdpNetworkCapture] CDP network capture started.");
@@ -152,7 +152,7 @@ public final class CdpNetworkCapture implements NetworkCapture {
 
     /** Returns true when no URL filter is configured, or when the URL matches at least one pattern. */
     private static boolean matchesFilter(String url) {
-        String raw = ConfigFactory.getConfig().networkCaptureUrlFilter();
+        String raw = ConfigFactory.getNetworkConfig().networkCaptureUrlFilter();
         if (raw == null || raw.isBlank()) return true;
         return Arrays.stream(raw.split(","))
                 .map(String::trim)

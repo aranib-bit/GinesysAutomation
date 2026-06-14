@@ -36,46 +36,53 @@ public final class RuntimeProfileBuilder {
                 .execution(buildExecution(fw))
                 .browser(buildBrowser(fw))
                 .database(buildDatabase(db))
-                .network(buildNetwork(fw))
-                .diagnostics(buildDiagnostics(fw))
-                .remoteLogs(buildRemoteLogs(fw))
-                .remoteServer(buildRemoteServer(fw))
+                .network(buildNetwork())
+                .diagnostics(buildDiagnostics())
+                .remoteLogs(buildRemoteLogs())
+                .remoteServer(buildRemoteServer())
                 .testData(buildTestData(fw, ex))
-                .performance(buildPerformance(fw))
+                .performance(buildPerformance())
                 .appLogSources(buildLogSources(logPaths))
                 .build();
     }
 
     private static ExecutionConfig buildExecution(FrameworkConfig fw) {
+        com.gsl.config.BrowserConfig bc   = ConfigFactory.getBrowserConfig();
+        com.gsl.config.ExecutionConfig ec = ConfigFactory.getExecutionConfig();
+        com.gsl.config.RemoteLogConfig rc = ConfigFactory.getRemoteLogConfig();
         return ExecutionConfig.builder()
                 .environment(fw.env())
                 .browser(fw.browser())
-                .runMode(fw.runmode())
-                .executionType(fw.executionType())
-                .threadCount(fw.threadCount())
-                .concurrentUserCount(fw.concurrentUserCount())
-                .applicationType(fw.applicationType())
+                .runMode(bc.runmode())
+                .executionType(ec.executionType())
+                .threadCount(ec.threadCount())
+                .concurrentUserCount(ec.concurrentUserCount())
+                .applicationType(bc.applicationType())
                 .applicationUrl(fw.url())
-                .gridUrl(fw.gridUrl())
-                .dockerGridUrl(fw.dockerGridUrl())
-                .remoteAppServerHost(fw.remoteAppServerHost())
+                .gridUrl(bc.gridUrl())
+                .dockerGridUrl(bc.dockerGridUrl())
+                .remoteAppServerHost(rc.remoteAppServerHost())
                 .build();
     }
 
     private static BrowserConfig buildBrowser(FrameworkConfig fw) {
+        com.gsl.config.BrowserConfig bc    = ConfigFactory.getBrowserConfig();
+        com.gsl.config.FinanceConfig fc    = ConfigFactory.getFinanceConfig();
+        com.gsl.config.ExecutionConfig ec  = ConfigFactory.getExecutionConfig();
+        com.gsl.config.WaitConfig wc       = ConfigFactory.getWaitConfig();
         return BrowserConfig.builder()
-                .headless(fw.headless())
-                .incognito(fw.incognito())
-                .acceptInsecureCerts(fw.acceptInsecureCerts())
+                .headless(bc.headless())
+                .incognito(bc.incognito())
+                .acceptInsecureCerts(bc.acceptInsecureCerts())
                 .itemScanTimeout(fw.itemscanmaxtimeout())
-                .extjsTimeout(fw.extjsTimeout())
-                .extjsMinTimeout(fw.extjsMinTimeout())
-                .clickOverlayRetryMax(fw.clickOverlayRetryMax())
-                .syncTimeoutSeconds(fw.syncTimeoutSeconds())
-                .docSelectorMode(fw.docSelectorMode())
-                .docSelectorOverfetchMultiplier(fw.docSelectorOverfetchMultiplier())
-                .docSelectorRetryBackoffMs(fw.docSelectorRetryBackoffMs())
-                .docSelectorDocumentCountDefault(fw.docSelectorDocumentCountDefault())
+                .extjsTimeout(fc.extjsTimeout())
+                .extjsMinTimeout(fc.extjsMinTimeout())
+                .clickOverlayRetryMax(wc.clickOverlayRetryMax())
+                .syncTimeoutSeconds(ec.syncTimeoutSeconds())
+                .docSelectorMode(wc.docSelectorMode())
+                .docSelectorOverfetchMultiplier(wc.docSelectorOverfetchMultiplier())
+                .docSelectorRetryBackoffMs(wc.docSelectorRetryBackoffMs())
+                .docSelectorDocumentCountDefault(wc.docSelectorDocumentCountDefault())
                 .build();
     }
 
@@ -97,76 +104,82 @@ public final class RuntimeProfileBuilder {
                 .build();
     }
 
-    private static NetworkConfig buildNetwork(FrameworkConfig fw) {
+    private static NetworkConfig buildNetwork() {
+        com.gsl.config.NetworkConfig nc = ConfigFactory.getNetworkConfig();
+        com.gsl.config.BrowserConfig bc = ConfigFactory.getBrowserConfig();
         return NetworkConfig.builder()
-                .networkMode(fw.networkMode())
-                .enabled(fw.enableNetworkLogs())
-                .captureFailedOnly(fw.networkCaptureFailedOnly())
-                .captureHeaders(fw.networkCaptureHeaders())
-                .captureBody(fw.networkCaptureBody())
-                .urlFilter(fw.networkCaptureUrlFilter().isEmpty() ? "ALL" : fw.networkCaptureUrlFilter())
-                .passShowAll(fw.networkCapturePassShowAll())
-                .timingLogOn(fw.networkTimingLogOn())
-                .cookiesLogOn(fw.networkCookiesLogOn())
-                .callstackLogOn(fw.networkCallstackLogOn())
-                .browserLogsEnabled(fw.browserLogsEnabled())
-                .browserLogsCaptureOnFailure(fw.browserLogsCaptureOnFailure())
-                .browserLogsFailOnJsError(fw.browserLogsFailOnJsError())
-                .browserLogsFailOnCriticalJsError(fw.browserLogsFailOnCriticalJsError())
-                .browserLogsCaptureOnly(fw.browserLogsCaptureOnly())
-                .browserLogsLevel(fw.browserLogsLevel())
+                .networkMode(bc.networkMode())
+                .enabled(nc.enableNetworkLogs())
+                .captureFailedOnly(nc.networkCaptureFailedOnly())
+                .captureHeaders(nc.networkCaptureHeaders())
+                .captureBody(nc.networkCaptureBody())
+                .urlFilter(nc.networkCaptureUrlFilter().isEmpty() ? "ALL" : nc.networkCaptureUrlFilter())
+                .passShowAll(nc.networkCapturePassShowAll())
+                .timingLogOn(nc.networkTimingLogOn())
+                .cookiesLogOn(nc.networkCookiesLogOn())
+                .callstackLogOn(nc.networkCallstackLogOn())
+                .browserLogsEnabled(nc.browserLogsEnabled())
+                .browserLogsCaptureOnFailure(nc.browserLogsCaptureOnFailure())
+                .browserLogsFailOnJsError(nc.browserLogsFailOnJsError())
+                .browserLogsFailOnCriticalJsError(nc.browserLogsFailOnCriticalJsError())
+                .browserLogsCaptureOnly(nc.browserLogsCaptureOnly())
+                .browserLogsLevel(nc.browserLogsLevel())
                 .build();
     }
 
-    private static DiagnosticsConfig buildDiagnostics(FrameworkConfig fw) {
+    private static DiagnosticsConfig buildDiagnostics() {
+        com.gsl.config.DiagnosticsConfig dc = ConfigFactory.getDiagnosticsConfig();
+        com.gsl.config.ReportConfig rpc     = ConfigFactory.getReportConfig();
         return DiagnosticsConfig.builder()
-                .htmlCaptureOnElementFailure(fw.diagnosticsHtmlCaptureOnElementFailure())
-                .driverCapabilitiesEnabled(fw.diagnosticsDriverCapabilitiesEnabled())
-                .activePopupEnabled(fw.diagnosticsActivePopupEnabled())
-                .dbStateEnabled(fw.diagnosticsDbStateEnabled())
-                .threadDumpEnabled(fw.diagnosticsThreadDumpEnabled())
-                .jsErrorJsonExportEnabled(fw.jsErrorJsonExportEnabled())
-                .uiDiagnosticsEnabled(fw.uiDiagnosticsEnabled())
-                .appServerUtilEnabled(fw.diagnosticsAppServerUtilEnabled())
-                .appServerHost(fw.diagnosticsAppServerHost())
-                .appServerType(fw.diagnosticsAppServerType())
-                .dbServerUtilEnabled(fw.diagnosticsDbServerUtilEnabled())
-                .dbServerHost(fw.diagnosticsDbServerHost())
-                .dbServerType(fw.diagnosticsDbServerType())
-                .eventLogEnabled(fw.diagnosticsEventLogEnabled())
-                .eventLogLines(fw.diagnosticsEventLogLines())
+                .htmlCaptureOnElementFailure(dc.diagnosticsHtmlCaptureOnElementFailure())
+                .driverCapabilitiesEnabled(dc.diagnosticsDriverCapabilitiesEnabled())
+                .activePopupEnabled(dc.diagnosticsActivePopupEnabled())
+                .dbStateEnabled(dc.diagnosticsDbStateEnabled())
+                .threadDumpEnabled(dc.diagnosticsThreadDumpEnabled())
+                .jsErrorJsonExportEnabled(rpc.jsErrorJsonExportEnabled())
+                .uiDiagnosticsEnabled(dc.uiDiagnosticsEnabled())
+                .appServerUtilEnabled(dc.diagnosticsAppServerUtilEnabled())
+                .appServerHost(dc.diagnosticsAppServerHost())
+                .appServerType(dc.diagnosticsAppServerType())
+                .dbServerUtilEnabled(dc.diagnosticsDbServerUtilEnabled())
+                .dbServerHost(dc.diagnosticsDbServerHost())
+                .dbServerType(dc.diagnosticsDbServerType())
+                .eventLogEnabled(dc.diagnosticsEventLogEnabled())
+                .eventLogLines(dc.diagnosticsEventLogLines())
                 .build();
     }
 
-    private static RemoteLogConfig buildRemoteLogs(FrameworkConfig fw) {
+    private static RemoteLogConfig buildRemoteLogs() {
+        com.gsl.config.RemoteLogConfig rc = ConfigFactory.getRemoteLogConfig();
         return RemoteLogConfig.builder()
-                .captureMode(fw.remoteLogsCaptureMode())
-                .maxLines(fw.remoteLogsMaxLines())
-                .debugEnabled(fw.remoteLogsDebugEnabled())
-                .sshRetryCount(fw.remoteSshRetryCount())
-                .sshCommandTimeoutSeconds(fw.remoteSshCommandTimeoutSeconds())
-                .winrmOperationTimeoutSeconds(fw.remoteLogsWinrmOperationTimeoutSeconds())
-                .serverTimezoneOffset(fw.remoteLogsServerTimezoneOffset())
-                .keywords(fw.remoteLogsKeywords())
+                .captureMode(rc.remoteLogsCaptureMode())
+                .maxLines(rc.remoteLogsMaxLines())
+                .debugEnabled(rc.remoteLogsDebugEnabled())
+                .sshRetryCount(rc.remoteSshRetryCount())
+                .sshCommandTimeoutSeconds(rc.remoteSshCommandTimeoutSeconds())
+                .winrmOperationTimeoutSeconds(rc.remoteLogsWinrmOperationTimeoutSeconds())
+                .serverTimezoneOffset(rc.remoteLogsServerTimezoneOffset())
+                .keywords(rc.remoteLogsKeywords())
                 .build();
     }
 
-    private static RemoteServerConfig buildRemoteServer(FrameworkConfig fw) {
+    private static RemoteServerConfig buildRemoteServer() {
+        com.gsl.config.RemoteLogConfig rc = ConfigFactory.getRemoteLogConfig();
         return RemoteServerConfig.builder()
-                .appHost(fw.remoteAppServerHost())
-                .appSshPort(fw.remoteAppServerSshPort())
+                .appHost(rc.remoteAppServerHost())
+                .appSshPort(rc.remoteAppServerSshPort())
                 .appSshUsername(MASKED)
                 .appSshPassword(MASKED)
-                .appWinrmPort(fw.remoteAppServerWinrmPort())
-                .appWinrmUseHttps(fw.remoteAppServerWinrmUseHttps())
+                .appWinrmPort(rc.remoteAppServerWinrmPort())
+                .appWinrmUseHttps(rc.remoteAppServerWinrmUseHttps())
                 .appWinrmUsername(MASKED)
                 .appWinrmPassword(MASKED)
-                .dbHost(fw.remoteDbServerHost())
-                .dbSshPort(fw.remoteDbServerSshPort())
+                .dbHost(rc.remoteDbServerHost())
+                .dbSshPort(rc.remoteDbServerSshPort())
                 .dbSshUsername(MASKED)
                 .dbSshPassword(MASKED)
-                .dbWinrmPort(fw.remoteDbServerWinrmPort())
-                .dbWinrmUseHttps(fw.remoteDbServerWinrmUseHttps())
+                .dbWinrmPort(rc.remoteDbServerWinrmPort())
+                .dbWinrmUseHttps(rc.remoteDbServerWinrmUseHttps())
                 .dbWinrmUsername(MASKED)
                 .dbWinrmPassword(MASKED)
                 .build();
@@ -184,16 +197,18 @@ public final class RuntimeProfileBuilder {
                 .build();
     }
 
-    private static PerformanceConfig buildPerformance(FrameworkConfig fw) {
+    private static PerformanceConfig buildPerformance() {
+        com.gsl.config.DiagnosticsConfig dc = ConfigFactory.getDiagnosticsConfig();
+        com.gsl.config.ReportConfig rpc     = ConfigFactory.getReportConfig();
         return PerformanceConfig.builder()
-                .timingEnabled(fw.performanceTimingEnabled())
-                .actionTrailBufferSize(fw.actionTrailBufferSize())
-                .actionTrailDisplayLimit(fw.actionTrailDisplayLimit())
-                .customMetricsEnabled(fw.customMetricsEnabled())
-                .customMetricsCaptureMode(fw.customMetricsCaptureMode())
-                .slowResourceThresholdMs(fw.customMetricsSlowResourceThresholdMs())
-                .userTimingWarnMs(fw.customMetricsUserTimingWarnMs())
-                .failOnLongTaskCount(fw.customMetricsFailOnLongTaskCount())
+                .timingEnabled(rpc.performanceTimingEnabled())
+                .actionTrailBufferSize(dc.actionTrailBufferSize())
+                .actionTrailDisplayLimit(dc.actionTrailDisplayLimit())
+                .customMetricsEnabled(dc.customMetricsEnabled())
+                .customMetricsCaptureMode(dc.customMetricsCaptureMode())
+                .slowResourceThresholdMs(dc.customMetricsSlowResourceThresholdMs())
+                .userTimingWarnMs(dc.customMetricsUserTimingWarnMs())
+                .failOnLongTaskCount(dc.customMetricsFailOnLongTaskCount())
                 .build();
     }
 

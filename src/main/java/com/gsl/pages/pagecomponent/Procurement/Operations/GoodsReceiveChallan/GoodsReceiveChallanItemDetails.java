@@ -1,5 +1,6 @@
 package com.gsl.pages.pagecomponent.Procurement.Operations.GoodsReceiveChallan;
 
+import com.gsl.config.ConfigFactory;
 import com.gsl.constants.FrameworkConstants;
 import com.gsl.driver.DriverManager;
 import com.gsl.enums.WaitType;
@@ -11,6 +12,7 @@ import com.gsl.pages.Procurement.Operations.Common.SelectItemPage;
 import com.gsl.utils.Selenium.JavascriptExecutorUtils;
 import com.gsl.utils.Selenium.SeleniumActions;
 import com.gsl.utils.Selenium.SeleniumUtils;
+import com.gsl.utils.Selenium.WaitUtils;
 import org.openqa.selenium.By;
 import org.openqa.selenium.support.ui.ExpectedConditions;
 import org.openqa.selenium.support.ui.WebDriverWait;
@@ -37,7 +39,7 @@ public class GoodsReceiveChallanItemDetails {
         String xpath = String.format(ITEMSELECTOR, itemSelectionType.getLabel());
         By locator = By.xpath(xpath);
 
-        WebDriverWait wait = new WebDriverWait(DriverManager.getDriver(), Duration.ofSeconds(10));
+        WebDriverWait wait = WaitUtils.webDriverWait(ConfigFactory.getWaitConfig().interactionWaitSeconds());
         wait.until(ExpectedConditions.visibilityOfElementLocated(locator));
 
         SeleniumActions.moveToElementAndClick(locator);

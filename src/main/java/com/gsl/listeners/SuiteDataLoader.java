@@ -1,6 +1,7 @@
 package com.gsl.listeners;
 
 import com.gsl.config.ConfigFactory;
+import com.gsl.config.ConfigValidator;
 import com.gsl.database.DatabaseManager;
 import com.gsl.database.DbIdQueue;
 import com.gsl.database.MenuOperationKey;
@@ -60,6 +61,7 @@ public class SuiteDataLoader implements ISuiteListener {
 
     @Override
     public void onStart(ISuite suite) {
+        SuiteCircuitBreaker.reset();
         Log.info("[SuiteDataLoader] Initializing UserPool from UsersList.xlsx...");
         try {
             UserPool.initialize(UserCredentialLoader.loadAll());
@@ -69,6 +71,7 @@ public class SuiteDataLoader implements ISuiteListener {
 
         // ── Suite-start validation (Plan 1 rule 11.1-11.2 / Plan 2 rule 13.1) ──
         validateUserPoolAgainstThreadCount(suite);
+        ConfigValidator.validate();
 
         String source = ConfigFactory.getConfig().testDataSource();
         if (!"DB".equalsIgnoreCase(source)) {

@@ -39,6 +39,41 @@ public enum ArVoucherScenarioType {
     REFERENCE_SITEWISE_FIFO(
             ArVoucherTemplateLoader::refSitewiseFifoTemplate,
             ArVoucherPredicateFactory.REF_SITEWISE_FIFO_BEHAVIOR
+    ),
+
+    // ─── T-03 Negative scenarios (expect a validation-error popup) ────────────
+
+    /** Save with no Cash/Bank GL selected → "Cash/Bank is required". */
+    NEG_BLANK_CASHBANK(
+            ArVoucherTemplateLoader::negBlankCashbankTemplate,
+            ArVoucherPredicateFactory.NEGATIVE_FORM_VALIDATION_BEHAVIOR
+    ),
+
+    /** Save with no Sub-Ledger row filled (empty grid) → "Sub-Ledger is required". */
+    NEG_BLANK_SUBLEDGER(
+            ArVoucherTemplateLoader::negBlankSubledgerTemplate,
+            ArVoucherPredicateFactory.NEGATIVE_FORM_VALIDATION_BEHAVIOR
+    ),
+
+    /** Save with a mandatory Reference left blank → "Reference No. is required"
+     *  (only when the resolved doc scheme enforces a mandatory reference). */
+    NEG_BLANK_MANDATORY_REFERENCE(
+            ArVoucherTemplateLoader::negBlankReferenceTemplate,
+            ArVoucherPredicateFactory.NEGATIVE_FORM_VALIDATION_BEHAVIOR
+    ),
+
+    // ─── T-03 Boundary pair: minimum line amount ──────────────────────────────
+
+    /** Smallest positive line amount (0.01) — must save successfully. */
+    BOUND_AMOUNT_MIN_VALID(
+            ArVoucherTemplateLoader::boundAmountMinValidTemplate,
+            ArVoucherPredicateFactory.BOUNDARY_PASS_BEHAVIOR
+    ),
+
+    /** Zero line amount — error dialog + inline row tooltip (two-step inline validation flow). */
+    BOUND_AMOUNT_MIN_INVALID(
+            ArVoucherTemplateLoader::boundAmountMinInvalidTemplate,
+            ArVoucherPredicateFactory.INLINE_VALIDATION_BEHAVIOR
     );
 
     private final Function<LiveDbRefs, MergedFinanceArVoucherData> templateLoader;

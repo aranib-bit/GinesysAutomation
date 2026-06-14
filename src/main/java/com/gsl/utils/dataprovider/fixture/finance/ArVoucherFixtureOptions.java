@@ -80,7 +80,7 @@ public class ArVoucherFixtureOptions {
      * "no sub-ledger with pending AR" even though docs exist.
      */
     public static ArVoucherFixtureOptions defaults() {
-        int floor = com.gsl.config.ConfigFactory.getConfig().docSelectorDocumentCountDefault();
+        int floor = com.gsl.config.ConfigFactory.getWaitConfig().docSelectorDocumentCountDefault();
         return ArVoucherFixtureOptions.builder()
                 .subLedgerCount(1)
                 .documentCount(Math.max(1, floor))
@@ -92,7 +92,7 @@ public class ArVoucherFixtureOptions {
      * Cash GL placeholders that do not require SL-classification filtering).
      */
     public static ArVoucherFixtureOptions forCashBankType(CashBankType type) {
-        int floor = com.gsl.config.ConfigFactory.getConfig().docSelectorDocumentCountDefault();
+        int floor = com.gsl.config.ConfigFactory.getWaitConfig().docSelectorDocumentCountDefault();
         return ArVoucherFixtureOptions.builder()
                 .subLedgerCount(1)
                 .documentCount(Math.max(1, floor))
@@ -109,7 +109,7 @@ public class ArVoucherFixtureOptions {
      * @param clsCode  admcls.clscode to filter pending SLs (0 = no filter)
      */
     public static ArVoucherFixtureOptions forCashBankTypeAndClsCode(CashBankType type, long clsCode) {
-        int floor = com.gsl.config.ConfigFactory.getConfig().docSelectorDocumentCountDefault();
+        int floor = com.gsl.config.ConfigFactory.getWaitConfig().docSelectorDocumentCountDefault();
         return ArVoucherFixtureOptions.builder()
                 .subLedgerCount(1)
                 .documentCount(Math.max(1, floor))

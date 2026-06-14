@@ -30,7 +30,7 @@ public class RetryAnnotationTransformer extends DataProviderTransformer {
                           Constructor testConstructor,
                           Method testMethod) {
         super.transform(annotation, testClass, testConstructor, testMethod);
-        if (ConfigFactory.getConfig().retryMaxCount() > 0) {
+        if (ConfigFactory.getExecutionConfig().retryMaxCount() > 0) {
             annotation.setRetryAnalyzer(RetryAnalyzer.class);
             if (testMethod != null) {
                 Log.debug("[RetryAnnotationTransformer] RetryAnalyzer wired to {}.{}",

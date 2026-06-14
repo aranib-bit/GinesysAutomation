@@ -1,10 +1,12 @@
 package com.gsl.pages.pagecomponent.Finance.Common;
 
 import com.google.common.util.concurrent.Uninterruptibles;
+import com.gsl.config.ConfigFactory;
 import com.gsl.driver.DriverManager;
 import com.gsl.enums.WaitType;
 import com.gsl.reports.ExtentLogger;
 import com.gsl.utils.Selenium.SeleniumUtils;
+import com.gsl.utils.Selenium.WaitUtils;
 import org.openqa.selenium.By;
 import org.openqa.selenium.StaleElementReferenceException;
 import org.openqa.selenium.WebDriver;
@@ -42,7 +44,7 @@ public class TdsNamePopup {
 
         By row = By.xpath(String.format(SELECTION_TEMPLATE, tdsName));
         WebDriver driver = DriverManager.getDriver();
-        WebDriverWait wait = new WebDriverWait(driver, Duration.ofSeconds(30));
+        WebDriverWait wait = WaitUtils.webDriverWait(ConfigFactory.getWaitConfig().popupWaitSeconds());
         wait.until(ExpectedConditions.presenceOfElementLocated(row));
         Uninterruptibles.sleepUninterruptibly(1, TimeUnit.SECONDS);
 

@@ -45,7 +45,7 @@ public final class RegexLogParser implements LogParser {
 
     private static String serverTimezoneOffset() {
         try {
-            String offset = ConfigFactory.getConfig().remoteLogsServerTimezoneOffset();
+            String offset = ConfigFactory.getRemoteLogConfig().remoteLogsServerTimezoneOffset();
             return (offset != null && !offset.isBlank()) ? offset : "Z";
         } catch (Exception e) {
             return "Z";

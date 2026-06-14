@@ -122,6 +122,333 @@ public final class ApVoucherTemplateLoader {
                 .build();
     }
 
+    // ─── Multi-SL templates ───────────────────────────────────────────────────
+
+    /**
+     * Two vendor SL lines, Bank GL, mixed payment rows (NEFT/RTGS for line 1,
+     * Cheque for line 2). Verifies that the payment-information popup is filled
+     * correctly for each row and that the voucher saves to DB with both lines.
+     */
+    public static MergedFinanceApVoucherData advanceMultiSlWithPaymentTemplate(LiveDbRefs refs) {
+        String id = "DB_ADV_MULTI_SL_PAY";
+        // refs.getPendingSlNames() returns 2 entries because opts.subLedgerCount=2
+        List<SubLedgerInformation> subLedgers = buildSubLedgersForAdvance(
+                refs.getPendingSlNames(), refs.getSlToArApName(), refs.getOwnerSiteName());
+        // MIX: row-0 → NEFT/RTGS, row-1 → CHEQUE
+        List<PaymentInformation> payments = buildPayments(id, subLedgers, SelectDocumentVariant.PaymentMode.MIX);
+        return MergedFinanceApVoucherData.builder()
+                .masterTestData(buildMaster("createApVoucherAdvancePayment", id,
+                        "ADVANCE | " + glLabel(refs) + " | Multi-SL | Mixed Payment"))
+                .documentInformation(buildDoc(id, refs, FakerUtils.randomRemarks(),
+                        FakerUtils.randomReference(), "Yes"))
+                .subLedgerInformationList(subLedgers)
+                .selectDocumentList(List.of())
+                .referenceSitewiseFIFOList(List.of())
+                .paymentInformationList(payments)
+                .tdsAndNetPayableList(List.of())
+                .onAccount(true)
+                .tdsProvided(false)
+                .paymentProvided(true)
+                .needsPaymentInfoWarning(computeNeedsPaymentInfoWarning(subLedgers, payments, refs.getCashBankType()))
+                .invocationIndex(1)
+                .totalInvocations(1)
+                .build();
+    }
+
+    // ─── T-03 Negative & Boundary templates (advance path) ────────────────────
+
+    /** NEG_BLANK_CASHBANK — valid vendor SL, Cash/Bank left blank → "Cash/Bank is required". */
+    public static MergedFinanceApVoucherData negBlankCashbankTemplate(LiveDbRefs refs) {
+        String id = "DB_NEG_BLANK_CASHBANK";
+        List<SubLedgerInformation> subLedgers = buildSubLedgersForAdvance(
+                refs.getPendingSlNames(), refs.getSlToArApName(), refs.getOwnerSiteName());
+        // Remarks is disabled by the app when Cash/Bank is blank — pass null to skip filling it.
+        return negativeAdvanceData(id, "NEGATIVE | Blank Cash/Bank", refs, subLedgers,
+                null, FakerUtils.randomReference(), NegativeValidation.BLANK_CASHBANK, null);
+    }
+
+    /**
+     * NEG_BLANK_CASHBANK_ADD_ROW — Cash/Bank left blank; clicking Add Row triggers
+     * "Please select cash/bank ledger first." in an Error popup.
+     * T-1: dismisses with OK, then discards the form and logs out.
+     */
+    public static MergedFinanceApVoucherData negBlankCashbankAddRowTemplate(LiveDbRefs refs) {
+        String id = "DB_NEG_CASHBANK_ADDROW";
+        List<SubLedgerInformation> subLedgers = buildSubLedgersForAdvance(
+                refs.getPendingSlNames(), refs.getSlToArApName(), refs.getOwnerSiteName());
+        // Remarks is disabled when Cash/Bank is blank — pass null to skip filling it.
+        return negativeAdvanceData(id, "NEGATIVE | Blank Cash/Bank (Add Row trigger)", refs,
+                subLedgers, null, FakerUtils.randomReference(),
+                NegativeValidation.BLANK_CASHBANK_ADD_ROW, null);
+    }
+
+    /**
+     * NEG_BLANK_CASHBANK_ADD_ROW_RECOVER — Cash/Bank left blank (Add Row triggers error popup);
+     * after dismissing with OK the test fills Cash/Bank and saves successfully.
+     * Proves form recovery without a page reload.
+     */
+    public static MergedFinanceApVoucherData negBlankCashbankAddRowRecoverTemplate(LiveDbRefs refs) {
+        String id = "DB_NEG_CASHBANK_ADDROW_RECOVER";
+        List<SubLedgerInformation> subLedgers = buildSubLedgersForAdvance(
+                refs.getPendingSlNames(), refs.getSlToArApName(), refs.getOwnerSiteName());
+        List<PaymentInformation> payments = refs.getCashBankType() == CashBankType.CASH
+                ? buildPayments(id, subLedgers, SelectDocumentVariant.PaymentMode.CASH)
+                : List.of();
+        return MergedFinanceApVoucherData.builder()
+                .masterTestData(buildMaster("createApVoucherNegativeBoundary", id,
+                        "NEGATIVE | Blank Cash/Bank (Add Row) → Recover | " + glLabel(refs)))
+                // Remarks is disabled when Cash/Bank is blank — pass null to skip filling it.
+                .documentInformation(buildDoc(id, refs, null,
+                        FakerUtils.randomReference(), "Yes", null))
+                .subLedgerInformationList(subLedgers)
+                .selectDocumentList(List.of())
+                .referenceSitewiseFIFOList(List.of())
+                .paymentInformationList(payments)
+                .tdsAndNetPayableList(List.of())
+                .onAccount(true)
+                .tdsProvided(false)
+                .paymentProvided(!payments.isEmpty())
+                .needsPaymentInfoWarning(computeNeedsPaymentInfoWarning(subLedgers, payments, refs.getCashBankType()))
+                .expectedValidation(NegativeValidation.BLANK_CASHBANK_ADD_ROW)
+                .cashbankForRecovery(refs.getCashBankName())
+                .invocationIndex(1)
+                .totalInvocations(1)
+                .build();
+    }
+
+    /** NEG_BLANK_SUBLEDGER — valid Cash/Bank, no SL row filled (empty grid) → "Sub-Ledger is required".
+     *  T-1: verifies error, dismisses with OK, discards the form and logs out. */
+    public static MergedFinanceApVoucherData negBlankSubledgerTemplate(LiveDbRefs refs) {
+        String id = "DB_NEG_BLANK_SUBLEDGER";
+        return negativeAdvanceData(id, "NEGATIVE | Blank Sub-Ledger", refs, List.of(),
+                refs.getCashBankName(), FakerUtils.randomReference(), NegativeValidation.BLANK_SUBLEDGER_AP);
+    }
+
+    /**
+     * NEG_BLANK_SUBLEDGER_RECOVER — T-2: same error trigger as T-1, but after dismissing the
+     * popup the test fills valid SL rows and verifies that the voucher saves successfully.
+     * Proves form recovery without a page reload.
+     */
+    public static MergedFinanceApVoucherData negBlankSubledgerRecoverTemplate(LiveDbRefs refs) {
+        String id = "DB_NEG_BLANK_SL_RECOVER";
+        List<SubLedgerInformation> subLedgers = buildSubLedgersForAdvance(
+                refs.getPendingSlNames(), refs.getSlToArApName(), refs.getOwnerSiteName());
+        List<PaymentInformation> payments = refs.getCashBankType() == CashBankType.CASH
+                ? buildPayments(id, subLedgers, SelectDocumentVariant.PaymentMode.CASH)
+                : List.of();
+        return MergedFinanceApVoucherData.builder()
+                .masterTestData(buildMaster("createApVoucherNegativeBoundary", id,
+                        "NEGATIVE | Blank SL → Recover | " + glLabel(refs)))
+                .documentInformation(buildDoc(id, refs, FakerUtils.randomRemarks(),
+                        FakerUtils.randomReference(), "Yes"))
+                .subLedgerInformationList(subLedgers)
+                .selectDocumentList(List.of())
+                .referenceSitewiseFIFOList(List.of())
+                .paymentInformationList(payments)
+                .tdsAndNetPayableList(List.of())
+                .onAccount(true)
+                .tdsProvided(false)
+                .paymentProvided(!payments.isEmpty())
+                .needsPaymentInfoWarning(computeNeedsPaymentInfoWarning(subLedgers, payments, refs.getCashBankType()))
+                .expectedValidation(NegativeValidation.BLANK_SUBLEDGER_AP)
+                .invocationIndex(1)
+                .totalInvocations(1)
+                .build();
+    }
+
+    /** NEG_BLANK_MANDATORY_REFERENCE — Reference left blank → "Reference No. is required"
+     *  (only when the resolved scheme makes Reference mandatory). */
+    public static MergedFinanceApVoucherData negBlankReferenceTemplate(LiveDbRefs refs) {
+        String id = "DB_NEG_BLANK_REF";
+        List<SubLedgerInformation> subLedgers = buildSubLedgersForAdvance(
+                refs.getPendingSlNames(), refs.getSlToArApName(), refs.getOwnerSiteName());
+        return negativeAdvanceData(id, "NEGATIVE | Blank Mandatory Reference", refs, subLedgers,
+                refs.getCashBankName(), null, NegativeValidation.BLANK_MANDATORY_REFERENCE);
+    }
+
+    /**
+     * BLANK_REFERENCE_ALLOWED — boundary test proving that blank Reference is allowed.
+     * Two identical advance vouchers saved with no Reference; both must produce distinct doc numbers.
+     * Uses the advance path (On Account = Yes) with a valid vendor SL.
+     * The template returns the first invocation; totalInvocations = 2 causes DataProvider to run twice.
+     */
+    public static MergedFinanceApVoucherData blankReferenceAllowedTemplate(LiveDbRefs refs) {
+        String id = "DB_BLANK_REF_ALLOWED";
+        List<SubLedgerInformation> subLedgers = buildSubLedgersForAdvance(
+                refs.getPendingSlNames(), refs.getSlToArApName(), refs.getOwnerSiteName());
+        List<PaymentInformation> payments = refs.getCashBankType() == CashBankType.CASH
+                ? buildPayments(id, subLedgers, SelectDocumentVariant.PaymentMode.CASH)
+                : List.of();
+        return MergedFinanceApVoucherData.builder()
+                .masterTestData(buildMaster("createApVoucherNegativeBoundary", id,
+                        "BOUNDARY | Blank Ref Allowed | " + glLabel(refs)))
+                .documentInformation(buildDoc(id, refs, FakerUtils.randomRemarks(),
+                        null, "Yes"))   // null reference = blank
+                .subLedgerInformationList(subLedgers)
+                .selectDocumentList(List.of())
+                .referenceSitewiseFIFOList(List.of())
+                .paymentInformationList(payments)
+                .tdsAndNetPayableList(List.of())
+                .onAccount(true)
+                .tdsProvided(false)
+                .paymentProvided(!payments.isEmpty())
+                .needsPaymentInfoWarning(computeNeedsPaymentInfoWarning(subLedgers, payments, refs.getCashBankType()))
+                .invocationIndex(1)
+                .totalInvocations(2)   // both invocations must save successfully
+                .build();
+    }
+
+    /** BOUND_AMOUNT_MIN_VALID — smallest positive line amount (0.01) → must save. */
+    public static MergedFinanceApVoucherData boundAmountMinValidTemplate(LiveDbRefs refs) {
+        String id = "DB_BOUND_AMT_MIN_VALID";
+        List<SubLedgerInformation> subLedgers = buildSubLedgersForAdvance(
+                refs.getPendingSlNames(), refs.getSlToArApName(), refs.getOwnerSiteName(),
+                new BigDecimal("0.01"));
+        List<PaymentInformation> payments = refs.getCashBankType() == CashBankType.CASH
+                ? buildPayments(id, subLedgers, SelectDocumentVariant.PaymentMode.CASH)
+                : List.of();
+        return MergedFinanceApVoucherData.builder()
+                .masterTestData(buildMaster("createApVoucherNegativeBoundary", id,
+                        "BOUNDARY | Min Amount 0.01 | " + glLabel(refs)))
+                .documentInformation(buildDoc(id, refs, FakerUtils.randomRemarks(),
+                        FakerUtils.randomReference(), "Yes"))
+                .subLedgerInformationList(subLedgers)
+                .selectDocumentList(List.of())
+                .referenceSitewiseFIFOList(List.of())
+                .paymentInformationList(payments)
+                .tdsAndNetPayableList(List.of())
+                .onAccount(true)
+                .tdsProvided(false)
+                .paymentProvided(!payments.isEmpty())
+                .needsPaymentInfoWarning(computeNeedsPaymentInfoWarning(subLedgers, payments, refs.getCashBankType()))
+                .invocationIndex(1)
+                .totalInvocations(1)
+                .build();
+    }
+
+    /** BOUND_AMOUNT_MIN_INVALID — zero line amount → rejected (NegativeValidation.ZERO_AMOUNT). */
+    public static MergedFinanceApVoucherData boundAmountMinInvalidTemplate(LiveDbRefs refs) {
+        String id = "DB_BOUND_AMT_MIN_INVALID";
+        List<SubLedgerInformation> subLedgers = buildSubLedgersForAdvance(
+                refs.getPendingSlNames(), refs.getSlToArApName(), refs.getOwnerSiteName(),
+                BigDecimal.ZERO.setScale(2, RoundingMode.HALF_UP));
+        return negativeAdvanceData(id, "BOUNDARY | Zero Amount (reject)", refs, subLedgers,
+                refs.getCashBankName(), FakerUtils.randomReference(), NegativeValidation.ZERO_AMOUNT_DIALOG);
+    }
+
+    /**
+     * On Account No, sub-ledger with amount=0, no document adjustment performed.
+     * Save raises a detail-section error; hovering the row indicator shows a Stop tooltip:
+     * "Document adjustment is mandatory for non advance type payment voucher."
+     */
+    public static MergedFinanceApVoucherData docAmountNotAdjustedTemplate(LiveDbRefs refs) {
+        String id = "DB_AP_DOC_NO_ADJ_INVALID";
+        List<SubLedgerInformation> subLedgers = buildSubLedgersForAdvance(
+                refs.getPendingSlNames(), refs.getSlToArApName(), refs.getOwnerSiteName(),
+                BigDecimal.ZERO.setScale(2, RoundingMode.HALF_UP));
+        return negativeDocData(id, "BOUNDARY | Doc No Adjustment (reject)", refs, subLedgers,
+                NegativeValidation.ZERO_AMOUNT_DIALOG);
+    }
+
+    /**
+     * On Account No, document adjusted via Select Document (amount auto-populated).
+     * Used by DOC_AMOUNT_READ_ONLY scenario to verify the amount cell is read-only.
+     */
+    public static MergedFinanceApVoucherData docAmountReadOnlyTemplate(LiveDbRefs refs) {
+        String id = "DB_AP_AMT_READ_ONLY";
+        List<SubLedgerInformation> subLedgers = buildSubLedgersForDocument(
+                refs.getPendingSlNames(), AdjustmentType.SELECT_DOCUMENT,
+                refs.getPendingDocsBySlName(), refs.getOwnerSiteName(), refs.getSlToArApName());
+        return MergedFinanceApVoucherData.builder()
+                .masterTestData(buildMaster("createApVoucherNegativeBoundary", id,
+                        "DOC_AMT_READ_ONLY | " + glLabel(refs)))
+                .documentInformation(buildDoc(id, refs, FakerUtils.randomRemarks(),
+                        FakerUtils.randomReference(), "No"))
+                .subLedgerInformationList(subLedgers)
+                .selectDocumentList(buildSelectDocuments(id, refs.getPendingSlNames(),
+                        refs.getPendingDocsBySlName()))
+                .referenceSitewiseFIFOList(List.of())
+                .paymentInformationList(List.of())
+                .tdsAndNetPayableList(List.of())
+                .onAccount(false)
+                .tdsProvided(false)
+                .paymentProvided(false)
+                .needsPaymentInfoWarning(computeNeedsPaymentInfoWarning(subLedgers, List.of(), refs.getCashBankType()))
+                .invocationIndex(1)
+                .totalInvocations(1)
+                .build();
+    }
+
+    /**
+     * Shared builder for advance-path negative/boundary-invalid data: one valid vendor SL set
+     * (or empty for blank-SL), the named field overridden, and {@code expectedValidation} stamped
+     * so {@code NEGATIVE_FORM_VALIDATION_BEHAVIOR} asserts the right popup. No payment/TDS.
+     */
+    private static MergedFinanceApVoucherData negativeAdvanceData(
+            String id, String name, LiveDbRefs refs,
+            List<SubLedgerInformation> subLedgers,
+            String cashbank, String reference, NegativeValidation expected) {
+        return negativeAdvanceData(id, name, refs, subLedgers, cashbank, reference, expected,
+                FakerUtils.randomRemarks());
+    }
+
+    /**
+     * Overload that accepts an explicit {@code remarks} value. Pass {@code null} for scenarios
+     * where Cash/Bank is intentionally blank — the app disables the Remarks field until
+     * Cash/Bank is selected, so attempting to fill it throws ElementNotInteractableException.
+     * {@link com.gsl.pages.pagecomponent.Finance.Operations.Common.VoucherDocumentInformationBase#setRemarks}
+     * already skips null/blank values, so passing null here is safe.
+     */
+    private static MergedFinanceApVoucherData negativeAdvanceData(
+            String id, String name, LiveDbRefs refs,
+            List<SubLedgerInformation> subLedgers,
+            String cashbank, String reference, NegativeValidation expected,
+            String remarks) {
+        return MergedFinanceApVoucherData.builder()
+                .masterTestData(buildMaster("createApVoucherNegativeBoundary", id,
+                        name + " | " + glLabel(refs)))
+                .documentInformation(buildDoc(id, refs, remarks,
+                        reference, "Yes", cashbank))
+                .subLedgerInformationList(subLedgers)
+                .selectDocumentList(List.of())
+                .referenceSitewiseFIFOList(List.of())
+                .paymentInformationList(List.of())
+                .tdsAndNetPayableList(List.of())
+                .onAccount(true)
+                .tdsProvided(false)
+                .paymentProvided(false)
+                .needsPaymentInfoWarning(false)
+                .expectedValidation(expected)
+                .invocationIndex(1)
+                .totalInvocations(1)
+                .build();
+    }
+
+    /** Shared builder for document-path negative data: On Account No, no payment/TDS, expectedValidation stamped. */
+    private static MergedFinanceApVoucherData negativeDocData(
+            String id, String name, LiveDbRefs refs,
+            List<SubLedgerInformation> subLedgers,
+            NegativeValidation expected) {
+        return MergedFinanceApVoucherData.builder()
+                .masterTestData(buildMaster("createApVoucherNegativeBoundary", id,
+                        name + " | " + glLabel(refs)))
+                .documentInformation(buildDoc(id, refs, FakerUtils.randomRemarks(),
+                        FakerUtils.randomReference(), "No"))
+                .subLedgerInformationList(subLedgers)
+                .selectDocumentList(List.of())
+                .referenceSitewiseFIFOList(List.of())
+                .paymentInformationList(List.of())
+                .tdsAndNetPayableList(List.of())
+                .onAccount(false)
+                .tdsProvided(false)
+                .paymentProvided(false)
+                .needsPaymentInfoWarning(false)
+                .expectedValidation(expected)
+                .invocationIndex(1)
+                .totalInvocations(1)
+                .build();
+    }
+
     // ─── Document Payment templates ───────────────────────────────────────────
 
     /**
@@ -280,11 +607,22 @@ public final class ApVoucherTemplateLoader {
      */
     private static DocumentInformation buildDoc(
             String id, LiveDbRefs refs, String remarks, String reference, String onAccountStr) {
+        return buildDoc(id, refs, remarks, reference, onAccountStr, refs.getCashBankName());
+    }
+
+    /**
+     * Overload allowing an explicit Cash/Bank value — used by T-03 negative scenarios that
+     * deliberately leave Cash/Bank blank ({@code cashbankName = null}) to trigger
+     * "Cash/Bank is required" on save.
+     */
+    private static DocumentInformation buildDoc(
+            String id, LiveDbRefs refs, String remarks, String reference, String onAccountStr,
+            String cashbankName) {
         return new DocumentInformation(
                 id,
                 refs.getOwnerSiteName(),
                 refs.getDocSchemeName(),
-                refs.getCashBankName(),
+                cashbankName,
                 remarks,
                 LocalDate.now(),
                 reference,
@@ -306,6 +644,19 @@ public final class ApVoucherTemplateLoader {
             List<SlNameWithId> slNames,
             Map<String, String> slToArApName,
             String ownerSiteName) {
+        return buildSubLedgersForAdvance(slNames, slToArApName, ownerSiteName, ADVANCE_DEFAULT_AMOUNT);
+    }
+
+    /**
+     * Amount-parameterized variant of {@link #buildSubLedgersForAdvance} — used by T-03
+     * boundary scenarios that need a specific line amount (e.g. {@code 0.01} at-limit,
+     * {@code 0.00} beyond-limit) instead of {@link #ADVANCE_DEFAULT_AMOUNT}.
+     */
+    private static List<SubLedgerInformation> buildSubLedgersForAdvance(
+            List<SlNameWithId> slNames,
+            Map<String, String> slToArApName,
+            String ownerSiteName,
+            BigDecimal amount) {
         AtomicInteger line = new AtomicInteger(1);
         return slNames.stream()
                 .map(slNameWithId -> {
@@ -322,7 +673,7 @@ public final class ApVoucherTemplateLoader {
                             null,           // ledgerNarration
                             null,           // isReversal
                             null,           // deductTds — UI auto-populates for TDS-applicable SLs
-                            ADVANCE_DEFAULT_AMOUNT,
+                            amount,
                             null,           // adjustmentType — not applicable for advance
                             null            // paymentSelection
                     );

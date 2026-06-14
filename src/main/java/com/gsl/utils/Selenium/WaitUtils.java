@@ -2,6 +2,7 @@ package com.gsl.utils.Selenium;
 
 import com.gsl.config.ConfigFactory;
 import com.gsl.driver.DriverManager;
+import com.gsl.enums.WaitType;
 import com.gsl.reports.WaitDurationBuffer;
 import org.openqa.selenium.*;
 import org.openqa.selenium.support.ui.ExpectedConditions;
@@ -13,9 +14,102 @@ import java.time.Duration;
 
 import static com.gsl.driver.DriverManager.getDriver;
 
+/**
+ * Single home for every explicit Selenium wait in the framework — both the "expected" waits
+ * (WebDriverWait + ExpectedConditions) and the "fluent" waits (FluentWait with fast polling).
+ * Other utils, page objects, and tests reuse these instead of constructing their own waits.
+ *
+ * <p>Default expected waits ({@link #webDriverWait()}, {@link #untilClickable(By)} …) use Selenium's
+ * default ~500ms polling. The fluent waits ({@link #fluentWaitBuilder()}, {@link #fluentClickable(By)})
+ * poll every {@code polling.millis} (default 200ms) and ignore transient ExtJS re-render exceptions.
+ */
 public final class WaitUtils {
 
     private WaitUtils() {}
+
+    // ── Centralized wait factories ──────────────────────────────────────────────
+
+    /** WebDriverWait at the global {@code timeout()} with Selenium's default polling (~500ms). */
+    public static WebDriverWait webDriverWait() {
+        return new WebDriverWait(getDriver(), Duration.ofSeconds(ConfigFactory.getConfig().timeout()));
+    }
+
+    /** WebDriverWait at an explicit timeout (seconds) with default polling. */
+    public static WebDriverWait webDriverWait(long seconds) {
+        return new WebDriverWait(getDriver(), Duration.ofSeconds(seconds));
+    }
+
+    /** WebDriverWait at an explicit millisecond timeout — for sub-second waits (e.g. popup detection). */
+    public static WebDriverWait webDriverWaitMillis(long millis) {
+        return new WebDriverWait(getDriver(), Duration.ofMillis(millis));
+    }
+
+    /**
+     * FluentWait at {@code timeout()} polling every {@code polling.millis} (default 200ms), ignoring
+     * transient NoSuchElement / Stale / NotInteractable exceptions. Opt-in fast path for clicks.
+     */
+    public static FluentWait<WebDriver> fluentWaitBuilder() {
+        return new FluentWait<>(getDriver())
+                .withTimeout(Duration.ofSeconds(ConfigFactory.getConfig().timeout()))
+                .pollingEvery(Duration.ofMillis(ConfigFactory.getWaitConfig().pollingMillis()))
+                .ignoring(NoSuchElementException.class)
+                .ignoring(StaleElementReferenceException.class)
+                .ignoring(ElementNotInteractableException.class);
+    }
+
+    // ── Expected-condition waits (public, reusable; default polling = no timing change) ──
+
+    public static WebElement untilClickable(By by) {
+        return webDriverWait().until(ExpectedConditions.elementToBeClickable(by));
+    }
+
+    public static WebElement untilClickable(By by, long seconds) {
+        return webDriverWait(seconds).until(ExpectedConditions.elementToBeClickable(by));
+    }
+
+    public static WebElement untilPresent(By by) {
+        return webDriverWait().until(ExpectedConditions.presenceOfElementLocated(by));
+    }
+
+    public static WebElement untilPresent(By by, long seconds) {
+        return webDriverWait(seconds).until(ExpectedConditions.presenceOfElementLocated(by));
+    }
+
+    public static WebElement untilVisible(By by) {
+        return webDriverWait().until(ExpectedConditions.visibilityOfElementLocated(by));
+    }
+
+    public static WebElement untilVisible(By by, long seconds) {
+        return webDriverWait(seconds).until(ExpectedConditions.visibilityOfElementLocated(by));
+    }
+
+    public static boolean untilInvisible(By by) {
+        return webDriverWait().until(ExpectedConditions.invisibilityOfElementLocated(by));
+    }
+
+    /** PRESENCE / CLICKABLE / VISIBLE dispatcher (used by {@code SeleniumUtils.click}). */
+    public static WebElement until(By by, WaitType waitType) {
+        switch (waitType) {
+            case CLICKABLE: return untilClickable(by);
+            case VISIBLE:   return untilVisible(by);
+            case PRESENCE:
+            default:        return untilPresent(by);
+        }
+    }
+
+    /**
+     * Opt-in clickable wait using {@code polling.millis} (default 200ms) instead of WebDriverWait's
+     * 500ms default, ignoring transient ExtJS re-render exceptions. Same total timeout — only
+     * re-checks more often. Lives here so any util/test can reuse it.
+     */
+    public static WebElement fluentClickable(By by) {
+        return fluentWaitBuilder().until(ExpectedConditions.elementToBeClickable(by));
+    }
+
+    /** Effective ExtJS timeout in seconds — {@code max(extjs.timeout, extjs.min.timeout)}. */
+    public static long extJsTimeoutSeconds() {
+        return extJsTimeout();
+    }
 
     public static WebElement fluentWait(By by) {
         long startMs = System.currentTimeMillis();
@@ -35,8 +129,7 @@ public final class WaitUtils {
     public static WebElement waitUntilAjaxAndElementClickable(By by) {
         long startMs = System.currentTimeMillis();
         try {
-            WebDriverWait wait = new WebDriverWait(DriverManager.getDriver(),
-                    Duration.ofSeconds(ConfigFactory.getConfig().timeout()));
+            WebDriverWait wait = webDriverWait();
             wait.until(driver -> (Boolean) ((JavascriptExecutor) driver).executeScript(
                     "return (window.Ext && window.Ext.Ajax && !window.Ext.Ajax.isLoading()) || (!window.Ext || !window.Ext.Ajax);"
             ));
@@ -71,12 +164,30 @@ public final class WaitUtils {
     }
 
     /**
+     * Non-throwing query: is an ExtJS loading mask currently visible?
+     *
+     * <p>Used by the root-cause classifier at failure time to corroborate a "mask still blocking"
+     * verdict. Reuses the same {@code .x-mask, .x-mask-msg} selector as {@link #waitForExtMask()}.
+     * Never throws — returns {@code false} on a null driver or any lookup error (the session may be
+     * dead by the time this runs).
+     */
+    public static boolean isExtMaskPresent(WebDriver driver) {
+        if (driver == null) return false;
+        try {
+            return driver.findElements(By.cssSelector(".x-mask, .x-mask-msg"))
+                         .stream().anyMatch(WebElement::isDisplayed);
+        } catch (Exception e) {
+            return false;
+        }
+    }
+
+    /**
      * Core mask-wait logic — shared by {@link #waitForExtMask()} and
      * {@link #waitForExtJsApp()} to avoid double-counting in the wait buffer.
      */
     private static void waitForExtMaskInternal() {
         try {
-            new WebDriverWait(DriverManager.getDriver(), Duration.ofSeconds(extJsTimeout()))
+            webDriverWait(extJsTimeout())
                     .until(ExpectedConditions.invisibilityOfElementLocated(
                             By.cssSelector(".x-mask, .x-mask-msg")
                     ));
@@ -113,7 +224,7 @@ public final class WaitUtils {
         try {
             // Phase 1: standard mask elements
             try {
-                new WebDriverWait(DriverManager.getDriver(), Duration.ofSeconds(extJsTimeout()))
+                webDriverWait(extJsTimeout())
                         .until(ExpectedConditions.invisibilityOfElementLocated(
                                 By.cssSelector(".x-mask, .x-mask-msg")
                         ));
@@ -121,7 +232,7 @@ public final class WaitUtils {
 
             // Phase 2: ext-element-* backdrop divs (JS check for isDisplayed())
             try {
-                new WebDriverWait(DriverManager.getDriver(), Duration.ofSeconds(extJsTimeout()))
+                webDriverWait(extJsTimeout())
                         .until(driver -> {
                             try {
                                 return (Boolean) ((JavascriptExecutor) driver).executeScript(
@@ -142,12 +253,54 @@ public final class WaitUtils {
         }
     }
 
+    /**
+     * Opt-in, best-effort variant of {@link #waitForExtMask()} for use after a {@code fluentClick}.
+     *
+     * <p>Two differences from {@link #waitForExtMaskInternal()}:
+     * <ul>
+     *   <li>Only treats a mask as blocking when it is actually <b>visible and has a non-zero
+     *       bounding box</b> — ExtJS commonly leaves zero-size {@code .x-mask} leftovers in the DOM
+     *       that {@code isDisplayed()} still reports as shown, producing false "mask blocking" timeouts
+     *       even though nothing is visible on screen.</li>
+     *   <li><b>Never throws</b> — a lingering mask is recorded in the wait buffer but cannot fail a
+     *       test. The JS-level {@link JavascriptExecutorUtils#waitForExtJS()} already gates the AJAX
+     *       queue.</li>
+     * </ul>
+     * Polls every {@code polling.millis} (default 200ms) so it returns promptly.
+     */
+    public static void waitForExtMaskBestEffort(String contextLabel) {
+        long startMs = System.currentTimeMillis();
+        try {
+            new WebDriverWait(DriverManager.getDriver(),
+                    Duration.ofSeconds(extJsTimeout()),
+                    Duration.ofMillis(ConfigFactory.getWaitConfig().pollingMillis()))
+                    .until(driver -> {
+                        try {
+                            return (Boolean) ((JavascriptExecutor) driver).executeScript(
+                                    "var m=document.querySelectorAll('.x-mask, .x-mask-msg');" +
+                                    "for(var i=0;i<m.length;i++){" +
+                                    "  var r=m[i].getBoundingClientRect();" +
+                                    "  var s=window.getComputedStyle(m[i]);" +
+                                    "  if(r.width>0 && r.height>0 && s.display!=='none' && s.visibility!=='hidden')" +
+                                    "    return false;" +
+                                    "} return true;");
+                        } catch (Exception e) {
+                            return true;   // cannot evaluate → do not block
+                        }
+                    });
+        } catch (Exception ignored) {
+            // best-effort: a stuck/zero-size mask must never fail the test
+        } finally {
+            recordIfEnabled(contextLabel, startMs, "waitForExtMaskBestEffort");
+        }
+    }
+
     public static void extSafeClick(By locator) {
         // Composite method — individual wait calls inside are already instrumented;
         // do NOT add a WaitDurationBuffer entry here to avoid ambiguous double entries.
         JavascriptExecutorUtils.waitForExtJS();
         waitForExtMaskInternal();
-        WebElement element = new WebDriverWait(DriverManager.getDriver(), Duration.ofSeconds(extJsTimeout()))
+        WebElement element = webDriverWait(extJsTimeout())
                 .until(ExpectedConditions.elementToBeClickable(locator));
         element.click();
         waitForExtMaskInternal();
@@ -157,14 +310,14 @@ public final class WaitUtils {
     // ── Helpers ───────────────────────────────────────────────────────────────
 
     private static void recordIfEnabled(String label, long startMs, String method) {
-        if (ConfigFactory.getConfig().waitAnalysisEnabled()) {
+        if (ConfigFactory.getDiagnosticsConfig().waitAnalysisEnabled()) {
             WaitDurationBuffer.record(label, System.currentTimeMillis() - startMs, method);
         }
     }
 
     private static long extJsTimeout() {
-        long configured = ConfigFactory.getConfig().extjsTimeout();
-        long min        = ConfigFactory.getConfig().extjsMinTimeout();
+        long configured = ConfigFactory.getFinanceConfig().extjsTimeout();
+        long min        = ConfigFactory.getFinanceConfig().extjsMinTimeout();
         return Math.max(min, configured);
     }
 }

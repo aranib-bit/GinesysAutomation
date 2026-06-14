@@ -84,5 +84,16 @@ public abstract class VoucherSubLedgerInformationBase implements AdjustmentEntry
         return createPaymentPopup();
     }
 
+    /**
+     * Clicks the native Add Row button (mdi-playlist-plus icon) in the sub-ledger grid.
+     * Replaces the JS {@code store.add({})} injection.
+     */
+    protected void clickAddRowButton() {
+        SeleniumUtils.click(
+                By.xpath("//i[contains(@class,'mdi-playlist-plus')]" +
+                         "/parent::span[contains(@class,'x-btn-inner-IconButton-small')]"),
+                WaitType.CLICKABLE, "ADD_SUBLEDGER_ROW");
+    }
+
     protected abstract PaymentInformationPopup createPaymentPopup();
 }

@@ -288,7 +288,7 @@ public final class JavascriptExecutorUtils {
     }
 
     public static void waitForExtJS() {
-        new WebDriverWait(DriverManager.getDriver(), Duration.ofSeconds(extJsTimeout())).until(
+        WaitUtils.webDriverWait(WaitUtils.extJsTimeoutSeconds()).until(
                 driver -> (Boolean) ((JavascriptExecutor) driver).executeScript(
                         "return !!(window.Ext && window.Ext.isReady && " +
                                 "!window.Ext.Ajax.isLoading() && " +
@@ -298,7 +298,7 @@ public final class JavascriptExecutorUtils {
     }
 
     public static void waitForExtLayout() {
-        new WebDriverWait(DriverManager.getDriver(), Duration.ofSeconds(extJsTimeout())).until(
+        WaitUtils.webDriverWait(WaitUtils.extJsTimeoutSeconds()).until(
                 driver -> (Boolean) ((JavascriptExecutor) driver).executeScript(
                         "return window.Ext !== undefined && Ext.ComponentManager.all.getCount() > 0;"
                 )
@@ -306,7 +306,7 @@ public final class JavascriptExecutorUtils {
     }
 
     public static void waitForStoreLoad(String storeId) {
-        new WebDriverWait(DriverManager.getDriver(), Duration.ofSeconds(extJsTimeout())).until(
+        WaitUtils.webDriverWait(WaitUtils.extJsTimeoutSeconds()).until(
                 driver -> (Boolean) ((JavascriptExecutor) driver).executeScript(
                         "var store = Ext.getStore('" + storeId + "');" +
                         "return store ? !store.isLoading() : true;"
@@ -315,7 +315,7 @@ public final class JavascriptExecutorUtils {
     }
 
     public static void waitForPageLoad() {
-        new WebDriverWait(DriverManager.getDriver(), Duration.ofSeconds(30)).until(
+        WaitUtils.webDriverWait(ConfigFactory.getWaitConfig().pageLoadTimeoutSeconds()).until(
                 driver -> ((JavascriptExecutor) driver).executeScript("return document.readyState").equals("complete")
         );
     }
@@ -352,7 +352,7 @@ public final class JavascriptExecutorUtils {
 
 
     public static void waitForComponentReady() {
-        new WebDriverWait(DriverManager.getDriver(), Duration.ofSeconds(20))
+        WaitUtils.webDriverWait(ConfigFactory.getWaitConfig().componentReadyTimeoutSeconds())
                 .until(driver -> {
                     Object result = ((JavascriptExecutor) driver).executeScript(
                             "if (window.Ext && window.Ext.ComponentQuery) {" +
@@ -3132,41 +3132,145 @@ public final class JavascriptExecutorUtils {
      * @return the combo input element id, or {@code null} if the editor could not be opened.
      */
     public static String openSubLedgerComboEditor(WebDriver driver, int rowIndex, String gridItemId) {
+        // Sub-Ledger id lookup (tested cd9ca27 logic): the live cell editor's combo[name=slCode].
+        // Gated on the editing plugin's active editor so we never grab a stale/template combo before
+        // editing actually starts (the gate replaces the old blind Thread.sleep(600)). Expanded so
+        // the grid-style picker is open for the subsequent type-and-select.
+        String idScript =
+                "try {" +
+                "  var g = Ext.ComponentQuery.query('gridpanel[itemId=" + gridItemId + "]')[0];" +
+                "  if (!g) return '';" +
+                "  var p = g.editingPlugin || g.findPlugin('cellediting');" +
+                "  if (!p || !p.activeEditor) return '';" +
+                "  var c = Ext.ComponentQuery.query('combo[name=slCode]')[0];" +
+                "  if (!c || !c.inputEl || !c.inputEl.dom) return '';" +
+                "  c.expand();" +
+                "  return c.inputEl.dom.id;" +
+                "} catch(e){ return ''; }";
+        return openCellEditorViaClick(driver, gridItemId, rowIndex,
+                "di==='slCode'", idScript, 1, "[SL_NATIVE]");
+    }
+
+    /**
+     * Sleep-free opener for an inline grid cell editor.
+     *
+     * <p>Two correctness fixes over the original cd9ca27 flow:</p>
+     * <ul>
+     *   <li><b>Identity-resolved cell</b> — the target {@code td} is resolved for the matched column
+     *       object via {@code view.getCell(rec, col)} (DOM fallback by {@code data-columnid}), NOT by
+     *       positional {@code cells[idx]}. Positional indexing misaligns when hidden columns precede
+     *       the target, which made the Amount/Reference-Site clicks land on the Deduct TDS cell.</li>
+     *   <li><b>clicksToEdit</b> — {@code slCode} opens on a single click, but the Amount/Reference-Site
+     *       cells are {@code clicksToEdit:2} and need a real double-click to activate the editor. When
+     *       the double-click is ignored by the build, we fall back to the ExtJS editing plugin's
+     *       {@code startEdit(rec, col)} — the deterministic programmatic double-click.</li>
+     * </ul>
+     * The blind {@code Thread.sleep} that followed the click is replaced by a condition-based poll of
+     * {@code idScript} until it yields the editor's {@code inputEl} id.
+     *
+     * @param dataIndexMatchJs JS boolean over loop variable {@code di} (the column dataIndex),
+     *                         e.g. {@code "di==='slCode'"} or
+     *                         {@code "di==='referenceSiteCode' || di==='referenceSiteName'"}
+     * @param idScript         JS returning the editor's {@code inputEl.dom.id} (or {@code ''} when not
+     *                         yet ready); polled until non-empty
+     * @param clicksToEdit     {@code 1} for single-click cells (slCode), {@code 2} for double-click
+     *                         cells (Amount, Reference Site)
+     * @param logTag           log prefix, e.g. {@code "[SL_NATIVE]"}
+     */
+    private static String openCellEditorViaClick(WebDriver driver, String gridItemId, int rowIndex,
+                                                 String dataIndexMatchJs, String idScript,
+                                                 int clicksToEdit, String logTag) {
+        boolean doubleClick = clicksToEdit >= 2;
         String clickScript =
                 "try {" +
                 "  var g = Ext.ComponentQuery.query('gridpanel[itemId=" + gridItemId + "]')[0];" +
                 "  if (!g) return 'ERR:grid';" +
-                "  var rowEl = g.getView().getNode(" + rowIndex + ");" +
-                "  if (!rowEl) return 'ERR:row';" +
+                "  var view = g.getView();" +
+                "  var rec = g.getStore().getAt(" + rowIndex + ");" +
+                "  if (!rec) return 'ERR:row';" +
                 "  var cols = g.getColumnManager().getColumns();" +
-                "  var idx = -1; for (var i=0;i<cols.length;i++){ if(cols[i].dataIndex==='slCode'){ idx=i; break; } }" +
-                "  if (idx < 0) return 'ERR:col';" +
-                "  var cells = rowEl.querySelectorAll('td.x-grid-cell');" +
-                "  if (cells.length <= idx) return 'ERR:cells';" +
-                "  cells[idx].click();" +
+                "  var col = null; for (var i=0;i<cols.length;i++){ var di=cols[i].dataIndex; if(" + dataIndexMatchJs + "){ col=cols[i]; break; } }" +
+                "  if (!col) return 'ERR:col';" +
+                // resolve the exact cell td for THIS column by identity (not positional index)
+                "  var cellEl = null;" +
+                "  try { var c = view.getCell(rec, col); if (c) cellEl = c.dom || c; } catch(ig){}" +
+                "  if (!cellEl) {" +
+                "    var rowEl = view.getNode(" + rowIndex + ");" +
+                "    if (rowEl) {" +
+                "      var cid = col.getItemId ? col.getItemId() : col.id;" +
+                "      cellEl = rowEl.querySelector('td[data-columnid=\"'+cid+'\"]')" +
+                "            || rowEl.querySelector('td[data-columnid=\"'+col.id+'\"]')" +
+                "            || rowEl.querySelector('td.x-grid-cell-'+cid)" +
+                "            || rowEl.querySelector('td.x-grid-cell-'+col.id);" +
+                "    }" +
+                "  }" +
+                "  if (!cellEl) return 'ERR:cell-not-found:' + (col.getItemId?col.getItemId():col.id);" +
+                "  var tgt = cellEl.querySelector('.x-grid-cell-inner') || cellEl;" +
+                "  tgt.click();" +
+                (doubleClick ?
+                "  tgt.click();" +
+                "  ['mousedown','mouseup','dblclick'].forEach(function(t){" +
+                "    tgt.dispatchEvent(new MouseEvent(t, {bubbles:true, cancelable:true, view:window}));" +
+                "  });"
+                : "") +
                 "  return 'CLICKED';" +
                 "} catch(e){ return 'ERR:' + e.message; }";
         Object clicked = ((JavascriptExecutor) driver).executeScript(clickScript);
         if (!"CLICKED".equals(String.valueOf(clicked))) {
-            ExtentLogger.warning("[SL_NATIVE] Could not open Sub-Ledger editor on row " + rowIndex + " — " + clicked);
+            ExtentLogger.warning(logTag + " could not open cell editor on row " + rowIndex
+                    + " (grid='" + gridItemId + "') — " + clicked);
             return null;
         }
-        try { Thread.sleep(600); } catch (InterruptedException e) { Thread.currentThread().interrupt(); }
-        String idScript =
-                "try {" +
-                "  var c = Ext.ComponentQuery.query('combo[name=slCode]')[0];" +
-                "  if (!c) return '';" +
-                "  c.expand();" +
-                "  return (c.inputEl && c.inputEl.dom) ? c.inputEl.dom.id : '';" +
-                "} catch(e){ return ''; }";
-        Object inputId = ((JavascriptExecutor) driver).executeScript(idScript);
-        String id = (inputId == null) ? "" : String.valueOf(inputId);
-        if (id.isEmpty()) {
-            ExtentLogger.warning("[SL_NATIVE] Sub-Ledger combo input id not found after opening editor on row " + rowIndex);
+        // Sleep-free replacement for the old Thread.sleep: poll until the editor input id is available.
+        String id = pollEditorInputId(driver, idScript);
+        if (id != null) {
+            ExtentLogger.info(logTag + " cell editor open on row " + rowIndex + " — inputId=" + id);
+            return id;
+        }
+        // Fallback: synthetic double-click was ignored — activate the editor via the ExtJS editing
+        // plugin (deterministic programmatic double-click), then poll once more.
+        if (doubleClick) {
+            String startEditScript =
+                    "try {" +
+                    "  var g = Ext.ComponentQuery.query('gridpanel[itemId=" + gridItemId + "]')[0];" +
+                    "  if (!g) return 'ERR:grid';" +
+                    "  var rec = g.getStore().getAt(" + rowIndex + ");" +
+                    "  if (!rec) return 'ERR:row';" +
+                    "  var cols = g.getColumnManager().getColumns();" +
+                    "  var col = null; for (var i=0;i<cols.length;i++){ var di=cols[i].dataIndex; if(" + dataIndexMatchJs + "){ col=cols[i]; break; } }" +
+                    "  if (!col) return 'ERR:col';" +
+                    "  var p = g.editingPlugin || g.findPlugin('cellediting');" +
+                    "  if (!p || !p.startEdit) return 'ERR:plugin';" +
+                    "  p.startEdit(rec, col);" +
+                    "  return 'STARTED';" +
+                    "} catch(e){ return 'ERR:' + e.message; }";
+            Object started = ((JavascriptExecutor) driver).executeScript(startEditScript);
+            if ("STARTED".equals(String.valueOf(started))) {
+                id = pollEditorInputId(driver, idScript);
+                if (id != null) {
+                    ExtentLogger.info(logTag + " cell editor open via startEdit fallback on row "
+                            + rowIndex + " — inputId=" + id);
+                    return id;
+                }
+            } else {
+                ExtentLogger.warning(logTag + " startEdit fallback failed on row " + rowIndex + " — " + started);
+            }
+        }
+        ExtentLogger.warning(logTag + " editor input id not found after click on row " + rowIndex);
+        return null;
+    }
+
+    /** Poll {@code idScript} (sleep-free) until it returns a non-empty editor input id; null on timeout. */
+    private static String pollEditorInputId(WebDriver driver, String idScript) {
+        try {
+            return WaitUtils.webDriverWait(WaitUtils.extJsTimeoutSeconds()).until(d -> {
+                Object r = ((JavascriptExecutor) d).executeScript(idScript);
+                String s = (r == null) ? "" : String.valueOf(r);
+                return s.isEmpty() ? null : s;   // until() returns the first non-null result
+            });
+        } catch (TimeoutException e) {
             return null;
         }
-        ExtentLogger.info("[SL_NATIVE] Sub-Ledger editor open on row " + rowIndex + " — inputId=" + id);
-        return id;
     }
 
     public static void setSubLedger(WebDriver driver, String slName, String slId, String referenceSite, String gridItemId) {
@@ -3978,6 +4082,21 @@ public final class JavascriptExecutorUtils {
         return result != null ? result.toString() : "";
     }
 
+    /** Read the committed {@code amount} value from the sub-ledger grid record (debug read-back). */
+    public static String getSubLedgerAmount(WebDriver driver, int rowIndex, String gridItemId) {
+        String script =
+                "try {" +
+                "  var grid = Ext.ComponentQuery.query('gridpanel[itemId=" + gridItemId + "]')[0];" +
+                "  if (!grid) return '';" +
+                "  var rec = grid.getStore().getAt(" + rowIndex + ");" +
+                "  if (!rec) return '';" +
+                "  var v = rec.get('amount');" +
+                "  return (v === null || v === undefined) ? '' : ('' + v);" +
+                "} catch(e) { return ''; }";
+        Object result = ((JavascriptExecutor) driver).executeScript(script);
+        return result != null ? result.toString() : "";
+    }
+
     private static void logReferenceSiteSelection(String excelValue, String verifyResult, int rowIndex) {
         if (verifyResult == null || verifyResult.startsWith("ERROR")) {
             ExtentLogger.info("[REF_SITE SET] WARNING=Could not verify selected record | Row=" + rowIndex
@@ -4001,10 +4120,43 @@ public final class JavascriptExecutorUtils {
         }
     }
 
-    private static long extJsTimeout() {
-        long configured = ConfigFactory.getConfig().extjsTimeout();
-        long min        = ConfigFactory.getConfig().extjsMinTimeout();
-        return Math.max(min, configured);
+    /**
+     * Opens the Amount cell editor in the SubLedger grid for the given row and returns the
+     * rendered input element's DOM id so Selenium can type the value natively.
+     *
+     * <p>Mirrors {@link #openSubLedgerComboEditor} but targets the {@code amount} column
+     * instead of {@code slCode}.</p>
+     *
+     * @param driver     active WebDriver instance
+     * @param rowIndex   0-based row index
+     * @param gridItemId ExtJS {@code itemId} of the sub-ledger grid panel
+     * @return the {@code inputEl.dom.id} to type into, or {@code null} on failure
+     */
+    public static String openAmountCellEditor(WebDriver driver, int rowIndex, String gridItemId) {
+        // Amount cell is clicksToEdit:2 — synthetic DOM double-click is unreliable on this build, so
+        // open the editor via the ExtJS editing plugin's startEdit() (the proven approach used by
+        // setDeductTdsForRow). Plain numberfield — no combo expand.
+        return openCellEditorViaStartEdit(driver, gridItemId, rowIndex,
+                "di==='amount'", false, "[SL_AMOUNT_NATIVE]");
+    }
+
+    /**
+     * Opens the Reference Site combo editor in the SubLedger grid for the given row and
+     * returns the rendered input element's DOM id so Selenium can type and select natively.
+     *
+     * <p>Mirrors {@link #openSubLedgerComboEditor} but targets the {@code referenceSiteCode}
+     * (or {@code referenceSiteName}) column.</p>
+     *
+     * @param driver     active WebDriver instance
+     * @param rowIndex   0-based row index
+     * @param gridItemId ExtJS {@code itemId} of the sub-ledger grid panel
+     * @return the combo {@code inputEl.dom.id}, or {@code null} on failure
+     */
+    public static String openReferenceSiteCellEditor(WebDriver driver, int rowIndex, String gridItemId) {
+        // Reference Site cell is clicksToEdit:2 — open via the ExtJS editing plugin's startEdit()
+        // (proven), then expand the combo picker for the type-and-select.
+        return openCellEditorViaStartEdit(driver, gridItemId, rowIndex,
+                "di==='referenceSiteCode' || di==='referenceSiteName'", true, "[SL_REFSITE_NATIVE]");
     }
 
     /**

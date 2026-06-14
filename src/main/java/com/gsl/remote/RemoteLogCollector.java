@@ -142,8 +142,8 @@ public final class RemoteLogCollector {
 
         int port = (osType == OSType.LINUX) ? sshPortFor(role) : winrmPortFor(role);
         boolean useHttps = isApp
-                ? ConfigFactory.getConfig().remoteAppServerWinrmUseHttps()
-                : ConfigFactory.getConfig().remoteDbServerWinrmUseHttps();
+                ? ConfigFactory.getRemoteLogConfig().remoteAppServerWinrmUseHttps()
+                : ConfigFactory.getRemoteLogConfig().remoteDbServerWinrmUseHttps();
 
         List<String> logPaths = logPaths(role);
         List<String> keywords = keywords();
@@ -157,11 +157,11 @@ public final class RemoteLogCollector {
                 .endUtc(end)
                 .logPaths(logPaths)
                 .searchKeywords(keywords)
-                .connectTimeoutSeconds(ConfigFactory.getConfig().remoteSshConnectTimeoutSeconds())
-                .readTimeoutSeconds(ConfigFactory.getConfig().remoteSshReadTimeoutSeconds())
-                .commandTimeoutSeconds(ConfigFactory.getConfig().remoteSshCommandTimeoutSeconds())
-                .retryCount(ConfigFactory.getConfig().remoteSshRetryCount())
-                .maxResultLines(ConfigFactory.getConfig().remoteLogsMaxLines())
+                .connectTimeoutSeconds(ConfigFactory.getRemoteLogConfig().remoteSshConnectTimeoutSeconds())
+                .readTimeoutSeconds(ConfigFactory.getRemoteLogConfig().remoteSshReadTimeoutSeconds())
+                .commandTimeoutSeconds(ConfigFactory.getRemoteLogConfig().remoteSshCommandTimeoutSeconds())
+                .retryCount(ConfigFactory.getRemoteLogConfig().remoteSshRetryCount())
+                .maxResultLines(ConfigFactory.getRemoteLogConfig().remoteLogsMaxLines())
                 .winrmUseHttps(useHttps)
                 .build();
     }
@@ -171,13 +171,13 @@ public final class RemoteLogCollector {
             return new SshLogFetcher(
                     new RegexLogParser(),
                     new KeywordTimeWindowFilter(start, end, keywords),
-                    new RetryPolicy(ConfigFactory.getConfig().remoteSshRetryCount(), 1_000L),
+                    new RetryPolicy(ConfigFactory.getRemoteLogConfig().remoteSshRetryCount(), 1_000L),
                     pool);
         }
         return new WinRmLogFetcher(
                 new RegexLogParser(),
                 new KeywordTimeWindowFilter(start, end, keywords),
-                new RetryPolicy(ConfigFactory.getConfig().remoteSshRetryCount(), 1_000L));
+                new RetryPolicy(ConfigFactory.getRemoteLogConfig().remoteSshRetryCount(), 1_000L));
     }
 
     private List<String> logPaths(ServerRole role) {
@@ -185,7 +185,7 @@ public final class RemoteLogCollector {
 
         // File-based config takes priority for APP server: one path per line, backslashes safe.
         if (isApp) {
-            String fileName = ConfigFactory.getConfig().remoteAppServerLogPathsFile();
+            String fileName = ConfigFactory.getRemoteLogConfig().remoteAppServerLogPathsFile();
             if (fileName != null && !fileName.isBlank()) {
                 List<String> paths = RawPropertyReader.readAllRawValues(fileName);
                 if (!paths.isEmpty()) return paths;
@@ -210,7 +210,7 @@ public final class RemoteLogCollector {
     }
 
     private List<String> keywords() {
-        String raw = ConfigFactory.getConfig().remoteLogsKeywords();
+        String raw = ConfigFactory.getRemoteLogConfig().remoteLogsKeywords();
         if (raw == null || raw.isBlank()) return List.of();
         return Arrays.stream(raw.split(",\\s*"))
                 .filter(k -> !k.isBlank())
@@ -219,38 +219,38 @@ public final class RemoteLogCollector {
 
     private static int sshPortFor(ServerRole role) {
         return (role == ServerRole.APP)
-                ? ConfigFactory.getConfig().remoteAppServerSshPort()
-                : ConfigFactory.getConfig().remoteDbServerSshPort();
+                ? ConfigFactory.getRemoteLogConfig().remoteAppServerSshPort()
+                : ConfigFactory.getRemoteLogConfig().remoteDbServerSshPort();
     }
 
     private static int winrmPortFor(ServerRole role) {
         return (role == ServerRole.APP)
-                ? ConfigFactory.getConfig().remoteAppServerWinrmPort()
-                : ConfigFactory.getConfig().remoteDbServerWinrmPort();
+                ? ConfigFactory.getRemoteLogConfig().remoteAppServerWinrmPort()
+                : ConfigFactory.getRemoteLogConfig().remoteDbServerWinrmPort();
     }
 
     private static String winrmUsernameFor(ServerRole role) {
         return (role == ServerRole.APP)
-                ? ConfigFactory.getConfig().remoteAppServerWinrmUsername()
-                : ConfigFactory.getConfig().remoteDbServerWinrmUsername();
+                ? ConfigFactory.getRemoteLogConfig().remoteAppServerWinrmUsername()
+                : ConfigFactory.getRemoteLogConfig().remoteDbServerWinrmUsername();
     }
 
     private static String winrmPasswordFor(ServerRole role) {
         return (role == ServerRole.APP)
-                ? ConfigFactory.getConfig().remoteAppServerWinrmPassword()
-                : ConfigFactory.getConfig().remoteDbServerWinrmPassword();
+                ? ConfigFactory.getRemoteLogConfig().remoteAppServerWinrmPassword()
+                : ConfigFactory.getRemoteLogConfig().remoteDbServerWinrmPassword();
     }
 
     private static String sshUsernameFor(ServerRole role) {
         return (role == ServerRole.APP)
-                ? ConfigFactory.getConfig().remoteAppServerSshUsername()
-                : ConfigFactory.getConfig().remoteDbServerSshUsername();
+                ? ConfigFactory.getRemoteLogConfig().remoteAppServerSshUsername()
+                : ConfigFactory.getRemoteLogConfig().remoteDbServerSshUsername();
     }
 
     private static String sshPasswordFor(ServerRole role) {
         return (role == ServerRole.APP)
-                ? ConfigFactory.getConfig().remoteAppServerSshPassword()
-                : ConfigFactory.getConfig().remoteDbServerSshPassword();
+                ? ConfigFactory.getRemoteLogConfig().remoteAppServerSshPassword()
+                : ConfigFactory.getRemoteLogConfig().remoteDbServerSshPassword();
     }
 
     private static String firstNonBlank(String primary, String fallback) {

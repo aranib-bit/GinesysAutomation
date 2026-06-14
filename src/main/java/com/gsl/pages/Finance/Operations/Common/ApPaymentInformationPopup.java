@@ -1,11 +1,13 @@
 package com.gsl.pages.Finance.Operations.Common;
 
+import com.gsl.config.ConfigFactory;
 import com.gsl.driver.DriverManager;
 import com.gsl.enums.WaitType;
 import com.gsl.pages.enums.Finance.Operations.APVoucher.ApPaymentInfoLabel;
 import com.gsl.testdata.Finance.Operations.Vouchers.Common.VoucherPaymentInfo;
 import com.gsl.utils.Selenium.JavascriptExecutorUtils;
 import com.gsl.utils.Selenium.SeleniumUtils;
+import com.gsl.utils.Selenium.WaitUtils;
 import org.openqa.selenium.By;
 import org.openqa.selenium.WebElement;
 import org.openqa.selenium.support.ui.WebDriverWait;
@@ -119,7 +121,7 @@ public class ApPaymentInformationPopup extends PaymentInformationPopup {
 
     private boolean isInstrumentDateReady() {
         try {
-            new WebDriverWait(DriverManager.getDriver(), Duration.ofSeconds(3))
+            WaitUtils.webDriverWait(ConfigFactory.getWaitConfig().shortWaitSeconds())
                     .until(driver -> {
                         try {
                             WebElement el = driver.findElement(INSTRUMENT_DATE);

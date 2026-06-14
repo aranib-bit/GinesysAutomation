@@ -24,7 +24,7 @@ public final class NetworkServiceFactory {
     private NetworkServiceFactory() {}
 
     public static NetworkCapture create(WebDriver driver) {
-        if (!ConfigFactory.getConfig().enableNetworkLogs()) {
+        if (!ConfigFactory.getNetworkConfig().enableNetworkLogs()) {
             return new NoOpNetworkCapture();
         }
         if (driver instanceof HasDevTools) {

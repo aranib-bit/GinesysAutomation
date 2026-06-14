@@ -1,6 +1,7 @@
 package com.gsl.validation.db.finance;
 
 import com.gsl.config.ConfigFactory;
+import com.gsl.config.FinanceConfig;
 import com.gsl.database.DatabaseManager;
 import com.gsl.database.dao.finance.FinVchMainDao;
 import com.gsl.model.finance.FinVchMain;
@@ -61,7 +62,7 @@ public abstract class FinVchMainBaseValidator {
         Long diffSeconds = null;
         long toleranceSeconds = 0;
         if (saveStartTime != null && h.getCreationDt() != null) {
-            toleranceSeconds = ConfigFactory.getConfig().dbCreationTolerance();
+            toleranceSeconds = ConfigFactory.getFinanceConfig().dbCreationTolerance();
             diffSeconds = Math.abs(ChronoUnit.SECONDS.between(saveStartTime, h.getCreationDt()));
             ReportLogger.info("[Level 1] creation_dt tolerance:"
                     + " saveStartTime=" + saveStartTime

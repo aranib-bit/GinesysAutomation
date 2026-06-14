@@ -4,7 +4,9 @@ import com.gsl.annotations.ApiFlow;
 import com.gsl.annotations.FrameworkAnnotation;
 import com.gsl.annotations.TestCaseId;
 import com.gsl.network.pattern.FinanceApiPattern;
+import com.gsl.enums.AppOperation;
 import com.gsl.enums.TestAuthor;
+import com.gsl.pages.enums.topmenucomponent.MainModuleType;
 import com.gsl.pages.Finance.Operations.ArVoucherListPage;
 import com.gsl.pages.HomePage;
 import com.gsl.pages.LoginPage;
@@ -40,7 +42,7 @@ import org.testng.annotations.Test;
 @ApiFlow(FinanceApiPattern.AR_VOUCHER)
 public class DeleteArVoucher extends WebTest {
 
-    @FrameworkAnnotation(TestAuthor.ARANI)
+    @FrameworkAnnotation(value = TestAuthor.ARANI, module = MainModuleType.FINANCE, subModule = "FinanceARVoucher", operation = AppOperation.DELETE)
     @TestCaseId("FIN-AR-DELETE")
     @Test(description = "Delete an existing AR Voucher from the Finance UI",
             dataProvider = "dataSupplier", dataProviderClass = MergedFinArVoucherDataSupplier.class)

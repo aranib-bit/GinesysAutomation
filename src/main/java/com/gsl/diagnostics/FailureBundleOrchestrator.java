@@ -4,7 +4,11 @@ import com.gsl.annotations.ApiFlow;
 import com.gsl.browser.AdvancedLogFetcher;
 import com.gsl.browser.BrowserLogRecord;
 import com.gsl.config.ConfigFactory;
-import com.gsl.config.FrameworkConfig;
+import com.gsl.config.DiagnosticsConfig;
+import com.gsl.config.ExecutionConfig;
+import com.gsl.config.NetworkConfig;
+import com.gsl.config.RemoteLogConfig;
+import com.gsl.config.ReportConfig;
 import com.gsl.diagnostics.section.*;
 import com.gsl.diagnostics.section.frontend.FrontendPerformanceSection;
 import com.gsl.diagnostics.section.frontend.FrontendPerformanceSectionFactory;
@@ -158,7 +162,7 @@ public final class FailureBundleOrchestrator {
     }
 
     private static DiagnosticSection networkTimingSection(boolean isFailure) {
-        String logOn = ConfigFactory.getConfig().networkTimingLogOn();
+        String logOn = ConfigFactory.getNetworkConfig().networkTimingLogOn();
         if (!"always".equalsIgnoreCase(logOn) && !isFailure) return null;
         NetworkTimingSection section = new NetworkTimingSection(isFailure);
         return section.hasData() ? section : null;
@@ -170,7 +174,7 @@ public final class FailureBundleOrchestrator {
         List<NetworkLogRecord> logs     = NetworkCaptureManager.get().getLogs();
         String                 protocol = NetworkCaptureManager.get().protocolName();
 
-        if (ConfigFactory.getConfig().networkCapturePassShowAll()) {
+        if (ConfigFactory.getNetworkConfig().networkCapturePassShowAll()) {
             return new NetworkLogSection(logs, protocol);
         }
         ApiPattern pattern = resolveApiPattern(result);
@@ -190,7 +194,7 @@ public final class FailureBundleOrchestrator {
     // ── section builders ──────────────────────────────────────────────────────
 
     private static List<BrowserLogRecord> fetchBrowserLogs(WebDriver driver) {
-        if (!ConfigFactory.getConfig().browserLogsEnabled() || driver == null) return List.of();
+        if (!ConfigFactory.getNetworkConfig().browserLogsEnabled() || driver == null) return List.of();
         try {
             List<BrowserLogRecord> logs = AdvancedLogFetcher.fetchLogs();
             return logs != null ? logs : List.of();
@@ -201,7 +205,7 @@ public final class FailureBundleOrchestrator {
     }
 
     private static DiagnosticSection actionTrailSectionForPass() {
-        String mode = ConfigFactory.getConfig().actionTrailCaptureMode();
+        String mode = ConfigFactory.getDiagnosticsConfig().actionTrailCaptureMode();
         if (!"ALL".equalsIgnoreCase(mode)) return null;
         return new ActionTrailSection(ActionTrailBuffer.getForDisplay(), ActionTrailBuffer.totalCaptured());
     }
@@ -213,7 +217,7 @@ public final class FailureBundleOrchestrator {
      */
     private static FrontendPerformanceSection buildFrontendPerfSection(WebDriver driver,
                                                                         boolean isFailure) {
-        FrameworkConfig cfg = ConfigFactory.getConfig();
+        DiagnosticsConfig cfg = ConfigFactory.getDiagnosticsConfig();
         if (!cfg.frontendDiagnosticsEnabled()) {
             Log.debug("[FrontendDiag] Skipped — frontend.diagnostics.enabled=false");
             return null;
@@ -253,13 +257,13 @@ public final class FailureBundleOrchestrator {
     }
 
     private static DiagnosticSection uiComponentSectionForPass(WebDriver driver) {
-        String mode = ConfigFactory.getConfig().uiComponentsCaptureMode();
+        String mode = ConfigFactory.getDiagnosticsConfig().uiComponentsCaptureMode();
         if (!"ALL".equalsIgnoreCase(mode)) return null;
         return uiComponentSection(driver);
     }
 
     private static DiagnosticSection performanceTimingSection(WebDriver driver) {
-        if (!ConfigFactory.getConfig().performanceTimingEnabled() || driver == null) return null;
+        if (!ConfigFactory.getReportConfig().performanceTimingEnabled() || driver == null) return null;
         PerformanceTimingSection section = new PerformanceTimingSection(driver);
         return section.hasData() ? section : null;
     }
@@ -271,7 +275,7 @@ public final class FailureBundleOrchestrator {
      * for threshold checks without a second JS round-trip.
      */
     private static CustomMetricsSection buildCustomMetricsSection(WebDriver driver, boolean isFailure) {
-        FrameworkConfig cfg = ConfigFactory.getConfig();
+        DiagnosticsConfig cfg = ConfigFactory.getDiagnosticsConfig();
         if (!cfg.customMetricsEnabled() || driver == null) return null;
         String mode = cfg.customMetricsCaptureMode();
         if ("NEVER".equalsIgnoreCase(mode)) return null;
@@ -286,7 +290,7 @@ public final class FailureBundleOrchestrator {
      */
     private static void enforceCustomMetricsThreshold(CustomMetricsSection section) {
         if (section == null) return;
-        int threshold = ConfigFactory.getConfig().customMetricsFailOnLongTaskCount();
+        int threshold = ConfigFactory.getDiagnosticsConfig().customMetricsFailOnLongTaskCount();
         if (threshold <= 0) return;
         int count = section.longTaskCount();
         if (count > threshold) {
@@ -298,7 +302,7 @@ public final class FailureBundleOrchestrator {
     }
 
     private static DiagnosticSection uiComponentSection(WebDriver driver) {
-        if (!ConfigFactory.getConfig().uiDiagnosticsEnabled() || driver == null) return null;
+        if (!ConfigFactory.getDiagnosticsConfig().uiDiagnosticsEnabled() || driver == null) return null;
         try {
             UiComponentSection section = new UiComponentSection(driver);
             return section.hasData() ? section : null;
@@ -309,7 +313,7 @@ public final class FailureBundleOrchestrator {
     }
 
     private static DiagnosticSection htmlCaptureSection(Throwable t, WebDriver driver, ITestResult result) {
-        if (!ConfigFactory.getConfig().diagnosticsHtmlCaptureOnElementFailure()) return null;
+        if (!ConfigFactory.getDiagnosticsConfig().diagnosticsHtmlCaptureOnElementFailure()) return null;
         if (driver == null) return null;
         if (!(t instanceof NoSuchElementException) && !(t instanceof TimeoutException)) return null;
         return new HtmlCaptureSection(driver, result.getMethod().getMethodName());
@@ -317,23 +321,23 @@ public final class FailureBundleOrchestrator {
 
     private static DiagnosticSection driverCapsSection(WebDriver driver) {
         if (driver == null) return null;
-        if (!ConfigFactory.getConfig().diagnosticsDriverCapabilitiesEnabled()) return null;
+        if (!ConfigFactory.getDiagnosticsConfig().diagnosticsDriverCapabilitiesEnabled()) return null;
         return new DriverCapabilitiesSection(driver);
     }
 
     private static DiagnosticSection activePopupSection(WebDriver driver) {
         if (driver == null) return null;
-        if (!ConfigFactory.getConfig().diagnosticsActivePopupEnabled()) return null;
+        if (!ConfigFactory.getDiagnosticsConfig().diagnosticsActivePopupEnabled()) return null;
         return new ActivePopupSection(driver);
     }
 
     private static DiagnosticSection dbStateSection() {
-        if (!ConfigFactory.getConfig().diagnosticsDbStateEnabled()) return null;
+        if (!ConfigFactory.getDiagnosticsConfig().diagnosticsDbStateEnabled()) return null;
         return new DbStateSection();
     }
 
     private static DiagnosticSection threadDumpSection(Throwable t) {
-        if (!ConfigFactory.getConfig().diagnosticsThreadDumpEnabled()) return null;
+        if (!ConfigFactory.getDiagnosticsConfig().diagnosticsThreadDumpEnabled()) return null;
         if (!(t instanceof TimeoutException)) return null;
         return new ThreadDumpSection();
     }
@@ -358,14 +362,14 @@ public final class FailureBundleOrchestrator {
         boolean isApp = role == ServerRole.APP;
 
         String newHost = isApp
-                ? ConfigFactory.getConfig().remoteAppServerHost()
-                : ConfigFactory.getConfig().remoteDbServerHost();
+                ? ConfigFactory.getRemoteLogConfig().remoteAppServerHost()
+                : ConfigFactory.getRemoteLogConfig().remoteDbServerHost();
 
         if (newHost != null && !newHost.isBlank()) return newHost;
 
         String legacyHost = isApp
-                ? ConfigFactory.getConfig().diagnosticsAppServerHost()
-                : ConfigFactory.getConfig().diagnosticsDbServerHost();
+                ? ConfigFactory.getDiagnosticsConfig().diagnosticsAppServerHost()
+                : ConfigFactory.getDiagnosticsConfig().diagnosticsDbServerHost();
 
         if (legacyHost != null && !legacyHost.isBlank()
                 && !"localhost".equalsIgnoreCase(legacyHost)) return legacyHost;
@@ -400,7 +404,7 @@ public final class FailureBundleOrchestrator {
     private static CaptureMode resolveCaptureMode() {
         try {
             return CaptureMode.valueOf(
-                    ConfigFactory.getConfig().remoteLogsCaptureMode().toUpperCase());
+                    ConfigFactory.getRemoteLogConfig().remoteLogsCaptureMode().toUpperCase());
         } catch (Exception e) {
             return CaptureMode.NEVER;
         }
@@ -409,7 +413,7 @@ public final class FailureBundleOrchestrator {
     // ── Phase 2: Step Timeline, Wait Analysis, Flaky Summary ─────────────────
 
     private static DiagnosticSection stepTimelineSection(boolean isFailure) {
-        FrameworkConfig cfg = ConfigFactory.getConfig();
+        DiagnosticsConfig cfg = ConfigFactory.getDiagnosticsConfig();
         if (!cfg.stepTimelineEnabled()) return null;
         if (!isFailure && !"ALL".equalsIgnoreCase(cfg.stepTimelineCaptureMode())) return null;
         java.util.List<StepDurationBuffer.StepRecord> records = StepDurationBuffer.getAll();
@@ -418,7 +422,7 @@ public final class FailureBundleOrchestrator {
     }
 
     private static DiagnosticSection waitAnalysisSection(boolean isFailure, long testDurationSeconds) {
-        FrameworkConfig cfg = ConfigFactory.getConfig();
+        DiagnosticsConfig cfg = ConfigFactory.getDiagnosticsConfig();
         if (!cfg.waitAnalysisEnabled()) return null;
         if (!isFailure && !"ALL".equalsIgnoreCase(cfg.waitAnalysisCaptureMode())) return null;
         int minSec = cfg.waitAnalysisMinTestDurationSeconds();
@@ -429,11 +433,12 @@ public final class FailureBundleOrchestrator {
     }
 
     private static DiagnosticSection flakySummarySection() {
-        FrameworkConfig cfg = ConfigFactory.getConfig();
-        if (!cfg.flakySummaryEnabled()) return null;
-        if (cfg.retryMaxCount() <= 0) return null;
+        DiagnosticsConfig diagCfg = ConfigFactory.getDiagnosticsConfig();
+        ExecutionConfig   execCfg = ConfigFactory.getExecutionConfig();
+        if (!diagCfg.flakySummaryEnabled()) return null;
+        if (execCfg.retryMaxCount() <= 0) return null;
         java.util.List<RetryHistoryBuffer.RetryRecord> records = RetryHistoryBuffer.getAll();
         if (records.isEmpty()) return null;
-        return new FlakySummarySection(records, cfg.retryMaxCount(), cfg.flakyScoreWarnThreshold());
+        return new FlakySummarySection(records, execCfg.retryMaxCount(), diagCfg.flakyScoreWarnThreshold());
     }
 }

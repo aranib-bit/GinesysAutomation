@@ -1,7 +1,7 @@
 package com.gsl.utils.dataprovider.source.finance;
 
 import com.gsl.config.ConfigFactory;
-import com.gsl.config.FrameworkConfig;
+import com.gsl.config.WaitConfig;
 import com.gsl.database.DatabaseManager;
 import com.gsl.database.DocumentReservationRegistry;
 import com.gsl.database.ReferenceSiteAmountRegistry;
@@ -152,6 +152,13 @@ public class DbApVoucherDataSource implements TestDataSource<MergedFinanceApVouc
                                 "DB_ADV_NO_TDS_MAND",
                                 "ADVANCE | [Bank GL] | No TDS"));
                     }
+                } else if (scenario == ApVoucherScenarioType.ADVANCE_MULTI_SL_WITH_PAYMENT) {
+                    if (matchesGroup(activeGroup, ApVoucherExecutionGroup.REGRESSION_PHASE2)) {
+                        batch.add(buildPlaceholder(testMethodName, loginName, scenario,
+                                ApVoucherFixtureOptions.forAdvanceMultiSl(CashBankType.BANK),
+                                "DB_ADV_MULTI_SL_PAY_REG2",
+                                "ADVANCE | [Bank GL] | Multi-SL | Mixed Payment"));
+                    }
                 } else if (scenario == ApVoucherScenarioType.ADVANCE_WITH_TDS) {
 
                     // ── MANDATORY: GROSS_EQUALS_TDS (baseline smoke) ──────────────────────
@@ -198,6 +205,19 @@ public class DbApVoucherDataSource implements TestDataSource<MergedFinanceApVouc
                                 "DB_ADV_TDS_SINGLE_NATURE",
                                 "ADVANCE | [Bank GL] | TDS | Single Nature Tagged"));
                     }
+
+                // ── T-03 Negative & Boundary (advance path) ─────────────────────────────
+                //    One placeholder each; emitted for every group (the negative test method's
+                //    suite block sets no apv.group, so activeGroup is null → always matches).
+                } else if (scenario == ApVoucherScenarioType.NEG_BLANK_CASHBANK
+                        || scenario == ApVoucherScenarioType.NEG_BLANK_SUBLEDGER
+                        || scenario == ApVoucherScenarioType.BLANK_REFERENCE_ALLOWED
+                        || scenario == ApVoucherScenarioType.BOUND_AMOUNT_MIN_VALID
+                        || scenario == ApVoucherScenarioType.BOUND_AMOUNT_MIN_INVALID) {
+                    batch.add(buildPlaceholder(testMethodName, loginName, scenario,
+                            ApVoucherFixtureOptions.forAdvance(CashBankType.BANK),
+                            "DB_" + scenario.name(),
+                            scenario.name()));
                 }
 
             } else {
@@ -324,7 +344,8 @@ public class DbApVoucherDataSource implements TestDataSource<MergedFinanceApVouc
             // ── Advance Payment: fetch vendor SLs directly from finsl ─────────
             pendingSlNames = findVendorSlsForAdvance(jdbi, d, opts);
             if (pendingSlNames.isEmpty()) {
-                throw new IllegalStateException(
+                // Data-availability shortfall → skip (amber), not fail (red).
+                throw new org.testng.SkipException(
                         "[DbApVoucherDataSource] No usable vendor SLs found in finsl for advance payment." +
                         " ownerSiteCodes=" + ownerSiteCodes +
                         " tdsApplicable=" + opts.isTdsApplicable() +
@@ -895,13 +916,18 @@ public class DbApVoucherDataSource implements TestDataSource<MergedFinanceApVouc
         int  documentCount  = Math.max(1, opts.getDocumentCount());
         long clsCode        = opts.getSlClsCode();
 
-        FrameworkConfig fcfg = ConfigFactory.getConfig();
-        int  overfetch    = subLedgerCount * Math.max(1, fcfg.docSelectorOverfetchMultiplier());
+        WaitConfig fcfg = ConfigFactory.getWaitConfig();
         long retryBackoff = fcfg.docSelectorRetryBackoffMs();
         DocumentSelectionMode mode = DocumentSelectionMode.fromString(fcfg.docSelectorMode());
 
         long distinctCount = countDistinctApSlCodes(jdbi, d, ouCodes, ownerSiteCodes, clsCode);
         int  maxAttempts   = (int) Math.max(1L, distinctCount);
+        // Ensure the candidate query retrieves ALL distinct SLs in one shot — if overfetch is
+        // smaller than distinctCount, some SLs are cut off by LIMIT and never tried, which is
+        // the root cause of "did not try all subledgers" EXHAUSTED failures.
+        int  overfetch = Math.max(
+                (int) Math.max(1L, distinctCount),
+                subLedgerCount * Math.max(1, fcfg.docSelectorOverfetchMultiplier()));
 
         Log.info("[DocSelectorAP] distinctSlCount={} → maxAttempts={}", distinctCount, maxAttempts);
 
@@ -963,7 +989,8 @@ public class DbApVoucherDataSource implements TestDataSource<MergedFinanceApVouc
             if (attempt < maxAttempts - 1) sleepMs(retryBackoff);
         }
 
-        throw new IllegalStateException(
+        // Data-availability shortfall (no pending AP documents to adjust) → skip, not fail.
+        throw new org.testng.SkipException(
             "[DbApVoucherDataSource] EXHAUSTED — could not select " + subLedgerCount +
             " AP SL(s) after " + maxAttempts + " attempt(s).\n" +
             "  Inputs: ouCodes=" + ouCodes + ", ownerSiteCodes=" + ownerSiteCodes +

@@ -152,8 +152,12 @@ public final class ArVoucherExtentDescriptionLogger {
 
     private static void logSubLedgersTable(MergedFinanceArVoucherData data) {
         List<SubLedgerInformation> sls = data.getSubLedgerInformationList();
+        ExtentLogger.info("<b>Sub-Ledgers</b>");
         if (sls == null || sls.isEmpty()) {
-            ExtentLogger.info("<i>Sub-Ledgers: (none)</i>");
+            ExtentLogger.infoTable(new String[][]{
+                { "Line#", "Sub-Ledger", "SL Type", "GL", "Adj Type", "Amount Cr", "Payment Mode" },
+                { "—", "(intentionally blank for this scenario)", "", "", "", "", "" }
+            });
             return;
         }
         String[][] table = new String[1 + sls.size()][7];
@@ -170,7 +174,6 @@ public final class ArVoucherExtentDescriptionLogger {
                 sl.getPaymentSelection() != null ? sl.getPaymentSelection().toString() : ""
             };
         }
-        ExtentLogger.info("<b>Sub-Ledgers</b>");
         ExtentLogger.infoTable(table);
     }
 
@@ -201,7 +204,14 @@ public final class ArVoucherExtentDescriptionLogger {
 
     private static void logPaymentsTable(MergedFinanceArVoucherData data) {
         List<PaymentInformation> payments = data.getPaymentInformationList();
-        if (payments == null || payments.isEmpty()) return;
+        if (payments == null || payments.isEmpty()) {
+            ExtentLogger.info("<b>Payment Information</b>");
+            ExtentLogger.infoTable(new String[][]{
+                { "SL Line#", "Mode", "Instrument No", "Instrument Date" },
+                { "—", "(intentionally blank for this scenario)", "", "" }
+            });
+            return;
+        }
         String[][] table = new String[1 + payments.size()][4];
         table[0] = new String[]{ "SL Line#", "Mode", "Instrument No", "Instrument Date" };
         for (int i = 0; i < payments.size(); i++) {

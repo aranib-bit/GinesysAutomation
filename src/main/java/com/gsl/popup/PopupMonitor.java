@@ -22,7 +22,7 @@ public final class PopupMonitor {
      * @throws UnexpectedPopupException if an unexpected popup is detected
      */
     public static void checkAfterAction(String actionName) {
-        if (!ConfigFactory.getConfig().popupDetectionEnabled()) return;
+        if (!ConfigFactory.getWaitConfig().popupDetectionEnabled()) return;
 
         PopupResult popup = PopupHandler.detectPopup();
         if (popup == null) return;
@@ -55,7 +55,7 @@ public final class PopupMonitor {
      * deals with it, but still wants it noted in the report.
      */
     public static void noteAfterAction(String actionName) {
-        if (!ConfigFactory.getConfig().popupDetectionEnabled()) return;
+        if (!ConfigFactory.getWaitConfig().popupDetectionEnabled()) return;
 
         PopupResult popup = PopupHandler.detectPopup();
         if (popup == null) return;

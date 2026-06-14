@@ -20,7 +20,7 @@ public final class LogAttachment {
     private LogAttachment() {}
 
     public static void attach(ITestResult result) {
-        if (!ConfigFactory.getConfig().browserLogsEnabled()) return;
+        if (!ConfigFactory.getNetworkConfig().browserLogsEnabled()) return;
 
         List<BrowserLogRecord> logs = AdvancedLogFetcher.fetchLogs();
         if (logs == null || logs.isEmpty()) return;
@@ -29,7 +29,7 @@ public final class LogAttachment {
 
         // Always attach everything on failure
         if (result.getStatus() == ITestResult.FAILURE
-                && ConfigFactory.getConfig().browserLogsCaptureOnFailure()) {
+                && ConfigFactory.getNetworkConfig().browserLogsCaptureOnFailure()) {
             AdvancedExtentLogger.logBrowserLogs(logs, description);
             DecisionEngine.Decision decision = DecisionEngine.evaluate(logs, false);
             if (decision == DecisionEngine.Decision.FAIL) {
@@ -41,7 +41,7 @@ public final class LogAttachment {
         }
 
         // On success: filter by configured level before attaching
-        String level = ConfigFactory.getConfig().browserLogsLevel();
+        String level = ConfigFactory.getNetworkConfig().browserLogsLevel();
         List<BrowserLogRecord> filtered = filterByLevel(logs, level);
         if (!filtered.isEmpty()) {
             AdvancedExtentLogger.logBrowserLogs(filtered, description);

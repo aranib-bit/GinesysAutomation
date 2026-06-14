@@ -1,5 +1,6 @@
 package com.gsl.pages.Finance.Operations.Common;
 
+import com.gsl.pages.enums.CommonButton;
 import com.gsl.pages.enums.Finance.Operations.Common.CommonVoucherGridColumnHeader;
 import org.openqa.selenium.By;
 import org.openqa.selenium.TimeoutException;
@@ -13,6 +14,7 @@ import com.gsl.utils.Log;
 import com.gsl.utils.Selenium.ActionUtils;
 import com.gsl.utils.Selenium.JavascriptExecutorUtils;
 import com.gsl.utils.Selenium.SeleniumUtils;
+import com.gsl.utils.Selenium.WaitUtils;
 import com.gsl.enums.WaitType;
 
 import java.time.Duration;
@@ -29,52 +31,52 @@ public class AdjustmentEntry {
     // Locators
     // ===========================
 
-    private static final By ADJUSTED_DOCUMENT_MENU =
-            By.xpath("//div[text()='Adjusted Document']//following::*[contains(@class,'mdi mdi-20px mdi-dots-horizontal')]");
+    // CANCEL_BUTTON → CommonButton.CANCEL.locator() (plain Cancel, no positional constraint)
+    private static final class Loc {
+        static final By ADJUSTED_DOCUMENT_MENU =
+                By.xpath("//div[text()='Adjusted Document']//following::*[contains(@class,'mdi mdi-20px mdi-dots-horizontal')]");
 
-    private static final By SELECT_DOCUMENT_OPTION =
-            By.xpath("//span[text()='Select Document' and @class='x-btn-inner x-btn-inner-default-toolbar-small']");
+        static final By SELECT_DOCUMENT_OPTION =
+                By.xpath("//span[text()='Select Document' and @class='x-btn-inner x-btn-inner-default-toolbar-small']");
 
-    private static final By FIFO_SET_OFF_OPTION =
-            By.xpath("//span[text()='FIFO Set-Off' and @class='x-btn-inner x-btn-inner-default-toolbar-small']");
+        static final By FIFO_SET_OFF_OPTION =
+                By.xpath("//span[text()='FIFO Set-Off' and @class='x-btn-inner x-btn-inner-default-toolbar-small']");
 
-    private static final By REF_SITE_FIFO_OPTION =
-            By.xpath("//span[text()='Reference Site wise FIFO set-off' and @class='x-btn-inner x-btn-inner-default-toolbar-small']");
+        static final By REF_SITE_FIFO_OPTION =
+                By.xpath("//span[text()='Reference Site wise FIFO set-off' and @class='x-btn-inner x-btn-inner-default-toolbar-small']");
 
-    private static final By OK_BUTTON =
-            By.xpath("(//span[normalize-space()='Show Reference Site Summary'])[3]/following::a[contains(normalize-space(),'OK')][1]");
+        // Scoped OK — positioned relative to Show Reference Site Summary; NOT the generic OK button
+        static final By OK_BUTTON =
+                By.xpath("(//span[normalize-space()='Show Reference Site Summary'])[3]/following::a[contains(normalize-space(),'OK')][1]");
 
-    private static final By CANCEL_BUTTON =
-            By.xpath("//span[normalize-space()='Cancel']");
+        static final By SHOW_REF_SITE_SUMMARY =
+                By.xpath("//span[normalize-space()='Show Reference Site Summary' and @class='x-btn-inner x-btn-inner-default-toolbar-small']");
 
-    private static final By SHOW_REF_SITE_SUMMARY =
-            By.xpath("//span[normalize-space()='Show Reference Site Summary' and @class='x-btn-inner x-btn-inner-default-toolbar-small']");
+        static final By TRANSACTION_AMOUNT =
+                By.xpath("//span[text()='Transaction Amount:']/ancestor::div[contains(@class,'x-form-item')]//input[@role='textbox']");
 
-    private static final By TRANSACTION_AMOUNT =
-            By.xpath("//span[text()='Transaction Amount:']/ancestor::div[contains(@class,'x-form-item')]//input[@role='textbox']");
+        static final By ADJUSTED_AMOUNT =
+                By.xpath("//span[text()='Adjusted Amount:']/ancestor::div[contains(@class,'x-form-item')]//input[@role='textbox']");
 
-    private static final By ADJUSTED_AMOUNT =
-            By.xpath("//span[text()='Adjusted Amount:']/ancestor::div[contains(@class,'x-form-item')]//input[@role='textbox']");
+        static final By PENDING_TO_ADJUST =
+                By.xpath("//span[text()='Pending to Adjust:']/ancestor::div[contains(@class,'x-form-item')]//input[@role='textbox']");
 
-    private static final By PENDING_TO_ADJUST =
-            By.xpath("//span[text()='Pending to Adjust:']/ancestor::div[contains(@class,'x-form-item')]//input[@role='textbox']");
+        // Shared row+column prefix: locates the <td> of the 'Adjusted Amount' column
+        // in the grid row containing the given document number.
+        static final String ADJUSTED_AMOUNT_CELL_BASE_XPATH =
+                "//div[normalize-space()='%s']/ancestor::tr" +
+                "//td[count(//div[contains(@class,'x-column-header')]" +
+                "[.//span[normalize-space()='" + CommonVoucherGridColumnHeader.ADJUSTED_AMOUNT.headerText() + "']]" +
+                "/preceding-sibling::div[contains(@class,'x-column-header')]) + 1]";
 
-    // Shared row+column prefix: locates the <td> of the 'Adjusted Amount' column
-    // in the grid row containing the given document number.
-    private static final String ADJUSTED_AMOUNT_CELL_BASE_XPATH =
-            "//div[normalize-space()='%s']/ancestor::tr" +
-            "//td[count(//div[contains(@class,'x-column-header')]" +
-            "[.//span[normalize-space()='" + CommonVoucherGridColumnHeader.ADJUSTED_AMOUNT.headerText() + "']]" +
-            "/preceding-sibling::div[contains(@class,'x-column-header')]) + 1]";
+        static final String ADJUSTED_AMOUNT_BY_DOC_XPATH = ADJUSTED_AMOUNT_CELL_BASE_XPATH + "//div";
 
-    private static final String ADJUSTED_AMOUNT_BY_DOC_XPATH =
-            ADJUSTED_AMOUNT_CELL_BASE_XPATH + "//div";
-
-    // After a double-click activates the ExtJS inline editor, the editor renders as a
-    // floating x-editor overlay — not inside the cell's DOM subtree. Target it globally.
-    private static final By ACTIVE_EDITOR_INPUT = By.xpath(
-            "//div[contains(@class,'x-editor') and not(contains(@class,'x-hide-display'))]//input"
-    );
+        // After a double-click activates the ExtJS inline editor, the editor renders as a
+        // floating x-editor overlay — not inside the cell's DOM subtree. Target it globally.
+        static final By ACTIVE_EDITOR_INPUT = By.xpath(
+                "//div[contains(@class,'x-editor') and not(contains(@class,'x-hide-display'))]//input"
+        );
+    }
 
 
     // ===========================
@@ -82,12 +84,12 @@ public class AdjustmentEntry {
     // ===========================
 
     public AdjustmentEntry openAdjustedDocumentMenu() {
-        SeleniumUtils.click(ADJUSTED_DOCUMENT_MENU, WaitType.CLICKABLE, "Adjusted Document Menu");
+        SeleniumUtils.click(Loc.ADJUSTED_DOCUMENT_MENU, WaitType.CLICKABLE, "Adjusted Document Menu");
         return this;
     }
 
     public SelectDocumentPopup selectDocument() {
-        SeleniumUtils.click(SELECT_DOCUMENT_OPTION, WaitType.CLICKABLE, "Select Document Option");
+        SeleniumUtils.click(Loc.SELECT_DOCUMENT_OPTION, WaitType.CLICKABLE, "Select Document Option");
         JavascriptExecutorUtils.waitForExtJS();
         Log.warn("AdjustmentEntry.selectDocument: waitForExtJS done — checking loader mask [{}]",
                 FrameworkConstants.getSelectDocGridLoader());
@@ -96,11 +98,10 @@ public class AdjustmentEntry {
         Log.warn("AdjustmentEntry.selectDocument: loader mask present={}", loaderFoundInitially);
         Log.warn("AdjustmentEntry.selectDocument: grid diagnostics BEFORE loader wait — {}",
                 JavascriptExecutorUtils.getGridDiagnostics());
-        int maxRetries = ConfigFactory.getConfig().selectDocLoaderMaxRetries();
+        int maxRetries = ConfigFactory.getWaitConfig().selectDocLoaderMaxRetries();
         for (int attempt = 1; attempt <= maxRetries; attempt++) {
             try {
-                new WebDriverWait(DriverManager.getDriver(),
-                        Duration.ofSeconds(ConfigFactory.getConfig().extjsTimeout()))
+                WaitUtils.webDriverWait(ConfigFactory.getFinanceConfig().extjsTimeout())
                     .until(ExpectedConditions.invisibilityOfElementLocated(
                         FrameworkConstants.getSelectDocGridLoader()));
                 Log.warn("AdjustmentEntry.selectDocument: loader gone at attempt [{}]", attempt);
@@ -116,18 +117,18 @@ public class AdjustmentEntry {
     }
 
     public AdjustmentEntry fifoSetOff() {
-        SeleniumUtils.click(FIFO_SET_OFF_OPTION, WaitType.CLICKABLE, "FIFO Set-Off Option");
+        SeleniumUtils.click(Loc.FIFO_SET_OFF_OPTION, WaitType.CLICKABLE, "FIFO Set-Off Option");
         return this;
     }
 
     public AdjustmentEntry referenceSiteWiseFIFO() {
-        SeleniumUtils.click(REF_SITE_FIFO_OPTION, WaitType.CLICKABLE, "Reference Site Wise FIFO Option");
+        SeleniumUtils.click(Loc.REF_SITE_FIFO_OPTION, WaitType.CLICKABLE, "Reference Site Wise FIFO Option");
         return this;
     }
 
     /** Clicks the menu item and returns a ready-to-use popup object. */
     public ReferenceSiteWiseFIFOPopup openReferenceSiteWiseFIFOPopup() {
-        SeleniumUtils.click(REF_SITE_FIFO_OPTION, WaitType.CLICKABLE, "Reference Site Wise FIFO Option");
+        SeleniumUtils.click(Loc.REF_SITE_FIFO_OPTION, WaitType.CLICKABLE, "Reference Site Wise FIFO Option");
         JavascriptExecutorUtils.waitForExtJS();
         return new ReferenceSiteWiseFIFOPopup();
     }
@@ -139,12 +140,12 @@ public class AdjustmentEntry {
     }
 
     public AdjustmentEntry showReferenceSiteSummary() {
-        SeleniumUtils.click(SHOW_REF_SITE_SUMMARY, WaitType.CLICKABLE, "Show Reference Site Summary");
+        SeleniumUtils.click(Loc.SHOW_REF_SITE_SUMMARY, WaitType.CLICKABLE, "Show Reference Site Summary");
         return this;
     }
 
     public AdjustmentEntry clickOK() {
-        SeleniumUtils.clickAndNotePopup(OK_BUTTON, WaitType.CLICKABLE, "OK Button in Adjustment Entry");
+        SeleniumUtils.clickAndNotePopup(Loc.OK_BUTTON, WaitType.CLICKABLE, "OK Button in Adjustment Entry");
         return this;
     }
 
@@ -154,12 +155,12 @@ public class AdjustmentEntry {
      * so the caller can invoke clickProceedAnyway() or clickStay().
      */
     public DocumentPopup clickOKExpectingConfirmation() {
-        SeleniumUtils.click(OK_BUTTON, WaitType.CLICKABLE, "OK Button");
+        SeleniumUtils.click(Loc.OK_BUTTON, WaitType.CLICKABLE, "OK Button");
         return new DocumentPopup(parent, this);
     }
 
     public AdjustmentEntry clickCancel() {
-        SeleniumUtils.click(CANCEL_BUTTON, WaitType.CLICKABLE, "Cancel Button");
+        SeleniumUtils.click(CommonButton.CANCEL.locator(), WaitType.CLICKABLE, "Cancel Button");
         return this;
     }
 
@@ -168,26 +169,26 @@ public class AdjustmentEntry {
     // ===========================
 
     public String getTransactionAmount() {
-        return SeleniumUtils.getAttribute(TRANSACTION_AMOUNT, "value", "Transaction Amount");
+        return SeleniumUtils.getAttribute(Loc.TRANSACTION_AMOUNT, "value", "Transaction Amount");
     }
 
     public String getAdjustedAmount() {
-        return SeleniumUtils.getAttribute(ADJUSTED_AMOUNT, "value", "Adjusted Amount");
+        return SeleniumUtils.getAttribute(Loc.ADJUSTED_AMOUNT, "value", "Adjusted Amount");
     }
 
     public String getPendingToAdjust() {
-        return SeleniumUtils.getAttribute(PENDING_TO_ADJUST, "value", "Pending To Adjust");
+        return SeleniumUtils.getAttribute(Loc.PENDING_TO_ADJUST, "value", "Pending To Adjust");
     }
 
     public String getAdjustedAmountForDocument(String documentNumber) {
-        By locator = By.xpath(String.format(ADJUSTED_AMOUNT_BY_DOC_XPATH, documentNumber));
+        By locator = By.xpath(String.format(Loc.ADJUSTED_AMOUNT_BY_DOC_XPATH, documentNumber));
         return SeleniumUtils.getText(locator, "AdjustedAmount_" + documentNumber);
     }
 
     public AdjustmentEntry setAdjustedAmountForDocument(String documentNumber, String amount) {
-        By cellDiv = By.xpath(String.format(ADJUSTED_AMOUNT_BY_DOC_XPATH, documentNumber));
+        By cellDiv = By.xpath(String.format(Loc.ADJUSTED_AMOUNT_BY_DOC_XPATH, documentNumber));
         ActionUtils.doubleClick(cellDiv);
-        By cellInput = By.xpath(String.format(ADJUSTED_AMOUNT_CELL_BASE_XPATH + "//input", documentNumber));
+        By cellInput = By.xpath(String.format(Loc.ADJUSTED_AMOUNT_CELL_BASE_XPATH + "//input", documentNumber));
         String editorLabel = "AdjustedAmount_editor_" + documentNumber;
         System.out.println("EDITORLABEL"+editorLabel);
         SeleniumUtils.clear(cellInput, editorLabel);

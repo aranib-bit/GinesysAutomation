@@ -24,6 +24,45 @@ public final class StepExecutor {
     }
 
     /**
+     * Creates a collapsible Extent child node under the CURRENT test node and returns it
+     * WITHOUT running any action. Use it as a per-row (or per-section) grouping container
+     * that later sub-steps attach to via {@link #stepUnder(ExtentTest, String, StepAction)}.
+     *
+     * <p>The node carries no pass/fail status of its own — Extent aggregates the status of
+     * the children added to it, so the group turns red when any child step fails.
+     */
+    public static ExtentTest group(String name) {
+        ActionTrailBuffer.record(name);
+        return ExtentManager.getExtentTest().createNode(name);
+    }
+
+    /**
+     * Runs a step as a child of an EXPLICITLY supplied parent node instead of the
+     * thread-current node, then restores the previous current node. Same pass/fail/
+     * screenshot/duration semantics as {@link #step(String, StepAction)} — it simply
+     * re-points {@link ExtentManager}'s current node at {@code parentNode} for the
+     * duration of the call so the new child attaches under the captured group.
+     *
+     * <p>This is how operations that execute in a later pass (reference-site re-apply,
+     * adjustments, payment, AP TDS) report under the sub-ledger row group created in
+     * Pass 1, even though they run after that pass has returned.
+     */
+    public static void stepUnder(ExtentTest parentNode, String stepName, StepAction action) {
+        if (parentNode == null) {
+            // Defensive: no captured group — fall back to a normal step under the current node.
+            step(stepName, action);
+            return;
+        }
+        ExtentTest previous = ExtentManager.getExtentTest();
+        ExtentManager.setExtentTest(parentNode);
+        try {
+            step(stepName, action);
+        } finally {
+            ExtentManager.setExtentTest(previous);
+        }
+    }
+
+    /**
      * Wraps a test action in a collapsible Extent child node.
      * On success: node is marked pass and the parent test is restored.
      * On failure: node captures a screenshot, marks fail, restores the parent,
@@ -42,10 +81,10 @@ public final class StepExecutor {
                 ((JavascriptExecutor) DriverManager.getDriver()).executeScript(
                     "window._fwCurrentStep = arguments[0]; window._fwStepStartMs = Date.now();",
                     stepName);
-                if (ConfigFactory.getConfig().customMetricsEnabled()) {
+                if (ConfigFactory.getDiagnosticsConfig().customMetricsEnabled()) {
                     CustomMetricsObserverInjector.inject(DriverManager.getDriver());
                 }
-                if (ConfigFactory.getConfig().frontendDiagnosticsEnabled()) {
+                if (ConfigFactory.getDiagnosticsConfig().frontendDiagnosticsEnabled()) {
                     FrontendDiagnosticsInjectorFactory.get().inject(DriverManager.getDriver());
                 }
             }

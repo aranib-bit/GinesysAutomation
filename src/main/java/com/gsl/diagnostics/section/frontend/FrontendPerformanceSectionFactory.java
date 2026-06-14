@@ -20,7 +20,7 @@ public final class FrontendPerformanceSectionFactory {
     private FrontendPerformanceSectionFactory() {}
 
     public static FrontendPerformanceSection create(WebDriver driver) {
-        String type = ConfigFactory.getConfig().applicationType().toLowerCase().trim();
+        String type = ConfigFactory.getBrowserConfig().applicationType().toLowerCase().trim();
         return switch (type) {
             case "react"   -> new ReactPerformanceSection(driver);
             case "angular" -> new AngularPerformanceSection(driver);

@@ -19,7 +19,7 @@ public final class FrontendDiagnosticsInjectorFactory {
     private FrontendDiagnosticsInjectorFactory() {}
 
     public static FrontendDiagnosticsInjector get() {
-        String type = ConfigFactory.getConfig().applicationType().toLowerCase().trim();
+        String type = ConfigFactory.getBrowserConfig().applicationType().toLowerCase().trim();
         return switch (type) {
             case "react"   -> new ReactFrontendInjector();
             case "angular" -> new AngularFrontendInjector();

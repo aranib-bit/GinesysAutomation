@@ -29,9 +29,9 @@ public final class EventLogSection implements DiagnosticSection {
     }
 
     private void collect() {
-        if (!ConfigFactory.getConfig().diagnosticsEventLogEnabled()) return;
-        int    lines = ConfigFactory.getConfig().diagnosticsEventLogLines();
-        String type  = ConfigFactory.getConfig().diagnosticsAppServerType();
+        if (!ConfigFactory.getDiagnosticsConfig().diagnosticsEventLogEnabled()) return;
+        int    lines = ConfigFactory.getDiagnosticsConfig().diagnosticsEventLogLines();
+        String type  = ConfigFactory.getDiagnosticsConfig().diagnosticsAppServerType();
         try {
             if ("LINUX".equalsIgnoreCase(type)) {
                 output = exec("sh", "-c",

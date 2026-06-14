@@ -1,7 +1,7 @@
 package com.gsl.diagnostics.section;
 
 import com.gsl.config.ConfigFactory;
-import com.gsl.config.FrameworkConfig;
+import com.gsl.config.NetworkConfig;
 import com.gsl.diagnostics.DiagnosticSection;
 import com.gsl.model.network.CallFrameEntry;
 import com.gsl.model.network.NetworkTimingSnapshot;
@@ -19,7 +19,7 @@ public final class NetworkTimingSection implements DiagnosticSection {
     private final boolean showCallStack;
 
     public NetworkTimingSection(boolean isFailure) {
-        FrameworkConfig config = ConfigFactory.getConfig();
+        NetworkConfig config = ConfigFactory.getNetworkConfig();
         this.snapshots     = NetworkTimingCapture.stopAndCollect();
         this.showCookies   = shouldShow(config.networkCookiesLogOn(),   isFailure);
         this.showCallStack = shouldShow(config.networkCallstackLogOn(),  isFailure);

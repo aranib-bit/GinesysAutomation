@@ -11,6 +11,9 @@ import com.gsl.testdata.Finance.Operations.Vouchers.APVoucher.SubLedgerInformati
 import com.gsl.testdata.Finance.Operations.Vouchers.APVoucher.TdsAndNetPayable;
 import com.gsl.testdata.dto.MergedFinanceApVoucherData;
 import com.gsl.pages.enums.Finance.Operations.Common.TdsNetPayableFieldAttribute;
+import com.gsl.reports.StepExecutor;
+import com.gsl.reports.SubLedgerRowStepRegistry;
+import com.aventstack.extentreports.ExtentTest;
 import com.gsl.utils.Log;
 import com.gsl.utils.Selenium.JavascriptExecutorUtils;
 import com.gsl.utils.Selenium.SeleniumUtils;
@@ -137,40 +140,49 @@ public class APVoucherTdsAndNetPayable implements TdsNameParent {
         if (tdsList == null || tdsList.isEmpty()) return;
 
         for (TdsAndNetPayable tds : tdsList) {
-            SubLedgerInformation sl = matchSubLedger(tds, sls);
+            final SubLedgerInformation sl = matchSubLedger(tds, sls);
             if (sl == null) {
                 Log.warn("[TDS] No SubLedgerInformation found for lineNo='{}' — skipping", tds.getLineNo());
                 continue;
             }
 
-            Log.debug("[TDS] Opening TDS popup for SL='{}' lineNo='{}'", sl.getSubLedger(), tds.getLineNo());
-            clickTdsButton(sl.getSubLedger(), sl.getReferenceSite(), sl.getId());
+            // Report the TDS calculation under the same SL row group created during the
+            // sub-ledger fill, so "Calculate TDS & Net Payable" reads as part of that row.
+            // stepUnder tolerates a null node (falls back to a plain step) if the row was
+            // not registered for any reason.
+            ExtentTest rowNode = SubLedgerRowStepRegistry.get(tds.getLineNo());
+            StepExecutor.stepUnder(rowNode,
+                    "Calculate TDS & Net Payable — " + tds.getTdsName(), () -> {
 
-            setTdsName(tds.getTdsName());
+                Log.debug("[TDS] Opening TDS popup for SL='{}' lineNo='{}'", sl.getSubLedger(), tds.getLineNo());
+                clickTdsButton(sl.getSubLedger(), sl.getReferenceSite(), sl.getId());
 
-            // Delegate amount-filling to the layered architecture:
-            // Page Object (raw string) → Flow → BusinessLogic (WHAT) → Transaction (HOW)
-            TdsApplicableAmountFlow.execute(
-                    tds.getTdsApplicableAmountBehaviour(),
-                    this,
-                    tds.getGrossPayable(),
-                    tds.getTdsApplicableAmount()
-            );
+                setTdsName(tds.getTdsName());
 
-            if ("Yes".equalsIgnoreCase(tds.getPopulateTdsExceptionRate())) {
-                SeleniumUtils.click(populateTdsExceptionRate, WaitType.CLICKABLE, "POPULATE_TDS_EXCEPTION_RATE");
-                JavascriptExecutorUtils.waitForExtJS();
-            }
+                // Delegate amount-filling to the layered architecture:
+                // Page Object (raw string) → Flow → BusinessLogic (WHAT) → Transaction (HOW)
+                TdsApplicableAmountFlow.execute(
+                        tds.getTdsApplicableAmountBehaviour(),
+                        this,
+                        tds.getGrossPayable(),
+                        tds.getTdsApplicableAmount()
+                );
 
-            BigDecimal tdsAmt = readTdsAmount();
-            data.getCapturedTdsAmounts().put(tds.getLineNo(), tdsAmt);
-            Log.debug("[TDS] TdsAmount captured={} for lineNo='{}'", tdsAmt, tds.getLineNo());
+                if ("Yes".equalsIgnoreCase(tds.getPopulateTdsExceptionRate())) {
+                    SeleniumUtils.click(populateTdsExceptionRate, WaitType.CLICKABLE, "POPULATE_TDS_EXCEPTION_RATE");
+                    JavascriptExecutorUtils.waitForExtJS();
+                }
 
-            BigDecimal netPay = readNetPayable(tds);
-            data.getCapturedNetPayables().put(tds.getLineNo(), netPay);
-            Log.debug("[TDS] NetPayable captured={} for lineNo='{}'", netPay, tds.getLineNo());
+                BigDecimal tdsAmt = readTdsAmount();
+                data.getCapturedTdsAmounts().put(tds.getLineNo(), tdsAmt);
+                Log.debug("[TDS] TdsAmount captured={} for lineNo='{}'", tdsAmt, tds.getLineNo());
 
-            clickOk();
+                BigDecimal netPay = readNetPayable(tds);
+                data.getCapturedNetPayables().put(tds.getLineNo(), netPay);
+                Log.debug("[TDS] NetPayable captured={} for lineNo='{}'", netPay, tds.getLineNo());
+
+                clickOk();
+            });
         }
     }
 

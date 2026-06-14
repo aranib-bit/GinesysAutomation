@@ -25,7 +25,7 @@ public final class ActivePopupSection implements DiagnosticSection {
 
     public ActivePopupSection(WebDriver driver) {
         if (driver == null) return;
-        if (!ConfigFactory.getConfig().diagnosticsActivePopupEnabled()) return;
+        if (!ConfigFactory.getDiagnosticsConfig().diagnosticsActivePopupEnabled()) return;
 
         captureJsAlert(driver);
         captureUiModals(driver);
@@ -70,7 +70,7 @@ public final class ActivePopupSection implements DiagnosticSection {
 
     private void captureUiModals(WebDriver driver) {
         try {
-            String selector = ConfigFactory.getConfig().diagnosticsPopupSelector();
+            String selector = ConfigFactory.getDiagnosticsConfig().diagnosticsPopupSelector();
             if (selector == null || selector.isBlank()) return;
 
             String script =

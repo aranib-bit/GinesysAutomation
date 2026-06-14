@@ -4,8 +4,10 @@ import com.gsl.annotations.ApiFlow;
 import com.gsl.annotations.FrameworkAnnotation;
 import com.gsl.annotations.TestCaseId;
 import com.gsl.network.pattern.FinanceApiPattern;
+import com.gsl.enums.AppOperation;
 import com.gsl.enums.TestAuthor;
-import com.gsl.model.finance.FinPost;
+import com.gsl.enums.VoucherDomain;
+import com.gsl.pages.enums.topmenucomponent.MainModuleType;
 import com.gsl.pages.Finance.Operations.ArVoucherListPage;
 import com.gsl.pages.HomePage;
 import com.gsl.pages.LoginPage;
@@ -15,9 +17,7 @@ import com.gsl.pages.Finance.Operations.ArVoucherAdd;
 import com.gsl.testdata.dto.MergedFinanceArVoucherData;
 import com.gsl.driver.DriverManager;
 import com.gsl.pages.Finance.Operations.Common.DocumentPopup;
-import com.gsl.flow.Finance.Operations.ARVoucher.TdsAutoReleaseFlow;
-import com.gsl.pages.Finance.Operations.Common.PaymentInfoCheckWarning;
-import com.gsl.testdata.Finance.Operations.Vouchers.ARVoucher.SelectDocument;
+import com.gsl.flow.Finance.Operations.Common.PostSaveDialogHandler;
 import com.gsl.testdata.UserCredential;
 import com.gsl.reports.ArVoucherExtentDescriptionLogger;
 import com.gsl.reports.DbGatheringExtentLogger;
@@ -28,23 +28,16 @@ import com.gsl.utils.NavigationUtils;
 import com.gsl.utils.dataprovider.MergedFinArVoucherDataSupplier;
 import com.gsl.utils.dataprovider.source.finance.DbArVoucherDataSource;
 import com.gsl.validation.db.finance.ARVoucherDbValidator;
-import com.gsl.validation.db.finance.StateCapture;
-import com.gsl.validation.db.finance.VoucherDbContext;
+import com.gsl.validation.db.finance.VoucherDbContextBuilder;
 import com.tests.WebTest;
 import org.testng.annotations.Test;
 import org.testng.asserts.SoftAssert;
-
-import java.time.LocalDateTime;
-import java.util.Collections;
-import java.util.List;
-import java.util.Map;
-import java.util.stream.Collectors;
 
 
 @ApiFlow(FinanceApiPattern.AR_VOUCHER)
 public class CreateArVoucher extends WebTest {
 
-    @FrameworkAnnotation(TestAuthor.ARANI)
+    @FrameworkAnnotation(value = TestAuthor.ARANI, module = MainModuleType.FINANCE, subModule = "FinanceARVoucher", operation = AppOperation.ADD)
     @TestCaseId("FIN-AR-ADD")
     @Test(description = "Create AR Voucher",   // P2: human-readable sentence set dynamically in TestListener
             dataProvider = "dataSupplier", dataProviderClass = MergedFinArVoucherDataSupplier.class)
@@ -59,16 +52,10 @@ public class CreateArVoucher extends WebTest {
                     || data.getSubLedgerInformationList().isEmpty())) {
             Log.debug("[DB mode] Placeholder detected for scenario={}, fetching fresh data from DB",
                     data.getScenarioType());
-            try {
-                data = DbArVoucherDataSource.loadFreshForScenario(data, "createArVoucher");
-            } catch (IllegalStateException e) {
-                // No pending documents or SL data available for this variant — skip cleanly
-                // rather than failing with a misleading error. The DB needs more test data.
-                throw new org.testng.SkipException(
-                        "[CreateArVoucher] Skipping — insufficient test data for scenario '"
-                        + data.getScenarioType() + "' / variant '"
-                        + data.getMasterTestData().getTestcaseid() + "': " + e.getMessage());
-            }
+            // Data-availability shortfalls are raised as a SkipException inside the data source
+            // (DbArVoucherDataSource.loadFreshForScenario, guarded by DataLoadScope) so they render
+            // as an amber Skip rather than a red Fail. No try/catch conversion needed here.
+            data = DbArVoucherDataSource.loadFreshForScenario(data, "createArVoucher");
         }
 
         if (data.getScenarioType() != null) {
@@ -85,16 +72,14 @@ public class CreateArVoucher extends WebTest {
         // ── Effectively-final references for lambda use ──────────────────────────
         final MergedFinanceArVoucherData testData = data;
 
-        // Cross-step object holders
+        // Cross-step object holders (DB snapshot state now lives inside VoucherDbContextBuilder)
         final SoftAssert softAssert = new SoftAssert();
         final HomePage[]          homeRef       = new HomePage[1];
         final ArVoucherListPage[] listRef       = new ArVoucherListPage[1];
         final ArVoucherAdd[]      addRef        = new ArVoucherAdd[1];
         final String[]            docNoRef      = new String[1];
         final com.gsl.pages.Common.DocumentMessageBox[] msgBoxRef = new com.gsl.pages.Common.DocumentMessageBox[1];
-        final Map<String, FinPost>[] preRef      = new Map[1];
-        final Map<String, FinPost>[] postRef     = new Map[1];
-        final LocalDateTime[]        saveStartTime = new LocalDateTime[1];
+        final DocumentPopup[]     popupRef      = new DocumentPopup[1];
 
         // ── Step 1: Login ─────────────────────────────────────────────────────────
         StepExecutor.step("Login to Application", () -> {
@@ -127,57 +112,126 @@ public class CreateArVoucher extends WebTest {
                     + testData.getSubLedgerInformationList().size() + " rows");
         });
 
-        // ── Step 5: Save AR Voucher ────────────────────────────────────────────────
-        StepExecutor.step("Save AR Voucher", () -> {
-            List<String> invoiceNos = testData.getSelectDocumentList() != null
-                    ? testData.getSelectDocumentList().stream()
-                            .map(SelectDocument::getDocumentNumber)
-                            .collect(Collectors.toList())
-                    : Collections.emptyList();
+        // ── Step 5a: Capture Pre-Save DB State (finpost snapshot) ─────────────────
+        StepExecutor.step("Capture Pre-Save DB State (finpost snapshot)", () ->
+                VoucherDbContextBuilder.capturePreState(testData));
 
-            StateCapture stateCapture = new StateCapture();
-            preRef[0] = stateCapture.captureInvoiceState(invoiceNos);
+        // ── Step 5b: Click Save ────────────────────────────────────────────────────
+        StepExecutor.step("Click Save", () -> {
+            VoucherDbContextBuilder.markSaveStart();
+            popupRef[0] = addRef[0].clickSave();
+        });
 
-            saveStartTime[0] = LocalDateTime.now();
-            DocumentPopup savePopup = addRef[0].clickSave();
-            com.gsl.pages.Common.DocumentMessageBox messageBox = testData.isNeedsPaymentInfoWarning()
-                    ? savePopup.verifyPaymentInfoCheckWarning(PaymentInfoCheckWarning.AR_VOUCHER)
-                               .clickProceed(PaymentInfoCheckWarning.AR_VOUCHER)
-                    : savePopup.waitForMessageBox();
+        // ── Step 5c: Handle Post-Save Dialogs (type-aware) ────────────────────────
+        StepExecutor.step("Handle Post-Save Dialogs", () ->
+                msgBoxRef[0] = PostSaveDialogHandler.forDomain(VoucherDomain.AR)
+                        .handle(popupRef[0], testData));
 
-            if (testData.isTdsProvided()) {
-                messageBox = TdsAutoReleaseFlow.execute(messageBox);
-            }
-
-            docNoRef[0] = messageBox.verifyDocumentSave(softAssert).getDocumentNo();
+        // ── Step 5d: Verify Save Result ─────────────────────────────────────────────
+        StepExecutor.step("Verify Save Result", () -> {
+            docNoRef[0] = msgBoxRef[0].verifyDocumentSave(softAssert).getDocumentNo();
             Log.info("Extracted Document No: {}", docNoRef[0]);
-
-            postRef[0] = stateCapture.captureInvoiceState(invoiceNos);
-
             ReportLogger.pass("Voucher saved. Document No: " + docNoRef[0]);
-            msgBoxRef[0] = messageBox;
         });
 
-        // ── Step 6: Close and logout ──────────────────────────────────────────────
-        StepExecutor.step("Close and Logout", () -> {
-            msgBoxRef[0].clickOk();
-            addRef[0].close().clickYes();
+        // ── Step 5e: Capture Post-Save DB State (finpost snapshot) ────────────────
+        StepExecutor.step("Capture Post-Save DB State (finpost snapshot)", () ->
+                VoucherDbContextBuilder.capturePostState());
+
+        // ── Step 6: Close Voucher Page (per entry; lands back on the list) ────────
+        StepExecutor.step("Close Voucher Page", () -> {
+            if (msgBoxRef[0] != null) {
+                msgBoxRef[0].clickOk();
+            }
+            listRef[0] = addRef[0].close().clickYes();   // returns ArVoucherListPage — keep the handle
+            ReportLogger.info("Voucher page closed, returned to list");
+        });
+
+        // ── Step 7: Logout (terminal; runs once after the last entry) ─────────────
+        StepExecutor.step("Logout", () -> {
             new HomePage().logoutFromApplication();
+            ReportLogger.info("Logged out of application");
         });
 
-        // ── Step 7: Database Validation ───────────────────────────────────────────
+        // ── Step 8: Database Validation ───────────────────────────────────────────
         StepExecutor.step("Database Validation", () -> {
             new ARVoucherDbValidator().validate(
-                    VoucherDbContext.builder()
-                            .voucherNo(docNoRef[0])
-                            .testData(testData)
-                            .preState(preRef[0])
-                            .postState(postRef[0])
-                            .saveStartTime(saveStartTime[0])
-                            .build());
+                    VoucherDbContextBuilder.build(docNoRef[0], testData));
             ReportLogger.pass("DB validated. Document No: " + docNoRef[0]);
         });
 
+        // ── Step 9: Finalize save assertions (deferred header check) ──────────────
         StepExecutor.step("Finalize save assertions", softAssert::assertAll);
+    }
+
+    /**
+     * T-03 — Negative &amp; Boundary scenarios for AR Voucher.
+     *
+     * <p>Delegates the entire fill/save/verify/logout flow to the scenario's behaviour via
+     * {@link com.gsl.utils.dataprovider.fixture.finance.ArVoucherScenarioType#execute}:
+     * <ul>
+     *   <li><b>NEG_*</b> / boundary <b>*_INVALID</b> → {@code NEGATIVE_FORM_VALIDATION_BEHAVIOR}
+     *       (Save, assert the expected validation-error popup, cancel, logout).</li>
+     *   <li>boundary <b>*_VALID</b> → {@code BOUNDARY_PASS_BEHAVIOR} (full positive save + DB validation).</li>
+     * </ul>
+     */
+    @FrameworkAnnotation(value = TestAuthor.ARANI, module = MainModuleType.FINANCE, subModule = "FinanceARVoucher", operation = AppOperation.ADD)
+    @TestCaseId("FIN-AR-ADD-NEG")
+    @Test(description = "Create AR Voucher – Negative & Boundary",
+            dataProvider = "dataSupplier", dataProviderClass = MergedFinArVoucherDataSupplier.class)
+    public void createArVoucherNegativeBoundary(UserCredential user, MergedFinanceArVoucherData data) {
+
+        Log.info("Create AR Voucher (Negative & Boundary) from UI");
+        Log.info("Running test for: {}", data.getMasterTestData().getTestcaseid());
+
+        // ── Lazy DB load — DbArVoucherDataSource raises SkipException internally on shortfall ───
+        // NOTE: NEG_BLANK_SUBLEDGER legitimately has an empty SL list; the single-shot guard
+        // still loads it correctly (loadFreshForScenario returns it once).
+        if (data.getScenarioType() != null
+                && (data.getSubLedgerInformationList() == null
+                    || data.getSubLedgerInformationList().isEmpty())) {
+            Log.debug("[DB mode] Placeholder detected for scenario={}", data.getScenarioType());
+            data = DbArVoucherDataSource.loadFreshForScenario(data, "createArVoucherNegativeBoundary");
+        }
+
+        DbGatheringExtentLogger.log(data);
+        ArVoucherExtentDescriptionLogger.log(data);
+
+        final MergedFinanceArVoucherData testData = data;
+
+        final HomePage[]          homeRef = new HomePage[1];
+        final ArVoucherListPage[] listRef = new ArVoucherListPage[1];
+        final ArVoucherAdd[]      addRef  = new ArVoucherAdd[1];
+
+        // ── Step 1: Login ─────────────────────────────────────────────────────────
+        StepExecutor.step("Login to Application", () -> {
+            UserCredential u = DriverManager.getCurrentUser();
+            homeRef[0] = new LoginPage().loginToApplication(u.username(), u.password());
+            ReportLogger.info("Logged in as: " + u.username());
+        });
+
+        // ── Step 2: Navigate ──────────────────────────────────────────────────────
+        StepExecutor.step("Open Finance → AR Voucher List", () -> {
+            listRef[0] = NavigationUtils.navigateToFinanceSideMenu(
+                    homeRef[0],
+                    MainMenuType.OPERATIONS,
+                    OperationsMenuType.ARVOUCHER,
+                    ArVoucherListPage.class);
+            ReportLogger.info("AR Voucher list page opened");
+        });
+
+        // ── Step 3: Open Add form ─────────────────────────────────────────────────
+        StepExecutor.step("Open Add Form", () -> {
+            addRef[0] = listRef[0].clickAdd();
+            ReportLogger.info("Scenario: " + testData.getScenarioType()
+                    + (testData.getExpectedValidation() != null
+                        ? " | expect error: " + testData.getExpectedValidation().expectedMessage()
+                        : " | expect: successful save"));
+        });
+
+        // ── Delegate fill/save/verify/logout to the scenario behaviour ────────────
+        boolean ok = testData.getScenarioType().execute(testData, addRef[0]);
+        org.testng.Assert.assertTrue(ok,
+                "Scenario behaviour did not complete successfully: " + testData.getScenarioType());
     }
 }

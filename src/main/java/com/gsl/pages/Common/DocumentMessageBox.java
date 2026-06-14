@@ -6,6 +6,7 @@ import com.gsl.enums.WaitType;
 import com.gsl.pages.Finance.Operations.ArVoucherListPage;
 import com.gsl.pages.Inventory.Product_Definition.ItemListPage;
 import com.gsl.pages.Procurement.Operations.ReceiptsListPage;
+import com.gsl.pages.enums.CommonButton;
 import com.gsl.reports.ExtentLogger;
 import com.gsl.utils.Selenium.JavascriptExecutorUtils;
 import com.gsl.utils.Selenium.SeleniumActions;
@@ -18,15 +19,16 @@ import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
 public class DocumentMessageBox {
-    private static final By MESSAGE_TEXT       = By.xpath("//*[@id='messagebox-1001-msg']");
-    private static final By HEADER_TEXT        = By.id("messagebox-1001_header-title-textEl");
-    private static final By OK_BUTTON          = By.xpath("//span[text()='OK']");
-    private static final By NO_BUTTON          = By.xpath("//span[text()='No']");
-    private static final By CLOSE_BUTTON       = By.xpath("//*[@class='mdi mdi-24px mdi-close']");
-    private static final By DISCARD_YES_BUTTON = By.xpath("//span[text()='Yes']");
-    private static final By PROCEED_BUTTON     = By.xpath("//span[text()='Proceed']");
-    private static final By CONTINUE_BUTTON    = By.xpath("//span[text()='Continue']");
-    private static final By LOADER             = By.xpath("//div[contains(@class,'x-mask-msg-text') and normalize-space()='Loading...']");
+
+    // Non-button locators — unique to this class
+    private static final class Loc {
+        static final By MESSAGE_TEXT = By.xpath("//*[@id='messagebox-1001-msg']");
+        static final By HEADER_TEXT  = By.id("messagebox-1001_header-title-textEl");
+        static final By CLOSE_BUTTON = By.xpath("//*[@class='mdi mdi-24px mdi-close']");
+        static final By LOADER       = By.xpath("//div[contains(@class,'x-mask-msg-text') and normalize-space()='Loading...']");
+    }
+
+    // Button locators → CommonButton enum (OK, No, Yes, Proceed, Continue)
 
     // Regex pattern for extracting Document No
     private final Pattern documentPattern = Pattern.compile("\\b[A-Z]+/\\d+/\\d{2}-\\d{2}\\b");
@@ -36,14 +38,14 @@ public class DocumentMessageBox {
      */
     public String getMessageText() {
         System.out.println("Inside getMessageText");
-        return SeleniumActions.getText(MESSAGE_TEXT);
+        return SeleniumActions.getText(Loc.MESSAGE_TEXT);
     }
 
     /**
      * Get the header status text from the popup
      */
     public String getHeaderStatus() {
-        return SeleniumActions.getText(HEADER_TEXT);
+        return SeleniumActions.getText(Loc.HEADER_TEXT);
     }
 
     /**
@@ -128,29 +130,29 @@ public class DocumentMessageBox {
     }
 
     public void clickOk() {
-        SeleniumUtils.click(OK_BUTTON, WaitType.CLICKABLE, "OK_BUTTON_CONFIRM");
+        SeleniumUtils.click(CommonButton.OK.locator(), WaitType.CLICKABLE, "OK_BUTTON_CONFIRM");
     }
 
     public void clickProceed() {
         JavascriptExecutorUtils.waitForPageLoad();
         JavascriptExecutorUtils.waitForExtJS();
-        SeleniumUtils.click(PROCEED_BUTTON, WaitType.CLICKABLE, "PROCEED_BUTTON");
-        SeleniumUtils.elementDisappear(LOADER, "LOADER");
+        SeleniumUtils.click(CommonButton.PROCEED.locator(), WaitType.CLICKABLE, "PROCEED_BUTTON");
+        SeleniumUtils.elementDisappear(Loc.LOADER, "LOADER");
     }
 
     // --- Non-Consignment Flow ---
     public ReceiptsListPage rejectPIAndClose(String vendorType) throws InterruptedException {
         if (vendorType.equalsIgnoreCase("Non-Consignment")) {
             System.out.println("Currently PI will not be generated, so clicking No...");
-            SeleniumUtils.click(NO_BUTTON, WaitType.CLICKABLE, "NO_BUTTON");
+            SeleniumUtils.click(CommonButton.NO.locator(), WaitType.CLICKABLE, "NO_BUTTON");
             JavascriptExecutorUtils.waitForPageLoad();
             JavascriptExecutorUtils.waitForExtJS();
 
-            SeleniumUtils.click(CLOSE_BUTTON, WaitType.CLICKABLE, "CLOSE_BUTTON");
+            SeleniumUtils.click(Loc.CLOSE_BUTTON, WaitType.CLICKABLE, "CLOSE_BUTTON");
             JavascriptExecutorUtils.waitForPageLoad();
             JavascriptExecutorUtils.waitForExtJS();
 
-            SeleniumUtils.click(DISCARD_YES_BUTTON, WaitType.CLICKABLE, "DISCARD_YES_BUTTON");
+            SeleniumUtils.click(CommonButton.YES.locator(), WaitType.CLICKABLE, "DISCARD_YES_BUTTON");
             JavascriptExecutorUtils.waitForPageLoad();
             JavascriptExecutorUtils.waitForExtJS();
 
@@ -174,48 +176,48 @@ public class DocumentMessageBox {
 
     public void rejectPI() {
         System.out.println("Currently PI will not be generated, so clicking No...");
-        SeleniumUtils.click(NO_BUTTON, WaitType.CLICKABLE, "NO_BUTTON");
+        SeleniumUtils.click(CommonButton.NO.locator(), WaitType.CLICKABLE, "NO_BUTTON");
         JavascriptExecutorUtils.waitForPageLoad();
         JavascriptExecutorUtils.waitForExtJS();
     }
 
     public void clickNo() {
-        SeleniumUtils.click(NO_BUTTON, WaitType.CLICKABLE, "NO_BUTTON");
+        SeleniumUtils.click(CommonButton.NO.locator(), WaitType.CLICKABLE, "NO_BUTTON");
         JavascriptExecutorUtils.waitForPageLoad();
         JavascriptExecutorUtils.waitForExtJS();
     }
 
     public void clickContinue() {
-        SeleniumUtils.click(CONTINUE_BUTTON, WaitType.CLICKABLE, "CONTINUE_BUTTON");
+        SeleniumUtils.click(CommonButton.CONTINUE.locator(), WaitType.CLICKABLE, "CONTINUE_BUTTON");
         // Wait for the TDS prompt to dismiss before the caller waits for the next popup
-        SeleniumUtils.elementDisappear(MESSAGE_TEXT, "TDS_PROMPT_MESSAGEBOX");
+        SeleniumUtils.elementDisappear(Loc.MESSAGE_TEXT, "TDS_PROMPT_MESSAGEBOX");
     }
 
     public void verifyMessage(DocumentMessageBoxMessage expected) {
-        String actual = getMessageText();
+        String actual = getMessageText(); // delegates to Loc.MESSAGE_TEXT via getMessageText()
         Assert.assertTrue(actual.contains(expected.getText()),
                 "Expected message box to contain: [" + expected.getText() + "] but got: [" + actual + "]");
     }
 
     public void closeGRC() {
-        SeleniumUtils.click(CLOSE_BUTTON, WaitType.CLICKABLE, "CLOSE_BUTTON");
+        SeleniumUtils.click(Loc.CLOSE_BUTTON, WaitType.CLICKABLE, "CLOSE_BUTTON");
         JavascriptExecutorUtils.waitForPageLoad();
         JavascriptExecutorUtils.waitForExtJS();
 
-        SeleniumUtils.click(DISCARD_YES_BUTTON, WaitType.CLICKABLE, "DISCARD_YES_BUTTON");
+        SeleniumUtils.click(CommonButton.YES.locator(), WaitType.CLICKABLE, "DISCARD_YES_BUTTON");
         JavascriptExecutorUtils.waitForPageLoad();
         JavascriptExecutorUtils.waitForExtJS();
     }
 
     public ArVoucherListPage clickYes() {
-        SeleniumUtils.click(DISCARD_YES_BUTTON, WaitType.CLICKABLE, "DISCARD_YES_BUTTON");
+        SeleniumUtils.click(CommonButton.YES.locator(), WaitType.CLICKABLE, "DISCARD_YES_BUTTON");
         JavascriptExecutorUtils.waitForPageLoad();
         JavascriptExecutorUtils.waitForExtJS();
         return new ArVoucherListPage();
     }
 
     public ItemListPage closeItem(){
-        SeleniumUtils.click(DISCARD_YES_BUTTON, WaitType.CLICKABLE, "DISCARD_YES_BUTTON");
+        SeleniumUtils.click(CommonButton.YES.locator(), WaitType.CLICKABLE, "DISCARD_YES_BUTTON");
         JavascriptExecutorUtils.waitForPageLoad();
         JavascriptExecutorUtils.waitForExtJS();
         return new ItemListPage();

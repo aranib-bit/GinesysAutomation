@@ -21,7 +21,7 @@ public final class ThreadDumpSection implements DiagnosticSection {
     private final String html;
 
     public ThreadDumpSection() {
-        this.html = ConfigFactory.getConfig().diagnosticsThreadDumpEnabled()
+        this.html = ConfigFactory.getDiagnosticsConfig().diagnosticsThreadDumpEnabled()
                 ? buildDump()
                 : null;
     }

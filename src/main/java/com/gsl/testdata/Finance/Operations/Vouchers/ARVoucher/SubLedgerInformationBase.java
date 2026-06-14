@@ -26,6 +26,18 @@ public abstract class SubLedgerInformationBase {
     @Setter
     private String deductTdsConfirm;
 
+    /**
+     * When {@code true}, Pass 2 of the SL fill flow actively sets (overwrites) the
+     * Reference Site cell for this row. Defaults to {@code false} — Pass 2 skips the
+     * cell so whatever the app already populated in Pass 1 is left untouched.
+     *
+     * Set to {@code true} only in regression scenarios that specifically test changing
+     * an existing Reference Site value.
+     */
+    @Getter
+    @Setter
+    private boolean changeReferenceSite = false;
+
     public DeductTdsClearConfirmAction getDeductTdsConfirmAction() {
         return DeductTdsClearConfirmAction.fromString(deductTdsConfirm);
     }

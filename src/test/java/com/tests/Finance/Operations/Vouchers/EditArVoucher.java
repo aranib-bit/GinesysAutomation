@@ -4,11 +4,14 @@ import com.gsl.annotations.ApiFlow;
 import com.gsl.annotations.FrameworkAnnotation;
 import com.gsl.annotations.TestCaseId;
 import com.gsl.network.pattern.FinanceApiPattern;
+import com.gsl.enums.AppOperation;
 import com.gsl.enums.TestAuthor;
+import com.gsl.enums.VoucherDomain;
+import com.gsl.pages.enums.topmenucomponent.MainModuleType;
 import com.gsl.pages.Finance.Operations.ArVoucherAdd;
 import com.gsl.pages.Finance.Operations.ArVoucherListPage;
 import com.gsl.pages.Finance.Operations.Common.DocumentPopup;
-import com.gsl.pages.Finance.Operations.Common.PaymentInfoCheckWarning;
+import com.gsl.flow.Finance.Operations.Common.PostSaveDialogHandler;
 import com.gsl.pages.HomePage;
 import com.gsl.pages.LoginPage;
 import com.gsl.pages.enums.Finance.MainMenuType;
@@ -46,7 +49,7 @@ import org.testng.annotations.Test;
 @ApiFlow(FinanceApiPattern.AR_VOUCHER)
 public class EditArVoucher extends WebTest {
 
-    @FrameworkAnnotation(TestAuthor.ARANI)
+    @FrameworkAnnotation(value = TestAuthor.ARANI, module = MainModuleType.FINANCE, subModule = "FinanceARVoucher", operation = AppOperation.MODIFY)
     @TestCaseId("FIN-AR-EDIT")
     @Test(description = "Edit an existing AR Voucher from the Finance UI",
             dataProvider = "dataSupplier", dataProviderClass = MergedFinArVoucherDataSupplier.class)
@@ -66,6 +69,7 @@ public class EditArVoucher extends WebTest {
         final String[]            docNoRef = new String[1];
         final com.gsl.pages.Common.DocumentMessageBox[] msgBoxRef =
                 new com.gsl.pages.Common.DocumentMessageBox[1];
+        final DocumentPopup[]     popupRef = new DocumentPopup[1];
 
         // ── Step 1: Login ─────────────────────────────────────────────────────────
         StepExecutor.step("Login to Application", () -> {
@@ -117,28 +121,38 @@ public class EditArVoucher extends WebTest {
             ReportLogger.info("Updated date/reference/remarks via fillDocumentHeader");
         });
 
-        // ── Step 7: Save ──────────────────────────────────────────────────────────
-        StepExecutor.step("Save Edited AR Voucher", () -> {
-            DocumentPopup savePopup = editRef[0].clickSave();
-            com.gsl.pages.Common.DocumentMessageBox messageBox = testData.isNeedsPaymentInfoWarning()
-                    ? savePopup.verifyPaymentInfoCheckWarning(PaymentInfoCheckWarning.AR_VOUCHER)
-                               .clickProceed(PaymentInfoCheckWarning.AR_VOUCHER)
-                    : savePopup.waitForMessageBox();
+        // ── Step 7b: Click Save (edit: no DB capture → no 5a/5e snapshot) ─────────
+        StepExecutor.step("Click Save", () ->
+                popupRef[0] = editRef[0].clickSave());
 
-            docNoRef[0] = messageBox.extractDocumentNo();
+        // ── Step 7c: Handle Post-Save Dialogs (type-aware) ────────────────────────
+        StepExecutor.step("Handle Post-Save Dialogs", () ->
+                msgBoxRef[0] = PostSaveDialogHandler.forDomain(VoucherDomain.AR)
+                        .handle(popupRef[0], testData));
+
+        // ── Step 7d: Verify Save Result (edit keeps extractDocumentNo) ────────────
+        StepExecutor.step("Verify Save Result", () -> {
+            docNoRef[0] = msgBoxRef[0].extractDocumentNo();
             Log.info("Saved. Document No: {}", docNoRef[0]);
             ReportLogger.pass("Voucher saved. Document No: " + docNoRef[0]);
-            msgBoxRef[0] = messageBox;
         });
 
-        // ── Step 8: Close and Logout ──────────────────────────────────────────────
-        StepExecutor.step("Close and Logout", () -> {
-            msgBoxRef[0].clickOk();
-            editRef[0].close().clickYes();
+        // ── Step 8: Close Voucher Page (per entry; lands back on the list) ────────
+        StepExecutor.step("Close Voucher Page", () -> {
+            if (msgBoxRef[0] != null) {
+                msgBoxRef[0].clickOk();
+            }
+            listRef[0] = editRef[0].close().clickYes();   // returns ArVoucherListPage — keep the handle
+            ReportLogger.info("Voucher page closed, returned to list");
+        });
+
+        // ── Step 9: Logout (terminal) ─────────────────────────────────────────────
+        StepExecutor.step("Logout", () -> {
             new HomePage().logoutFromApplication();
+            ReportLogger.info("Logged out of application");
         });
 
-        // ── Step 9: Database Validation ───────────────────────────────────────────
+        // ── Step 10: Database Validation ──────────────────────────────────────────
         StepExecutor.step("Database Validation", () -> {
             new ARVoucherDbValidator().validate(
                     VoucherDbContext.builder()

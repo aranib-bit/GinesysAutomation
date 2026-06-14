@@ -98,7 +98,7 @@ public abstract class BaseFrontendSection implements FrontendPerformanceSection 
         // Fallback framework name from config
         if ("unknown".equals(fw) || fw.isBlank()) {
             try {
-                String cfg = com.gsl.config.ConfigFactory.getConfig().applicationType();
+                String cfg = com.gsl.config.ConfigFactory.getBrowserConfig().applicationType();
                 fw = (cfg != null && !cfg.isBlank()) ? cfg.toLowerCase().trim() : "extjs";
             } catch (Exception ignored) {
                 fw = "extjs";

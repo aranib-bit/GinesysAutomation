@@ -1,14 +1,21 @@
 package com.gsl.pages.pagecomponent.Finance.Operations.Common;
 
+import com.gsl.driver.DriverManager;
 import com.gsl.enums.VoucherDomain;
 import com.gsl.enums.WaitType;
 import com.gsl.pages.pagecomponent.Finance.Common.CashBankParent;
 import com.gsl.pages.pagecomponent.Finance.Common.CashBankPopup;
 import com.gsl.testdata.Finance.Operations.Vouchers.Common.VoucherDocumentHeader;
+import com.gsl.reports.ExtentLogger;
 import com.gsl.utils.Log;
 import com.gsl.utils.Selenium.JavascriptExecutorUtils;
 import com.gsl.utils.Selenium.SeleniumUtils;
+import com.gsl.utils.Selenium.WaitUtils;
 import org.openqa.selenium.By;
+import org.openqa.selenium.Keys;
+import org.openqa.selenium.NoSuchElementException;
+import org.openqa.selenium.TimeoutException;
+import org.openqa.selenium.WebElement;
 
 import java.time.LocalDate;
 import java.time.format.DateTimeFormatter;
@@ -39,6 +46,10 @@ public abstract class VoucherDocumentInformationBase {
     private final By reference;
     private final By cashBankSearch;
     private final By remarks;
+
+    private static final By NARRATION_POPUP_HEADER = By.xpath(
+            "//div[contains(@class,'x-boundlist-floating')]" +
+            "[.//div[@class='headerBoundList'][.//b[normalize-space(text())='Narration Text']]]");
 
     private final CashBankParent parentPage;
 
@@ -72,8 +83,14 @@ public abstract class VoucherDocumentInformationBase {
         setDocScheme(docInfo.getVoucherno());
         setDocumentDate(formatDate(docInfo.getDocumentdate()));
         setReference(docInfo.getReference());
-        clickCashBankSearch();
-        selectCashBank(docInfo.getCashbank());
+        // T-03 negative scenario NEG_BLANK_CASHBANK leaves Cash/Bank deliberately empty so Save
+        // raises "Cash/Bank is required". Skip the picker when no value is supplied; positive
+        // scenarios always pass a non-blank Cash/Bank, so this is a no-op for them.
+        String cashbank = docInfo.getCashbank();
+        if (cashbank != null && !cashbank.isBlank()) {
+            clickCashBankSearch();
+            selectCashBank(cashbank);
+        }
     }
 
     // ── Protected setters — available to subclasses for custom ordering ───────
@@ -106,6 +123,52 @@ public abstract class VoucherDocumentInformationBase {
     protected void setRemarks(String remarksValue) {
         if (remarksValue == null || remarksValue.isBlank()) return;
         SeleniumUtils.sendKeys(remarks, WaitType.CLICKABLE, remarksValue, "REMARKS");
+        handleNarrationTextPopup(remarksValue);
+    }
+
+    /**
+     * After typing in the Remarks (narration) combo, the app shows a "Narration Text"
+     * picker grid with previously saved narrations.
+     *
+     * <ul>
+     *   <li>If a row matching the typed text exists — click it to select the narration.</li>
+     *   <li>Otherwise — press Tab to commit the typed text as a new entry and dismiss.</li>
+     * </ul>
+     *
+     * After either branch the method waits for the popup to be fully invisible before
+     * returning. This prevents the lingering overlay from interfering with subsequent
+     * DOM interactions (e.g. native Sub-Ledger combo editor cell click), which causes
+     * ExtJS alignTo() to compute zero geometry and throw a layout exception.
+     */
+    private void handleNarrationTextPopup(String remarksValue) {
+        try {
+            JavascriptExecutorUtils.waitForExtJS();
+            WaitUtils.untilVisible(NARRATION_POPUP_HEADER, 3);
+        } catch (TimeoutException | NoSuchElementException e) {
+            ExtentLogger.info("[REMARKS] Narration Text popup did not appear — keeping typed value as-is");
+            return;
+        }
+
+        boolean hasMatch = !DriverManager.getDriver()
+                .findElements(matchedNarrationRow(remarksValue)).isEmpty();
+
+        if (hasMatch) {
+            SeleniumUtils.click(matchedNarrationRow(remarksValue), WaitType.CLICKABLE, "NARRATION_ROW");
+            ExtentLogger.info("[REMARKS] Narration Text popup — clicked matched row for '" + remarksValue + "'");
+        } else {
+            WaitUtils.untilVisible(remarks).sendKeys(Keys.TAB);
+            ExtentLogger.info("[REMARKS] Narration Text popup — no match, pressed Tab for '" + remarksValue + "'");
+        }
+
+        WaitUtils.untilInvisible(NARRATION_POPUP_HEADER);
+        JavascriptExecutorUtils.waitForExtJS();
+    }
+
+    private static By matchedNarrationRow(String text) {
+        return By.xpath(
+                "//div[contains(@class,'x-boundlist-floating')]" +
+                "[.//b[normalize-space(text())='Narration Text']]" +
+                "//td[@data-qtip='" + text + "']");
     }
 
     protected void clickCashBankSearch() {

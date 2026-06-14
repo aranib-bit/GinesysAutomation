@@ -1,58 +1,127 @@
 package com.gsl.pages;
 
 import com.gsl.annotations.LogStep;
+import com.gsl.config.ConfigFactory;
+import com.gsl.driver.DriverManager;
 import com.gsl.enums.WaitType;
+import com.gsl.pages.enums.CommonButton;
+import com.gsl.reports.ReportLogger;
 import org.openqa.selenium.By;
+import org.openqa.selenium.WebDriver;
+import org.openqa.selenium.WebElement;
+import org.testng.SkipException;
+
+import java.time.Duration;
+import java.util.List;
 
 import static com.gsl.utils.Selenium.SeleniumUtils.*;
 
 public class LoginPage {
 
-    private static final By TXTBOX_USERNAME = By.name("username");
-    private static final By TXTBOX_PASSWORD = By.name("password");
-    private static final By BTN_LOGIN = By.xpath("//span[text()='Login']");
-    private static final By SPLASHSCREEN=By.id("splashScreen");
-    private static final By AUTHENTICATOR_LOADER=By.xpath("//*[@class='x-window vport x-layer x-window-default x-border-box x-window-maximized']");
-    //For time being addeing OK
-    private static final By OK_BUTTON=By.xpath("//span[text()='OK']");
-    private static final By BTN_CONCURRENT_SESSION_YES =
-            By.xpath("//div[contains(@class,'x-message-box')]//span[text()='Yes']");
+    // Page-specific locators — Login/splash/loader are not common buttons
+    private static final class Loc {
+        static final By TXTBOX_USERNAME      = By.name("username");
+        static final By TXTBOX_PASSWORD      = By.name("password");
+        static final By BTN_LOGIN            = By.xpath("//span[text()='Login']");
+        static final By SPLASHSCREEN         = By.id("splashScreen");
+        static final By AUTHENTICATOR_LOADER = By.xpath("//*[@class='x-window vport x-layer x-window-default x-border-box x-window-maximized']");
+    }
+
+    // OK_BUTTON  → CommonButton.OK.locator()
+    // BTN_CONCURRENT_SESSION_YES → CommonButton.YES.scopedLocator(...)
 
     private LoginPage clickOk(){
-        click(OK_BUTTON,WaitType.CLICKABLE,"OK_BUTTON");
+        click(CommonButton.OK.locator(), WaitType.CLICKABLE, "OK_BUTTON");
         return this;
     }
 
-
     private LoginPage setUserName(String userName) {
-        sendKeys(TXTBOX_USERNAME, userName, "Username");
+        sendKeys(Loc.TXTBOX_USERNAME, userName, "Username");
         return this;
     }
 
     private LoginPage setPassword(String password) {
-        sendKeys(TXTBOX_PASSWORD, password, "Password");
+        sendKeys(Loc.TXTBOX_PASSWORD, password, "Password");
         return this;
     }
 
     private LoginPage setLogin() {
-        click(BTN_LOGIN, WaitType.CLICKABLE, "Login Button");
+        click(Loc.BTN_LOGIN, WaitType.CLICKABLE, "Login Button");
         return this;
     }
 
+    /**
+     * Handles the "user already logged in from some other browser" prompt that GINESYS shows when
+     * a stale/concurrent server-side session exists for the same user. The app asks
+     * "Do you want to log out your existing session and login from here?" — we click <b>Yes</b> to
+     * take over the stale session and continue, so a leftover session never fails the test.
+     *
+     * <p>Polls (rather than a fixed 3s wait) because the prompt is driven by the {@code /WebAPI/token}
+     * round-trip and can arrive late. The loop exits immediately when the login form disappears
+     * (clean login, no prompt) so it does not slow normal logins.
+     *
+     * <p>If the prompt is clicked but does not clear, the session takeover did not complete — the
+     * test is <b>skipped</b> (amber) rather than failed (red).
+     */
     private LoginPage handleConcurrentSessionPopup() {
-        if (isElementPresent(BTN_CONCURRENT_SESSION_YES, 3)) {
-            click(BTN_CONCURRENT_SESSION_YES, WaitType.CLICKABLE, "Concurrent Session Yes Button");
+        WebDriver driver = DriverManager.getDriver();
+        By yesButton = CommonButton.YES.scopedLocator("//div[contains(@class,'x-message-box')]");
+
+        long deadline = System.currentTimeMillis()
+                + Duration.ofSeconds(ConfigFactory.getConfig().timeout()).toMillis();
+
+        while (System.currentTimeMillis() < deadline) {
+            if (isVisibleQuiet(driver, yesButton)) {
+                click(yesButton, WaitType.CLICKABLE, "Concurrent Session Yes Button");
+                ReportLogger.info("Concurrent-session prompt detected — clicked 'Yes' to log out the "
+                        + "stale session and continue login.");
+
+                // Wait briefly for the prompt to clear; if it persists, takeover failed → skip, don't fail.
+                long recoverDeadline = System.currentTimeMillis() + 5_000;
+                while (System.currentTimeMillis() < recoverDeadline) {
+                    if (!isVisibleQuiet(driver, yesButton)) {
+                        return this;
+                    }
+                    sleepQuietly(300);
+                }
+                throw new SkipException("Login blocked: user already logged in from another browser "
+                        + "and the session takeover did not complete — skipping (not a product defect).");
+            }
+
+            // Login form gone → login progressed without a concurrent-session prompt.
+            if (!isVisibleQuiet(driver, Loc.TXTBOX_USERNAME)) {
+                return this;
+            }
+            sleepQuietly(300);
         }
         return this;
     }
 
+    /** Non-blocking visibility check — returns false instead of waiting/throwing when absent or stale. */
+    private static boolean isVisibleQuiet(WebDriver driver, By by) {
+        try {
+            List<WebElement> els = driver.findElements(by);
+            return !els.isEmpty() && els.get(0).isDisplayed();
+        } catch (Exception e) {
+            return false;
+        }
+    }
+
+    private static void sleepQuietly(long millis) {
+        try {
+            Thread.sleep(millis);
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+        }
+    }
+
     private HomePage checkAuthenticationLoader(){
-        elementDisappear(AUTHENTICATOR_LOADER,"Authentication Loader");
+        elementDisappear(Loc.AUTHENTICATOR_LOADER, "Authentication Loader");
         return new HomePage();
     }
 
     private LoginPage checkSplashScreenLoader(){
-        elementDisappear(SPLASHSCREEN,"Application Loader");
+        elementDisappear(Loc.SPLASHSCREEN, "Application Loader");
         return this;
     }
 

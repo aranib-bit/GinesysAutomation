@@ -1,7 +1,8 @@
 package com.gsl.network;
 
 import com.gsl.config.ConfigFactory;
-import com.gsl.config.FrameworkConfig;
+import com.gsl.config.NetworkConfig;
+import com.gsl.config.ReportConfig;
 import com.gsl.model.network.CallFrameEntry;
 import com.gsl.model.network.NetworkTimingSnapshot;
 import com.gsl.model.network.RequestCookieEntry;
@@ -40,7 +41,7 @@ public final class NetworkTimingCapture {
 
     /** Ring-buffer cap — configurable via {@code network.capture.max.snapshots} (default 150). */
     private static final int MAX_SNAPSHOTS =
-            ConfigFactory.getConfig().networkCaptureMaxSnapshots();
+            ConfigFactory.getNetworkConfig().networkCaptureMaxSnapshots();
 
     private static final ThreadLocal<Deque<NetworkTimingSnapshot>> snapshots =
             ThreadLocal.withInitial(ConcurrentLinkedDeque::new);
@@ -75,8 +76,10 @@ public final class NetworkTimingCapture {
      * Attaches the 3-event listeners to an existing DevTools session.
      * Called by CdpNetworkCapture.start() after its own session is established.
      */
-    public static void attachListeners(DevTools devTools, FrameworkConfig config) {
-        if (!config.performanceTimingEnabled() && !config.enableNetworkLogs()) {
+    public static void attachListeners(DevTools devTools) {
+        ReportConfig reportCfg = ConfigFactory.getReportConfig();
+        NetworkConfig netCfg   = ConfigFactory.getNetworkConfig();
+        if (!reportCfg.performanceTimingEnabled() && !netCfg.enableNetworkLogs()) {
             return;
         }
         try {
@@ -91,7 +94,7 @@ public final class NetworkTimingCapture {
                 cookies.forEach(c -> cookieMap.put(c.getName(), c));
             } catch (Exception ignored) {}
 
-            registerListeners(devTools, config);
+            registerListeners(devTools, netCfg);
             LOG.debug("[NetworkTimingCapture] Timing listeners attached.");
         } catch (Exception ex) {
             LOG.warn("[NetworkTimingCapture] Failed to attach listeners: {}", ex.getMessage());
@@ -113,7 +116,7 @@ public final class NetworkTimingCapture {
 
     // ── Listener registration ─────────────────────────────────────────────────
 
-    private static void registerListeners(DevTools devTools, FrameworkConfig config) {
+    private static void registerListeners(DevTools devTools, NetworkConfig config) {
         String urlFilter = config.networkCaptureUrlFilter();
 
         // ── Listener 1: requestWillBeSent ─────────────────────────────────────

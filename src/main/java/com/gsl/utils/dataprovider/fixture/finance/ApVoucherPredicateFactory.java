@@ -5,6 +5,8 @@ import com.gsl.pages.Finance.Operations.ApVoucherAdd;
 import com.gsl.pages.Finance.Operations.Common.DocumentPopup;
 import com.gsl.pages.Finance.Operations.Common.PaymentInfoCheckWarning;
 import com.gsl.pages.HomePage;
+import com.gsl.pages.pagecomponent.Finance.Operations.Common.SubLedgerRowLocator;
+import com.gsl.utils.Selenium.ExtJsQuickTipUtils;
 import com.gsl.reports.ReportLogger;
 import com.gsl.reports.StepExecutor;
 import com.gsl.testdata.Finance.Operations.Vouchers.APVoucher.SelectDocument;
@@ -65,7 +67,7 @@ public final class ApVoucherPredicateFactory {
                         + " | On Account: " + data.getDocumentInformation().getOnAccount());
             });
 
-            StepExecutor.step("Fill Sub-Ledger Information (Advance)", () -> {
+            StepExecutor.step("Sub-Ledger Rows (Advance)", () -> {
                 page.fillSubLedgerRowsForAdvance(data, false);
                 ReportLogger.info("Advance sub-ledger section complete");
             });
@@ -117,15 +119,14 @@ public final class ApVoucherPredicateFactory {
                         + " | On Account: " + data.getDocumentInformation().getOnAccount());
             });
 
-            StepExecutor.step("Fill Sub-Ledger Information (Advance + TDS)", () -> {
+            StepExecutor.step("Sub-Ledger Rows (Advance + TDS)", () -> {
                 page.fillSubLedgerRowsForAdvance(data, false);
                 ReportLogger.info("Advance sub-ledger section complete");
             });
 
-            StepExecutor.step("Fill TDS and Net Payable", () -> {
-                page.fillTdsAndNetPayable(data);
-                ReportLogger.info("TDS & Net Payable section complete");
-            });
+            // TDS is no longer a standalone top-level step: each row's "Calculate TDS &
+            // Net Payable" sub-step reports under its SL row group (via SubLedgerRowStepRegistry).
+            page.fillTdsAndNetPayable(data);
 
             StepExecutor.step("Save AP Voucher", () -> {
                 saveStartTime[0] = LocalDateTime.now();
@@ -176,7 +177,7 @@ public final class ApVoucherPredicateFactory {
                 ReportLogger.info("Cash Bank: " + data.getDocumentInformation().getCashbank());
             });
 
-            StepExecutor.step("Fill Sub-Ledger Information (No Adjustment)", () -> {
+            StepExecutor.step("Sub-Ledger Rows (No Adjustment)", () -> {
                 page.fillSubLedgerRowsForDocument(data, false);
                 ReportLogger.info("Document sub-ledger section complete (no adjustment)");
             });
@@ -235,7 +236,7 @@ public final class ApVoucherPredicateFactory {
                 ReportLogger.info("Cash Bank: " + data.getDocumentInformation().getCashbank());
             });
 
-            StepExecutor.step("Fill Sub-Ledger Information (Select Document)", () -> {
+            StepExecutor.step("Sub-Ledger Rows (Select Document)", () -> {
                 page.fillSubLedgerRowsForDocument(data, true);
                 ReportLogger.info("Document sub-ledger section complete (Select Document)");
             });
@@ -295,7 +296,7 @@ public final class ApVoucherPredicateFactory {
                 ReportLogger.info("Cash Bank: " + data.getDocumentInformation().getCashbank());
             });
 
-            StepExecutor.step("Fill Sub-Ledger Information (FIFO)", () -> {
+            StepExecutor.step("Sub-Ledger Rows (FIFO)", () -> {
                 page.fillSubLedgerRowsForDocument(data, true);
                 ReportLogger.info("Document sub-ledger section complete (FIFO)");
             });
@@ -354,7 +355,7 @@ public final class ApVoucherPredicateFactory {
                 ReportLogger.info("Cash Bank: " + data.getDocumentInformation().getCashbank());
             });
 
-            StepExecutor.step("Fill Sub-Ledger Information (Reference Sitewise FIFO)", () -> {
+            StepExecutor.step("Sub-Ledger Rows (Reference Sitewise FIFO)", () -> {
                 page.fillSubLedgerRowsForDocument(data, true);
                 ReportLogger.info("Document sub-ledger section complete (Ref-Sitewise FIFO)");
             });
@@ -432,11 +433,12 @@ public final class ApVoucherPredicateFactory {
                 ReportLogger.info("Sub-ledger section complete");
             });
 
-            StepExecutor.step("Click Save — expect validation error", () -> {
+            StepExecutor.step("Click Save — expect: " + data.getExpectedValidation().name(), () -> {
                 DocumentPopup popup = page.clickSave();
                 String expectedMsg = data.getExpectedValidation().expectedMessage();
-                popup.verifyErrorMessage(expectedMsg);
-                ReportLogger.pass("Validation error confirmed: " + expectedMsg);
+                String actualMsg = popup.verifyErrorMessage(expectedMsg);
+                ReportLogger.pass("Validation OK — Expected: [" + expectedMsg + "] | Received: [" + actualMsg + "]");
+                popup.clickOkOnErrorDialog();
             });
 
             StepExecutor.step("Cancel and Logout", () -> {
@@ -447,7 +449,386 @@ public final class ApVoucherPredicateFactory {
             return true;    // test passes when expected error was raised
         };
 
+    // ─── Negative "blank SL → recover → save" behavior ───────────────────────
+
+    /**
+     * NEG_BLANK_SUBLEDGER_RECOVER behavior (T-2):
+     * <ol>
+     *   <li>Fill document header with valid Cash/Bank.</li>
+     *   <li>Skip sub-ledger fill — grid is intentionally empty.</li>
+     *   <li>Click Save → assert sub-ledger required error popup → click OK to dismiss.</li>
+     *   <li>Fill sub-ledger rows from data (recovery).</li>
+     *   <li>Click Save again → expect success → verify document number.</li>
+     *   <li>Close and logout.</li>
+     * </ol>
+     *
+     * <p>Proves the form is recoverable after the sub-ledger validation error:
+     * a user who dismisses the error can add rows and save successfully without reloading.
+     */
+    public static final Supplier<BiPredicate<MergedFinanceApVoucherData, ApVoucherAdd>>
+        NEG_BLANK_SUBLEDGER_RECOVER_BEHAVIOR = () -> (data, page) -> {
+
+            final String[] docNoRef = new String[1];
+
+            StepExecutor.step("Fill Document Information (valid header, SL grid intentionally empty)", () -> {
+                page.fillDocumentHeader(data.getDocumentInformation());
+                ReportLogger.info("Header filled. Sub-ledger grid left empty to trigger validation error.");
+            });
+
+            StepExecutor.step("Click Save — expect sub-ledger required error", () -> {
+                DocumentPopup popup = page.clickSave();
+                String expectedMsg = data.getExpectedValidation().expectedMessage();
+                String actualMsg = popup.verifyErrorMessage(expectedMsg);
+                ReportLogger.pass("Validation OK — Expected: [" + expectedMsg + "] | Received: [" + actualMsg + "]");
+                popup.clickOkOnErrorDialog();
+                ReportLogger.info("Error dismissed. Proceeding to fill sub-ledger rows.");
+            });
+
+            StepExecutor.step("Fill Sub-Ledger Rows (recovery after error)", () -> {
+                page.fillSubLedgerRowsForAdvance(data, false);
+                ReportLogger.info("Sub-ledger rows filled after error recovery.");
+            });
+
+            StepExecutor.step("Save AP Voucher — expect success after recovery", () -> {
+                DocumentPopup savePopup = page.clickSave();
+                DocumentMessageBox messageBox = data.isNeedsPaymentInfoWarning()
+                        ? savePopup.verifyPaymentInfoCheckWarning(PaymentInfoCheckWarning.AP_VOUCHER)
+                                   .clickProceed(PaymentInfoCheckWarning.AP_VOUCHER)
+                        : savePopup.waitForMessageBox();
+                docNoRef[0] = messageBox.extractDocumentNo();
+                Log.info("AP Voucher saved after recovery. Document No: {}", docNoRef[0]);
+                ReportLogger.pass("Voucher saved after SL error recovery. Document No: " + docNoRef[0]);
+                messageBox.clickOk();
+                page.close().clickYes();
+                new HomePage().logoutFromApplication();
+            });
+
+            return docNoRef[0] != null;
+        };
+
+    // ─── Negative "blank cashbank → Add Row triggers popup" behavior ─────────
+
+    /**
+     * NEG_BLANK_CASHBANK_ADD_ROW behavior (FIN-AP-ADD-NEG-01, T-1):
+     * <ol>
+     *   <li>Fill document header with Cash/Bank = null (skipped by the null-guard).</li>
+     *   <li>Click Add Row in the sub-ledger grid — the app raises an Error popup:
+     *       "Please select cash/bank ledger first."</li>
+     *   <li>Assert popup header contains "Error" and body contains the expected message.</li>
+     *   <li>Click OK to dismiss, then discard the form and log out.</li>
+     * </ol>
+     */
+    public static final Supplier<BiPredicate<MergedFinanceApVoucherData, ApVoucherAdd>>
+        NEG_BLANK_CASHBANK_ADD_ROW_BEHAVIOR = () -> (data, page) -> {
+
+            StepExecutor.step("Fill Document Information (Cash/Bank left blank)", () -> {
+                page.fillDocumentHeader(data.getDocumentInformation());
+                ReportLogger.info("Cash/Bank skipped — null value triggers guard in fillDocumentHeader");
+            });
+
+            StepExecutor.step("Click Add Row — expect Error popup (Cash/Bank not selected)", () -> {
+                DocumentPopup popup = page.clickAddSubLedgerRow();
+                String expectedMsg = data.getExpectedValidation().expectedMessage();
+                String actualHeader = popup.verifyErrorHeader("Error");
+                String actualMsg = popup.verifyErrorMessage(expectedMsg);
+                ReportLogger.pass("Popup header: [" + actualHeader + "] | Expected body: ["
+                        + expectedMsg + "] | Actual body: [" + actualMsg + "]");
+                popup.clickOkOnErrorDialog();
+            });
+
+            StepExecutor.step("Cancel and Logout", () -> {
+                page.close().clickYes();
+                new HomePage().logoutFromApplication();
+            });
+
+            return true;
+        };
+
+    /**
+     * NEG_BLANK_CASHBANK_ADD_ROW_RECOVER behavior (FIN-AP-ADD-NEG-01, T-2):
+     * <ol>
+     *   <li>Fill document header with Cash/Bank = null.</li>
+     *   <li>Click Add Row → assert Error popup → click OK to dismiss.</li>
+     *   <li>Fill Cash/Bank from {@code data.getCashbankForRecovery()}.</li>
+     *   <li>Fill sub-ledger rows and save successfully.</li>
+     *   <li>Close and log out.</li>
+     * </ol>
+     */
+    public static final Supplier<BiPredicate<MergedFinanceApVoucherData, ApVoucherAdd>>
+        NEG_BLANK_CASHBANK_ADD_ROW_RECOVER_BEHAVIOR = () -> (data, page) -> {
+
+            final String[] docNoRef = new String[1];
+
+            StepExecutor.step("Fill Document Information (Cash/Bank left blank)", () -> {
+                page.fillDocumentHeader(data.getDocumentInformation());
+                ReportLogger.info("Cash/Bank skipped — will be filled after dismissing the error popup.");
+            });
+
+            StepExecutor.step("Click Add Row — expect Error popup, then dismiss", () -> {
+                DocumentPopup popup = page.clickAddSubLedgerRow();
+                String expectedMsg = data.getExpectedValidation().expectedMessage();
+                String actualHeader = popup.verifyErrorHeader("Error");
+                String actualMsg = popup.verifyErrorMessage(expectedMsg);
+                ReportLogger.pass("Popup header: [" + actualHeader + "] | Expected body: ["
+                        + expectedMsg + "] | Actual body: [" + actualMsg + "]");
+                popup.clickOkOnErrorDialog();
+                ReportLogger.info("Error dismissed. Proceeding to fill Cash/Bank for recovery.");
+            });
+
+            StepExecutor.step("Fill Cash/Bank (recovery after error)", () -> {
+                page.fillCashBankOnly(data.getCashbankForRecovery());
+                ReportLogger.info("Cash/Bank set to: " + data.getCashbankForRecovery());
+            });
+
+            StepExecutor.step("Fill Sub-Ledger Rows (recovery)", () -> {
+                page.fillSubLedgerRowsForAdvance(data, false);
+                ReportLogger.info("Sub-ledger rows filled after Cash/Bank recovery.");
+            });
+
+            StepExecutor.step("Save AP Voucher — expect success after recovery", () -> {
+                DocumentPopup savePopup = page.clickSave();
+                DocumentMessageBox messageBox = data.isNeedsPaymentInfoWarning()
+                        ? savePopup.verifyPaymentInfoCheckWarning(PaymentInfoCheckWarning.AP_VOUCHER)
+                                   .clickProceed(PaymentInfoCheckWarning.AP_VOUCHER)
+                        : savePopup.waitForMessageBox();
+                docNoRef[0] = messageBox.extractDocumentNo();
+                ReportLogger.pass("Voucher saved after Cash/Bank recovery. Document No: " + docNoRef[0]);
+                messageBox.clickOk();
+                page.close().clickYes();
+                new HomePage().logoutFromApplication();
+            });
+
+            return docNoRef[0] != null;
+        };
+
+    // ─── Boundary "pass-at-limit" behavior ────────────────────────────────────
+
+    /**
+     * Shared behavior for ALL boundary {@code *_VALID} scenarios (value exactly at the limit).
+     *
+     * <p>Performs the full positive flow — fill header → fill sub-ledger rows → Save →
+     * verify the document saved → DB validation → logout — and succeeds when the voucher
+     * persists. Branches on {@link MergedFinanceApVoucherData#isOnAccount()} for advance vs
+     * document sub-ledger fill (document path captures pre/post invoice state for delta validation).
+     *
+     * <p>This is the counterpart to {@link #NEGATIVE_FORM_VALIDATION_BEHAVIOR}: a boundary concept
+     * is modelled as a pair — {@code *_VALID} routes here (must save), {@code *_INVALID} routes to
+     * the negative behavior (must raise the matching {@link NegativeValidation} error).
+     */
+    public static final Supplier<BiPredicate<MergedFinanceApVoucherData, ApVoucherAdd>>
+        BOUNDARY_PASS_BEHAVIOR = () -> (data, page) -> {
+
+            final String[] docNoRef              = new String[1];
+            final Map<String, FinPost>[] preRef  = new Map[1];
+            final Map<String, FinPost>[] postRef = new Map[1];
+            final LocalDateTime[] saveStartTime  = new LocalDateTime[1];
+
+            StepExecutor.step("Fill Document Information (boundary value at limit)", () -> {
+                page.fillDocumentHeader(data.getDocumentInformation());
+                ReportLogger.info("Cash Bank: " + data.getDocumentInformation().getCashbank()
+                        + " | On Account: " + data.getDocumentInformation().getOnAccount());
+            });
+
+            StepExecutor.step("Fill Sub-Ledger Rows", () -> {
+                if (data.isOnAccount()) {
+                    page.fillSubLedgerRowsForAdvance(data, false);
+                } else {
+                    page.fillSubLedgerRowsForDocument(data, false);
+                }
+                ReportLogger.info("Sub-ledger section complete");
+            });
+
+            StepExecutor.step("Save AP Voucher — expect success at limit", () -> {
+                List<String> invoiceNos = collectInvoiceNos(data);
+                StateCapture stateCapture = new StateCapture();
+                preRef[0] = data.isOnAccount() ? Collections.emptyMap()
+                                               : stateCapture.captureInvoiceState(invoiceNos);
+
+                saveStartTime[0] = LocalDateTime.now();
+                DocumentPopup savePopup = page.clickSave();
+                DocumentMessageBox messageBox = data.isNeedsPaymentInfoWarning()
+                        ? savePopup.verifyPaymentInfoCheckWarning(PaymentInfoCheckWarning.AP_VOUCHER)
+                                   .clickProceed(PaymentInfoCheckWarning.AP_VOUCHER)
+                        : savePopup.waitForMessageBox();
+                docNoRef[0] = messageBox.extractDocumentNo();
+                Log.info("AP Voucher (boundary) saved. Document No: {}", docNoRef[0]);
+
+                postRef[0] = data.isOnAccount() ? Collections.emptyMap()
+                                                : stateCapture.captureInvoiceState(invoiceNos);
+                ReportLogger.pass("Voucher saved at boundary. Document No: " + docNoRef[0]);
+                messageBox.clickOk();
+                page.close().clickYes();
+                new HomePage().logoutFromApplication();
+            });
+
+            StepExecutor.step("Database Validation", () -> {
+                new APVoucherDbValidator().validate(
+                        ApVoucherDbContext.builder()
+                                .voucherNo(docNoRef[0])
+                                .testData(data)
+                                .preState(preRef[0])
+                                .postState(postRef[0])
+                                .saveStartTime(saveStartTime[0])
+                                .build());
+                ReportLogger.pass("DB validated. Document No: " + docNoRef[0]);
+            });
+
+            return docNoRef[0] != null;
+        };
+
     // ─── Private helper ───────────────────────────────────────────────────────
+
+    /**
+     * INLINE_VALIDATION_BEHAVIOR — for BOUND_AMOUNT_MIN_INVALID (AP Voucher).
+     *
+     * Two-step flow:
+     * 1. Click Save → error dialog ("Some problems encountered in the detail section.")
+     * 2. Click OK → hover the three-dots icon on the sub-ledger row → assert inline tooltip
+     *    contains "Stop:" and "Amount can not be 0".
+     */
+    public static final Supplier<BiPredicate<MergedFinanceApVoucherData, ApVoucherAdd>>
+        INLINE_VALIDATION_BEHAVIOR = () -> (data, page) -> {
+
+            StepExecutor.step("Fill Document Information", () -> {
+                page.fillDocumentHeader(data.getDocumentInformation());
+                ReportLogger.info("Filled document header");
+            });
+
+            StepExecutor.step("Fill Sub-Ledger Rows (Amount = 0)", () -> {
+                if (data.isOnAccount()) {
+                    page.fillSubLedgerRowsForAdvance(data, false);
+                } else {
+                    page.fillSubLedgerRowsForDocument(data, false);
+                }
+                ReportLogger.info("Sub-ledger section complete");
+            });
+
+            StepExecutor.step("Click Save — expect detail-section error dialog", () -> {
+                DocumentPopup popup = page.clickSave();
+                String expectedDialog = NegativeValidation.ZERO_AMOUNT_DIALOG.expectedMessage();
+                String actualDialog = popup.verifyErrorMessage(expectedDialog);
+                ReportLogger.pass("Dialog OK — Expected: [" + expectedDialog + "] | Received: [" + actualDialog + "]");
+                popup.clickOkOnErrorDialog();
+            });
+
+            StepExecutor.step("Hover row indicator — verify inline tooltip", () -> {
+                String slName = data.getSubLedgerInformationList() != null
+                        && !data.getSubLedgerInformationList().isEmpty()
+                        ? data.getSubLedgerInformationList().get(0).getSubLedger()
+                        : null;
+                if (slName == null || slName.isBlank()) {
+                    throw new IllegalStateException("INLINE_VALIDATION_BEHAVIOR requires at least one sub-ledger row with a name");
+                }
+                String actual = ExtJsQuickTipUtils.hoverAndVerify(
+                        SubLedgerRowLocator.dotsButton(slName),
+                        NegativeValidation.ZERO_AMOUNT_TOOLTIP_STOP.expectedMessage(),
+                        NegativeValidation.ZERO_AMOUNT_TOOLTIP_AMOUNT.expectedMessage());
+                ExtJsQuickTipUtils.verifyVisibleHtml(
+                        NegativeValidation.ZERO_AMOUNT_TOOLTIP_STOP_BOLD.expectedMessage());
+                ReportLogger.pass("Tooltip OK — [" + actual + "]");
+            });
+
+            StepExecutor.step("Cancel and Logout", () -> {
+                page.close().clickYes();
+                new HomePage().logoutFromApplication();
+            });
+
+            return true;
+        };
+
+    /**
+     * DOC_INLINE_VALIDATION_BEHAVIOR — for DOC_AMOUNT_NOT_ADJUSTED_INVALID (On Account No).
+     *
+     * Two-step flow:
+     * 1. Click Save → error dialog ("Some problems encountered in the detail section.")
+     * 2. Click OK → hover the three-dots icon on the sub-ledger row → assert inline tooltip
+     *    contains "Stop:" (bold) and the document-adjustment mandatory message.
+     */
+    public static final Supplier<BiPredicate<MergedFinanceApVoucherData, ApVoucherAdd>>
+        DOC_INLINE_VALIDATION_BEHAVIOR = () -> (data, page) -> {
+
+            StepExecutor.step("Fill Document Information", () -> {
+                page.fillDocumentHeader(data.getDocumentInformation());
+                ReportLogger.info("Filled document header — On Account: No");
+            });
+
+            StepExecutor.step("Fill Sub-Ledger Rows (No Adjustment, Amount = 0)", () -> {
+                page.fillSubLedgerRowsForDocument(data, false);
+                ReportLogger.info("Sub-ledger section complete");
+            });
+
+            StepExecutor.step("Click Save — expect detail-section error dialog", () -> {
+                DocumentPopup popup = page.clickSave();
+                String expectedDialog = NegativeValidation.ZERO_AMOUNT_DIALOG.expectedMessage();
+                String actualDialog = popup.verifyErrorMessage(expectedDialog);
+                ReportLogger.pass("Dialog OK — Expected: [" + expectedDialog + "] | Received: [" + actualDialog + "]");
+                popup.clickOkOnErrorDialog();
+            });
+
+            StepExecutor.step("Hover row indicator — verify inline tooltip", () -> {
+                String slName = data.getSubLedgerInformationList() != null
+                        && !data.getSubLedgerInformationList().isEmpty()
+                        ? data.getSubLedgerInformationList().get(0).getSubLedger()
+                        : null;
+                if (slName == null || slName.isBlank()) {
+                    throw new IllegalStateException(
+                            "DOC_INLINE_VALIDATION_BEHAVIOR requires at least one sub-ledger row with a name");
+                }
+                String actual = ExtJsQuickTipUtils.hoverAndVerify(
+                        SubLedgerRowLocator.dotsButton(slName),
+                        NegativeValidation.ZERO_AMOUNT_TOOLTIP_STOP.expectedMessage(),
+                        NegativeValidation.DOC_NOT_ADJUSTED_TOOLTIP_AMOUNT.expectedMessage());
+                ExtJsQuickTipUtils.verifyVisibleHtml(
+                        NegativeValidation.ZERO_AMOUNT_TOOLTIP_STOP_BOLD.expectedMessage());
+                ReportLogger.pass("Tooltip OK — [" + actual + "]");
+            });
+
+            StepExecutor.step("Cancel and Logout", () -> {
+                page.close().clickYes();
+                new HomePage().logoutFromApplication();
+            });
+
+            return true;
+        };
+
+    /**
+     * DOC_AMOUNT_READ_ONLY_BEHAVIOR — for DOC_AMOUNT_READ_ONLY (On Account No).
+     *
+     * Flow:
+     * 1. Fill header + fill sub-ledger rows (document adjusted via Select Document → amount auto-populated).
+     * 2. Click the Amount (Dr) cell → Information dialog confirms the field is read-only.
+     * 3. Assert dialog text, click OK, close, logout.
+     */
+    public static final Supplier<BiPredicate<MergedFinanceApVoucherData, ApVoucherAdd>>
+        DOC_AMOUNT_READ_ONLY_BEHAVIOR = () -> (data, page) -> {
+
+            StepExecutor.step("Fill Document Information", () -> {
+                page.fillDocumentHeader(data.getDocumentInformation());
+                ReportLogger.info("Filled document header — On Account: No");
+            });
+
+            StepExecutor.step("Fill Sub-Ledger Rows + Adjust Document", () -> {
+                page.fillSubLedgerRowsForDocument(data, false);
+                ReportLogger.info("Sub-ledger rows filled with document adjustment");
+            });
+
+            StepExecutor.step("Click Amount cell — expect read-only Information dialog", () -> {
+                String slName = data.getSubLedgerInformationList().get(0).getSubLedger();
+                String slId   = data.getSubLedgerInformationList().get(0).getId();
+                DocumentPopup infoDialog = page.clickAmountCell(slName, slId);
+                String expected = NegativeValidation.DOC_AMOUNT_READ_ONLY.expectedMessage();
+                String actual   = infoDialog.verifyErrorMessage(expected);
+                ReportLogger.pass("Read-only dialog confirmed — [" + actual + "]");
+                infoDialog.clickOkOnErrorDialog();
+            });
+
+            StepExecutor.step("Cancel and Logout", () -> {
+                page.close().clickYes();
+                new HomePage().logoutFromApplication();
+            });
+
+            return true;
+        };
 
     private ApVoucherPredicateFactory() {}
 

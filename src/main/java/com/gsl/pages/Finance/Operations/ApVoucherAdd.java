@@ -53,12 +53,37 @@ public class ApVoucherAdd implements CashBankParent {
         return this;
     }
 
+    /**
+     * Clicks the Add Row button in the sub-ledger grid.
+     * When Cash/Bank is not yet selected, the app raises "Please select cash/bank ledger first."
+     * Returns a {@link DocumentPopup} so the caller can assert the popup header and body.
+     */
+    public DocumentPopup clickAddSubLedgerRow() {
+        apVoucherSubLedgerInformation.clickAddRow();
+        return new DocumentPopup();
+    }
+
+    /** Fills only the Cash/Bank field — used after dismissing a Cash/Bank validation popup. */
+    public ApVoucherAdd fillCashBankOnly(String cashbank) {
+        apVoucherDocumentInformation.fillCashBankOnly(cashbank);
+        return this;
+    }
+
     @LogStep("Save AP Voucher")
     public DocumentPopup clickSave() {
         JavascriptExecutorUtils.setSubLedgerVerify("apvch_grid");
         JavascriptExecutorUtils.restoreAllGlFieldsFromCapture(DriverManager.getDriver(), "apvch_grid");
         apVoucherFooter.clickSave();
         return new DocumentPopup();
+    }
+
+    /**
+     * Clicks the Amount (Dr) cell for the given sub-ledger row.
+     * When the row has an adjusted document, the app raises a read-only Information dialog;
+     * the returned {@link DocumentPopup} wraps that dialog for assertion.
+     */
+    public DocumentPopup clickAmountCell(String slName, String slId) {
+        return apVoucherSubLedgerInformation.clickAmountCell(slName, slId);
     }
 
     /** Clicks the X to close the AP Voucher form; returns the discard-confirmation dialog. */

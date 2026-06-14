@@ -1,22 +1,30 @@
 package com.gsl.testdata.dto;
 
+import com.gsl.flow.Finance.Operations.Common.PostSaveDialogHandler;
 import com.gsl.testdata.Finance.Operations.Vouchers.ARVoucher.*;
 import com.gsl.testdata.InvocationData;
 import com.gsl.testdata.MasterTestData;
 import com.gsl.utils.dataprovider.fixture.finance.ArVoucherFixtureOptions;
 import com.gsl.utils.dataprovider.fixture.finance.ArVoucherScenarioType;
+import com.gsl.utils.dataprovider.fixture.finance.NegativeValidation;
 import com.gsl.utils.dataprovider.fixture.finance.SelectDocumentVariant;
+import com.gsl.validation.db.finance.VoucherDbContextBuilder;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Data;
 
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.List;
+import java.util.stream.Collectors;
 
 @Data
 @Builder
 @AllArgsConstructor
-public class MergedFinanceArVoucherData implements InvocationData {
+public class MergedFinanceArVoucherData
+        implements InvocationData,
+                   PostSaveDialogHandler.PostSaveSpec,
+                   VoucherDbContextBuilder.InvoiceScoped {
 
     private MasterTestData masterTestData;
 
@@ -88,6 +96,14 @@ public class MergedFinanceArVoucherData implements InvocationData {
     @Builder.Default
     private List<String> dbGatheringLog = new ArrayList<>();
 
+    /**
+     * Non-null for negative-scenario variants (T-03); {@code null} for positive scenarios.
+     * Carries the expected UI validation error message. Mirrors
+     * {@link com.gsl.testdata.dto.MergedFinanceApVoucherData#getExpectedValidation()}.
+     * Used by {@code ArVoucherPredicateFactory.NEGATIVE_FORM_VALIDATION_BEHAVIOR}.
+     */
+    private NegativeValidation expectedValidation;
+
     @Override
     public int getInvocationIndex() {
         return invocationIndex;
@@ -96,5 +112,18 @@ public class MergedFinanceArVoucherData implements InvocationData {
     @Override
     public int getTotalInvocations() {
         return totalInvocations;
+    }
+
+    /**
+     * Scoped invoice numbers for the finpost pre/post snapshot (Save sub-steps 5a/5e).
+     * Returns the SelectDocument doc-numbers, or an empty list when none are selected.
+     */
+    @Override
+    public List<String> resolveInvoiceNos() {
+        return selectDocumentList != null
+                ? selectDocumentList.stream()
+                        .map(SelectDocument::getDocumentNumber)
+                        .collect(Collectors.toList())
+                : Collections.emptyList();
     }
 }

@@ -19,8 +19,8 @@ public final class Driver {
 
     public static void initDriver() {
         // Typed enum resolution via Owner Converter — no inline valueOf needed
-        RunMode  mode    = ConfigFactory.getConfig().runMode();
-        Browser  browser = ConfigFactory.getConfig().browserType();
+        RunMode  mode    = ConfigFactory.getBrowserConfig().runMode();
+        Browser  browser = ConfigFactory.getBrowserConfig().browserType();
 
         if (DriverManager.getDriver() == null) {
             WebDriver driver = MasterDriverFactory.create(mode, browser);
@@ -41,7 +41,7 @@ public final class Driver {
         DriverManager.getDriver().get(ConfigFactory.getConfig().url());
         DriverManager.getDriver().manage().window().maximize();
 
-        if (ConfigFactory.getConfig().browserLogsEnabled()) {
+        if (ConfigFactory.getNetworkConfig().browserLogsEnabled()) {
             AdvancedJsLogger.inject();
         }
 

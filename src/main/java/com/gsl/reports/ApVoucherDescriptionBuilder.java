@@ -26,11 +26,28 @@ public final class ApVoucherDescriptionBuilder {
      */
     public static String build(MergedFinanceApVoucherData data) {
         if (data == null || data.getMasterTestData() == null) return null;
+        if (data.getScenarioType() != null) {
+            String negDesc = buildNegativeDescription(data.getScenarioType().name());
+            if (negDesc != null) return negDesc;
+        }
         String tcName = data.getMasterTestData().getTestcasename();
         if (tcName == null || tcName.isBlank()
                 || tcName.equalsIgnoreCase("createApVoucherAdvancePayment")
                 || tcName.equalsIgnoreCase("createApVoucherDocumentPayment")) return null;
         return buildFromRichName(tcName);
+    }
+
+    private static String buildNegativeDescription(String scenarioName) {
+        if (scenarioName == null) return null;
+        return switch (scenarioName) {
+            case "NEG_BLANK_CASHBANK"            -> "Verify that saving without a Cash/Bank GL shows a 'Cash/Bank is required' validation error.";
+            case "NEG_BLANK_SUBLEDGER"           -> "Verify that saving with an empty Sub-Ledger grid shows the sub-ledger required validation error.";
+            case "NEG_BLANK_MANDATORY_REFERENCE" -> "Verify that saving with a blank mandatory Reference shows a 'Reference No. is required' validation error.";
+            case "BOUND_AMOUNT_MIN_INVALID"      -> "Verify that a zero line amount shows an inline validation message and cannot be saved.";
+            case "BOUND_AMOUNT_MIN_VALID"        -> "Verify that a minimum line amount (0.01) is accepted and the voucher saves successfully.";
+            case "BLANK_REFERENCE_ALLOWED"       -> "Verify that two AP Vouchers with no Reference both save successfully (blank reference is allowed).";
+            default -> null;
+        };
     }
 
     static String buildFromRichName(String richName) {

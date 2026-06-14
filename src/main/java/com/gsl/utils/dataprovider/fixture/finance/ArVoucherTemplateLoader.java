@@ -123,7 +123,8 @@ public final class ArVoucherTemplateLoader {
                 id, refs.getPendingSlNames(), refs.getPendingDocsBySlName(), variant.getAmountMode());
 
         if (selectDocs.isEmpty()) {
-            throw new IllegalStateException(
+            // Data-availability shortfall → skip (amber), not fail (red).
+            throw new org.testng.SkipException(
                 "No selectable documents for SELECT_DOCUMENT variant '" + id + "' — " +
                 "all fetched documents had pending amounts that round to 0.00 or were exhausted " +
                 "by concurrent reservations. Pending SLs: " + refs.getPendingSlNames() +
@@ -257,6 +258,132 @@ public final class ArVoucherTemplateLoader {
                 .invocationIndex(1)
                 .totalInvocations(1)
                 .build();
+    }
+
+    // ─── T-03 Negative & Boundary templates ──────────────────────────────────
+
+    /** NEG_BLANK_CASHBANK — valid SL, Cash/Bank left blank → "Cash/Bank is required". */
+    public static MergedFinanceArVoucherData negBlankCashbankTemplate(LiveDbRefs refs) {
+        String id = "DB_NEG_BLANK_CASHBANK";
+        List<SubLedgerInformation> subLedgers = buildSubLedgers(
+                refs.getPendingSlNames(), null, refs.getPendingDocsBySlName(),
+                refs.getOwnerSiteName(), refs.getSlToArApName());
+        return negativeData(id, "NEGATIVE | Blank Cash/Bank", refs, subLedgers,
+                null, FakerUtils.randomReference(), NegativeValidation.BLANK_CASHBANK);
+    }
+
+    /** NEG_BLANK_SUBLEDGER — valid Cash/Bank, no SL row filled (empty grid) → "Sub-Ledger is required". */
+    public static MergedFinanceArVoucherData negBlankSubledgerTemplate(LiveDbRefs refs) {
+        String id = "DB_NEG_BLANK_SUBLEDGER";
+        return negativeData(id, "NEGATIVE | Blank Sub-Ledger", refs, List.of(),
+                refs.getCashBankName(), FakerUtils.randomReference(), NegativeValidation.BLANK_SUBLEDGER_AR);
+    }
+
+    /** NEG_BLANK_MANDATORY_REFERENCE — Reference left blank → "Reference No. is required"
+     *  (only when the resolved scheme makes Reference mandatory). */
+    public static MergedFinanceArVoucherData negBlankReferenceTemplate(LiveDbRefs refs) {
+        String id = "DB_NEG_BLANK_REF";
+        List<SubLedgerInformation> subLedgers = buildSubLedgers(
+                refs.getPendingSlNames(), null, refs.getPendingDocsBySlName(),
+                refs.getOwnerSiteName(), refs.getSlToArApName());
+        return negativeData(id, "NEGATIVE | Blank Mandatory Reference", refs, subLedgers,
+                refs.getCashBankName(), null, NegativeValidation.BLANK_MANDATORY_REFERENCE);
+    }
+
+    /** BOUND_AMOUNT_MIN_VALID — smallest positive line amount (0.01) → must save. */
+    public static MergedFinanceArVoucherData boundAmountMinValidTemplate(LiveDbRefs refs) {
+        String id = "DB_BOUND_AMT_MIN_VALID";
+        List<SubLedgerInformation> subLedgers = buildSubLedgersWithAmount(
+                refs.getPendingSlNames(), refs.getOwnerSiteName(), refs.getSlToArApName(),
+                new BigDecimal("0.01"));
+        List<PaymentInformation> payments = refs.getCashBankType() == CashBankType.CASH
+                ? buildPayments(id, subLedgers, SelectDocumentVariant.PaymentMode.CASH)
+                : List.of();
+        return MergedFinanceArVoucherData.builder()
+                .masterTestData(buildMaster("createArVoucherNegativeBoundary", id, "BOUNDARY | Min Amount 0.01"))
+                .documentInformation(buildDoc(id, refs, FakerUtils.randomRemarks(), FakerUtils.randomReference()))
+                .subLedgerInformationList(subLedgers)
+                .selectDocumentList(List.of())
+                .referenceSitewiseFIFOList(List.of())
+                .paymentInformationList(payments)
+                .paymentProvided(!payments.isEmpty())
+                .needsPaymentInfoWarning(computeNeedsPaymentInfoWarning(subLedgers, payments, refs.getCashBankType()))
+                .invocationIndex(1)
+                .totalInvocations(1)
+                .build();
+    }
+
+    /** BOUND_AMOUNT_MIN_INVALID — zero line amount → rejected (NegativeValidation.ZERO_AMOUNT). */
+    public static MergedFinanceArVoucherData boundAmountMinInvalidTemplate(LiveDbRefs refs) {
+        String id = "DB_BOUND_AMT_MIN_INVALID";
+        List<SubLedgerInformation> subLedgers = buildSubLedgersWithAmount(
+                refs.getPendingSlNames(), refs.getOwnerSiteName(), refs.getSlToArApName(),
+                BigDecimal.ZERO.setScale(2, RoundingMode.HALF_UP));
+        return negativeData(id, "BOUNDARY | Zero Amount (reject)", refs, subLedgers,
+                refs.getCashBankName(), FakerUtils.randomReference(), NegativeValidation.ZERO_AMOUNT_DIALOG);
+    }
+
+    /**
+     * Shared builder for negative/boundary-invalid AR data: a valid SL set (or empty for blank-SL),
+     * the named field overridden, and {@code expectedValidation} stamped so
+     * {@code NEGATIVE_FORM_VALIDATION_BEHAVIOR} asserts the right popup. No payment.
+     */
+    private static MergedFinanceArVoucherData negativeData(
+            String id, String name, LiveDbRefs refs,
+            List<SubLedgerInformation> subLedgers,
+            String cashbank, String reference, NegativeValidation expected) {
+        return MergedFinanceArVoucherData.builder()
+                .masterTestData(buildMaster("createArVoucherNegativeBoundary", id, name))
+                .documentInformation(buildDoc(id, refs, FakerUtils.randomRemarks(), reference, cashbank))
+                .subLedgerInformationList(subLedgers)
+                .selectDocumentList(List.of())
+                .referenceSitewiseFIFOList(List.of())
+                .paymentInformationList(List.of())
+                .paymentProvided(false)
+                .needsPaymentInfoWarning(false)
+                .expectedValidation(expected)
+                .invocationIndex(1)
+                .totalInvocations(1)
+                .build();
+    }
+
+    /** Cash/Bank override variant of {@link #buildDoc(String, LiveDbRefs, String, String)} — used by
+     *  NEG_BLANK_CASHBANK ({@code cashbankName = null}). */
+    private static DocumentInformation buildDoc(
+            String id, LiveDbRefs refs, String remarks, String reference, String cashbankName) {
+        return new DocumentInformation(
+                id,
+                refs.getOwnerSiteName(),
+                refs.getDocSchemeName(),
+                cashbankName,
+                remarks,
+                LocalDate.now(),
+                reference
+        );
+    }
+
+    /** Builds one SL row per pending SL with an explicit {@code amountCr} and no adjustment —
+     *  used by T-03 boundary amount scenarios. */
+    private static List<SubLedgerInformation> buildSubLedgersWithAmount(
+            List<SlNameWithId> slNames, String ownerSiteName,
+            Map<String, String> slToArApName, BigDecimal amount) {
+        AtomicInteger line = new AtomicInteger(1);
+        return slNames.stream()
+                .map(sl -> {
+                    String key = PendingAdjQuery.compositeKey(sl.getSlName(), sl.getSlId());
+                    String glName = slToArApName.getOrDefault(key, null);
+                    return new SubLedgerInformation(
+                            null,
+                            String.valueOf(line.getAndIncrement()),
+                            sl.getSlName(),
+                            sl.getSlId(),
+                            glName, ownerSiteName, null, null,
+                            amount,
+                            null,
+                            null
+                    );
+                })
+                .collect(Collectors.toList());
     }
 
     // ─── Shared private builders ──────────────────────────────────────────────
@@ -468,7 +595,7 @@ public final class ArVoucherTemplateLoader {
         }
 
         int requested = variant.getBackDateDays();
-        int maxDays   = ConfigFactory.getConfig().financeBackdateMaxDays();
+        int maxDays   = ConfigFactory.getFinanceConfig().financeBackdateMaxDays();
 
         if (requested > maxDays) {
             throw new org.testng.SkipException(String.format(

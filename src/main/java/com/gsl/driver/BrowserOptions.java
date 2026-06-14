@@ -1,7 +1,7 @@
 package com.gsl.driver;
 
+import com.gsl.config.BrowserConfig;
 import com.gsl.config.ConfigFactory;
-import com.gsl.config.FrameworkConfig;
 import org.openqa.selenium.chrome.ChromeOptions;
 import org.openqa.selenium.edge.EdgeOptions;
 import org.openqa.selenium.firefox.FirefoxOptions;
@@ -15,7 +15,7 @@ public final class BrowserOptions {
     private BrowserOptions() {}
 
     public static ChromeOptions chrome() {
-        FrameworkConfig cfg = ConfigFactory.getConfig();
+        BrowserConfig cfg = ConfigFactory.getBrowserConfig();
         ChromeOptions opts = new ChromeOptions();
         opts.addArguments(
                 "--disable-notifications",
@@ -30,7 +30,7 @@ public final class BrowserOptions {
     }
 
     public static FirefoxOptions firefox() {
-        FrameworkConfig cfg = ConfigFactory.getConfig();
+        BrowserConfig cfg = ConfigFactory.getBrowserConfig();
         FirefoxOptions opts = new FirefoxOptions();
         if (cfg.headless())            opts.addArguments("-headless");
         if (cfg.incognito())           opts.addArguments("-private");
@@ -41,7 +41,7 @@ public final class BrowserOptions {
     }
 
     public static EdgeOptions edge() {
-        FrameworkConfig cfg = ConfigFactory.getConfig();
+        BrowserConfig cfg = ConfigFactory.getBrowserConfig();
         EdgeOptions opts = new EdgeOptions();
         opts.addArguments("--disable-notifications");
         if (cfg.headless())           opts.addArguments("--headless=new");

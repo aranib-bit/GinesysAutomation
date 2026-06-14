@@ -161,7 +161,7 @@ public final class WinRmLogFetcher implements LogFetcher {
      */
     private String buildPowerShellCommand(LogFetchRequest request) {
         long max = request.getMaxResultLines();
-        int maxRotated = ConfigFactory.getConfig().remoteLogsWinrmRotatedMaxFiles();
+        int maxRotated = ConfigFactory.getRemoteLogConfig().remoteLogsWinrmRotatedMaxFiles();
 
         boolean useEventLog = request.getLogPaths().stream()
                 .anyMatch(p -> p.startsWith(EVENT_LOG_PREFIX));

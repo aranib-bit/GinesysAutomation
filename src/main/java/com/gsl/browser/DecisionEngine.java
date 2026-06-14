@@ -1,7 +1,7 @@
 package com.gsl.browser;
 
 import com.gsl.config.ConfigFactory;
-import com.gsl.config.FrameworkConfig;
+import com.gsl.config.NetworkConfig;
 
 import java.util.List;
 
@@ -19,7 +19,7 @@ public final class DecisionEngine {
     private DecisionEngine() {}
 
     public static Decision evaluate(List<BrowserLogRecord> logs, boolean testPassed) {
-        FrameworkConfig cfg = ConfigFactory.getConfig();
+        NetworkConfig cfg = ConfigFactory.getNetworkConfig();
 
         if (!cfg.browserLogsEnabled() || cfg.browserLogsCaptureOnly()) {
             return Decision.PASS;

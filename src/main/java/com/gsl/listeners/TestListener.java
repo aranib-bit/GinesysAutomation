@@ -3,6 +3,11 @@ package com.gsl.listeners;
 import com.gsl.annotations.FrameworkAnnotation;
 import com.gsl.annotations.FrameworkValidation;
 import com.gsl.annotations.TestCaseId;
+import com.gsl.enums.AppOperation;
+import com.gsl.enums.ISubModule;
+import com.gsl.enums.SubModuleResolver;
+import com.gsl.pages.enums.Finance.Operations.OperationsMenuType;
+import com.gsl.pages.enums.topmenucomponent.MainModuleType;
 import com.gsl.browser.AdvancedJsLogger;
 import com.gsl.browser.AdvancedLogFetcher;
 import com.gsl.browser.BrowserLogRecord;
@@ -10,6 +15,9 @@ import com.gsl.browser.LogAttachment;
 import com.gsl.config.ConfigFactory;
 import com.gsl.diagnostics.DiagnosticReport;
 import com.gsl.diagnostics.FailureBundleOrchestrator;
+import com.gsl.diagnostics.RootCause;
+import com.gsl.diagnostics.RootCauseClassifier;
+import com.gsl.diagnostics.RootCauseInputs;
 import com.gsl.diagnostics.section.BrowserLogSection;
 import com.gsl.diagnostics.section.EventLogSection;
 import com.gsl.diagnostics.section.HtmlCaptureSection;
@@ -31,6 +39,7 @@ import com.gsl.remote.model.OSType;
 import com.gsl.remote.parser.RegexLogParser;
 import com.gsl.remote.retry.RetryPolicy;
 import com.gsl.reports.ActionTrailBuffer;
+import com.gsl.reports.SummaryReportBuilder;
 import com.gsl.reports.ApVoucherDescriptionBuilder;
 import com.gsl.reports.ArVoucherDescriptionBuilder;
 import com.gsl.reports.RetryHistoryBuffer;
@@ -141,6 +150,7 @@ public class TestListener implements ITestListener, ISuiteListener {
                 ReportConfigRenderer.renderAllSections(profile);
             }
         }
+        SummaryReportBuilder.build();
         ExtentReport.flushReports();
         Log.logHeap("suite-finish:" + suite.getName());
     }
@@ -175,6 +185,9 @@ public class TestListener implements ITestListener, ISuiteListener {
 
     @Override
     public void onTestStart(ITestResult result) {
+        if (SuiteCircuitBreaker.isTripped()) {
+            throw new org.testng.SkipException("Suite circuit breaker tripped — skipping remaining tests.");
+        }
 
         String methodName = result.getMethod().getMethodName();
         TestContextManager.setTestName(methodName);
@@ -288,6 +301,22 @@ public class TestListener implements ITestListener, ISuiteListener {
                 .getAnnotation(FrameworkAnnotation.class);
         if (fa != null) {
             ExtentReport.assignAuthor(fa.value());
+
+            // R-02: attach the shard node for this test (main node already created above)
+            MainModuleType module    = fa.module();
+            AppOperation   operation = fa.operation();
+            ISubModule     subModule;
+            try {
+                subModule = SubModuleResolver.resolve(module, fa.subModule());
+            } catch (IllegalArgumentException e) {
+                Log.warn("[TestListener] Unknown subModule '{}' — summary-only reporting", fa.subModule());
+                subModule = OperationsMenuType.ARVOUCHER;
+            }
+
+            String currentTitle = ExtentManager.getExtentTest() != null
+                    ? ExtentManager.getExtentTest().getModel().getName()
+                    : result.getMethod().getMethodName();
+            ExtentReport.createTest(currentTitle, module, subModule, operation);
         }
 
         // Correlation block — visible in Extent HTML alongside test steps
@@ -300,7 +329,7 @@ public class TestListener implements ITestListener, ISuiteListener {
                 Thread.currentThread().getName()));
 
         // Inject JS logger and reset log buffers so this test sees only its own activity
-        if (ConfigFactory.getConfig().browserLogsEnabled() && DriverManager.getDriver() != null) {
+        if (ConfigFactory.getNetworkConfig().browserLogsEnabled() && DriverManager.getDriver() != null) {
             AdvancedJsLogger.inject();
             AdvancedJsLogger.clearLogs();
         }
@@ -311,6 +340,7 @@ public class TestListener implements ITestListener, ISuiteListener {
 
     @Override
     public void onTestSuccess(ITestResult result) {
+        SuiteCircuitBreaker.recordPass();
         String label = frameworkCheckLabel.get();
         if (label != null) {
             ExtentReport.extent.setSystemInfo("Rule Validation [" + label + "]", "PASSED");
@@ -331,12 +361,13 @@ public class TestListener implements ITestListener, ISuiteListener {
             Log.warn("[TestListener] Diagnostic report attachment failed on success: {}", e.getMessage());
         }
 
-        ExtentReport.flushReports();
+        ExtentReport.recordTestResult(result, "PASS");
         TestContextManager.clear();
     }
 
     @Override
     public void onTestFailure(ITestResult result) {
+        SuiteCircuitBreaker.recordFail(result.getTestContext().getSuite());
         String label = frameworkCheckLabel.get();
         if (label != null) {
             String msg = result.getThrowable() != null ? result.getThrowable().getMessage() : "unknown";
@@ -355,9 +386,14 @@ public class TestListener implements ITestListener, ISuiteListener {
         ExtentLogger.fail(result.getName() + " FAILED");
 
         // Compact failure summary — exception, last step, environment fingerprint.
-        // Rendered before the full diagnostic bundle so it's the first thing visible on scroll.
+        // R-04: classify the root cause first and render it as a banner inside the summary box,
+        // so it's the first thing visible on scroll. Rendered before the full diagnostic bundle.
         try {
-            FailureSummaryRenderer.render(result);
+            RootCauseInputs inputs = RootCauseInputs.collect(result);
+            RootCause rootCause = RootCauseClassifier.classify(inputs);
+            Log.info("[RCA] [RootCause] Classified: {} | Test: {}",
+                    rootCause.category().label(), result.getName());
+            FailureSummaryRenderer.render(result, rootCause);
         } catch (Exception summaryEx) {
             Log.warn("[TestListener] Failure summary render failed: {}", summaryEx.getMessage());
         }
@@ -374,7 +410,7 @@ public class TestListener implements ITestListener, ISuiteListener {
             ExtentLogger.info("<b>Runtime Snapshot:</b> " + snapshotPath);
         }
 
-        ExtentReport.flushReports();
+        ExtentReport.recordTestResult(result, "FAIL");
         TestContextManager.clear();
     }
 
@@ -382,17 +418,25 @@ public class TestListener implements ITestListener, ISuiteListener {
     public void onTestSkipped(ITestResult result) {
         Log.warn("TEST SKIPPED: {}", result.getName());
 
+        Throwable t = result.getThrowable();
+        boolean dataSkip = t instanceof org.testng.SkipException;
         if (!ExtentManager.hasTest()) {
-            String title = "DATA PROVIDER FAILURE — " + result.getMethod().getMethodName();
+            // No node yet (skip surfaced at DataProvider time). A SkipException is a clean
+            // data-availability skip → amber; anything else is a genuine DataProvider failure → red.
+            String title = (dataSkip ? "SKIPPED — " : "DATA PROVIDER FAILURE — ")
+                    + result.getMethod().getMethodName();
             ExtentReport.createTest(title);
-            Throwable t = result.getThrowable();
             String detail = (t != null) ? t.getMessage() : "DataProvider returned no data";
-            ExtentLogger.fail(detail);
+            if (dataSkip) {
+                ExtentLogger.skip(detail);
+            } else {
+                ExtentLogger.fail(detail);
+            }
         } else {
-            Throwable t = result.getThrowable();
-            ExtentLogger.warning("Test skipped" + (t != null ? ": " + t.getMessage() : ""));
+            // Use an explicit SKIP entry (amber) rather than a WARNING so the node status reads as Skip.
+            ExtentLogger.skip("Test skipped" + (t != null ? ": " + t.getMessage() : ""));
         }
-        ExtentReport.flushReports();
+        ExtentReport.recordTestResult(result, "SKIP");
         TestContextManager.clear();
     }
 }

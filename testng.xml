@@ -1,10 +1,14 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE suite SYSTEM "http://testng.org/testng-1.0.dtd">
-<suite name="All Test Suite" parallel="tests" thread-count="10">
+<!-- data-provider-thread-count MUST be at suite level — TestNG ignores it on <test>.
+     Caps the parallel data-provider pool to 4 (== UI user count); TestNG admits 4 rows
+     and starts the next row's setUp only on a teardown. -->
+<suite name="All Test Suite" parallel="tests" thread-count="10" data-provider-thread-count="4">
     <listeners>
         <listener class-name="com.gsl.listeners.RetryAnnotationTransformer"/>
         <listener class-name="com.gsl.listeners.TestListener"/>
         <listener class-name="com.gsl.listeners.SuiteDataLoader"/>
+        <listener class-name="com.gsl.listeners.AnnotationMethodInterceptor"/>
     </listeners>
 
     <test name="AR Voucher Validation">
@@ -31,7 +35,7 @@
         </classes>
     </test>
 
-    <test name="SeleniumFramework" parallel="methods" thread-count="4" data-provider-thread-count="4">
+    <test name="SeleniumFramework" parallel="methods" thread-count="4">
         <classes>
             <class name="com.tests.Finance.Operations.Vouchers.CreateArVoucher"></class>
             <class name="com.tests.Finance.Operations.Vouchers.CreateApVoucher"></class>
