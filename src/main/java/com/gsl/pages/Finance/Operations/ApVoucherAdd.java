@@ -37,6 +37,12 @@ public class ApVoucherAdd implements CashBankParent {
         return this;
     }
 
+    /** Minimal header (Date → Voucher No → On Account) for the Add-Row-without-Cash/Bank validation. */
+    public ApVoucherAdd fillHeaderForAddRowValidation(DocumentInformation docInfo) {
+        apVoucherDocumentInformation.fillHeaderForAddRowValidation(docInfo);
+        return this;
+    }
+
     public ApVoucherAdd fillSubLedgerRowsForAdvance(MergedFinanceApVoucherData data, boolean includeRetry) {
         apVoucherSubLedgerInformation.fillSubLedgerRowsForAdvance(data, includeRetry);
         return this;

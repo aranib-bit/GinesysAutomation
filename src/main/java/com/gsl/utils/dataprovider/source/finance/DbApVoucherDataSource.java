@@ -922,14 +922,17 @@ public class DbApVoucherDataSource implements TestDataSource<MergedFinanceApVouc
 
         long distinctCount = countDistinctApSlCodes(jdbi, d, ouCodes, ownerSiteCodes, clsCode);
         int  maxAttempts   = (int) Math.max(1L, distinctCount);
-        // Ensure the candidate query retrieves ALL distinct SLs in one shot — if overfetch is
-        // smaller than distinctCount, some SLs are cut off by LIMIT and never tried, which is
-        // the root cause of "did not try all subledgers" EXHAUSTED failures.
+        // Ensure the candidate query retrieves ALL distinct (slname,slid) SLs in one shot — if
+        // overfetch is smaller than the candidate universe, some SLs are cut off by LIMIT and never
+        // tried, which is the root cause of "did not try all subledgers" EXHAUSTED failures.
+        // distinctCount now matches findApSlCandidates' (slname,slid) granularity; add a generous
+        // headroom multiplier so the LIMIT never under-fetches.
         int  overfetch = Math.max(
                 (int) Math.max(1L, distinctCount),
                 subLedgerCount * Math.max(1, fcfg.docSelectorOverfetchMultiplier()));
 
-        Log.info("[DocSelectorAP] distinctSlCount={} → maxAttempts={}", distinctCount, maxAttempts);
+        Log.info("[DocSelectorAP] distinctSlCount={} → maxAttempts={}, overfetch(LIMIT)={}, documentCount={}",
+                distinctCount, maxAttempts, overfetch, documentCount);
 
         int totalOverfetched   = 0;
         int lastCandidatesSize = 0;
@@ -1129,9 +1132,14 @@ public class DbApVoucherDataSource implements TestDataSource<MergedFinanceApVouc
     }
 
     /**
-     * Counts distinct {@code slcode} values in pending AP ({@code debit_credit='C'}).
-     * Used to derive the retry bound in {@link #selectApDocumentsAtomic}.
-     * When {@code clsCode > 0}, restricts to SLs with that classification.
+     * Counts distinct candidate sub-ledgers in pending AP ({@code debit_credit='C'}).
+     *
+     * <p>Counts distinct {@code (slname, slid)} pairs — the SAME granularity that
+     * {@link #findApSlCandidates} selects — NOT {@code slcode}. A single {@code slcode} can map to
+     * multiple {@code (slname, slid)} pairs; counting by {@code slcode} undercounts the candidate
+     * universe, which made {@code overfetch} (the SQL LIMIT) and {@code maxAttempts} too small so some
+     * sub-ledgers were never tried ("EXHAUSTED — no data" despite more SLs existing). When
+     * {@code clsCode > 0}, restricts to SLs with that classification.</p>
      */
     private static long countDistinctApSlCodes(
             Jdbi jdbi, DbDialect d,
@@ -1139,16 +1147,18 @@ public class DbApVoucherDataSource implements TestDataSource<MergedFinanceApVouc
 
         if (clsCode > 0) {
             String sql =
-                "SELECT COUNT(DISTINCT pa.slcode) " +
-                "FROM v_pending_adj pa " +
-                "JOIN finsl fs ON fs.slname = pa.slname AND fs.slid = pa.slid " +
-                "WHERE pa.admou_code IN (<ouCodes>) " +
-                "  AND pa.ReferenceSiteCode IN (<ownerSiteCodes>) " +
-                "  AND pa.debit_credit = 'C' " +
-                "  AND pa.pending > 0 " +
-                "  AND " + d.castToDate("pa.document_date") + " <= " + d.currentDate() + " " +
-                "  AND fs.clscode = :clsCode " +
-                "  AND fs.ext = 'N'";
+                "SELECT COUNT(*) FROM (" +
+                "  SELECT DISTINCT pa.slname, pa.slid " +
+                "  FROM v_pending_adj pa " +
+                "  JOIN finsl fs ON fs.slname = pa.slname AND fs.slid = pa.slid " +
+                "  WHERE pa.admou_code IN (<ouCodes>) " +
+                "    AND pa.ReferenceSiteCode IN (<ownerSiteCodes>) " +
+                "    AND pa.debit_credit = 'C' " +
+                "    AND pa.pending > 0 " +
+                "    AND " + d.castToDate("pa.document_date") + " <= " + d.currentDate() + " " +
+                "    AND fs.clscode = :clsCode " +
+                "    AND fs.ext = 'N'" +
+                ") t";
             return jdbi.withHandle(h ->
                 h.createQuery(sql)
                     .bindList("ouCodes", ouCodes)
@@ -1158,14 +1168,16 @@ public class DbApVoucherDataSource implements TestDataSource<MergedFinanceApVouc
         }
 
         String sql =
-            "SELECT COUNT(DISTINCT pa.slcode) " +
-            "FROM v_pending_adj pa " +
-            "JOIN finsl fs ON fs.slname = pa.slname AND fs.slid = pa.slid AND fs.ext = 'N' " +
-            "WHERE pa.admou_code IN (<ouCodes>) " +
-            "  AND pa.ReferenceSiteCode IN (<ownerSiteCodes>) " +
-            "  AND pa.debit_credit = 'C' " +
-            "  AND pa.pending > 0 " +
-            "  AND " + d.castToDate("pa.document_date") + " <= " + d.currentDate();
+            "SELECT COUNT(*) FROM (" +
+            "  SELECT DISTINCT pa.slname, pa.slid " +
+            "  FROM v_pending_adj pa " +
+            "  JOIN finsl fs ON fs.slname = pa.slname AND fs.slid = pa.slid AND fs.ext = 'N' " +
+            "  WHERE pa.admou_code IN (<ouCodes>) " +
+            "    AND pa.ReferenceSiteCode IN (<ownerSiteCodes>) " +
+            "    AND pa.debit_credit = 'C' " +
+            "    AND pa.pending > 0 " +
+            "    AND " + d.castToDate("pa.document_date") + " <= " + d.currentDate() +
+            ") t";
         return jdbi.withHandle(h ->
             h.createQuery(sql)
                 .bindList("ouCodes", ouCodes)

@@ -4082,20 +4082,6 @@ public final class JavascriptExecutorUtils {
         return result != null ? result.toString() : "";
     }
 
-    /** Read the committed {@code amount} value from the sub-ledger grid record (debug read-back). */
-    public static String getSubLedgerAmount(WebDriver driver, int rowIndex, String gridItemId) {
-        String script =
-                "try {" +
-                "  var grid = Ext.ComponentQuery.query('gridpanel[itemId=" + gridItemId + "]')[0];" +
-                "  if (!grid) return '';" +
-                "  var rec = grid.getStore().getAt(" + rowIndex + ");" +
-                "  if (!rec) return '';" +
-                "  var v = rec.get('amount');" +
-                "  return (v === null || v === undefined) ? '' : ('' + v);" +
-                "} catch(e) { return ''; }";
-        Object result = ((JavascriptExecutor) driver).executeScript(script);
-        return result != null ? result.toString() : "";
-    }
 
     private static void logReferenceSiteSelection(String excelValue, String verifyResult, int rowIndex) {
         if (verifyResult == null || verifyResult.startsWith("ERROR")) {
@@ -4133,11 +4119,18 @@ public final class JavascriptExecutorUtils {
      * @return the {@code inputEl.dom.id} to type into, or {@code null} on failure
      */
     public static String openAmountCellEditor(WebDriver driver, int rowIndex, String gridItemId) {
-        // Amount cell is clicksToEdit:2 — synthetic DOM double-click is unreliable on this build, so
-        // open the editor via the ExtJS editing plugin's startEdit() (the proven approach used by
-        // setDeductTdsForRow). Plain numberfield — no combo expand.
-        return openCellEditorViaStartEdit(driver, gridItemId, rowIndex,
-                "di==='amount'", false, "[SL_AMOUNT_NATIVE]");
+        // Amount is a plain numberfield (clicksToEdit:2 → double-click). Read the live editor's field.
+        String idScript =
+                "try {" +
+                "  var g = Ext.ComponentQuery.query('gridpanel[itemId=" + gridItemId + "]')[0];" +
+                "  if (!g) return '';" +
+                "  var plugin = g.editingPlugin || g.findPlugin('cellediting');" +
+                "  if (!plugin || !plugin.activeEditor) return '';" +
+                "  var field = plugin.activeEditor.field;" +
+                "  return (field && field.inputEl && field.inputEl.dom) ? field.inputEl.dom.id : '';" +
+                "} catch(e){ return ''; }";
+        return openCellEditorViaClick(driver, gridItemId, rowIndex,
+                "di==='amount'", idScript, 2, "[SL_AMOUNT_NATIVE]");
     }
 
     /**
@@ -4153,10 +4146,20 @@ public final class JavascriptExecutorUtils {
      * @return the combo {@code inputEl.dom.id}, or {@code null} on failure
      */
     public static String openReferenceSiteCellEditor(WebDriver driver, int rowIndex, String gridItemId) {
-        // Reference Site cell is clicksToEdit:2 — open via the ExtJS editing plugin's startEdit()
-        // (proven), then expand the combo picker for the type-and-select.
-        return openCellEditorViaStartEdit(driver, gridItemId, rowIndex,
-                "di==='referenceSiteCode' || di==='referenceSiteName'", true, "[SL_REFSITE_NATIVE]");
+        // Reference Site is a combo (clicksToEdit:2 → double-click). Read the live editor's field and
+        // expand the picker for the type-and-select.
+        String idScript =
+                "try {" +
+                "  var g = Ext.ComponentQuery.query('gridpanel[itemId=" + gridItemId + "]')[0];" +
+                "  if (!g) return '';" +
+                "  var plugin = g.editingPlugin || g.findPlugin('cellediting');" +
+                "  if (!plugin || !plugin.activeEditor) return '';" +
+                "  var field = plugin.activeEditor.field;" +
+                "  if (field && field.expand) { field.expand(); }" +
+                "  return (field && field.inputEl && field.inputEl.dom) ? field.inputEl.dom.id : '';" +
+                "} catch(e){ return ''; }";
+        return openCellEditorViaClick(driver, gridItemId, rowIndex,
+                "di==='referenceSiteCode' || di==='referenceSiteName'", idScript, 2, "[SL_REFSITE_NATIVE]");
     }
 
     /**

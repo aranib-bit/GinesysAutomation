@@ -175,7 +175,16 @@ public class APVoucherSubLedgerInformation extends VoucherSubLedgerInformationBa
                 if (idx > 0) addSubLedgerRow();
                 try {
                     setSubLedgerName(slName, slId, refSite, idx);
-                    setSubLedgerAmount(sl.getAmountDr().toPlainString(), idx);
+                    // The Amount (Dr) cell is disabled only when Deduct TDS = Yes — the app then
+                    // calculates & populates it via the native "Calc. Amount → Calculate TDS & Net
+                    // Payable" popup (handled later by fillTdsAndNetPayable). For Deduct TDS = No
+                    // (incl. non-TDS-applicable rows) the cell is editable → type Amount natively.
+                    if (isAmountAutoCalculated(slName, refSite, slId)) {
+                        ExtentLogger.info("[SL_AMOUNT] Row " + idx + " (" + slName + "): Deduct TDS = Yes — "
+                                + "Amount is app-calculated via Calc TDS / Net Payable; skipping native amount entry.");
+                    } else {
+                        setSubLedgerAmount(sl.getAmountDr().toPlainString(), idx);
+                    }
                 } catch (InterruptedException e) {
                     Thread.currentThread().interrupt();
                     throw new RuntimeException("Interrupted setting sub-ledger amount on row " + idx, e);
@@ -412,6 +421,15 @@ public class APVoucherSubLedgerInformation extends VoucherSubLedgerInformationBa
         new Actions(DriverManager.getDriver()).doubleClick(cell).perform();
         JavascriptExecutorUtils.waitForExtJS();
 
+        // Attempt-and-detect: a non-TDS-applicable row reads 'No' but its Deduct TDS cell is NOT
+        // editable, so the inline editor (and its dropdown trigger) never opens. Detect that and skip
+        // silently rather than time out trying to change a cell that cannot be changed.
+        if (!SeleniumUtils.isElementPresent(DEDUCT_TDS_TRIGGER, 3)) {
+            ExtentLogger.info("[DEDUCT_TDS_NATIVE] Row '" + slName + "': Deduct TDS cell not editable "
+                    + "(non-TDS-applicable) — skipping change (current='" + current + "', requested='" + value + "').");
+            return;
+        }
+
         SeleniumUtils.click(DEDUCT_TDS_TRIGGER, WaitType.CLICKABLE, "DEDUCT_TDS_TRIGGER");
 
         By option = "Yes".equalsIgnoreCase(value) ? DEDUCT_TDS_OPTION_YES : DEDUCT_TDS_OPTION_NO;
@@ -539,6 +557,31 @@ public class APVoucherSubLedgerInformation extends VoucherSubLedgerInformationBa
         return JavascriptExecutorUtils.getSubLedgerReferenceSiteName(DriverManager.getDriver(), rowIndex, AP_GRID_ITEM_ID);
     }
 
+    /**
+     * Detects (natively, from the UI) whether a sub-ledger row is TDS-applicable by reading the
+     * Deduct TDS cell. A TDS-applicable row shows a deduct value ({@code Yes}/{@code No}); a
+     * non-applicable row shows {@code TDS not appl.} (or blank). For TDS-applicable rows the
+     * Amount (Dr) cell is disabled and is populated by the Calc TDS / Net Payable flow, so native
+     * amount typing must be skipped.
+     *
+     * <p>The Amount (Dr) cell is disabled ONLY when TDS is actually being deducted, i.e. the Deduct
+     * TDS cell reads {@code Yes}. A non-TDS-applicable row reads {@code No} (NOT "TDS not appl." in
+     * native mode) and its Amount cell is editable — so {@code No} (and anything that is not
+     * {@code Yes}) means the amount must be typed natively.</p>
+     */
+    private boolean isAmountAutoCalculated(String slName, String refSite, String slId) {
+        By cell = By.xpath(
+                (slId != null && !slId.isBlank())
+                        ? String.format(DEDUCT_TDS_CELL_WITH_SLID, slName, refSite, slId)
+                        : String.format(DEDUCT_TDS_CELL, slName, refSite));
+        String t = SeleniumUtils.getText(cell, "DEDUCT_TDS_CELL");
+        t = (t == null) ? "" : t.trim();
+        boolean autoCalculated = "Yes".equalsIgnoreCase(t);
+        ExtentLogger.info("[SL_AMOUNT] Row '" + slName + "': Deduct TDS cell='" + t
+                + "' → amount auto-calculated (skip native amount)=" + autoCalculated);
+        return autoCalculated;
+    }
+
     private void setSubLedgerAmount(String subLedgerAmount, int rowIndex) throws InterruptedException {
         String inputId = JavascriptExecutorUtils.openAmountCellEditor(
                 DriverManager.getDriver(), rowIndex, AP_GRID_ITEM_ID);
@@ -554,11 +597,6 @@ public class APVoucherSubLedgerInformation extends VoucherSubLedgerInformationBa
         // and the typed amount is never written to the underlying record, causing "Amount is required".
         SeleniumUtils.pressTab(amountInput, "SL_AMOUNT");
         JavascriptExecutorUtils.waitForExtJS();
-        // Debug read-back: confirm the typed value committed to the store record.
-        String committed = JavascriptExecutorUtils.getSubLedgerAmount(
-                DriverManager.getDriver(), rowIndex, AP_GRID_ITEM_ID);
-        ExtentLogger.info("[SL_AMOUNT_NATIVE] Row " + rowIndex + ": typed='" + subLedgerAmount
-                + "', committed amount='" + committed + "'");
     }
 
     private void handlePaymentInformation(

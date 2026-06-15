@@ -521,9 +521,10 @@ public final class ApVoucherPredicateFactory {
     public static final Supplier<BiPredicate<MergedFinanceApVoucherData, ApVoucherAdd>>
         NEG_BLANK_CASHBANK_ADD_ROW_BEHAVIOR = () -> (data, page) -> {
 
-            StepExecutor.step("Fill Document Information (Cash/Bank left blank)", () -> {
-                page.fillDocumentHeader(data.getDocumentInformation());
-                ReportLogger.info("Cash/Bank skipped — null value triggers guard in fillDocumentHeader");
+            StepExecutor.step("Fill Document Information (Date, Voucher No, On Account=Yes only)", () -> {
+                page.fillHeaderForAddRowValidation(data.getDocumentInformation());
+                ReportLogger.info("Minimal header: Date → Voucher No → On Account=Yes "
+                        + "(Reference, Cash/Bank, Remarks intentionally skipped)");
             });
 
             StepExecutor.step("Click Add Row — expect Error popup (Cash/Bank not selected)", () -> {

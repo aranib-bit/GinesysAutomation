@@ -43,6 +43,18 @@ public class APVoucherDocumentInformation extends VoucherDocumentInformationBase
         return this;
     }
 
+    /**
+     * Minimal header for the "Add Row without Cash/Bank" validation (FIN-AP-ADD-NEG-01):
+     * sets only Date → Voucher No → On Account (=Yes). Reference, Cash/Bank, and Remarks are
+     * intentionally NOT filled — clicking Add Row next must raise "Please select cash/bank ledger first."
+     */
+    public APVoucherDocumentInformation fillHeaderForAddRowValidation(DocumentInformation docInfo) {
+        setDocumentDate(formatDate(docInfo.getDocumentdate()));
+        setDocScheme(docInfo.getVoucherno());
+        setOnAccount(docInfo.isOnAccount(), docInfo.getOnAccountConfirmAction());
+        return this;
+    }
+
     /** Fills only the Cash/Bank field — used in recovery behaviors after dismissing an error popup. */
     public APVoucherDocumentInformation fillCashBankOnly(String cashbank) {
         if (cashbank != null && !cashbank.isBlank()) {
