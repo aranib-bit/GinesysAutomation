@@ -6,83 +6,74 @@ import com.gsl.testdata.dto.MergedFinanceArVoucherData;
 import java.util.List;
 
 /**
- * P3: Renders the "Database Data Gathering" section into the ExtentReport.
+ * Renders the "🗄 Database Data Gathering" section into the ExtentReport as a
+ * named child node — appearing in the step timeline exactly like "Logs & Diagnostics".
  *
- * <p>This section is inserted BEFORE the "Test Data" tables (ArVoucherExtentDescriptionLogger)
- * and BEFORE the first step node, giving it the same visual prominence as "Login to Application".
- *
- * <p>The section shows:
+ * <p>The node shows:
  * <ul>
- *   <li>The SQL queries / resolution logic used to discover test data from the live DB</li>
  *   <li>Resolved reference values (owner site, GL, doc scheme, pending SLs, open docs)</li>
+ *   <li>Generated test data summary (scenario, sub-ledgers, TDS rows, select documents)</li>
+ *   <li>All SQL queries executed during data gathering, each with execution time</li>
  * </ul>
  *
- * <p>Content is populated by {@code DbArVoucherDataSource.loadFreshForScenario()} into
- * {@link MergedFinanceArVoucherData#getDbGatheringLog()}.
- * For Excel-mode tests the list will be empty and this method is a no-op.
+ * <p>Content is populated by {@code DbApVoucherDataSource.buildAndSetGatheringLog()} /
+ * {@code DbArVoucherDataSource.loadFreshForScenario()} into the DTO's
+ * {@code dbGatheringLog} list. For Excel-mode tests the list is empty and this method
+ * is a no-op.
  */
 public final class DbGatheringExtentLogger {
 
     private DbGatheringExtentLogger() {}
 
     /**
-     * Logs the DB data-gathering section to the current ExtentTest node.
-     * No-op if {@code data} is null, in Excel mode (dbGatheringLog is empty),
-     * or if no ExtentTest is currently active.
+     * AR Voucher overload — renders the gathering node as a step-timeline child node.
+     * No-op when {@code data} is null, in Excel mode (dbGatheringLog is empty),
+     * or when no ExtentTest is active.
      */
     public static void log(MergedFinanceArVoucherData data) {
         if (data == null) return;
-        List<String> lines = data.getDbGatheringLog();
-        if (lines == null || lines.isEmpty()) return;
-        if (!ExtentManager.hasTest()) return;
-
-        StringBuilder html = new StringBuilder();
-        html.append("<details style='margin:4px 0;border:1px solid #d0e8ff;border-radius:3px;'>")
-            .append("<summary style='cursor:pointer;font-weight:bold;font-size:12px;")
-            .append("padding:5px 8px;background:#eaf4ff;color:#1a4d80;'>")
-            .append("&#x1F5C4; Database Data Gathering")
-            .append("</summary>")
-            .append("<div style='padding:6px 8px;'>")
-            .append("<pre style='font-size:11px;font-family:monospace;margin:0;white-space:pre-wrap;")
-            .append("background:#f8fbff;padding:8px;border-left:3px solid #6aacf0;line-height:1.5;'>");
-
-        for (String line : lines) {
-            html.append(escHtml(line)).append("\n");
-        }
-
-        html.append("</pre></div></details>");
-
-        ExtentLogger.infoHtml(html.toString());
+        render(data.getDbGatheringLog());
     }
 
     /**
-     * AP Voucher overload — same rendering logic as the AR version.
+     * AP Voucher overload — renders the gathering node as a step-timeline child node.
      * No-op when {@code data} is null, in Excel mode (dbGatheringLog is empty),
      * or when no ExtentTest is active.
      */
     public static void log(MergedFinanceApVoucherData data) {
         if (data == null) return;
-        List<String> lines = data.getDbGatheringLog();
+        render(data.getDbGatheringLog());
+    }
+
+    // ── Shared rendering ─────────────────────────────────────────────────────
+
+    private static void render(List<String> lines) {
         if (lines == null || lines.isEmpty()) return;
         if (!ExtentManager.hasTest()) return;
 
-        StringBuilder html = new StringBuilder();
-        html.append("<details style='margin:4px 0;border:1px solid #d0e8ff;border-radius:3px;'>")
-            .append("<summary style='cursor:pointer;font-weight:bold;font-size:12px;")
-            .append("padding:5px 8px;background:#eaf4ff;color:#1a4d80;'>")
-            .append("&#x1F5C4; Database Data Gathering (AP Voucher)")
-            .append("</summary>")
-            .append("<div style='padding:6px 8px;'>")
-            .append("<pre style='font-size:11px;font-family:monospace;margin:0;white-space:pre-wrap;")
-            .append("background:#f8fbff;padding:8px;border-left:3px solid #6aacf0;line-height:1.5;'>");
-
+        // Split: SQL lines (start with "[DB Query") go to technical node; the rest to business node.
+        java.util.List<String> businessLines = new java.util.ArrayList<>();
+        java.util.List<String> sqlLines      = new java.util.ArrayList<>();
         for (String line : lines) {
-            html.append(escHtml(line)).append("\n");
+            if (line != null && line.startsWith("[DB Query")) sqlLines.add(line);
+            else businessLines.add(line);
         }
 
-        html.append("</pre></div></details>");
+        if (!businessLines.isEmpty()) {
+            ExtentLogger.infoHtmlOnChildNode("📋 Test Data Resolution", buildPre(businessLines));
+        }
+        if (!sqlLines.isEmpty()) {
+            ExtentLogger.infoHtmlOnChildNode("🔍 SQL Queries Executed", buildPre(sqlLines));
+        }
+    }
 
-        ExtentLogger.infoHtml(html.toString());
+    private static String buildPre(java.util.List<String> lines) {
+        StringBuilder html = new StringBuilder();
+        html.append("<pre style='font-size:11px;font-family:monospace;margin:0;white-space:pre-wrap;")
+            .append("background:#f8fbff;padding:8px;border-left:3px solid #6aacf0;line-height:1.5;'>");
+        for (String line : lines) html.append(escHtml(line)).append("\n");
+        html.append("</pre>");
+        return html.toString();
     }
 
     private static String escHtml(String s) {

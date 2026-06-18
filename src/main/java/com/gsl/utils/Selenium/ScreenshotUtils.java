@@ -66,7 +66,9 @@ public final class ScreenshotUtils {
             Dimension dim = driver.manage().window().getSize();
             viewport = dim.getWidth() + "x" + dim.getHeight();
         } catch (Exception ignored) {}
+        String locator = CurrentLocatorHolder.get();
+        CurrentLocatorHolder.clear();
         return new ScreenshotMetadata(filePath, pageUrl, scrollY, viewport,
-                stepLabel != null ? stepLabel : "");
+                stepLabel != null ? stepLabel : "", locator);
     }
 }

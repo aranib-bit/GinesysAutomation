@@ -1,16 +1,16 @@
 <!DOCTYPE aspectj PUBLIC "-//AspectJ//DTD//EN" "https://www.eclipse.org/aspectj/dtd/aspectj.dtd">
 <aspectj>
     <weaver options="-Xlint:ignore">
-        <!-- ALL com.gsl sub-packages — covers every existing and future package -->
         <include within="com.gsl..*"/>
-        <!-- ALL test classes — entry points appear in trace.log -->
         <include within="com.tests..*"/>
-        <!-- Exclude reports to prevent infinite loops on ExtentLogger/ReportLogger -->
+        <!-- Mirror the pointcut exclusions in LoggingAspect exactly -->
         <exclude within="com.gsl.reports..*"/>
-        <!-- Note: com.gsl.aspects is NOT excluded here so LTW can inject aspectOf() into LoggingAspect.
-             Self-interception is prevented by !within(com.gsl.aspects..*) in the pointcut expression. -->
+        <exclude within="com.gsl.testdata..*"/>
+        <exclude within="com.gsl.utils.Selenium.ScreenshotUtils"/>
+        <exclude within="com.gsl.listeners..*"/>
     </weaver>
     <aspects>
         <aspect name="com.gsl.aspects.LoggingAspect"/>
+        <aspect name="io.github.sskorol.core.DataSupplierAspect"/>
     </aspects>
 </aspectj>

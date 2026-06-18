@@ -165,6 +165,16 @@ public class FinVchDetApValidator {
                     .isEqualTo(expectedCode);
 
             validateInstrumentDetails(soft, row, paymentInfo, finSl, finGl);
+
+            // Reference site: only assert when test data provides an expected value.
+            String expectedRefSite = line.getReferenceSite();
+            if (expectedRefSite != null && !expectedRefSite.isBlank()) {
+                soft.assertThat(row.getRefAdmsiteName())
+                        .as("[Level 2] finvchdet.ref_admsite_name expected [" + expectedRefSite + "]"
+                                + " for slname=" + finSl.getSlname()
+                                + " (slcode=" + finSl.getSlcode() + ")")
+                        .isEqualTo(expectedRefSite);
+            }
         }
     }
 
@@ -275,7 +285,8 @@ public class FinVchDetApValidator {
                                              Map<Long, String> glNames) {
         String[] headers = {"vchcode", "slcode", "slname", "glcode", "glname",
                             "refno", "damount", "camount",
-                            "chqno", "chqdt", "payment_mode", "tds_app", "narration"};
+                            "chqno", "chqdt", "payment_mode", "tds_app", "narration",
+                            "ref_admsite_name"};
         String[][] table = new String[rows.size() + 1][headers.length];
         table[0] = headers;
         for (int i = 0; i < rows.size(); i++) {
@@ -286,7 +297,8 @@ public class FinVchDetApValidator {
                 str(r.getGlcode()),  glNames.getOrDefault(r.getGlcode(), "—"),
                 str(r.getRefno()),   str(r.getDamount()), str(r.getCamount()),
                 str(r.getChqno()),   str(r.getChqdt()),   str(r.getPaymentMode()),
-                tdsAppLabel(r.getTdsApp()),  str(r.getNarration())
+                tdsAppLabel(r.getTdsApp()),  str(r.getNarration()),
+                str(r.getRefAdmsiteName())
             };
         }
         return table;

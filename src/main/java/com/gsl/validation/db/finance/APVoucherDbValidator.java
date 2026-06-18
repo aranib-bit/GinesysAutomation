@@ -1,8 +1,11 @@
 package com.gsl.validation.db.finance;
 
+import com.aventstack.extentreports.ExtentTest;
 import com.gsl.model.finance.FinPost;
 import com.gsl.model.finance.FinVchMain;
 import com.gsl.reports.ExtentLogger;
+import com.gsl.reports.ExtentManager;
+import com.gsl.testdata.dto.MergedFinanceApVoucherData;
 import org.testng.Assert;
 
 import java.util.Collections;
@@ -37,6 +40,9 @@ public class APVoucherDbValidator {
                 "voucherNo is null — AP voucher creation may have failed");
         Assert.assertFalse(context.getVoucherNo().isBlank(), "voucherNo is blank");
 
+        ExtentTest test = ExtentManager.getExtentTest();
+        if (test != null) test.assignCategory("DB Validation");
+
         ExtentLogger.info("══════════════════════════════════════════════════");
         ExtentLogger.info("AP Voucher DB Validation START — [" + context.getVoucherNo() + "]");
         ExtentLogger.info("══════════════════════════════════════════════════");
@@ -63,5 +69,45 @@ public class APVoucherDbValidator {
         ExtentLogger.info("══════════════════════════════════════════════════");
         ExtentLogger.info("AP Voucher DB Validation COMPLETE — ALL PASSED [" + context.getVoucherNo() + "]");
         ExtentLogger.info("══════════════════════════════════════════════════");
+
+        renderBusinessSummary(context);
+    }
+
+    private static void renderBusinessSummary(ApVoucherDbContext ctx) {
+        if (!ExtentManager.hasTest()) return;
+
+        MergedFinanceApVoucherData data = ctx.getTestData();
+        boolean hasCheque = data != null
+                && data.getPaymentInformationList() != null
+                && data.getPaymentInformationList().stream().anyMatch(p ->
+                        p.getPaymentMode() != null
+                        && p.getPaymentMode().toString().toUpperCase().contains("CHEQUE"));
+        boolean hasRefSite = data != null
+                && data.getReferenceSitewiseFIFOList() != null
+                && !data.getReferenceSitewiseFIFOList().isEmpty();
+
+        StringBuilder html = new StringBuilder();
+        html.append("<div style='font-family:monospace;font-size:13px;line-height:2;padding:10px 12px;")
+            .append("background:#f0fff4;border-left:4px solid #38a169;border-radius:2px;'>");
+        html.append("<b style='font-size:14px;'>BUSINESS VALIDATION</b><br/>");
+        html.append("&#10003;&nbsp; Voucher created &mdash; Document No: <b>")
+            .append(escHtml(ctx.getVoucherNo())).append("</b><br/>");
+        html.append("&#10003;&nbsp; Amount matched (finvchmain.camount verified)<br/>");
+        html.append("&#10003;&nbsp; Line amounts validated (finvchdet.damount per SL row)<br/>");
+        html.append("&#10003;&nbsp; GL balanced (finpost entries present and balanced)<br/>");
+        html.append("&#10003;&nbsp; Adjustment tagged (fintag entries linked to voucher)<br/>");
+        if (hasCheque) {
+            html.append("&#10003;&nbsp; Cheque number persisted (chqno + chqdt in finvchdet)<br/>");
+        }
+        if (hasRefSite) {
+            html.append("&#10003;&nbsp; Reference site mapped (ref_admsite_name in finvchdet)<br/>");
+        }
+        html.append("</div>");
+
+        ExtentLogger.infoHtmlOnChildNode("&#9989; Business Validation Summary", html.toString());
+    }
+
+    private static String escHtml(String s) {
+        return s == null ? "" : s.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;");
     }
 }

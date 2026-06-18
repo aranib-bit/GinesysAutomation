@@ -1,0 +1,60 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE suite SYSTEM "http://testng.org/testng-1.0.dtd">
+<!--
+    AP Voucher — Full Regression Suite — Phase-1 + Phase-2 + Phase-3 run sequentially.
+    Parallel within each phase; phases are sequential (Phase-1 finishes before Phase-2 starts).
+
+    Run (all phases): mvn clean test -Pregression-apvoucher
+-->
+<!-- data-provider-thread-count MUST be at suite level — TestNG ignores it on <test>.
+     A suite has ONE shared DP pool, so it is set to the largest value any phase requests (8).
+     Real concurrency is still hard-capped at the UI-user count (4) by the UserPool semaphore;
+     any extra DP threads park harmlessly. -->
+<suite name="AP Voucher — Full Combination (Mandatory + Phase-1/2/3)" parallel="tests" thread-count="10" data-provider-thread-count="8">
+    <listeners>
+        <listener class-name="com.gsl.listeners.RetryAnnotationTransformer"/>
+        <listener class-name="com.gsl.listeners.TestListener"/>
+        <listener class-name="com.gsl.listeners.SuiteDataLoader"/>
+        <listener class-name="com.gsl.listeners.AnnotationMethodInterceptor"/>
+    </listeners>
+
+    <test name="AP Voucher Validation — Mandatory">
+        <parameter name="voucherDomain" value="AP"/>
+        <parameter name="executionType" value="MANDATORY"/>
+        <classes>
+            <class name="com.tests.Validation.RuleTest"/>
+        </classes>
+    </test>
+
+    <test name="AP Voucher Create — Mandatory" parallel="methods" thread-count="4">
+        <parameter name="apv.group" value="MANDATORY"/>
+        <classes>
+            <class name="com.tests.Finance.Operations.Vouchers.CreateApVoucher"/>
+        </classes>
+    </test>
+
+    <!-- Mandatory runs first; regression phases run sequentially after -->
+    <test name="AP Voucher Create — Regression Phase-1"
+          parallel="methods" thread-count="6">
+        <parameter name="apv.group" value="REGRESSION_PHASE1"/>
+        <classes>
+            <class name="com.tests.Finance.Operations.Vouchers.CreateApVoucher"/>
+        </classes>
+    </test>
+
+    <test name="AP Voucher Create — Regression Phase-2"
+          parallel="methods" thread-count="8">
+        <parameter name="apv.group" value="REGRESSION_PHASE2"/>
+        <classes>
+            <class name="com.tests.Finance.Operations.Vouchers.CreateApVoucher"/>
+        </classes>
+    </test>
+
+    <test name="AP Voucher Create — Regression Phase-3"
+          parallel="methods" thread-count="4">
+        <parameter name="apv.group" value="REGRESSION_PHASE3"/>
+        <classes>
+            <class name="com.tests.Finance.Operations.Vouchers.CreateApVoucher"/>
+        </classes>
+    </test>
+</suite>

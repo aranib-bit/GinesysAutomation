@@ -1,0 +1,31 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE suite SYSTEM "http://testng.org/testng-1.0.dtd">
+<!--
+    Regression Phase-1 — AP Voucher core regression scenarios.
+    Includes advance payment, document payment, and negative/boundary validations.
+
+    Run: mvn clean test -Pregression-apvoucher-phase1
+-->
+<!-- data-provider-thread-count MUST be at suite level — TestNG ignores it on <test>. -->
+<suite name="AP Voucher — Regression Phase-1" parallel="none" data-provider-thread-count="4">
+    <listeners>
+        <listener class-name="com.gsl.listeners.RetryAnnotationTransformer"/>
+        <listener class-name="com.gsl.listeners.TestListener"/>
+        <listener class-name="com.gsl.listeners.SuiteDataLoader"/>
+        <listener class-name="com.gsl.listeners.AnnotationMethodInterceptor"/>
+    </listeners>
+
+    <test name="AP Voucher Create — Regression Phase-1"
+          parallel="methods" thread-count="4">
+        <!--
+          apv.group=REGRESSION_PHASE1 — Phase-1 regression scenarios for AP Voucher.
+          With the suite-level DP pool of 4, up to 4 data rows run concurrently.
+          The 3 test methods (advance, document, negative/boundary) can overlap within this pool.
+        -->
+        <parameter name="apv.group" value="REGRESSION_PHASE1"/>
+        <classes>
+            <class name="com.tests.Finance.Operations.Vouchers.CreateApVoucher"/>
+        </classes>
+    </test>
+
+</suite>

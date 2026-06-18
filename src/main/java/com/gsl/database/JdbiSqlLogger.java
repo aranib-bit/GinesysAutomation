@@ -10,35 +10,118 @@ import java.util.regex.Pattern;
 /**
  * JDBI {@link SqlLogger} that logs every executed statement as effective SQL —
  * i.e., the {@code @SqlQuery} template with {@code :paramName} placeholders
- * replaced by the actual bound values.
+ * replaced by the actual bound values, including {@code bindList} IN-list expansion.
  *
  * <p>Registered once in {@link DatabaseManager}; fires automatically for every
- * DAO call.  No manual {@code DbQueryLogger.log()} calls needed in validators.
+ * DAO call. No manual {@code DbQueryLogger.log()} calls needed in validators.
+ *
+ * <p>During the data-loading phase ({@link DbQueryBuffer#isActive()}), resolved
+ * query lines are buffered via {@link DbQueryBuffer#add} instead of being written
+ * directly to the Extent Report — they are flushed into the
+ * "🗄 Database Data Gathering" child node at the end of
+ * {@code DbApVoucherDataSource.loadFreshForScenario()}.
+ *
+ * <p>Outside the data-loading phase (e.g., in validators) lines go directly to
+ * {@link ReportLogger} as before.
  */
 public class JdbiSqlLogger implements SqlLogger {
 
     private static final Pattern NAMED_PARAM = Pattern.compile(":(\\w+)");
 
+    /** Stores nanoTime at statement start so logAfterExecution can compute elapsed ms. */
+    private static final ThreadLocal<Long> START_NS = new ThreadLocal<>();
+
+    // ── Before execution: resolve SQL and start timing ────────────────────────
+
     @Override
     public void logBeforeExecution(StatementContext ctx) {
+        START_NS.set(System.nanoTime());
         try {
             String rawSql = ctx.getRawSql();
             if (rawSql == null || rawSql.isBlank()) return;
 
+            // Step 1: substitute named :paramName placeholders
             var binding = ctx.getBinding();
             Matcher m = NAMED_PARAM.matcher(rawSql);
             StringBuffer sb = new StringBuffer();
             while (m.find()) {
                 String name  = m.group(1);
-                String value = binding.findForName(name,ctx)
+                @SuppressWarnings("deprecation")
+                String value = binding.findForName(name, ctx)
                         .map(arg -> LogCapturePreparedStatement.capture(arg, ctx))
                         .orElse("?");
                 m.appendReplacement(sb, Matcher.quoteReplacement(value));
             }
             m.appendTail(sb);
-            ReportLogger.info("[DB Query] " + sb);
+            String partialSql = sb.toString();
+
+            // Step 2: if '?' remains (from bindList expansion), use getRenderedSql()
+            // and substitute positional params — fixes IN () for bindList queries
+            if (partialSql.contains("?")) {
+                String rendered = ctx.getRenderedSql();
+                if (rendered != null && !rendered.isBlank()) {
+                    partialSql = substitutePositional(rendered, ctx);
+                }
+            }
+
+            // Store resolved SQL for logAfterExecution to append timing
+            ctx.define("__resolvedSql__", partialSql);
+
         } catch (Exception e) {
-            ReportLogger.info("[DB Query] (could not resolve: " + e.getMessage() + ")");
+            ctx.define("__resolvedSql__", "(could not resolve: " + e.getMessage() + ")");
         }
+    }
+
+    // ── After execution: emit with timing ─────────────────────────────────────
+
+    @Override
+    public void logAfterExecution(StatementContext ctx) {
+        try {
+            String resolvedSql = (String) ctx.getAttribute("__resolvedSql__");
+            if (resolvedSql == null) return;
+
+            long elapsedMs = START_NS.get() != null
+                    ? (System.nanoTime() - START_NS.get()) / 1_000_000L
+                    : -1;
+            START_NS.remove();
+
+            String line = elapsedMs >= 0
+                    ? "[DB Query ⏱ " + elapsedMs + "ms] " + resolvedSql
+                    : "[DB Query] " + resolvedSql;
+
+            if (DbQueryBuffer.isActive()) {
+                DbQueryBuffer.add(line);
+            } else {
+                ReportLogger.info(line);
+            }
+        } catch (Exception ignored) {
+            START_NS.remove();
+        }
+    }
+
+    // ── Helpers ───────────────────────────────────────────────────────────────
+
+    /**
+     * Substitutes positional {@code ?} placeholders in the rendered SQL with their
+     * actual bound values. Handles bindList queries where JDBI expands
+     * {@code <paramName>} to one {@code ?} per list element.
+     */
+    private static String substitutePositional(String sql, StatementContext ctx) {
+        StringBuilder out = new StringBuilder(sql.length() + 64);
+        int paramIdx = 1;
+        for (int i = 0; i < sql.length(); i++) {
+            if (sql.charAt(i) == '?') {
+                final int pos = paramIdx++;
+                @SuppressWarnings("deprecation")
+                String val = ctx.getBinding()
+                        .findForPosition(pos)
+                        .map(a -> LogCapturePreparedStatement.capture(a, ctx))
+                        .orElse("?");
+                out.append(val);
+            } else {
+                out.append(sql.charAt(i));
+            }
+        }
+        return out.toString();
     }
 }

@@ -80,7 +80,7 @@ public class DocumentPopup {
         WebDriverWait wait = WaitUtils.webDriverWait();
 
         System.out.println("Waiting for payment-info-check warning dialog (" + warning + ")...");
-        wait.until(ExpectedConditions.visibilityOfElementLocated(warning.proceedLocator()));
+        WaitUtils.fluentWaitBuilder().until(ExpectedConditions.visibilityOfElementLocated(warning.proceedLocator()));
         System.out.println("Payment info warning dialog confirmed visible for " + warning);
 
         // Non-blocking message-text read for diagnostics — same AOP caveat as before.
@@ -122,7 +122,7 @@ public class DocumentPopup {
         WebDriverWait wait = WaitUtils.webDriverWait();
 
         System.out.println("Waiting for validation error popup to appear...");
-        wait.until(ExpectedConditions.visibilityOfElementLocated(Loc.MESSAGE_TEXT));
+        WaitUtils.fluentWaitBuilder().until(ExpectedConditions.visibilityOfElementLocated(Loc.MESSAGE_TEXT));
         String actualMessage = driver.findElement(Loc.MESSAGE_TEXT).getText();
         System.out.println("Validation error popup message: " + actualMessage);
 
@@ -144,7 +144,7 @@ public class DocumentPopup {
      */
     public String verifyErrorHeader(String expectedHeader) {
         WebDriver driver = DriverManager.getDriver();
-        WaitUtils.webDriverWait().until(
+        WaitUtils.fluentWaitBuilder().until(
                 ExpectedConditions.visibilityOfElementLocated(By.id("messagebox-1001_header-title-textEl")));
         String actual = driver.findElement(By.id("messagebox-1001_header-title-textEl")).getText().trim();
         if (!actual.contains(expectedHeader)) {
@@ -171,7 +171,7 @@ public class DocumentPopup {
         WebDriverWait wait = WaitUtils.webDriverWait();
 
         System.out.println("Waiting for message box after save");
-        wait.until(ExpectedConditions.visibilityOfElementLocated(Loc.MESSAGE_TEXT));
+        WaitUtils.fluentWaitBuilder().until(ExpectedConditions.visibilityOfElementLocated(Loc.MESSAGE_TEXT));
         System.out.println("Messagebox is now visible");
 
         // If the app unexpectedly shows the payment-info-check warning dialog,
@@ -185,7 +185,7 @@ public class DocumentPopup {
                         : PaymentInfoCheckWarning.AR_VOUCHER;
                 System.out.println("Payment info warning detected (" + detected + ") — clicking proceed");
                 SeleniumUtils.click(detected.proceedLocator(), WaitType.CLICKABLE, "PAYMENT_WARN_AUTO");
-                wait.until(ExpectedConditions.visibilityOfElementLocated(Loc.MESSAGE_TEXT));
+                WaitUtils.fluentWaitBuilder().until(ExpectedConditions.visibilityOfElementLocated(Loc.MESSAGE_TEXT));
                 System.out.println("Messagebox visible after payment info proceed.");
             }
         } catch (Exception e) {
@@ -220,7 +220,7 @@ public class DocumentPopup {
         System.out.println("Clicking proceed for " + warning + "...");
         SeleniumUtils.click(warning.proceedLocator(), WaitType.CLICKABLE, "PAYMENT_WARN_PROCEED");
 
-        wait.until(ExpectedConditions.visibilityOfElementLocated(Loc.MESSAGE_TEXT));
+        WaitUtils.fluentWaitBuilder().until(ExpectedConditions.visibilityOfElementLocated(Loc.MESSAGE_TEXT));
         System.out.println("Messagebox is now visible after payment info proceed.");
 
         // If TDS Auto Journal prompt is showing next, click Continue and wait for success popup.
@@ -305,8 +305,8 @@ public class DocumentPopup {
                 System.out.println("TDS Auto Journal prompt detected — clicking Continue");
                 SeleniumUtils.click(CommonButton.CONTINUE.locator(), WaitType.CLICKABLE, "TDS_AUTO_JOURNAL_CONTINUE");
                 // Wait for the TDS prompt to close, then wait for the success popup
-                wait.until(ExpectedConditions.invisibilityOfElementLocated(Loc.MESSAGE_TEXT));
-                wait.until(ExpectedConditions.visibilityOfElementLocated(Loc.MESSAGE_TEXT));
+                WaitUtils.fluentWaitBuilder().until(ExpectedConditions.invisibilityOfElementLocated(Loc.MESSAGE_TEXT));
+                WaitUtils.fluentWaitBuilder().until(ExpectedConditions.visibilityOfElementLocated(Loc.MESSAGE_TEXT));
                 System.out.println("Success messagebox is now visible after TDS Auto Journal Continue.");
             }
         } catch (Exception e) {

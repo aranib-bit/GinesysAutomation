@@ -16,6 +16,7 @@ import com.gsl.database.query.AdmClsQuery;
 import com.gsl.database.query.PendingAdjQuery;
 import com.gsl.database.dao.finance.FinTdsExceptionDao;
 import com.gsl.database.dao.finance.FinTdsTypeDao;
+import com.gsl.database.query.ReferenceSiteQuery;
 import com.gsl.database.query.TdsNameQuery;
 import com.gsl.enums.CashBankType;
 import com.gsl.enums.DocumentSelectionMode;
@@ -36,6 +37,8 @@ import com.gsl.utils.dataprovider.fixture.finance.ApVoucherExecutionGroup;
 import com.gsl.utils.dataprovider.fixture.finance.ApVoucherFixtureOptions;
 import com.gsl.utils.dataprovider.fixture.finance.ApVoucherScenarioType;
 import com.gsl.utils.dataprovider.fixture.finance.ApVoucherTag;
+import com.gsl.utils.dataprovider.fixture.finance.SelectDocumentCombinations;
+import com.gsl.utils.dataprovider.fixture.finance.SelectDocumentVariant;
 import com.gsl.utils.dataprovider.source.TestDataSource;
 import org.jdbi.v3.core.Jdbi;
 
@@ -210,7 +213,10 @@ public class DbApVoucherDataSource implements TestDataSource<MergedFinanceApVouc
                 //    One placeholder each; emitted for every group (the negative test method's
                 //    suite block sets no apv.group, so activeGroup is null → always matches).
                 } else if (scenario == ApVoucherScenarioType.NEG_BLANK_CASHBANK
+                        || scenario == ApVoucherScenarioType.NEG_BLANK_CASHBANK_ADD_ROW
+                        || scenario == ApVoucherScenarioType.NEG_BLANK_CASHBANK_ADD_ROW_RECOVER
                         || scenario == ApVoucherScenarioType.NEG_BLANK_SUBLEDGER
+                        || scenario == ApVoucherScenarioType.NEG_BLANK_SUBLEDGER_RECOVER
                         || scenario == ApVoucherScenarioType.BLANK_REFERENCE_ALLOWED
                         || scenario == ApVoucherScenarioType.BOUND_AMOUNT_MIN_VALID
                         || scenario == ApVoucherScenarioType.BOUND_AMOUNT_MIN_INVALID) {
@@ -221,27 +227,66 @@ public class DbApVoucherDataSource implements TestDataSource<MergedFinanceApVouc
                 }
 
             } else {
-                // ── Document Payment — DOC_SELECT_DOCUMENT / DOC_FIFO / DOC_REFERENCE_SITEWISE_FIFO
-                String baseId  = scenarioBaseId(scenario);
-                String scenLbl = scenarioShortLabel(scenario);
+                // ── Document Payment ──────────────────────────────────────────────────
+                if (scenario == ApVoucherScenarioType.DOC_SELECT_DOCUMENT) {
+                    // Full combination matrix — mirrors SelectDocumentCombinations in AR Voucher
+                    batch.addAll(buildApSelectDocVariantList(
+                            classificationTypes, activeGroup, testMethodName, loginName));
 
-                if (matchesGroup(activeGroup, ApVoucherExecutionGroup.REGRESSION_PHASE1)) {
+                } else if (scenario == ApVoucherScenarioType.DOC_NO_ADJUSTMENT) {
+                    // Phase-1: Cash GL + Bank User SL
+                    if (matchesGroup(activeGroup, ApVoucherExecutionGroup.REGRESSION_PHASE1)) {
+                        batch.add(buildPlaceholder(testMethodName, loginName, scenario,
+                                ApVoucherFixtureOptions.forCashBankType(CashBankType.CASH),
+                                "DB_AP_NO_ADJ_CASH", "NO_ADJ | [Cash GL]"));
+                        if (userClsCode > 0) {
+                            batch.add(buildPlaceholder(testMethodName, loginName, scenario,
+                                    ApVoucherFixtureOptions.forCashBankTypeAndClsCode(CashBankType.BANK, userClsCode),
+                                    "DB_AP_NO_ADJ_BANK_USER", "NO_ADJ | [Bank GL] | User SL"));
+                        }
+                    }
+
+                } else if (scenario == ApVoucherScenarioType.DOC_FIFO
+                        || scenario == ApVoucherScenarioType.DOC_REFERENCE_SITEWISE_FIFO) {
+                    String baseId  = scenarioBaseId(scenario);
+                    String scenLbl = scenarioShortLabel(scenario);
+                    // Phase-1: Cash GL + Bank User SL
+                    if (matchesGroup(activeGroup, ApVoucherExecutionGroup.REGRESSION_PHASE1)) {
+                        batch.add(buildPlaceholder(testMethodName, loginName, scenario,
+                                ApVoucherFixtureOptions.forCashBankType(CashBankType.CASH),
+                                baseId + "_CASH", scenLbl + " | [Cash GL]"));
+                        if (userClsCode > 0) {
+                            batch.add(buildPlaceholder(testMethodName, loginName, scenario,
+                                    ApVoucherFixtureOptions.forCashBankTypeAndClsCode(CashBankType.BANK, userClsCode),
+                                    baseId + "_BANK_USER", scenLbl + " | [Bank GL] | User SL"));
+                        }
+                    }
+                    // Phase-2: Cash GL subset (partial, multi-doc, multi-SL)
+                    if (matchesGroup(activeGroup, ApVoucherExecutionGroup.REGRESSION_PHASE2)) {
+                        int docFloor = com.gsl.config.ConfigFactory.getWaitConfig().docSelectorDocumentCountDefault();
+                        batch.add(buildPlaceholder(testMethodName, loginName, scenario,
+                                ApVoucherFixtureOptions.builder()
+                                        .subLedgerCount(1).documentCount(Math.max(1, docFloor))
+                                        .glType(CashBankType.CASH).build(),
+                                baseId + "_CASH_PART", scenLbl + " | [Cash GL] | Partial"));
+                        batch.add(buildPlaceholder(testMethodName, loginName, scenario,
+                                ApVoucherFixtureOptions.builder()
+                                        .subLedgerCount(1).documentCount(3)
+                                        .glType(CashBankType.CASH).build(),
+                                baseId + "_CASH_MULTI_DOC", scenLbl + " | [Cash GL] | 1SL-3Doc"));
+                        batch.add(buildPlaceholder(testMethodName, loginName, scenario,
+                                ApVoucherFixtureOptions.builder()
+                                        .subLedgerCount(3).documentCount(Math.max(1, docFloor))
+                                        .glType(CashBankType.CASH).build(),
+                                baseId + "_CASH_MULTI_SL", scenLbl + " | [Cash GL] | 3SL-1Doc"));
+                    }
+
+                } else if (scenario == ApVoucherScenarioType.DOC_AMOUNT_NOT_ADJUSTED_INVALID
+                        || scenario == ApVoucherScenarioType.DOC_AMOUNT_READ_ONLY) {
+                    // NEG scenarios on the document path — one placeholder, any group
                     batch.add(buildPlaceholder(testMethodName, loginName, scenario,
-                            ApVoucherFixtureOptions.forCashBankType(CashBankType.CASH),
-                            baseId + "_CASH",
-                            scenLbl + " | [Cash GL]"));
-                }
-                if (systemClsCode > 0 && matchesGroup(activeGroup, ApVoucherExecutionGroup.MANDATORY)) {
-                    batch.add(buildPlaceholder(testMethodName, loginName, scenario,
-                            ApVoucherFixtureOptions.forCashBankTypeAndClsCode(CashBankType.BANK, systemClsCode),
-                            baseId + "_BANK_SYS",
-                            scenLbl + " | [Bank GL] | System SL"));
-                }
-                if (userClsCode > 0 && matchesGroup(activeGroup, ApVoucherExecutionGroup.REGRESSION_PHASE1)) {
-                    batch.add(buildPlaceholder(testMethodName, loginName, scenario,
-                            ApVoucherFixtureOptions.forCashBankTypeAndClsCode(CashBankType.BANK, userClsCode),
-                            baseId + "_BANK_USER",
-                            scenLbl + " | [Bank GL] | User SL"));
+                            ApVoucherFixtureOptions.forCashBankType(CashBankType.BANK),
+                            "DB_" + scenario.name(), scenario.name()));
                 }
             }
 
@@ -301,6 +346,7 @@ public class DbApVoucherDataSource implements TestDataSource<MergedFinanceApVouc
                 scenarioType, methodName, scenarioType.isOnAccount(),
                 opts.getGlType(), opts.getSlClsCode());
 
+        com.gsl.database.DbQueryBuffer.start();
         Jdbi jdbi = DatabaseManager.getJdbi();
         DbDialect d = DbDialectFactory.current();
 
@@ -346,9 +392,8 @@ public class DbApVoucherDataSource implements TestDataSource<MergedFinanceApVouc
             if (pendingSlNames.isEmpty()) {
                 // Data-availability shortfall → skip (amber), not fail (red).
                 throw new org.testng.SkipException(
-                        "[DbApVoucherDataSource] No usable vendor SLs found in finsl for advance payment." +
-                        " ownerSiteCodes=" + ownerSiteCodes +
-                        " tdsApplicable=" + opts.isTdsApplicable() +
+                        "Skipped due to lack of data: No vendor SL found for advance payment" +
+                        (opts.isTdsApplicable() ? " with TDS deductee configured (tds_app='Y')" : "") +
                         ". Ensure active finsl rows exist for the owner site" +
                         (opts.isTdsApplicable() ? " with tds_app='Y'." : "."));
             }
@@ -400,13 +445,31 @@ public class DbApVoucherDataSource implements TestDataSource<MergedFinanceApVouc
             }
         }
 
-        // 5d. Resolve best reference site per SL for DOC_REFERENCE_SITEWISE_FIFO.
-        //     Queries v_pending_adj grouped by ref_admsite_name and reserves amount ceiling
-        //     via ReferenceSiteAmountRegistry so parallel tests don't exceed pending.
-        Map<String, String> slToRefSiteName = new LinkedHashMap<>();
+        // 5d. Resolve admcls classification (clstype, cmpcode) and reference site for all SLs.
+        //     defaultSiteName is queried once here to avoid per-SL admcmp+admsite round-trips.
+        Map<String, String>  slToRefSiteName = new LinkedHashMap<>();
+        Map<String, Integer> slToCmpCode     = new LinkedHashMap<>();
+        Map<String, String>  slToClstype     = new LinkedHashMap<>();
+        String defaultSiteName = ReferenceSiteQuery.resolveDefaultSiteName(jdbi);
+        for (SlNameWithId sl : pendingSlNames) {
+            String key  = PendingAdjQuery.compositeKey(sl.getSlName(), sl.getSlId());
+            FinSl finSl = finSlDao.findBySlnameAndSlid(sl.getSlName(), sl.getSlId());
+            if (finSl == null) continue;
+            AdmCls admCls  = AdmClsQuery.findByClsCode(jdbi, finSl.getClscode()).orElse(null);
+            String clstype = admCls != null ? admCls.getClstype()         : null;
+            int    cmpcode = admCls != null ? admCls.getCmpcode()         : -1;
+            String refSite = ReferenceSiteQuery.resolveForSl(jdbi, finSl.getSlcode(), clstype, defaultSiteName);
+            slToRefSiteName.put(key, refSite);
+            if (clstype != null) slToClstype.put(key, clstype);
+            if (cmpcode >= 0)   slToCmpCode.put(key, cmpcode);
+            Log.info("[DB] SL '{}': clstype='{}', cmpcode={}, refSite='{}'",
+                    sl.getSlName(), clstype, cmpcode, refSite);
+        }
+        // For DOC_REFERENCE_SITEWISE_FIFO: overwrite with the more precise pending-balance-aware
+        // resolution (v_pending_adj grouped by ref_admsite_name, amount ceiling reserved).
         if (scenarioType == ApVoucherScenarioType.DOC_REFERENCE_SITEWISE_FIFO) {
             for (SlNameWithId sl : pendingSlNames) {
-                String key = PendingAdjQuery.compositeKey(sl.getSlName(), sl.getSlId());
+                String key  = PendingAdjQuery.compositeKey(sl.getSlName(), sl.getSlId());
                 FinSl finSl = finSlDao.findBySlnameAndSlid(sl.getSlName(), sl.getSlId());
                 if (finSl == null) continue;
                 BigDecimal slPending = pendingDocsBySlName.getOrDefault(key, List.of())
@@ -430,9 +493,8 @@ public class DbApVoucherDataSource implements TestDataSource<MergedFinanceApVouc
         // 7. Package into LiveDbRefs — include tdsBehaviour from fixture options so that
         //    ApVoucherTemplateLoader.buildTdsRows() generates the correct behaviour name
         //    on the TdsAndNetPayable DTO for flow-layer dispatch at test execution time.
-        //    slToTdsResolution is only set for TDS-applicable advance scenarios (step 5c above);
-        //    slToRefSiteName is only set for DOC_REFERENCE_SITEWISE_FIFO (step 5d above);
-        //    both default to empty map for all other scenarios.
+        //    slToTdsResolution is only set for TDS-applicable advance scenarios (step 5c above).
+        //    slToRefSiteName, slToCmpCode, slToClstype are resolved for all scenarios (step 5d).
         LiveDbRefs refs = LiveDbRefs.builder()
                 .cashBankName(cashBankName)
                 .ownerSiteName(ownerSiteName)
@@ -444,9 +506,9 @@ public class DbApVoucherDataSource implements TestDataSource<MergedFinanceApVouc
                 .tdsBehaviour(opts.getTdsBehaviour())
                 .slToTdsResolution(slToTdsResolution)
                 .slToRefSiteName(slToRefSiteName)
+                .slToCmpCode(slToCmpCode)
+                .slToClstype(slToClstype)
                 .build();
-
-        printRefs(loginName, ecode, refs, pendingDocsBySlName);
 
         // 8. Build fully populated test data for this specific scenario
         MergedFinanceApVoucherData data = scenarioType.loadData(refs);
@@ -458,12 +520,98 @@ public class DbApVoucherDataSource implements TestDataSource<MergedFinanceApVouc
                     sl.setSlType(AdmClsQuery.findClsnameBySlId(jdbi, sl.getId())));
         }
 
-        printGeneratedData(data);
-
-        // P3: Store gathering log in the data object for the Extent Report
-        buildAndSetGatheringLog(loginName, ecode, refs, pendingDocsBySlName, data);
+        // Flush buffered queries and store gathering log (console + Extent Report)
+        List<String> executedQueries = com.gsl.database.DbQueryBuffer.flush();
+        buildAndSetGatheringLog(loginName, ecode, refs, pendingDocsBySlName, data, executedQueries);
 
         return data;
+    }
+
+    // ─── SELECT_DOCUMENT combination matrix ──────────────────────────────────
+
+    /**
+     * Builds AP Voucher placeholder rows for {@code DOC_SELECT_DOCUMENT} by mirroring
+     * the full {@link SelectDocumentCombinations} matrix used by AR Voucher.
+     *
+     * <p>Variant ordering matches {@code DbArVoucherDataSource.buildVariantList()}:
+     * <ol>
+     *   <li>Group 0 — mandatory baselines per classification type</li>
+     *   <li>Group 1 — reference-uniqueness static variants (Phase-1)</li>
+     *   <li>Group 2 — per system/user classification type dynamic variants (Phase-2)</li>
+     *   <li>Groups 3–8 — static dimensional variants (Phase-1/Phase-2)</li>
+     *   <li>Cash GL variants (Mandatory/Phase-2)</li>
+     *   <li>Phase-3 — INV document-type filter</li>
+     * </ol>
+     *
+     * <p>{@link ArVoucherExecutionGroup} constants have identical names to
+     * {@link ApVoucherExecutionGroup}, so mapping is done via {@code .name()}.
+     *
+     * @param classificationTypes distinct {@code admcls} rows found in pending AP
+     * @param activeGroup         active execution group filter (null = all groups)
+     * @param testMethodName      forwarded to {@link #buildPlaceholder}
+     * @param loginName           forwarded to {@link #buildPlaceholder}
+     * @return list of AP Voucher placeholders for all applicable variants
+     */
+    private static List<MergedFinanceApVoucherData> buildApSelectDocVariantList(
+            List<AdmCls> classificationTypes,
+            ApVoucherExecutionGroup activeGroup,
+            String testMethodName,
+            String loginName) {
+
+        List<SelectDocumentVariant> variants = new ArrayList<>();
+
+        // Group 0: mandatory baselines per classification type
+        for (AdmCls cls : classificationTypes) {
+            variants.add(SelectDocumentCombinations.mandatoryBaselineVariant(cls));
+            if (cls.getCmpcode() == 1) {
+                variants.add(SelectDocumentCombinations.mandatoryBankRandomVariant(cls));
+            }
+        }
+
+        // Group 1: reference-uniqueness static variants (Phase-1)
+        variants.addAll(SelectDocumentCombinations.group1Variants());
+
+        // Group 2: per classification type — system (10 variants) or user (3 variants) each
+        for (AdmCls cls : classificationTypes) {
+            if (cls.getCmpcode() == 1) {
+                variants.addAll(SelectDocumentCombinations.forSystemClassificationType(cls));
+            } else {
+                variants.addAll(SelectDocumentCombinations.forUserDefinedClassificationType(cls));
+            }
+        }
+
+        // Groups 3–8: static dimensional variants (Phase-1/Phase-2)
+        variants.addAll(SelectDocumentCombinations.groups3to8Variants());
+
+        // Cash GL variants (Mandatory/Phase-2)
+        variants.addAll(SelectDocumentCombinations.cashGlVariants());
+
+        // Phase-3: INV document-type filter variant
+        variants.add(SelectDocumentCombinations.specificDocTypeVariant());
+
+        // Filter by active execution group — ArVoucherExecutionGroup names match ApVoucherExecutionGroup
+        if (activeGroup != null) {
+            variants.removeIf(v -> {
+                try {
+                    return ApVoucherExecutionGroup.valueOf(v.getExecutionGroup().name()) != activeGroup;
+                } catch (IllegalArgumentException e) {
+                    return true;
+                }
+            });
+        }
+
+        // Build AP placeholders from the filtered variant list
+        List<MergedFinanceApVoucherData> result = new ArrayList<>(variants.size());
+        for (SelectDocumentVariant v : variants) {
+            ApVoucherFixtureOptions opts = ApVoucherFixtureOptions.forSelectDocVariant(v);
+            result.add(buildPlaceholder(testMethodName, loginName,
+                    ApVoucherScenarioType.DOC_SELECT_DOCUMENT, opts,
+                    "DB_AP_" + v.getVariantId(), v.getTestCaseName()));
+        }
+
+        Log.info("[DB] buildApSelectDocVariantList: activeGroup={} → {} variant(s)",
+                activeGroup != null ? activeGroup : "ALL", result.size());
+        return result;
     }
 
     // ─── Group / Tag resolution ───────────────────────────────────────────────
@@ -994,11 +1142,10 @@ public class DbApVoucherDataSource implements TestDataSource<MergedFinanceApVouc
 
         // Data-availability shortfall (no pending AP documents to adjust) → skip, not fail.
         throw new org.testng.SkipException(
-            "[DbApVoucherDataSource] EXHAUSTED — could not select " + subLedgerCount +
-            " AP SL(s) after " + maxAttempts + " attempt(s).\n" +
-            "  Inputs: ouCodes=" + ouCodes + ", ownerSiteCodes=" + ownerSiteCodes +
-            ", clsCode=" + clsCode + ", documentCount=" + documentCount +
-            ", maxAttempts=" + maxAttempts +
+            "Skipped due to lack of data: Could not find " + subLedgerCount +
+            " AP SL(s) with open documents after " + maxAttempts + " attempt(s)" +
+            " (clsCode=" + clsCode + ", documentCount=" + documentCount + ")." +
+            " Ensure v_pending_adj has rows with debit_credit='C' for the user's OU." +
             "\n  Last: candidates=" + lastCandidatesSize + ", reservedSls=" + lastReservedSize +
             "\n" + DocumentReservationRegistry.snapshotAsString());
     }
@@ -1259,7 +1406,8 @@ public class DbApVoucherDataSource implements TestDataSource<MergedFinanceApVouc
             String loginName, long ecode,
             LiveDbRefs refs,
             Map<String, List<PendingSlDocument>> pendingDocsBySlName,
-            MergedFinanceApVoucherData data) {
+            MergedFinanceApVoucherData data,
+            List<String> executedQueries) {
 
         List<String> log = new ArrayList<>();
 
@@ -1284,21 +1432,6 @@ public class DbApVoucherDataSource implements TestDataSource<MergedFinanceApVouc
                 ));
             });
         }
-
-        log.add("");
-        log.add("───────────────────────────────────────────────────────────");
-        log.add("  KEY QUERY — Pending AP SL / Open Document lookup");
-        log.add("───────────────────────────────────────────────────────────");
-        log.add("  SELECT DISTINCT pa.slname, pa.slid");
-        log.add("  FROM   v_pending_adj pa");
-        log.add("  JOIN   finsl fs  ON fs.slname = pa.slname AND fs.slid = pa.slid");
-        log.add("  JOIN   admcls ac ON ac.clscode = fs.clscode");
-        log.add("  WHERE  pa.admou_code IN (ouCodes)");
-        log.add("    AND  pa.ReferenceSiteCode IN (ownerSiteCodes)");
-        log.add("    AND  pa.debit_credit = 'C'    -- AP (Credit side)");
-        log.add("    AND  pa.pending > 0");
-        log.add("    AND  fs.ext = 'N'");
-        log.add("  ORDER BY pa.slname;");
 
         log.add("");
         log.add("───────────────────────────────────────────────────────────");
@@ -1341,60 +1474,20 @@ public class DbApVoucherDataSource implements TestDataSource<MergedFinanceApVouc
                     + "  grossPayable=" + tds.getGrossPayable()
                     + "  tdsApplicable=" + tds.getTdsApplicableAmount()));
         }
+
+        if (!executedQueries.isEmpty()) {
+            log.add("");
+            log.add("───────────────────────────────────────────────────────────");
+            log.add("  QUERIES EXECUTED DURING DATA GATHERING");
+            log.add("───────────────────────────────────────────────────────────");
+            log.addAll(executedQueries);
+        }
+
         log.add("═══════════════════════════════════════════════════════════");
 
         data.setDbGatheringLog(log);
+        // Single source of truth: emit to console/log file from here
+        log.forEach(line -> Log.info("[DB] {}", line));
     }
 
-    private static void printRefs(String loginName, long ecode,
-                                   LiveDbRefs refs,
-                                   Map<String, List<PendingSlDocument>> pendingDocsBySlName) {
-        Log.info("[DB] ============================================================");
-        Log.info("[DB] AP Voucher — Live DB reference values resolved:");
-        Log.info("[DB]   Login user   = {} (ecode={})", loginName, ecode);
-        Log.info("[DB]   Owner Site   = {}", refs.getOwnerSiteName());
-        Log.info("[DB]   Cash/Bank GL = {} ({})", refs.getCashBankName(), refs.getCashBankType().label());
-        Log.info("[DB]   Doc Scheme   = {}", refs.getDocSchemeName());
-        Log.info("[DB]   Pending SLs  = {}", refs.getPendingSlNames());
-        Log.info("[DB]   SL→ARAP map  = {}", refs.getSlToArApName());
-        if (!pendingDocsBySlName.isEmpty()) {
-            Log.info("[DB]   Open docs/SL :");
-            pendingDocsBySlName.forEach((key, docs) -> {
-                Log.info("[DB]     [{}]", key);
-                docs.forEach(doc -> Log.info("[DB]       -> {} | date={} | type={} | pending={}",
-                        doc.getDocumentNo(), doc.getDocumentDate(), doc.getEntype(), doc.getPending()));
-            });
-        }
-        Log.info("[DB] ============================================================");
-    }
-
-    private static void printGeneratedData(MergedFinanceApVoucherData row) {
-        Log.info("[DB] ------------------------------------------------------------");
-        Log.info("[DB] AP  Scenario   = {}", row.getScenarioType());
-        Log.info("[DB]     TestCaseId = {}", row.getMasterTestData().getTestcaseid());
-        Log.info("[DB]     TestCase   = {}", row.getMasterTestData().getTestcasename());
-        Log.info("[DB]     OnAccount  = {}", row.isOnAccount());
-        Log.info("[DB]     Owner Site = {}", row.getDocumentInformation().getOwnersite());
-        Log.info("[DB]     Cash/Bank  = {}", row.getDocumentInformation().getCashbank());
-        Log.info("[DB]     Doc Scheme = {}", row.getDocumentInformation().getVoucherno());
-        Log.info("[DB]   SubLedgers :");
-        row.getSubLedgerInformationList().forEach(sl ->
-                Log.info("[DB]     [{}] {} (id={}) | adjType={} | amountDr={}",
-                        sl.getLineNo(), sl.getSubLedger(), sl.getId(),
-                        sl.getAdjustmentType(), sl.getAmountDr()));
-        if (row.getSelectDocumentList() != null && !row.getSelectDocumentList().isEmpty()) {
-            Log.info("[DB]   SelectDocs :");
-            row.getSelectDocumentList().forEach(sd ->
-                    Log.info("[DB]     lineNo={} | docNo={} | date={} | amount={}",
-                            sd.getLineNo(), sd.getDocumentNumber(), sd.getDocumentDate(),
-                            sd.getAdjustmentAmount()));
-        }
-        if (row.getTdsAndNetPayableList() != null && !row.getTdsAndNetPayableList().isEmpty()) {
-            Log.info("[DB]   TDS Rows :");
-            row.getTdsAndNetPayableList().forEach(tds ->
-                    Log.info("[DB]     lineNo={} | grossPayable={} | tdsAmt={}",
-                            tds.getLineNo(), tds.getGrossPayable(), tds.getTdsApplicableAmount()));
-        }
-        Log.info("[DB] ============================================================");
-    }
 }

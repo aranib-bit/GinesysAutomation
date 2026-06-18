@@ -35,6 +35,7 @@ public final class ApVoucherExtentDescriptionLogger {
     public static void log(MergedFinanceApVoucherData data) {
         printToConsole(data);
         logHeaderTable(data);
+        logExpectedResultsSection(data);
         logSubLedgersTable(data);
         logSelectDocsTable(data);
         logFifoTable(data);
@@ -139,6 +140,11 @@ public final class ApVoucherExtentDescriptionLogger {
             }
         }
 
+        sb.append("------------------------------------------------------------\n");
+        sb.append(String.format("  Expected Result = %s%n",
+                data.getExpectedValidation() != null
+                        ? "VALIDATION ERROR: " + data.getExpectedValidation().expectedMessage()
+                        : "Successful save | finvchmain + finvchdet + finpost + fintag created"));
         sb.append("============================================================");
         Log.info(sb.toString());
     }
@@ -167,6 +173,57 @@ public final class ApVoucherExtentDescriptionLogger {
         };
         ExtentLogger.info("<b>Test Data &#8212; Header</b>");
         ExtentLogger.infoTable(table);
+    }
+
+    // ─── Section 1b: Expected Results ────────────────────────────────────────
+
+    private static void logExpectedResultsSection(MergedFinanceApVoucherData data) {
+        ExtentLogger.info("<b>Expected Results</b>");
+
+        if (data.getExpectedValidation() != null) {
+            ExtentLogger.infoTable(new String[][]{
+                { "Expected Outcome",      "Details" },
+                { "UI — Validation Error",  data.getExpectedValidation().expectedMessage() },
+                { "DB — finvchmain",        "No record created (save blocked by UI validation)" },
+                { "DB — finvchdet",         "No record created" },
+                { "DB — finpost",           "No posting created" },
+                { "DB — fintag",            "No tag entries created" },
+            });
+            return;
+        }
+
+        int slCount     = data.getSubLedgerInformationList() != null ? data.getSubLedgerInformationList().size() : 0;
+        boolean onAcct  = data.isOnAccount();
+        boolean tds     = data.isTdsProvided();
+        boolean hasPmt  = data.getPaymentInformationList()   != null && !data.getPaymentInformationList().isEmpty();
+        boolean hasDoc  = data.getSelectDocumentList()        != null && !data.getSelectDocumentList().isEmpty();
+        boolean hasFifo = data.getReferenceSitewiseFIFOList() != null && !data.getReferenceSitewiseFIFOList().isEmpty();
+
+        String vchdet = slCount + " row(s): slcode, glcode, damount"
+                + (tds  ? " (= NetPayable after TDS deduction)" : "")
+                + ", payment_mode, tds_app=" + (tds ? "'Y'" : "'N'")
+                + (hasPmt ? ", chqno + chqdt validated for CHEQUE/NEFT lines" : "");
+
+        String fintag = hasDoc  ? "Tag entries matching selected document adjustment amounts (COLLECT — non-blocking)"
+                      : hasFifo ? "Tag entries matching FIFO set-off amounts (COLLECT — non-blocking)"
+                      :           "Tag entries for advance payment lines (COLLECT — non-blocking)";
+
+        String onAcctDetail = onAcct    ? "YES — advance payment; no pending document selection required"
+                            : hasDoc    ? "NO — documents manually selected from pending list and adjusted"
+                            : hasFifo   ? "NO — FIFO set-off applied (reference sitewise FIFO if applicable)"
+                            :             "NO — document adjustment method derived from scenario";
+
+        ExtentLogger.infoTable(new String[][]{
+            { "Expected Outcome",    "Details" },
+            { "UI — Save",           "Document saved; Document No. displayed on form" },
+            { "DB — finvchmain",     "1 record: ownersite, cashbank, voucherno, docdate, refno, remarks, onaccount=" + (onAcct ? "1" : "0") },
+            { "DB — finvchdet",      vchdet },
+            { "DB — finpost",        "GL balance postings created and balanced (BLOCKING — test fails if absent)" },
+            { "DB — fintag",         fintag },
+            { "Flag — On Account",   onAcctDetail },
+            { "Flag — TDS Provided", tds ? "YES — tds_app='Y'; damount = NetPayable (gross − TDS)"
+                                              : "NO — tds_app='N'; damount = gross AmountDr" },
+        });
     }
 
     // ─── Section 2: Sub-Ledgers ───────────────────────────────────────────────

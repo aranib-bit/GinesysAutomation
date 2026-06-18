@@ -39,6 +39,7 @@ public final class ArVoucherExtentDescriptionLogger {
     public static void log(MergedFinanceArVoucherData data) {
         printToConsole(data);
         logHeaderTable(data);
+        logExpectedResultsSection(data);
         logSubLedgersTable(data);
         logSelectDocsTable(data);
         logPaymentsTable(data);
@@ -120,6 +121,11 @@ public final class ArVoucherExtentDescriptionLogger {
             }
         }
 
+        sb.append("------------------------------------------------------------\n");
+        sb.append(String.format("  Expected Result = %s%n",
+                data.getExpectedValidation() != null
+                        ? "VALIDATION ERROR: " + data.getExpectedValidation().expectedMessage()
+                        : "Successful save | finvchmain + finvchdet + finpost + fintag created"));
         sb.append("============================================================");
         Log.info(sb.toString());
     }
@@ -146,6 +152,44 @@ public final class ArVoucherExtentDescriptionLogger {
         };
         ExtentLogger.info("<b>Test Data &#8212; Header</b>");
         ExtentLogger.infoTable(table);
+    }
+
+    // ─── Section 1b: Expected Results ────────────────────────────────────────
+
+    private static void logExpectedResultsSection(MergedFinanceArVoucherData data) {
+        ExtentLogger.info("<b>Expected Results</b>");
+
+        if (data.getExpectedValidation() != null) {
+            ExtentLogger.infoTable(new String[][]{
+                { "Expected Outcome",      "Details" },
+                { "UI — Validation Error",  data.getExpectedValidation().expectedMessage() },
+                { "DB — finvchmain",        "No record created (save blocked by UI validation)" },
+                { "DB — finvchdet",         "No record created" },
+                { "DB — finpost",           "No posting created" },
+                { "DB — fintag",            "No tag entries created" },
+            });
+            return;
+        }
+
+        int slCount    = data.getSubLedgerInformationList() != null ? data.getSubLedgerInformationList().size() : 0;
+        boolean hasPmt = data.getPaymentInformationList()   != null && !data.getPaymentInformationList().isEmpty();
+        boolean hasDoc = data.getSelectDocumentList()        != null && !data.getSelectDocumentList().isEmpty();
+
+        String vchdet = slCount + " row(s): slcode, glcode, camount (credit), payment_mode"
+                + (hasPmt ? ", chqno + chqdt validated for CHEQUE/NEFT lines" : "");
+
+        String fintag = hasDoc
+                ? "Tag entries matching selected document adjustment amounts (COLLECT — non-blocking)"
+                : "Tag entries for FIFO set-off adjustments (COLLECT — non-blocking)";
+
+        ExtentLogger.infoTable(new String[][]{
+            { "Expected Outcome", "Details" },
+            { "UI — Save",        "Document saved; Document No. displayed on form" },
+            { "DB — finvchmain",  "1 record: ownersite, cashbank, voucherno, docdate, refno, remarks" },
+            { "DB — finvchdet",   vchdet },
+            { "DB — finpost",     "GL balance postings created and balanced (BLOCKING — test fails if absent)" },
+            { "DB — fintag",      fintag },
+        });
     }
 
     // ─── Section 2: Sub-Ledgers ───────────────────────────────────────────────

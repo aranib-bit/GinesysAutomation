@@ -16,6 +16,8 @@ import com.gsl.utils.Faker.FakerUtils;
 import com.gsl.utils.NavigationUtils;
 import com.gsl.utils.dataprovider.MergedInvGroupDataSupplier;
 import com.gsl.utils.dataprovider.MergedInvItemDataSupplier;
+import com.gsl.enums.LogCategory;
+import com.gsl.reports.ReportLogger;
 import com.tests.WebTest;
 import org.testng.annotations.Test;
 
@@ -37,6 +39,8 @@ public class CreateItem extends WebTest {
         System.out.println(FakerUtils.randomDouble());
 
         System.out.println("Start Test");
+        ReportLogger.info(LogCategory.VALIDATION,
+                "Expected Result: Item created successfully and visible in the Item master list.");
 
         // 1. Login
         UserCredential u = DriverManager.getCurrentUser();

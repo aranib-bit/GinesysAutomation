@@ -66,7 +66,7 @@ public final class ApVoucherTemplateLoader {
     public static MergedFinanceApVoucherData advanceNoTdsTemplate(LiveDbRefs refs) {
         String id = "DB_ADV_NO_TDS";
         List<SubLedgerInformation> subLedgers = buildSubLedgersForAdvance(
-                refs.getPendingSlNames(), refs.getSlToArApName(), refs.getOwnerSiteName());
+                refs.getPendingSlNames(), refs.getSlToArApName(), refs.getSlToRefSiteName());
         List<PaymentInformation> payments = refs.getCashBankType() == CashBankType.CASH
                 ? buildPayments(id, subLedgers, SelectDocumentVariant.PaymentMode.CASH)
                 : List.of();
@@ -97,7 +97,7 @@ public final class ApVoucherTemplateLoader {
     public static MergedFinanceApVoucherData advanceWithTdsTemplate(LiveDbRefs refs) {
         String id = "DB_ADV_TDS";
         List<SubLedgerInformation> subLedgers = buildSubLedgersForAdvance(
-                refs.getPendingSlNames(), refs.getSlToArApName(), refs.getOwnerSiteName());
+                refs.getPendingSlNames(), refs.getSlToArApName(), refs.getSlToRefSiteName());
         List<PaymentInformation> payments = refs.getCashBankType() == CashBankType.CASH
                 ? buildPayments(id, subLedgers, SelectDocumentVariant.PaymentMode.CASH)
                 : List.of();
@@ -133,7 +133,7 @@ public final class ApVoucherTemplateLoader {
         String id = "DB_ADV_MULTI_SL_PAY";
         // refs.getPendingSlNames() returns 2 entries because opts.subLedgerCount=2
         List<SubLedgerInformation> subLedgers = buildSubLedgersForAdvance(
-                refs.getPendingSlNames(), refs.getSlToArApName(), refs.getOwnerSiteName());
+                refs.getPendingSlNames(), refs.getSlToArApName(), refs.getSlToRefSiteName());
         // MIX: row-0 → NEFT/RTGS, row-1 → CHEQUE
         List<PaymentInformation> payments = buildPayments(id, subLedgers, SelectDocumentVariant.PaymentMode.MIX);
         return MergedFinanceApVoucherData.builder()
@@ -161,7 +161,7 @@ public final class ApVoucherTemplateLoader {
     public static MergedFinanceApVoucherData negBlankCashbankTemplate(LiveDbRefs refs) {
         String id = "DB_NEG_BLANK_CASHBANK";
         List<SubLedgerInformation> subLedgers = buildSubLedgersForAdvance(
-                refs.getPendingSlNames(), refs.getSlToArApName(), refs.getOwnerSiteName());
+                refs.getPendingSlNames(), refs.getSlToArApName(), refs.getSlToRefSiteName());
         // Remarks is disabled by the app when Cash/Bank is blank — pass null to skip filling it.
         return negativeAdvanceData(id, "NEGATIVE | Blank Cash/Bank", refs, subLedgers,
                 null, FakerUtils.randomReference(), NegativeValidation.BLANK_CASHBANK, null);
@@ -175,7 +175,7 @@ public final class ApVoucherTemplateLoader {
     public static MergedFinanceApVoucherData negBlankCashbankAddRowTemplate(LiveDbRefs refs) {
         String id = "DB_NEG_CASHBANK_ADDROW";
         List<SubLedgerInformation> subLedgers = buildSubLedgersForAdvance(
-                refs.getPendingSlNames(), refs.getSlToArApName(), refs.getOwnerSiteName());
+                refs.getPendingSlNames(), refs.getSlToArApName(), refs.getSlToRefSiteName());
         // Remarks is disabled when Cash/Bank is blank — pass null to skip filling it.
         return negativeAdvanceData(id, "NEGATIVE | Blank Cash/Bank (Add Row trigger)", refs,
                 subLedgers, null, FakerUtils.randomReference(),
@@ -190,7 +190,7 @@ public final class ApVoucherTemplateLoader {
     public static MergedFinanceApVoucherData negBlankCashbankAddRowRecoverTemplate(LiveDbRefs refs) {
         String id = "DB_NEG_CASHBANK_ADDROW_RECOVER";
         List<SubLedgerInformation> subLedgers = buildSubLedgersForAdvance(
-                refs.getPendingSlNames(), refs.getSlToArApName(), refs.getOwnerSiteName());
+                refs.getPendingSlNames(), refs.getSlToArApName(), refs.getSlToRefSiteName());
         List<PaymentInformation> payments = refs.getCashBankType() == CashBankType.CASH
                 ? buildPayments(id, subLedgers, SelectDocumentVariant.PaymentMode.CASH)
                 : List.of();
@@ -232,7 +232,7 @@ public final class ApVoucherTemplateLoader {
     public static MergedFinanceApVoucherData negBlankSubledgerRecoverTemplate(LiveDbRefs refs) {
         String id = "DB_NEG_BLANK_SL_RECOVER";
         List<SubLedgerInformation> subLedgers = buildSubLedgersForAdvance(
-                refs.getPendingSlNames(), refs.getSlToArApName(), refs.getOwnerSiteName());
+                refs.getPendingSlNames(), refs.getSlToArApName(), refs.getSlToRefSiteName());
         List<PaymentInformation> payments = refs.getCashBankType() == CashBankType.CASH
                 ? buildPayments(id, subLedgers, SelectDocumentVariant.PaymentMode.CASH)
                 : List.of();
@@ -261,7 +261,7 @@ public final class ApVoucherTemplateLoader {
     public static MergedFinanceApVoucherData negBlankReferenceTemplate(LiveDbRefs refs) {
         String id = "DB_NEG_BLANK_REF";
         List<SubLedgerInformation> subLedgers = buildSubLedgersForAdvance(
-                refs.getPendingSlNames(), refs.getSlToArApName(), refs.getOwnerSiteName());
+                refs.getPendingSlNames(), refs.getSlToArApName(), refs.getSlToRefSiteName());
         return negativeAdvanceData(id, "NEGATIVE | Blank Mandatory Reference", refs, subLedgers,
                 refs.getCashBankName(), null, NegativeValidation.BLANK_MANDATORY_REFERENCE);
     }
@@ -275,7 +275,7 @@ public final class ApVoucherTemplateLoader {
     public static MergedFinanceApVoucherData blankReferenceAllowedTemplate(LiveDbRefs refs) {
         String id = "DB_BLANK_REF_ALLOWED";
         List<SubLedgerInformation> subLedgers = buildSubLedgersForAdvance(
-                refs.getPendingSlNames(), refs.getSlToArApName(), refs.getOwnerSiteName());
+                refs.getPendingSlNames(), refs.getSlToArApName(), refs.getSlToRefSiteName());
         List<PaymentInformation> payments = refs.getCashBankType() == CashBankType.CASH
                 ? buildPayments(id, subLedgers, SelectDocumentVariant.PaymentMode.CASH)
                 : List.of();
@@ -302,7 +302,7 @@ public final class ApVoucherTemplateLoader {
     public static MergedFinanceApVoucherData boundAmountMinValidTemplate(LiveDbRefs refs) {
         String id = "DB_BOUND_AMT_MIN_VALID";
         List<SubLedgerInformation> subLedgers = buildSubLedgersForAdvance(
-                refs.getPendingSlNames(), refs.getSlToArApName(), refs.getOwnerSiteName(),
+                refs.getPendingSlNames(), refs.getSlToArApName(), refs.getSlToRefSiteName(),
                 new BigDecimal("0.01"));
         List<PaymentInformation> payments = refs.getCashBankType() == CashBankType.CASH
                 ? buildPayments(id, subLedgers, SelectDocumentVariant.PaymentMode.CASH)
@@ -330,7 +330,7 @@ public final class ApVoucherTemplateLoader {
     public static MergedFinanceApVoucherData boundAmountMinInvalidTemplate(LiveDbRefs refs) {
         String id = "DB_BOUND_AMT_MIN_INVALID";
         List<SubLedgerInformation> subLedgers = buildSubLedgersForAdvance(
-                refs.getPendingSlNames(), refs.getSlToArApName(), refs.getOwnerSiteName(),
+                refs.getPendingSlNames(), refs.getSlToArApName(), refs.getSlToRefSiteName(),
                 BigDecimal.ZERO.setScale(2, RoundingMode.HALF_UP));
         return negativeAdvanceData(id, "BOUNDARY | Zero Amount (reject)", refs, subLedgers,
                 refs.getCashBankName(), FakerUtils.randomReference(), NegativeValidation.ZERO_AMOUNT_DIALOG);
@@ -344,7 +344,7 @@ public final class ApVoucherTemplateLoader {
     public static MergedFinanceApVoucherData docAmountNotAdjustedTemplate(LiveDbRefs refs) {
         String id = "DB_AP_DOC_NO_ADJ_INVALID";
         List<SubLedgerInformation> subLedgers = buildSubLedgersForAdvance(
-                refs.getPendingSlNames(), refs.getSlToArApName(), refs.getOwnerSiteName(),
+                refs.getPendingSlNames(), refs.getSlToArApName(), refs.getSlToRefSiteName(),
                 BigDecimal.ZERO.setScale(2, RoundingMode.HALF_UP));
         return negativeDocData(id, "BOUNDARY | Doc No Adjustment (reject)", refs, subLedgers,
                 NegativeValidation.ZERO_AMOUNT_DIALOG);
@@ -358,7 +358,7 @@ public final class ApVoucherTemplateLoader {
         String id = "DB_AP_AMT_READ_ONLY";
         List<SubLedgerInformation> subLedgers = buildSubLedgersForDocument(
                 refs.getPendingSlNames(), AdjustmentType.SELECT_DOCUMENT,
-                refs.getPendingDocsBySlName(), refs.getOwnerSiteName(), refs.getSlToArApName());
+                refs.getPendingDocsBySlName(), refs.getSlToRefSiteName(), refs.getSlToArApName());
         return MergedFinanceApVoucherData.builder()
                 .masterTestData(buildMaster("createApVoucherNegativeBoundary", id,
                         "DOC_AMT_READ_ONLY | " + glLabel(refs)))
@@ -461,7 +461,7 @@ public final class ApVoucherTemplateLoader {
         String id = "DB_AP_NO_ADJ";
         List<SubLedgerInformation> subLedgers = buildSubLedgersForDocument(
                 refs.getPendingSlNames(), null,
-                refs.getPendingDocsBySlName(), refs.getOwnerSiteName(), refs.getSlToArApName());
+                refs.getPendingDocsBySlName(), refs.getSlToRefSiteName(), refs.getSlToArApName());
         List<PaymentInformation> payments = refs.getCashBankType() == CashBankType.CASH
                 ? buildPayments(id, subLedgers, SelectDocumentVariant.PaymentMode.CASH)
                 : List.of();
@@ -493,7 +493,7 @@ public final class ApVoucherTemplateLoader {
         String id = "DB_AP_SEL_DOC";
         List<SubLedgerInformation> subLedgers = buildSubLedgersForDocument(
                 refs.getPendingSlNames(), AdjustmentType.SELECT_DOCUMENT,
-                refs.getPendingDocsBySlName(), refs.getOwnerSiteName(), refs.getSlToArApName());
+                refs.getPendingDocsBySlName(), refs.getSlToRefSiteName(), refs.getSlToArApName());
         List<PaymentInformation> payments = List.of();
         return MergedFinanceApVoucherData.builder()
                 .masterTestData(buildMaster("createApVoucherDocumentPayment", id,
@@ -524,7 +524,7 @@ public final class ApVoucherTemplateLoader {
         String id = "DB_AP_FIFO";
         List<SubLedgerInformation> subLedgers = buildSubLedgersForDocument(
                 refs.getPendingSlNames(), AdjustmentType.FIFO_SETOFF,
-                refs.getPendingDocsBySlName(), refs.getOwnerSiteName(), refs.getSlToArApName());
+                refs.getPendingDocsBySlName(), refs.getSlToRefSiteName(), refs.getSlToArApName());
         List<PaymentInformation> payments = refs.getCashBankType() == CashBankType.CASH
                 ? buildPayments(id, subLedgers, SelectDocumentVariant.PaymentMode.CASH)
                 : List.of();
@@ -555,7 +555,7 @@ public final class ApVoucherTemplateLoader {
         String id = "DB_AP_REF_FIFO";
         List<SubLedgerInformation> subLedgers = buildSubLedgersForDocument(
                 refs.getPendingSlNames(), AdjustmentType.REFERENCE_SITEWISE_FIFO_SETOFF,
-                refs.getPendingDocsBySlName(), refs.getOwnerSiteName(), refs.getSlToArApName());
+                refs.getPendingDocsBySlName(), refs.getSlToRefSiteName(), refs.getSlToArApName());
         List<PaymentInformation> payments = refs.getCashBankType() == CashBankType.CASH
                 ? buildPayments(id, subLedgers, SelectDocumentVariant.PaymentMode.CASH)
                 : List.of();
@@ -643,8 +643,8 @@ public final class ApVoucherTemplateLoader {
     private static List<SubLedgerInformation> buildSubLedgersForAdvance(
             List<SlNameWithId> slNames,
             Map<String, String> slToArApName,
-            String ownerSiteName) {
-        return buildSubLedgersForAdvance(slNames, slToArApName, ownerSiteName, ADVANCE_DEFAULT_AMOUNT);
+            Map<String, String> slToRefSiteName) {
+        return buildSubLedgersForAdvance(slNames, slToArApName, slToRefSiteName, ADVANCE_DEFAULT_AMOUNT);
     }
 
     /**
@@ -655,21 +655,22 @@ public final class ApVoucherTemplateLoader {
     private static List<SubLedgerInformation> buildSubLedgersForAdvance(
             List<SlNameWithId> slNames,
             Map<String, String> slToArApName,
-            String ownerSiteName,
+            Map<String, String> slToRefSiteName,
             BigDecimal amount) {
         AtomicInteger line = new AtomicInteger(1);
         return slNames.stream()
                 .map(slNameWithId -> {
                     String compositeKey = PendingAdjQuery.compositeKey(
                             slNameWithId.getSlName(), slNameWithId.getSlId());
-                    String glName = slToArApName.getOrDefault(compositeKey, null);
+                    String glName  = slToArApName.getOrDefault(compositeKey, null);
+                    String refSite = slToRefSiteName.getOrDefault(compositeKey, "");
                     return new SubLedgerInformation(
                             null,
                             String.valueOf(line.getAndIncrement()),
                             slNameWithId.getSlName(),
                             slNameWithId.getSlId(),
                             glName,
-                            ownerSiteName,
+                            refSite,        // resolved via 3-way admcls.clstype DB logic
                             null,           // ledgerNarration
                             null,           // isReversal
                             null,           // deductTds — UI auto-populates for TDS-applicable SLs
@@ -696,7 +697,7 @@ public final class ApVoucherTemplateLoader {
             List<SlNameWithId> slNames,
             AdjustmentType adjType,
             Map<String, List<PendingSlDocument>> pendingDocsBySlName,
-            String ownerSiteName,
+            Map<String, String> slToRefSiteName,
             Map<String, String> slToArApName) {
         AtomicInteger line = new AtomicInteger(1);
         return slNames.stream()
@@ -712,14 +713,15 @@ public final class ApVoucherTemplateLoader {
                     BigDecimal amount = totalPending.compareTo(BigDecimal.ZERO) > 0
                             ? totalPending.setScale(2, RoundingMode.HALF_UP)
                             : BigDecimal.ONE.setScale(2, RoundingMode.HALF_UP);
-                    String glName = slToArApName.getOrDefault(compositeKey, null);
+                    String glName  = slToArApName.getOrDefault(compositeKey, null);
+                    String refSite = slToRefSiteName.getOrDefault(compositeKey, "");
                     return new SubLedgerInformation(
                             null,
                             String.valueOf(line.getAndIncrement()),
                             slNameWithId.getSlName(),
                             slNameWithId.getSlId(),
                             glName,
-                            ownerSiteName,
+                            refSite,        // resolved via 3-way admcls.clstype DB logic
                             null,           // ledgerNarration
                             null,           // isReversal
                             null,           // deductTds

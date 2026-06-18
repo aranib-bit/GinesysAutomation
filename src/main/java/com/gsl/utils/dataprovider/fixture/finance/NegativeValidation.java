@@ -31,8 +31,9 @@ public enum NegativeValidation {
 
     // ─── Cash/Bank GL field ───────────────────────────────────────────────────
 
-    /** Saving with no Cash/Bank GL selected. */
-    BLANK_CASHBANK("Cash/Bank is required"),
+    /** Saving with no Cash/Bank GL selected. App shows "1. Cash/Bank: This field is required." — the
+     *  "1." line-number prefix is excluded; verifyErrorMessage uses contains() so it still matches. */
+    BLANK_CASHBANK("Cash/Bank: This field is required."),
 
     /** AP Voucher: clicking Add Row in the sub-ledger grid without Cash/Bank selected. */
     BLANK_CASHBANK_ADD_ROW("Please select cash/bank ledger first."),

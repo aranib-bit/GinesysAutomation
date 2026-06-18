@@ -7,7 +7,7 @@
     Run: mvn clean test -Pmandatory
 -->
 <!-- data-provider-thread-count MUST be at suite level — TestNG ignores it on <test>. -->
-<suite name="AR Voucher — Mandatory Suite" parallel="tests" thread-count="4" data-provider-thread-count="4">
+<suite name="AR + AP Voucher — Mandatory Suite" parallel="tests" thread-count="4" data-provider-thread-count="4">
     <listeners>
         <listener class-name="com.gsl.listeners.RetryAnnotationTransformer"/>
         <listener class-name="com.gsl.listeners.TestListener"/>
@@ -28,6 +28,22 @@
         <parameter name="arv.group" value="MANDATORY"/>
         <classes>
             <class name="com.tests.Finance.Operations.Vouchers.CreateArVoucher"/>
+        </classes>
+    </test>
+
+    <test name="AP Voucher Validation — Mandatory">
+        <parameter name="voucherDomain" value="AP"/>
+        <parameter name="executionType" value="MANDATORY"/>
+        <classes>
+            <class name="com.tests.Validation.RuleTest"/>
+        </classes>
+    </test>
+
+    <test name="AP Voucher Create — Mandatory"
+          parallel="methods" thread-count="4">
+        <parameter name="apv.group" value="MANDATORY"/>
+        <classes>
+            <class name="com.tests.Finance.Operations.Vouchers.CreateApVoucher"/>
         </classes>
     </test>
 </suite>

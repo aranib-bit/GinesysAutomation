@@ -1,0 +1,32 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE suite SYSTEM "http://testng.org/testng-1.0.dtd">
+<!--
+    Regression Phase-3 — AP Voucher additional regression scenarios.
+    May include specialized payment modes, document type filtering, or edge-case validations.
+
+    Run: mvn clean test -Pregression-apvoucher-phase3
+-->
+<!-- data-provider-thread-count MUST be at suite level — TestNG ignores it on <test>. -->
+<suite name="AP Voucher — Regression Phase-3" parallel="none" data-provider-thread-count="4">
+    <listeners>
+        <listener class-name="com.gsl.listeners.RetryAnnotationTransformer"/>
+        <listener class-name="com.gsl.listeners.TestListener"/>
+        <listener class-name="com.gsl.listeners.SuiteDataLoader"/>
+        <listener class-name="com.gsl.listeners.AnnotationMethodInterceptor"/>
+    </listeners>
+
+    <test name="AP Voucher Create — Regression Phase-3"
+          parallel="methods" thread-count="4">
+        <!--
+          apv.group=REGRESSION_PHASE3 — Phase-3 regression scenarios for AP Voucher.
+          Additional regression covering edge cases and specialized payment scenarios.
+          With the suite-level DP pool of 4, up to 4 data rows run concurrently.
+          The 3 test methods (advance, document, negative/boundary) can overlap within this pool.
+        -->
+        <parameter name="apv.group" value="REGRESSION_PHASE3"/>
+        <classes>
+            <class name="com.tests.Finance.Operations.Vouchers.CreateApVoucher"/>
+        </classes>
+    </test>
+
+</suite>

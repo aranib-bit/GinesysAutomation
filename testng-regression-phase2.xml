@@ -9,7 +9,7 @@
     Run: mvn clean test -Pregression-phase2
 -->
 <!-- data-provider-thread-count MUST be at suite level — TestNG ignores it on <test>. -->
-<suite name="AR Voucher — Regression Phase-2" parallel="tests" thread-count="8" data-provider-thread-count="8">
+<suite name="AR + AP Voucher — Regression Phase-2" parallel="tests" thread-count="8" data-provider-thread-count="8">
     <listeners>
         <listener class-name="com.gsl.listeners.RetryAnnotationTransformer"/>
         <listener class-name="com.gsl.listeners.TestListener"/>
@@ -22,6 +22,14 @@
         <parameter name="arv.group" value="REGRESSION_PHASE2"/>
         <classes>
             <class name="com.tests.Finance.Operations.Vouchers.CreateArVoucher"/>
+        </classes>
+    </test>
+
+    <test name="AP Voucher Create — Regression Phase-2"
+          parallel="methods" thread-count="8">
+        <parameter name="apv.group" value="REGRESSION_PHASE2"/>
+        <classes>
+            <class name="com.tests.Finance.Operations.Vouchers.CreateApVoucher"/>
         </classes>
     </test>
 </suite>

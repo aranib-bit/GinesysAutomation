@@ -5,6 +5,7 @@ import com.gsl.enums.Finance.Operations.APVoucher.TdsApplicableAmountBehaviour;
 import com.gsl.enums.Finance.Operations.APVoucher.TdsNatureMode;
 import lombok.Builder;
 import lombok.Getter;
+import com.gsl.utils.dataprovider.fixture.finance.SelectDocumentVariant;
 
 /**
  * Configurable DB query parameters for the AP Voucher fixture factory.
@@ -263,6 +264,26 @@ public class ApVoucherFixtureOptions {
                 .glType(glType)
                 .tdsApplicable(true)
                 .tdsNatureMode(TdsNatureMode.SINGLE_NATURE)
+                .build();
+    }
+
+    /**
+     * Builds fixture options from a {@link SelectDocumentVariant} produced by
+     * {@link SelectDocumentCombinations}. Maps slCount, docsPerSl, glType, slClsCode
+     * directly. Sets docTypeFilter="INV" for the Phase-3 INV-specific variant.
+     *
+     * @param v the combination variant from SelectDocumentCombinations
+     * @return fixture options ready for the AP Voucher data source
+     */
+    public static ApVoucherFixtureOptions forSelectDocVariant(SelectDocumentVariant v) {
+        int floor = com.gsl.config.ConfigFactory.getWaitConfig().docSelectorDocumentCountDefault();
+        String docTypeFilter = v.getVariantId().contains("INV") ? "INV" : null;
+        return ApVoucherFixtureOptions.builder()
+                .subLedgerCount(v.getSlCount())
+                .documentCount(Math.max(v.getDocsPerSl(), Math.max(1, floor)))
+                .glType(v.getGlType())
+                .slClsCode(v.getSlClsCode())
+                .docTypeFilter(docTypeFilter)
                 .build();
     }
 

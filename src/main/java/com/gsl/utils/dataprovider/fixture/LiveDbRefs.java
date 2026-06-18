@@ -76,15 +76,35 @@ public class LiveDbRefs {
     Map<String, TdsResolution> slToTdsResolution = Collections.emptyMap();
 
     /**
-     * Best available reference site name per SL for {@code DOC_REFERENCE_SITEWISE_FIFO} scenarios.
+     * Resolved reference site name per SL for all AP Voucher scenarios.
      * Keyed by {@code "slName|slId"} (build via
      * {@link com.gsl.database.query.PendingAdjQuery#compositeKey}).
      *
-     * <p>Resolved in {@code DbApVoucherDataSource} step 5d by querying
-     * {@code v_pending_adj GROUP BY ref_admsite_name} and reserving via
-     * {@link com.gsl.database.ReferenceSiteAmountRegistry}.
-     * Empty map for all non-FIFO-sitewise scenarios.
+     * <p>Populated in {@code DbApVoucherDataSource} step 5d via
+     * {@link com.gsl.database.query.ReferenceSiteQuery#resolveForSl} for all scenarios.
+     * For {@code DOC_REFERENCE_SITEWISE_FIFO} the value is overwritten by the more precise
+     * {@code v_pending_adj}-based resolution that accounts for actual pending balances.
      */
     @Builder.Default
     Map<String, String> slToRefSiteName = Collections.emptyMap();
+
+    /**
+     * {@code admcls.cmpcode} per SL — 1 = system-generated classification, 0 = user-defined.
+     * Keyed by {@code "slName|slId"}.
+     *
+     * <p>Drives scenario generation: system SLs ({@code cmpcode=1}) are needed for NEG-06/NEG-07;
+     * user-defined SLs ({@code cmpcode=0}) are needed for DOC-02/DOC-04/DOC-06.
+     */
+    @Builder.Default
+    Map<String, Integer> slToCmpCode = Collections.emptyMap();
+
+    /**
+     * {@code admcls.clstype} per SL — e.g. "C" (Customer), "S" (Supplier), "D", "O", etc.
+     * Keyed by {@code "slName|slId"}.
+     *
+     * <p>Used by {@link com.gsl.database.query.ReferenceSiteQuery} to select the correct
+     * resolution branch: Customer-type SLs check admsite count; all others use the default.
+     */
+    @Builder.Default
+    Map<String, String> slToClstype = Collections.emptyMap();
 }

@@ -5,6 +5,7 @@ import com.gsl.config.ConfigFactory;
 import com.gsl.driver.DriverManager;
 import com.gsl.enums.AdjustmentType;
 import com.gsl.enums.Finance.Operations.APVoucher.DeductTdsClearConfirmAction;
+import com.gsl.enums.Finance.Operations.APVoucher.OnAccountMode;
 import com.gsl.enums.PaymentSelectionType;
 import com.gsl.enums.WaitType;
 import com.gsl.pages.Finance.Operations.Common.AdjustmentEntry;
@@ -29,9 +30,11 @@ import com.gsl.reports.SubLedgerRowStepRegistry;
 import com.aventstack.extentreports.ExtentTest;
 import org.openqa.selenium.By;
 import org.openqa.selenium.JavascriptExecutor;
+import org.openqa.selenium.TimeoutException;
 import org.openqa.selenium.WebDriver;
 import org.openqa.selenium.WebElement;
 import org.openqa.selenium.interactions.Actions;
+import com.gsl.utils.Selenium.WaitUtils;
 
 import java.math.BigDecimal;
 import java.util.List;
@@ -113,7 +116,7 @@ public class APVoucherSubLedgerInformation extends VoucherSubLedgerInformationBa
             MergedFinanceApVoucherData data, boolean includeRetry) {
 
         List<SubLedgerInformation> sls = data.getSubLedgerInformationList();
-        fillSubLedgerBase(sls, includeRetry);
+        fillSubLedgerBase(sls, includeRetry, OnAccountMode.ADVANCE);
         if (data.isPaymentProvided()) {
             handlePaymentInformation(sls, data.getPaymentInformationList());
         }
@@ -132,7 +135,8 @@ public class APVoucherSubLedgerInformation extends VoucherSubLedgerInformationBa
             MergedFinanceApVoucherData data, boolean includeRetry) {
 
         List<SubLedgerInformation> sls = data.getSubLedgerInformationList();
-        fillSubLedgerBase(sls, includeRetry);
+        // On Account = No (document adjustment): deductTDS column is never rendered — skip entirely.
+        fillSubLedgerBase(sls, includeRetry, OnAccountMode.DOCUMENT);
         fillAdjustments(sls, data);
         if (data.isPaymentProvided()) {
             handlePaymentInformation(sls, data.getPaymentInformationList());
@@ -142,8 +146,18 @@ public class APVoucherSubLedgerInformation extends VoucherSubLedgerInformationBa
 
     // ── Private helpers ───────────────────────────────────────────────────────
 
-    /** Pass 1 (sub-ledger name + amount) and Pass 2 (reference site re-apply). Common to both modes. */
-    private void fillSubLedgerBase(List<SubLedgerInformation> sls, boolean includeRetry) {
+    /**
+     * Pass 1 (sub-ledger name + amount) and Pass 2 (reference site re-apply). Common to both modes.
+     *
+     * @param mode {@link OnAccountMode#ADVANCE} when On Account = Yes — the {@code deductTDS} column
+     *             is present; TDS applicability is governed by the vendor. Both
+     *             {@code isAmountAutoCalculated} and {@code setDeductTdsNative} may send deductTDS
+     *             XPaths to the browser.
+     *             {@link OnAccountMode#DOCUMENT} when On Account = No — the {@code deductTDS} column
+     *             is never rendered in the DOM; both XPath call sites are suppressed so no
+     *             deductTDS XPath is ever sent to the browser.
+     */
+    private void fillSubLedgerBase(List<SubLedgerInformation> sls, boolean includeRetry, OnAccountMode mode) {
 
         // Start each test's row grouping clean (ThreadLocal — safe under parallel="methods").
         SubLedgerRowStepRegistry.clear();
@@ -179,7 +193,7 @@ public class APVoucherSubLedgerInformation extends VoucherSubLedgerInformationBa
                     // calculates & populates it via the native "Calc. Amount → Calculate TDS & Net
                     // Payable" popup (handled later by fillTdsAndNetPayable). For Deduct TDS = No
                     // (incl. non-TDS-applicable rows) the cell is editable → type Amount natively.
-                    if (isAmountAutoCalculated(slName, refSite, slId)) {
+                    if (isAmountAutoCalculated(slName, refSite, slId, mode)) {
                         ExtentLogger.info("[SL_AMOUNT] Row " + idx + " (" + slName + "): Deduct TDS = Yes — "
                                 + "Amount is app-calculated via Calc TDS / Net Payable; skipping native amount entry.");
                     } else {
@@ -192,7 +206,7 @@ public class APVoucherSubLedgerInformation extends VoucherSubLedgerInformationBa
                 Log.debug("Row {} | SL={} | AmtDr={}", idx, sl.getSubLedger(), sl.getAmountDr());
             });
 
-            if (sl.getDeductTds() != null && !sl.getDeductTds().trim().isEmpty()) {
+            if (mode == OnAccountMode.ADVANCE && sl.getDeductTds() != null && !sl.getDeductTds().trim().isEmpty()) {
                 final String deductTds = sl.getDeductTds().trim();
                 StepExecutor.stepUnder(rowNode, "Deduct TDS — " + deductTds, () -> {
                     if ("NATIVE".equalsIgnoreCase(ConfigFactory.getFinanceConfig().subLedgerSelectionMode())) {
@@ -493,10 +507,10 @@ public class APVoucherSubLedgerInformation extends VoucherSubLedgerInformationBa
 
     private void setSubLedgerReferenceSite(String referenceSite, int rowIndex) {
         if (referenceSite == null || referenceSite.trim().isEmpty()) return;
-        // Never change Reference Site when the row already has a value (per requirement).
-        // The app auto-populates it after sub-ledger selection; re-opening the editor risks
-        // landing on the wrong cell and is not wanted. Skip without opening any editor.
-        String existing = getSubLedgerReferenceSite(rowIndex);
+        // Poll for auto-population before deciding skip vs. native path.
+        // The app asynchronously fills Reference Site after SL selection; reading immediately
+        // returns blank and incorrectly routes to the native editor path, causing TimeoutException.
+        String existing = waitForReferenceSiteAutoPopulation(rowIndex);
         if (existing != null && !existing.trim().isEmpty()) {
             ExtentLogger.info("[AP SL RefSite] Row " + rowIndex + ": already '" + existing
                     + "' — not changing (skip).");
@@ -553,6 +567,31 @@ public class APVoucherSubLedgerInformation extends VoucherSubLedgerInformationBa
         return new DocumentPopup();
     }
 
+    /**
+     * Waits up to {@code shortWaitSeconds} for the UI to auto-populate the Reference Site cell
+     * after a sub-ledger is selected.  Returns the populated value, or {@code ""} on timeout.
+     *
+     * <p>The app fills Reference Site asynchronously via an ExtJS store load after SL selection;
+     * calling {@link #getSubLedgerReferenceSite} immediately after returns blank and causes the
+     * native editor path to fire — leading to a {@code TimeoutException} when the combo option
+     * is never found.  This poll avoids that race condition.
+     */
+    private String waitForReferenceSiteAutoPopulation(int rowIndex) {
+        long timeoutSeconds = ConfigFactory.getWaitConfig().shortWaitSeconds();
+        try {
+            return WaitUtils.webDriverWait(timeoutSeconds).until(driver -> {
+                String val = JavascriptExecutorUtils.getSubLedgerReferenceSiteName(
+                        driver, rowIndex, AP_GRID_ITEM_ID);
+                return (val != null && !val.trim().isEmpty()) ? val : null;
+            });
+        } catch (TimeoutException e) {
+            ExtentLogger.info("[AP SL RefSite] Row " + rowIndex
+                    + ": auto-population did not occur within " + timeoutSeconds
+                    + "s — will use native path.");
+            return "";
+        }
+    }
+
     private String getSubLedgerReferenceSite(int rowIndex) {
         return JavascriptExecutorUtils.getSubLedgerReferenceSiteName(DriverManager.getDriver(), rowIndex, AP_GRID_ITEM_ID);
     }
@@ -569,7 +608,13 @@ public class APVoucherSubLedgerInformation extends VoucherSubLedgerInformationBa
      * native mode) and its Amount cell is editable — so {@code No} (and anything that is not
      * {@code Yes}) means the amount must be typed natively.</p>
      */
-    private boolean isAmountAutoCalculated(String slName, String refSite, String slId) {
+    private boolean isAmountAutoCalculated(String slName, String refSite, String slId, OnAccountMode mode) {
+        if (mode == OnAccountMode.DOCUMENT) {
+            // deductTDS column is never rendered in document mode (On Account = No).
+            // Amount is always manually entered; sending the XPath would cause NoSuchElementException.
+            ExtentLogger.info("[SL_AMOUNT] Row '" + slName + "': DOCUMENT mode — deductTDS column absent, amount always editable.");
+            return false;
+        }
         By cell = By.xpath(
                 (slId != null && !slId.isBlank())
                         ? String.format(DEDUCT_TDS_CELL_WITH_SLID, slName, refSite, slId)

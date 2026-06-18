@@ -135,10 +135,13 @@ public enum ApVoucherScenarioType {
     // All run on the advance path so a usable vendor SL is resolved without needing
     // pending documents; each template mutates exactly one field to trigger its error.
 
-    /** Save with no Cash/Bank GL selected → "Cash/Bank is required". */
+    /**
+     * FIN-AP-ADD-NEG-01: Save with no Cash/Bank GL selected → "Cash/Bank is required".
+     * Header filled (Cash/Bank left blank) → click Add Row (blank row, no data) → Save → verify error.
+     */
     NEG_BLANK_CASHBANK(
             ApVoucherTemplateLoader::negBlankCashbankTemplate,
-            ApVoucherPredicateFactory.NEGATIVE_FORM_VALIDATION_BEHAVIOR,
+            ApVoucherPredicateFactory.NEG_BLANK_CASHBANK_SAVE_BEHAVIOR,
             true
     ),
 

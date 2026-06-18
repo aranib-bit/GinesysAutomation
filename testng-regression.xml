@@ -17,7 +17,7 @@
      A suite has ONE shared DP pool, so it is set to the largest value any phase requests (8).
      Real concurrency is still hard-capped at the UI-user count (4) by the UserPool semaphore;
      any extra DP threads park harmlessly (stall-based timeout never fires on healthy queueing). -->
-<suite name="AR Voucher — Full Regression" parallel="tests" thread-count="10" data-provider-thread-count="8">
+<suite name="AR + AP Voucher — Full Regression" parallel="tests" thread-count="10" data-provider-thread-count="8">
     <listeners>
         <listener class-name="com.gsl.listeners.RetryAnnotationTransformer"/>
         <listener class-name="com.gsl.listeners.TestListener"/>
@@ -55,6 +55,38 @@
         <parameter name="arv.group" value="REGRESSION_PHASE3"/>
         <classes>
             <class name="com.tests.Finance.Operations.Vouchers.CreateArVoucher"/>
+        </classes>
+    </test>
+
+    <test name="AP Voucher Validation — Regression">
+        <parameter name="voucherDomain" value="AP"/>
+        <parameter name="executionType" value="ALL"/>
+        <classes>
+            <class name="com.tests.Validation.RuleTest"/>
+        </classes>
+    </test>
+
+    <test name="AP Voucher Create — Regression Phase-1"
+          parallel="methods" thread-count="6">
+        <parameter name="apv.group" value="REGRESSION_PHASE1"/>
+        <classes>
+            <class name="com.tests.Finance.Operations.Vouchers.CreateApVoucher"/>
+        </classes>
+    </test>
+
+    <test name="AP Voucher Create — Regression Phase-2"
+          parallel="methods" thread-count="8">
+        <parameter name="apv.group" value="REGRESSION_PHASE2"/>
+        <classes>
+            <class name="com.tests.Finance.Operations.Vouchers.CreateApVoucher"/>
+        </classes>
+    </test>
+
+    <test name="AP Voucher Create — Regression Phase-3"
+          parallel="methods" thread-count="4">
+        <parameter name="apv.group" value="REGRESSION_PHASE3"/>
+        <classes>
+            <class name="com.tests.Finance.Operations.Vouchers.CreateApVoucher"/>
         </classes>
     </test>
 </suite>

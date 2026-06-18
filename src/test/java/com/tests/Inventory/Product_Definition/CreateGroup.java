@@ -17,6 +17,8 @@ import com.gsl.testdata.dto.MergedInventoryGroupData;
 import com.gsl.utils.NavigationUtils;
 import com.gsl.utils.Selenium.JavascriptExecutorUtils;
 import com.gsl.utils.dataprovider.MergedInvGroupDataSupplier;
+import com.gsl.enums.LogCategory;
+import com.gsl.reports.ReportLogger;
 import com.tests.WebTest;
 import org.testng.annotations.Test;
 
@@ -30,6 +32,9 @@ public class CreateGroup extends WebTest {
             dataProvider = "dataSupplier", dataProviderClass = MergedInvGroupDataSupplier.class)
     public void CreateDivision(MergedInventoryGroupData groupData) throws InterruptedException {
         System.out.println("Running test for: " + groupData.getTestCaseId());
+        ReportLogger.info(LogCategory.VALIDATION,
+                "Expected Result: Division node created. DB — invgrp: 1 new row with correct name at level 1. "
+                + "UI: node visible in group hierarchy at depth 1.");
         // 1. Login to the application
         UserCredential u = DriverManager.getCurrentUser();
         LoginPage loginPage = new LoginPage();
@@ -229,6 +234,9 @@ public class CreateGroup extends WebTest {
             dataProvider = "dataSupplier", dataProviderClass = MergedInvGroupDataSupplier.class)
     public void CreateSection(MergedInventoryGroupData groupData) {
         System.out.println("Running test for: " + groupData.getTestCaseId());
+        ReportLogger.info(LogCategory.VALIDATION,
+                "Expected Result: Section node created. DB — invgrp: 1 new row with correct name at level 2. "
+                + "UI: node visible in group hierarchy at depth 2.");
 
         // 1. Login
         UserCredential u = DriverManager.getCurrentUser();
@@ -320,6 +328,9 @@ public class CreateGroup extends WebTest {
     public void CreateDepartment(MergedInventoryGroupData groupData) throws InterruptedException {
         System.out.println("Running test for: " + groupData.getTestCaseId());
         System.out.println("Inside department creation");
+        ReportLogger.info(LogCategory.VALIDATION,
+                "Expected Result: Department node created. DB — invgrp: 1 new row with correct name at level 3. "
+                + "UI: node visible in group hierarchy at depth 3.");
         // 1. Login
         UserCredential u = DriverManager.getCurrentUser();
         LoginPage loginPage = new LoginPage();

@@ -77,7 +77,7 @@ public class DocumentMessageBox {
      */
     public DocumentSaveResult verifyDocumentSave() {
         JavascriptExecutorUtils.waitForPageLoad();
-        JavascriptExecutorUtils.waitForExtJS();
+        com.gsl.utils.Selenium.WaitUtils.waitForExtMaskBestEffort("post-save-document-message-box");
         String status = getHeaderStatus();
         String messageText = getMessageText();
         ExtentLogger.info("Save response — Header: " + status + " | Message: " + messageText);
@@ -105,7 +105,7 @@ public class DocumentMessageBox {
      */
     public DocumentSaveResult verifyDocumentSave(SoftAssert softAssert) {
         JavascriptExecutorUtils.waitForPageLoad();
-        JavascriptExecutorUtils.waitForExtJS();
+        com.gsl.utils.Selenium.WaitUtils.waitForExtMaskBestEffort("post-save-document-message-box-soft");
         String status = getHeaderStatus();
         String messageText = getMessageText();
         ExtentLogger.info("Save response — Header: " + status + " | Message: " + messageText);
@@ -135,7 +135,6 @@ public class DocumentMessageBox {
 
     public void clickProceed() {
         JavascriptExecutorUtils.waitForPageLoad();
-        JavascriptExecutorUtils.waitForExtJS();
         SeleniumUtils.click(CommonButton.PROCEED.locator(), WaitType.CLICKABLE, "PROCEED_BUTTON");
         SeleniumUtils.elementDisappear(Loc.LOADER, "LOADER");
     }
@@ -146,18 +145,15 @@ public class DocumentMessageBox {
             System.out.println("Currently PI will not be generated, so clicking No...");
             SeleniumUtils.click(CommonButton.NO.locator(), WaitType.CLICKABLE, "NO_BUTTON");
             JavascriptExecutorUtils.waitForPageLoad();
-            JavascriptExecutorUtils.waitForExtJS();
 
             SeleniumUtils.click(Loc.CLOSE_BUTTON, WaitType.CLICKABLE, "CLOSE_BUTTON");
             JavascriptExecutorUtils.waitForPageLoad();
-            JavascriptExecutorUtils.waitForExtJS();
 
             SeleniumUtils.click(CommonButton.YES.locator(), WaitType.CLICKABLE, "DISCARD_YES_BUTTON");
             JavascriptExecutorUtils.waitForPageLoad();
-            JavascriptExecutorUtils.waitForExtJS();
 
             JavascriptExecutorUtils.logLoadingComponents();
-            JavascriptExecutorUtils.waitForComponentReady();
+            com.gsl.utils.Selenium.WaitUtils.waitForExtMaskBestEffort("post-yes-receipts-close");
 
             return new ReceiptsListPage();
         } else {
@@ -178,13 +174,11 @@ public class DocumentMessageBox {
         System.out.println("Currently PI will not be generated, so clicking No...");
         SeleniumUtils.click(CommonButton.NO.locator(), WaitType.CLICKABLE, "NO_BUTTON");
         JavascriptExecutorUtils.waitForPageLoad();
-        JavascriptExecutorUtils.waitForExtJS();
     }
 
     public void clickNo() {
         SeleniumUtils.click(CommonButton.NO.locator(), WaitType.CLICKABLE, "NO_BUTTON");
         JavascriptExecutorUtils.waitForPageLoad();
-        JavascriptExecutorUtils.waitForExtJS();
     }
 
     public void clickContinue() {
@@ -202,24 +196,20 @@ public class DocumentMessageBox {
     public void closeGRC() {
         SeleniumUtils.click(Loc.CLOSE_BUTTON, WaitType.CLICKABLE, "CLOSE_BUTTON");
         JavascriptExecutorUtils.waitForPageLoad();
-        JavascriptExecutorUtils.waitForExtJS();
 
         SeleniumUtils.click(CommonButton.YES.locator(), WaitType.CLICKABLE, "DISCARD_YES_BUTTON");
         JavascriptExecutorUtils.waitForPageLoad();
-        JavascriptExecutorUtils.waitForExtJS();
     }
 
     public ArVoucherListPage clickYes() {
         SeleniumUtils.click(CommonButton.YES.locator(), WaitType.CLICKABLE, "DISCARD_YES_BUTTON");
         JavascriptExecutorUtils.waitForPageLoad();
-        JavascriptExecutorUtils.waitForExtJS();
         return new ArVoucherListPage();
     }
 
     public ItemListPage closeItem(){
         SeleniumUtils.click(CommonButton.YES.locator(), WaitType.CLICKABLE, "DISCARD_YES_BUTTON");
         JavascriptExecutorUtils.waitForPageLoad();
-        JavascriptExecutorUtils.waitForExtJS();
         return new ItemListPage();
     }
 

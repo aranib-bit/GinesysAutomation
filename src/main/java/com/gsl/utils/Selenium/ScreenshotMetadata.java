@@ -10,15 +10,19 @@ public record ScreenshotMetadata(
         String pageUrl,
         long   scrollY,
         String viewport,
-        String currentStep
+        String currentStep,
+        /** Last element locator used before failure (from {@link CurrentLocatorHolder}). Null when unavailable. */
+        String failedLocator
 ) {
     /** Single-line annotation suitable for attaching to an Extent log entry. */
     public String toAnnotation() {
         StringBuilder sb = new StringBuilder();
-        if (!pageUrl.isBlank())    sb.append("URL: ").append(pageUrl).append("  |  ");
-        if (scrollY > 0)           sb.append("ScrollY: ").append(scrollY).append("px  |  ");
-        if (!viewport.isBlank())   sb.append("Viewport: ").append(viewport).append("  |  ");
-        if (!currentStep.isBlank()) sb.append("Step: ").append(currentStep);
+        if (!pageUrl.isBlank())     sb.append("URL: ").append(pageUrl).append("  |  ");
+        if (scrollY > 0)            sb.append("ScrollY: ").append(scrollY).append("px  |  ");
+        if (!viewport.isBlank())    sb.append("Viewport: ").append(viewport).append("  |  ");
+        if (!currentStep.isBlank()) sb.append("Step: ").append(currentStep).append("  |  ");
+        if (failedLocator != null && !failedLocator.isBlank())
+                                    sb.append("Locator: ").append(failedLocator).append("  |  ");
         String s = sb.toString();
         return s.endsWith("  |  ") ? s.substring(0, s.length() - 5) : s;
     }

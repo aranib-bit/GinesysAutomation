@@ -14,7 +14,10 @@ import java.util.List;
 @RegisterBeanMapper(FinVchDet.class)
 public interface FinVchDetDao {
 
-    @SqlQuery("SELECT * FROM finvchdet WHERE vchcode = :vchcode")
+    @SqlQuery("SELECT f.*, a.name AS ref_admsite_name " +
+              "FROM finvchdet f " +
+              "LEFT JOIN admsite a ON a.code = f.ref_admsite_code " +
+              "WHERE f.vchcode = :vchcode")
     List<FinVchDet> findByVoucherCode(@Bind("vchcode") long vchcode);
 
     @SqlQuery("SELECT COUNT(*) FROM finvchdet WHERE vchcode = :vchcode")
@@ -26,7 +29,10 @@ public interface FinVchDetDao {
     @SqlQuery("SELECT COALESCE(SUM(camount), 0) FROM finvchdet WHERE vchcode = :vchcode")
     BigDecimal sumCreditByVoucherCode(@Bind("vchcode") long vchcode);
 
-    @SqlQuery("SELECT * FROM finvchdet WHERE vchcode = :vchcode AND slcode = :slcode")
+    @SqlQuery("SELECT f.*, a.name AS ref_admsite_name " +
+              "FROM finvchdet f " +
+              "LEFT JOIN admsite a ON a.code = f.ref_admsite_code " +
+              "WHERE f.vchcode = :vchcode AND f.slcode = :slcode")
     List<FinVchDet> findByVoucherCodeAndSlCode(
             @Bind("vchcode") long vchcode,
             @Bind("slcode") long slcode);
@@ -37,7 +43,10 @@ public interface FinVchDetDao {
      *   slcode   — from finsl where slname = SubLedger name (+ slid when provided)
      *   glcode   — from fingl where glname = General Ledger name
      */
-    @SqlQuery("SELECT * FROM finvchdet WHERE vchcode = :vchcode AND slcode = :slcode AND glcode = :glcode")
+    @SqlQuery("SELECT f.*, a.name AS ref_admsite_name " +
+              "FROM finvchdet f " +
+              "LEFT JOIN admsite a ON a.code = f.ref_admsite_code " +
+              "WHERE f.vchcode = :vchcode AND f.slcode = :slcode AND f.glcode = :glcode")
     FinVchDet findByVchcodeSlcodeGlcode(
             @Bind("vchcode") long vchcode,
             @Bind("slcode") long slcode,

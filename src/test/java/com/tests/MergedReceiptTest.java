@@ -2,6 +2,8 @@ package com.tests;
 
 import com.gsl.annotations.FrameworkAnnotation;
 import com.gsl.driver.DriverManager;
+import com.gsl.enums.LogCategory;
+import com.gsl.reports.ReportLogger;
 import com.gsl.testdata.UserCredential;
 import com.gsl.enums.TestAuthor;
 import com.gsl.pages.Common.DocumentMessageBox;
@@ -34,6 +36,9 @@ public class MergedReceiptTest extends WebTest {
                 "Running invocation " +
                         data.getInvocationIndex() + "/" + data.getTotalInvocations()
         );
+        ReportLogger.info(LogCategory.VALIDATION,
+                "Expected Result: Receipt processed successfully. Document No. displayed. "
+                + "Item quantities and amounts recorded correctly.");
 
         // 1. Login to the application
         UserCredential u = DriverManager.getCurrentUser();

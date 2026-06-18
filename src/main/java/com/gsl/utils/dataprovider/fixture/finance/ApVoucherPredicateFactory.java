@@ -509,6 +509,48 @@ public final class ApVoucherPredicateFactory {
     // ─── Negative "blank cashbank → Add Row triggers popup" behavior ─────────
 
     /**
+     * NEG_BLANK_CASHBANK save-path behavior (FIN-AP-ADD-NEG-01):
+     * <ol>
+     *   <li>Fill header with Cash/Bank = null (skipped by null-guard).</li>
+     *   <li>Click Add Row → app shows "Please select cash/bank ledger first." immediately
+     *       (no row is added). Dismiss the popup — this is not the asserted error.</li>
+     *   <li>Click Save with an empty sub-ledger grid → app shows "Cash/Bank is required."
+     *       (Cash/Bank is validated at header level before sub-ledger content).</li>
+     *   <li>Assert and dismiss, then discard and log out.</li>
+     * </ol>
+     * No sub-ledger JS fill — avoids async GL AJAX and the ExtJS mask that blocks the Save click.
+     */
+    public static final Supplier<BiPredicate<MergedFinanceApVoucherData, ApVoucherAdd>>
+        NEG_BLANK_CASHBANK_SAVE_BEHAVIOR = () -> (data, page) -> {
+
+            StepExecutor.step("Fill Document Information (Cash/Bank intentionally blank)", () -> {
+                page.fillDocumentHeader(data.getDocumentInformation());
+                ReportLogger.info("Cash/Bank skipped — null-guard in fillDocumentHeader leaves the field empty.");
+            });
+
+            StepExecutor.step("Click Add Sub-Ledger Row — dismiss 'Please select cash/bank' popup", () -> {
+                DocumentPopup addRowPopup = page.clickAddSubLedgerRow();
+                addRowPopup.clickOkOnErrorDialog();
+                ReportLogger.info("Add Row popup dismissed. Sub-ledger grid remains empty — Cash/Bank error expected on Save.");
+            });
+
+            StepExecutor.step("Click Save — expect Cash/Bank required error", () -> {
+                DocumentPopup popup = page.clickSave();
+                String expectedMsg = data.getExpectedValidation().expectedMessage();
+                String actualMsg = popup.verifyErrorMessage(expectedMsg);
+                ReportLogger.pass("Validation OK — Expected: [" + expectedMsg + "] | Received: [" + actualMsg + "]");
+                popup.clickOkOnErrorDialog();
+            });
+
+            StepExecutor.step("Cancel and Logout", () -> {
+                page.close().clickYes();
+                new HomePage().logoutFromApplication();
+            });
+
+            return true;
+        };
+
+    /**
      * NEG_BLANK_CASHBANK_ADD_ROW behavior (FIN-AP-ADD-NEG-01, T-1):
      * <ol>
      *   <li>Fill document header with Cash/Bank = null (skipped by the null-guard).</li>
