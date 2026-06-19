@@ -3,6 +3,7 @@ package com.gsl.validation.db.finance;
 import com.aventstack.extentreports.ExtentTest;
 import com.gsl.model.finance.FinPost;
 import com.gsl.model.finance.FinVchMain;
+import com.gsl.reports.ActualResultsHolder;
 import com.gsl.reports.ExtentLogger;
 import com.gsl.reports.ExtentManager;
 import com.gsl.testdata.dto.MergedFinanceApVoucherData;
@@ -39,6 +40,16 @@ public class APVoucherDbValidator {
         Assert.assertNotNull(context.getVoucherNo(),
                 "voucherNo is null — AP voucher creation may have failed");
         Assert.assertFalse(context.getVoucherNo().isBlank(), "voucherNo is blank");
+
+        MergedFinanceApVoucherData apData = context.getTestData();
+        ActualResultsHolder holder = ActualResultsHolder.get();
+        holder.setVoucherNo(context.getVoucherNo());
+        holder.setVoucherType("AP");
+        holder.setTestData(apData);
+        if (apData != null) {
+            holder.setOnAccount(apData.isOnAccount());
+            holder.setTdsProvided(apData.isTdsProvided());
+        }
 
         ExtentTest test = ExtentManager.getExtentTest();
         if (test != null) test.assignCategory("DB Validation");

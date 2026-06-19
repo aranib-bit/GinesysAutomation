@@ -17,6 +17,7 @@ import com.gsl.pages.HomePage;
 import com.gsl.pages.LoginPage;
 import com.gsl.pages.enums.Finance.MainMenuType;
 import com.gsl.pages.enums.Finance.Operations.OperationsMenuType;
+import com.gsl.reports.ActualResultsHolder;
 import com.gsl.reports.ApVoucherExtentDescriptionLogger;
 import com.gsl.reports.DbGatheringExtentLogger;
 import com.gsl.utils.dataprovider.source.finance.DbApVoucherDataSource;
@@ -69,6 +70,9 @@ public class CreateApVoucher extends WebTest {
         DbGatheringExtentLogger.log(data);
 
         ApVoucherExtentDescriptionLogger.log(data);
+
+        ActualResultsHolder.get().setVoucherType("AP");
+        ActualResultsHolder.get().setTestData(data);
 
         final MergedFinanceApVoucherData testData = data;
 
@@ -196,6 +200,9 @@ public class CreateApVoucher extends WebTest {
         DbGatheringExtentLogger.log(data);
 
         ApVoucherExtentDescriptionLogger.log(data);
+
+        ActualResultsHolder.get().setVoucherType("AP");
+        ActualResultsHolder.get().setTestData(data);
 
         final MergedFinanceApVoucherData testData = data;
 
@@ -330,6 +337,10 @@ public class CreateApVoucher extends WebTest {
 
         DbGatheringExtentLogger.log(data);
         ApVoucherExtentDescriptionLogger.log(data);
+
+        ActualResultsHolder.get().setVoucherType("AP");
+        ActualResultsHolder.get().setNegativeScenario(true);
+        ActualResultsHolder.get().setTestData(data);
 
         final MergedFinanceApVoucherData testData = data;
 

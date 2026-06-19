@@ -4,6 +4,7 @@ import com.gsl.database.DatabaseManager;
 import com.gsl.database.dao.finance.FinPostDao;
 import com.gsl.model.finance.FinPost;
 import com.gsl.model.finance.FinVchMain;
+import com.gsl.reports.ActualResultsHolder;
 import com.gsl.reports.ReportLogger;
 import org.assertj.core.api.SoftAssertions;
 import org.testng.Assert;
@@ -36,6 +37,8 @@ public class FinPostValidator {
 
         // Existence — BLOCKING
         List<FinPost> entries = dao.findByEntCode(entcode);
+        ActualResultsHolder.get().setPostEntryCount(entries.size());
+        ActualResultsHolder.get().setPostEntries(entries);
         Assert.assertFalse(entries.isEmpty(),
                 "[Level 3] No finpost rows for entcode [" + entcode
                         + "]. Posting engine may not have run.");

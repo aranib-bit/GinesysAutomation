@@ -77,13 +77,19 @@ public class JdbiSqlLogger implements SqlLogger {
     @Override
     public void logAfterExecution(StatementContext ctx) {
         try {
-            String resolvedSql = (String) ctx.getAttribute("__resolvedSql__");
-            if (resolvedSql == null) return;
-
             long elapsedMs = START_NS.get() != null
                     ? (System.nanoTime() - START_NS.get()) / 1_000_000L
                     : -1;
             START_NS.remove();
+
+            // Prefer the JDBC driver's toString() — PostgreSQL's PgPreparedStatement
+            // returns fully-rendered SQL with all values substituted (copy-paste ready).
+            // Falls back to the JDBI-resolved SQL stored in logBeforeExecution.
+            String resolvedSql = resolveFromStatement(ctx);
+            if (resolvedSql == null) {
+                resolvedSql = (String) ctx.getAttribute("__resolvedSql__");
+            }
+            if (resolvedSql == null) return;
 
             String line = elapsedMs >= 0
                     ? "[DB Query ⏱ " + elapsedMs + "ms] " + resolvedSql
@@ -97,6 +103,31 @@ public class JdbiSqlLogger implements SqlLogger {
         } catch (Exception ignored) {
             START_NS.remove();
         }
+    }
+
+    /**
+     * Asks the JDBC driver to render the SQL with bound values.
+     * PostgreSQL's {@code PgPreparedStatement.toString()} returns the query as sent
+     * to the server — parameters already substituted, copy-paste ready.
+     * Returns {@code null} if the statement is not available or the driver doesn't
+     * support this (non-PG drivers typically return the class name instead).
+     */
+    private static String resolveFromStatement(StatementContext ctx) {
+        try {
+            java.sql.Statement stmt = ctx.getStatement();
+            if (stmt == null) return null;
+            String s = stmt.toString();
+            // Accept only if it looks like real SQL (starts with a keyword, not a class name)
+            if (s != null && s.length() > 6) {
+                String upper = s.stripLeading().substring(0, 6).toUpperCase();
+                if (upper.startsWith("SELECT") || upper.startsWith("INSERT")
+                        || upper.startsWith("UPDATE") || upper.startsWith("DELETE")
+                        || upper.startsWith("WITH")) {
+                    return s.strip();
+                }
+            }
+        } catch (Exception ignored) {}
+        return null;
     }
 
     // ── Helpers ───────────────────────────────────────────────────────────────

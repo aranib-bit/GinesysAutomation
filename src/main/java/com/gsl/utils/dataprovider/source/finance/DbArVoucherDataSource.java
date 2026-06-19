@@ -602,6 +602,15 @@ public class DbArVoucherDataSource implements TestDataSource<MergedFinanceArVouc
      * 2. Assigned to at least one of the user's sites in admou_docscheme
      */
     private static String findArVoucherDocSchemeName(Jdbi jdbi, DbDialect d, List<Long> siteCodes) {
+        if (siteCodes == null || siteCodes.isEmpty()) {
+            throw new IllegalStateException("No site codes available — cannot resolve AR Voucher doc scheme name");
+        }
+        // Build IN clause directly from Long values — bypasses JDBI3 template engine
+        // which does not reliably expand <name> templates in raw handle queries.
+        // No SQL injection risk: siteCodes is List<Long> sourced from the DB.
+        String inClause = siteCodes.stream()
+                .map(String::valueOf)
+                .collect(java.util.stream.Collectors.joining(", "));
         String sql =
             "SELECT d.docname " +
             "FROM admdocscheme d " +
@@ -611,13 +620,12 @@ public class DbArVoucherDataSource implements TestDataSource<MergedFinanceArVouc
             ") " +
             "AND d.doccode IN (" +
             "    SELECT ods.doccode FROM admou_docscheme ods " +
-            "    WHERE ods.admsite_code IN (<siteCodes>)" +
+            "    WHERE ods.admsite_code IN (" + inClause + ")" +
             ") " +
             d.limit1();
 
         Optional<String> result = jdbi.withHandle(handle ->
             handle.createQuery(sql)
-                .bindList("siteCodes", siteCodes)
                 .mapTo(String.class)
                 .findFirst()
         );

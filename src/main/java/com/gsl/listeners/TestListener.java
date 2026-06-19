@@ -39,6 +39,8 @@ import com.gsl.remote.model.OSType;
 import com.gsl.remote.parser.RegexLogParser;
 import com.gsl.remote.retry.RetryPolicy;
 import com.gsl.reports.ActionTrailBuffer;
+import com.gsl.reports.ActualResultsHolder;
+import com.gsl.reports.ActualResultsLogger;
 import com.gsl.reports.SummaryReportBuilder;
 import com.gsl.reports.ApVoucherDescriptionBuilder;
 import com.gsl.reports.ArVoucherDescriptionBuilder;
@@ -355,6 +357,15 @@ public class TestListener implements ITestListener, ISuiteListener {
         ExtentLogger.pass(result.getName() + " is passed");
 
         try {
+            ActionTrailBuffer.record("Actual Results");
+            ActualResultsLogger.flushToReport();
+        } catch (Exception e) {
+            Log.warn("[TestListener] Actual Results flush failed on success: {}", e.getMessage());
+        } finally {
+            ActualResultsHolder.clear();
+        }
+
+        try {
             ActionTrailBuffer.record("Logs & Diagnostics");
             FailureBundleOrchestrator.onSuccess(result).attachToReport();
         } catch (Exception e) {
@@ -384,6 +395,15 @@ public class TestListener implements ITestListener, ISuiteListener {
                 result.getThrowable() != null ? result.getThrowable().getMessage() : "no throwable");
         // One top-level status marker; full exception details are in the StepExecutor child node.
         ExtentLogger.fail(result.getName() + " FAILED");
+
+        try {
+            ActionTrailBuffer.record("Actual Results");
+            ActualResultsLogger.flushToReport();
+        } catch (Exception e) {
+            Log.warn("[TestListener] Actual Results flush failed on failure: {}", e.getMessage());
+        } finally {
+            ActualResultsHolder.clear();
+        }
 
         // Compact failure summary — exception, last step, environment fingerprint.
         // R-04: classify the root cause first and render it as a banner inside the summary box,

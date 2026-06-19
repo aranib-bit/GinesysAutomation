@@ -1,6 +1,7 @@
 package com.gsl.validation.db.finance;
 
 import com.gsl.model.finance.FinVchMain;
+import com.gsl.reports.ActualResultsHolder;
 import com.gsl.reports.ReportLogger;
 import com.gsl.testdata.Finance.Operations.Vouchers.ARVoucher.DocumentInformation;
 import com.gsl.testdata.dto.MergedFinanceArVoucherData;
@@ -21,6 +22,7 @@ public class FinVchMainValidator extends FinVchMainBaseValidator {
         DocumentInformation doc = data.getDocumentInformation();
 
         FinVchMain h = fetchAndBlock(schemeDocno);
+        ActualResultsHolder.get().setHeader(h);
 
         validateCommonHeaderFields(h, doc, context.getSaveStartTime());
 

@@ -9,6 +9,7 @@ import com.gsl.model.finance.FinGl;
 import com.gsl.model.finance.FinSl;
 import com.gsl.model.finance.FinVchDet;
 import com.gsl.model.finance.FinVchMain;
+import com.gsl.reports.ActualResultsHolder;
 import com.gsl.reports.ReportLogger;
 import com.gsl.testdata.Finance.Operations.Vouchers.ARVoucher.PaymentInformation;
 import com.gsl.testdata.Finance.Operations.Vouchers.ARVoucher.SubLedgerInformation;
@@ -62,6 +63,7 @@ public class FinVchDetValidator {
 
         // Existence — BLOCKING
         List<FinVchDet> rows = dao.findByVoucherCode(vchcode);
+        ActualResultsHolder.get().setDetRowCount(rows.size());
         Assert.assertFalse(rows.isEmpty(),
                 "[Level 2] No finvchdet rows for vchcode [" + vchcode + "]");
 

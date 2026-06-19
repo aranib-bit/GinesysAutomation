@@ -3,6 +3,7 @@ package com.gsl.validation.db.finance;
 import com.aventstack.extentreports.ExtentTest;
 import com.gsl.model.finance.FinPost;
 import com.gsl.model.finance.FinVchMain;
+import com.gsl.reports.ActualResultsHolder;
 import com.gsl.reports.ExtentLogger;
 import com.gsl.reports.ExtentManager;
 import org.testng.Assert;
@@ -43,6 +44,11 @@ public class ARVoucherDbValidator {
         Assert.assertNotNull(context.getVoucherNo(),
                 "voucherNo is null — voucher creation may have failed");
         Assert.assertFalse(context.getVoucherNo().isBlank(), "voucherNo is blank");
+
+        ActualResultsHolder holder = ActualResultsHolder.get();
+        holder.setVoucherNo(context.getVoucherNo());
+        holder.setVoucherType("AR");
+        holder.setTestData(context.getTestData());
 
         ExtentTest test = ExtentManager.getExtentTest();
         if (test != null) test.assignCategory("DB Validation");

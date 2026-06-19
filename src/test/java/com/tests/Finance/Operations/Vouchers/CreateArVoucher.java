@@ -19,6 +19,7 @@ import com.gsl.driver.DriverManager;
 import com.gsl.pages.Finance.Operations.Common.DocumentPopup;
 import com.gsl.flow.Finance.Operations.Common.PostSaveDialogHandler;
 import com.gsl.testdata.UserCredential;
+import com.gsl.reports.ActualResultsHolder;
 import com.gsl.reports.ArVoucherExtentDescriptionLogger;
 import com.gsl.reports.DbGatheringExtentLogger;
 import com.gsl.reports.ReportLogger;
@@ -68,6 +69,10 @@ public class CreateArVoucher extends WebTest {
 
         // ── Log rich test data to Extent Report (must be before first step) ─────
         ArVoucherExtentDescriptionLogger.log(data);
+
+        // ── Seed ActualResultsHolder with test-input snapshot for the Actual Results table ──
+        ActualResultsHolder.get().setVoucherType("AR");
+        ActualResultsHolder.get().setTestData(data);
 
         // ── Effectively-final references for lambda use ──────────────────────────
         final MergedFinanceArVoucherData testData = data;
@@ -196,6 +201,10 @@ public class CreateArVoucher extends WebTest {
 
         DbGatheringExtentLogger.log(data);
         ArVoucherExtentDescriptionLogger.log(data);
+
+        ActualResultsHolder.get().setVoucherType("AR");
+        ActualResultsHolder.get().setNegativeScenario(true);
+        ActualResultsHolder.get().setTestData(data);
 
         final MergedFinanceArVoucherData testData = data;
 

@@ -6,6 +6,7 @@ import com.gsl.database.dao.finance.FinTagDao;
 import com.gsl.model.finance.FinPost;
 import com.gsl.model.finance.FinTag;
 import com.gsl.model.finance.FinVchMain;
+import com.gsl.reports.ActualResultsHolder;
 import com.gsl.reports.ReportLogger;
 import com.gsl.testdata.Finance.Operations.Vouchers.APVoucher.SelectDocument;
 import com.gsl.testdata.dto.MergedFinanceApVoucherData;
@@ -41,6 +42,7 @@ public class FinTagApValidator {
 
         if (selectDocs == null || selectDocs.isEmpty()) {
             ReportLogger.info("Level 4a — skipped [" + voucherNo + "]: ADVANCE_PAYMENT (no SelectDocument)");
+            ActualResultsHolder.get().setTagCount(-1);
             return;
         }
 
@@ -48,6 +50,7 @@ public class FinTagApValidator {
 
         long vchcode = header.getVchcode();
         List<FinTag> tags = finTagDao.findByEntCode1(vchcode);
+        ActualResultsHolder.get().setTagCount(tags.size());
 
         if (tags.isEmpty()) {
             ReportLogger.info("Level 4a — no fintag rows found for entcode1 (vchcode) [" + vchcode + "]");
