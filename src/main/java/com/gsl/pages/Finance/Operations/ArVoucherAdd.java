@@ -30,6 +30,10 @@ public class ArVoucherAdd implements CashBankParent {
         return this;
     }
 
+    public ARVoucherDocumentInformation getDocumentInformation() {
+        return arVoucherDocumentInformation;
+    }
+
     public ArVoucherAdd fillSubLedgerRows(MergedFinanceArVoucherData data, boolean includeRetry) {
         arVoucherSubLedgerInformation.fillSubLedgerRows(data, includeRetry);
         return this;

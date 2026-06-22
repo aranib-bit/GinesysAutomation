@@ -45,7 +45,13 @@ public abstract class VoucherDocumentInformationBase {
     private final By documentDate;
     private final By reference;
     private final By cashBankSearch;
+    private final By cashBankDisplay;
     private final By remarks;
+
+    private static final By ownerSiteDisplay = By.xpath(
+            "//span[contains(@class,'x-form-item-label-text') and normalize-space()='Owner Site:']" +
+            "/ancestor::div[contains(@class,'x-form-item')]" +
+            "//input[contains(@id,'-inputEl')]");
 
     private static final By NARRATION_POPUP_HEADER = By.xpath(
             "//div[contains(@class,'x-boundlist-floating')]" +
@@ -67,6 +73,9 @@ public abstract class VoucherDocumentInformationBase {
         this.cashBankSearch = byLabel(domain.getLabelCashBank(),
                                  " //div[contains(@id,'gslpicklistfieldextended-')" +
                                  " and contains(@id,'-trigger-picker')]");
+        this.cashBankDisplay = byLabel(domain.getLabelCashBank(),
+                                 "//input[contains(@id,'gslpicklistfieldextended-')" +
+                                 " and contains(@id,'-inputEl')]");
         this.remarks        = byLabel(domain.getLabelRemarks(),
                                  "//input[contains(@id,'narration')" +
                                  " and contains(@data-componentid,'combo-')]");
@@ -185,7 +194,27 @@ public abstract class VoucherDocumentInformationBase {
         return date.format(UI_DATE_FORMAT);
     }
 
+    public String getOwnerSite() {
+        return SeleniumUtils.getAttribute(ownerSiteDisplay, "value", "OWNER_SITE_DISPLAY");
+    }
+
     public String getDocumentDate() {
         return SeleniumUtils.getAttribute(documentDate, "value", "DOCUMENT_DATE");
+    }
+
+    public String getDocScheme() {
+        return SeleniumUtils.getAttribute(docScheme, "value", "DOC_SCHEME");
+    }
+
+    public String getReference() {
+        return SeleniumUtils.getAttribute(reference, "value", "REFERENCE");
+    }
+
+    public String getCashBank() {
+        return SeleniumUtils.getAttribute(cashBankDisplay, "value", "CASH_BANK_DISPLAY");
+    }
+
+    public String getRemarks() {
+        return SeleniumUtils.getAttribute(remarks, "value", "REMARKS");
     }
 }

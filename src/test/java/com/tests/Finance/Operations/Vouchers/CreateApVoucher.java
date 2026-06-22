@@ -105,7 +105,16 @@ public class CreateApVoucher extends WebTest {
         StepExecutor.step("Fill Document Information", () -> {
             addRef[0] = listRef[0].clickAdd()
                     .fillDocumentHeader(testData.getDocumentInformation());
-            ReportLogger.info("Cash Bank selected: " + testData.getDocumentInformation().getCashbank());
+            var docInfo = addRef[0].getDocumentInformation();
+            ReportLogger.info("Doc Scheme  (UI): " + docInfo.getDocScheme());
+            ReportLogger.info("Doc Date    (UI): " + docInfo.getDocumentDate());
+            ReportLogger.info("Reference   (UI): " + docInfo.getReference());
+            ReportLogger.info("Cash / Bank (UI): " + docInfo.getCashBank());
+            ReportLogger.info("On Account  (UI): " + docInfo.getOnAccount());
+            ReportLogger.info("Remarks     (UI): " + docInfo.getRemarks());
+            ActualResultsHolder.get().setUiOwnerSite(docInfo.getOwnerSite());
+            ActualResultsHolder.get().setUiCashBank(docInfo.getCashBank());
+            ActualResultsHolder.get().setUiOnAccount(docInfo.getOnAccount());
         });
 
         // ── Step 4: Sub-ledger rows (advance: no SelectDocument/FIFO) ────────────
@@ -113,6 +122,14 @@ public class CreateApVoucher extends WebTest {
             addRef[0].fillSubLedgerRowsForAdvance(testData, true);
             ReportLogger.info("Sub-ledger section complete: "
                     + testData.getSubLedgerInformationList().size() + " rows");
+            testData.getSubLedgerInformationList().forEach(sl -> {
+                String key = (sl.getId() != null && !sl.getId().isBlank()) ? sl.getId() : sl.getSubLedger();
+                String uiVal = addRef[0].readDeductTds(
+                        sl.getSubLedger(),
+                        sl.getReferenceSite() != null ? sl.getReferenceSite() : "",
+                        sl.getId());
+                ActualResultsHolder.get().getUiDeductTdsMap().put(key, uiVal);
+            });
         });
 
         // ── Step 5: TDS & Net Payable (advance payment only) ─────────────────────
@@ -235,7 +252,16 @@ public class CreateApVoucher extends WebTest {
         StepExecutor.step("Fill Document Information", () -> {
             addRef[0] = listRef[0].clickAdd()
                     .fillDocumentHeader(testData.getDocumentInformation());
-            ReportLogger.info("Cash Bank selected: " + testData.getDocumentInformation().getCashbank());
+            var docInfo = addRef[0].getDocumentInformation();
+            ReportLogger.info("Doc Scheme  (UI): " + docInfo.getDocScheme());
+            ReportLogger.info("Doc Date    (UI): " + docInfo.getDocumentDate());
+            ReportLogger.info("Reference   (UI): " + docInfo.getReference());
+            ReportLogger.info("Cash / Bank (UI): " + docInfo.getCashBank());
+            ReportLogger.info("On Account  (UI): " + docInfo.getOnAccount());
+            ReportLogger.info("Remarks     (UI): " + docInfo.getRemarks());
+            ActualResultsHolder.get().setUiOwnerSite(docInfo.getOwnerSite());
+            ActualResultsHolder.get().setUiCashBank(docInfo.getCashBank());
+            ActualResultsHolder.get().setUiOnAccount(docInfo.getOnAccount());
         });
 
         // ── Step 4: Sub-ledger rows + SelectDocument + FIFO + Payment ────────────

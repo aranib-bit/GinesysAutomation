@@ -102,8 +102,9 @@ public class ExtJsUtils {
      */
     public static String getSelectedExtJsRadioLabel(String fieldLabel) {
         return (String) ((JavascriptExecutor) DriverManager.getDriver()).executeScript(
+                "var target = arguments[0];" +
                 "var fieldSpan = [...document.querySelectorAll('.x-form-item-label-text')]" +
-                "  .find(function(el){ return el.innerText.trim() === arguments[0]; });" +
+                "  .find(function(el){ return el.innerText.trim() === target; });" +
                 "if (!fieldSpan) return null;" +
                 "var formItem = fieldSpan.closest('.x-form-item');" +
                 "if (!formItem) return null;" +

@@ -107,7 +107,14 @@ public class CreateArVoucher extends WebTest {
         StepExecutor.step("Fill Document Information", () -> {
             addRef[0] = listRef[0].clickAdd()
                     .fillDocumentHeader(testData.getDocumentInformation());
-            ReportLogger.info("Cash Bank selected: " + testData.getDocumentInformation().getCashbank());
+            var docInfo = addRef[0].getDocumentInformation();
+            ReportLogger.info("Doc Scheme  (UI): " + docInfo.getDocScheme());
+            ReportLogger.info("Doc Date    (UI): " + docInfo.getDocumentDate());
+            ReportLogger.info("Reference   (UI): " + docInfo.getReference());
+            ReportLogger.info("Cash / Bank (UI): " + docInfo.getCashBank());
+            ReportLogger.info("Remarks     (UI): " + docInfo.getRemarks());
+            ActualResultsHolder.get().setUiOwnerSite(docInfo.getOwnerSite());
+            ActualResultsHolder.get().setUiCashBank(docInfo.getCashBank());
         });
 
         // ── Step 4: Sub-ledger rows + adjustments + payment ───────────────────────

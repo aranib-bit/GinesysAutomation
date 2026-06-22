@@ -4,7 +4,8 @@ import com.gsl.pages.enums.Finance.Operations.Common.IVoucherGridColumnHeader;
 
 public enum APVoucherGridColumnHeader implements IVoucherGridColumnHeader {
 
-    SUB_LEDGER("Sub-Ledger");
+    SUB_LEDGER("Sub-Ledger"),
+    DEDUCT_TDS("Deduct TDS");
     // REFERENCE_SITE and SUB_LEDGER_ID are identical across all domains — see CommonVoucherGridColumnHeader
 
     private final String headerText;

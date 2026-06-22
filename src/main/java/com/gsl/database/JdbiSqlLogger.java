@@ -4,6 +4,9 @@ import com.gsl.reports.ReportLogger;
 import org.jdbi.v3.core.statement.SqlLogger;
 import org.jdbi.v3.core.statement.StatementContext;
 
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.List;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
@@ -30,6 +33,23 @@ public class JdbiSqlLogger implements SqlLogger {
 
     /** Stores nanoTime at statement start so logAfterExecution can compute elapsed ms. */
     private static final ThreadLocal<Long> START_NS = new ThreadLocal<>();
+
+    /** When true, SQL query lines are silently dropped instead of being logged to the report. */
+    private static final ThreadLocal<Boolean> SUPPRESS = ThreadLocal.withInitial(() -> false);
+
+    public static void startSuppressing() { SUPPRESS.set(true); }
+    public static void stopSuppressing()  { SUPPRESS.set(false); SUPPRESS.remove(); }
+
+    /**
+     * When active, query lines are captured into this list instead of being
+     * logged to the report. Activate with {@link #startCapturing()}, read with
+     * {@link #getCaptured()}, and clean up with {@link #stopCapturing()}.
+     */
+    private static final ThreadLocal<List<String>> CAPTURED = new ThreadLocal<>();
+
+    public static void startCapturing()        { CAPTURED.set(new ArrayList<>()); }
+    public static List<String> getCaptured()   { var l = CAPTURED.get(); return l != null ? l : Collections.emptyList(); }
+    public static void stopCapturing()         { CAPTURED.remove(); }
 
     // ── Before execution: resolve SQL and start timing ────────────────────────
 
@@ -97,7 +117,9 @@ public class JdbiSqlLogger implements SqlLogger {
 
             if (DbQueryBuffer.isActive()) {
                 DbQueryBuffer.add(line);
-            } else {
+            } else if (CAPTURED.get() != null) {
+                CAPTURED.get().add(line);   // capture for HTML display; skip raw log row
+            } else if (!Boolean.TRUE.equals(SUPPRESS.get())) {
                 ReportLogger.info(line);
             }
         } catch (Exception ignored) {

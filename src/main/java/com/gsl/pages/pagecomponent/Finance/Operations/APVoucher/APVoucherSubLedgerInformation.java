@@ -89,6 +89,22 @@ public class APVoucherSubLedgerInformation extends VoucherSubLedgerInformationBa
             + " and td[@data-columnid=" + COL_SL_ID + "]/div[normalize-space()='%s']]"
             + "//td[@data-columnid='" + COL_DEDUCT_TDS + "']";
 
+    // ── TDS Info column — literal itemId from ExtJS store field rec.get('tdsInfo') ──────────────
+    // Shows "TDS not appl." for non-TDS rows and "TDS: X.XX" after Calculate TDS & Net Payable.
+    // TODO: Wire readTdsInfo() calls in CreateApVoucher after sub-ledger fill to activate this column.
+    private static final String COL_TDS_INFO = "tdsInfo";
+
+    private static final String TDS_INFO_CELL =
+            "//tr[td[@data-columnid=" + COL_AP_SL + "]/div[text()='%s']"
+            + " and td[@data-columnid=" + COL_REF_SITE + "]/div[normalize-space()='%s']]"
+            + "//td[@data-columnid='" + COL_TDS_INFO + "']";
+
+    private static final String TDS_INFO_CELL_WITH_SLID =
+            "//tr[td[@data-columnid=" + COL_AP_SL + "]/div[text()='%s']"
+            + " and td[@data-columnid=" + COL_REF_SITE + "]/div[normalize-space()='%s']"
+            + " and td[@data-columnid=" + COL_SL_ID + "]/div[normalize-space()='%s']]"
+            + "//td[@data-columnid='" + COL_TDS_INFO + "']";
+
     // Active ExtJS inline editor trigger — targets the arrow div rendered by ExtJS combo in this app version
     private static final By DEDUCT_TDS_TRIGGER = By.xpath(
             "//div[contains(@class,'x-editor') and not(contains(@class,'x-hide-display'))]" +
@@ -103,6 +119,43 @@ public class APVoucherSubLedgerInformation extends VoucherSubLedgerInformationBa
 
 
     // ── Public API ────────────────────────────────────────────────────────────
+
+    /**
+     * Reads the "Deduct TDS" cell value for a sub-ledger row identified by SL name,
+     * reference site, and optional SL ID. Returns the displayed text (e.g. "Yes" / "No"),
+     * or null if the cell cannot be located.
+     */
+    public String readDeductTds(String slName, String refSite, String slId) {
+        String xpath = (slId != null && !slId.isBlank())
+                ? String.format(DEDUCT_TDS_CELL_WITH_SLID, slName, refSite, slId)
+                : String.format(DEDUCT_TDS_CELL, slName, refSite);
+        try {
+            return SeleniumUtils.getText(By.xpath(xpath), "DEDUCT_TDS_READ_" + slName);
+        } catch (Exception e) {
+            return null;
+        }
+    }
+
+    /**
+     * Reads the "TDS Info" cell for a sub-ledger row — shows "TDS not appl." for non-TDS rows
+     * and "TDS: X.XX" after Calculate TDS &amp; Net Payable has been run.
+     *
+     * <p>TODO: Call this after sub-ledger fill in CreateApVoucher and store results in
+     * {@link com.gsl.reports.ActualResultsHolder#getUiTdsInfoMap()} to activate the
+     * TDS Info column in the Sub Ledger Information report section.</p>
+     *
+     * @return cell text, or null if the column is absent / element not found
+     */
+    public String readTdsInfo(String slName, String refSite, String slId) {
+        String xpath = (slId != null && !slId.isBlank())
+                ? String.format(TDS_INFO_CELL_WITH_SLID, slName, refSite, slId)
+                : String.format(TDS_INFO_CELL, slName, refSite);
+        try {
+            return SeleniumUtils.getText(By.xpath(xpath), "TDS_INFO_READ_" + slName);
+        } catch (Exception e) {
+            return null;
+        }
+    }
 
     /**
      * Advance payment (On Account = Yes).

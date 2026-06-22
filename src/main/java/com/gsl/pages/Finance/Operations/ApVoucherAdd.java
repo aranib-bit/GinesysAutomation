@@ -37,6 +37,10 @@ public class ApVoucherAdd implements CashBankParent {
         return this;
     }
 
+    public APVoucherDocumentInformation getDocumentInformation() {
+        return apVoucherDocumentInformation;
+    }
+
     /** Minimal header (Date → Voucher No → On Account) for the Add-Row-without-Cash/Bank validation. */
     public ApVoucherAdd fillHeaderForAddRowValidation(DocumentInformation docInfo) {
         apVoucherDocumentInformation.fillHeaderForAddRowValidation(docInfo);
@@ -90,6 +94,21 @@ public class ApVoucherAdd implements CashBankParent {
      */
     public DocumentPopup clickAmountCell(String slName, String slId) {
         return apVoucherSubLedgerInformation.clickAmountCell(slName, slId);
+    }
+
+    /** Reads the "Deduct TDS" cell value for the given sub-ledger row from the live UI grid. */
+    public String readDeductTds(String slName, String refSite, String slId) {
+        return apVoucherSubLedgerInformation.readDeductTds(slName, refSite, slId);
+    }
+
+    /**
+     * Reads the "TDS Info" cell for the given sub-ledger row — "TDS not appl." or "TDS: X.XX".
+     * Returns null if the column is absent (document-adjustment mode) or not yet populated.
+     * TODO: Call after sub-ledger fill and store in ActualResultsHolder.getUiTdsInfoMap()
+     *       to activate the TDS Info column in the Sub Ledger Information report section.
+     */
+    public String readTdsInfo(String slName, String refSite, String slId) {
+        return apVoucherSubLedgerInformation.readTdsInfo(slName, refSite, slId);
     }
 
     /** Clicks the X to close the AP Voucher form; returns the discard-confirmation dialog. */
