@@ -295,6 +295,43 @@ public final class WaitUtils {
         }
     }
 
+    /**
+     * Post-save specific FluentWait for {@code .x-mask} / {@code .x-mask-msg} clearance.
+     *
+     * <p>Uses a 10-second ceiling instead of the global {@code extJsTimeout()} (40 s) because the
+     * save is already confirmed by the post-save dialog before this is called — a long timeout is
+     * unnecessary and inflates "Verify Save Result" step duration when the mask lingers briefly.
+     * Returns as soon as the mask clears; never throws (best-effort).
+     */
+    public static void waitForPostSaveMask(String contextLabel) {
+        long startMs = System.currentTimeMillis();
+        try {
+            new FluentWait<WebDriver>(DriverManager.getDriver())
+                    .withTimeout(Duration.ofSeconds(10))
+                    .pollingEvery(Duration.ofMillis(ConfigFactory.getWaitConfig().pollingMillis()))
+                    .ignoring(NoSuchElementException.class)
+                    .ignoring(StaleElementReferenceException.class)
+                    .until(driver -> {
+                        try {
+                            return (Boolean) ((JavascriptExecutor) driver).executeScript(
+                                    "var m=document.querySelectorAll('.x-mask,.x-mask-msg');" +
+                                    "for(var i=0;i<m.length;i++){" +
+                                    "  var r=m[i].getBoundingClientRect();" +
+                                    "  var s=window.getComputedStyle(m[i]);" +
+                                    "  if(r.width>0&&r.height>0&&s.display!=='none'&&s.visibility!=='hidden')" +
+                                    "    return false;" +
+                                    "} return true;");
+                        } catch (Exception e) {
+                            return true; // cannot evaluate → treat as clear
+                        }
+                    });
+        } catch (Exception ignored) {
+            // best-effort: timed-out mask must never fail the test
+        } finally {
+            recordIfEnabled(contextLabel, startMs, "waitForPostSaveMask");
+        }
+    }
+
     public static void extSafeClick(By locator) {
         // Composite method — individual wait calls inside are already instrumented;
         // do NOT add a WaitDurationBuffer entry here to avoid ambiguous double entries.

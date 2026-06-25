@@ -20,35 +20,43 @@ public final class LogCapturePreparedStatement {
      * the captured value as a SQL-ready string.
      */
     public static String capture(Argument arg, StatementContext ctx) {
-        Object[] box      = {null};
-        boolean[] wasNull = {false};
-
-        PreparedStatement stub = (PreparedStatement) Proxy.newProxyInstance(
-                PreparedStatement.class.getClassLoader(),
-                new Class[]{PreparedStatement.class},
-                (proxy, method, args) -> {
-                    String name = method.getName();
-                    if ("setNull".equals(name)) {
-                        wasNull[0] = true;
-                        return null;
-                    }
-                    if (name.startsWith("set") && args != null && args.length >= 2) {
-                        box[0] = args[1];   // args[0] = position index, args[1] = value
-                        return null;
-                    }
-                    Class<?> ret = method.getReturnType();
-                    if (ret == boolean.class) return false;
-                    if (ret == int.class || ret == short.class || ret == byte.class) return 0;
-                    if (ret == long.class) return 0L;
-                    if (ret == float.class) return 0.0f;
-                    if (ret == double.class) return 0.0d;
-                    return null;
-                });
-
         try {
-            arg.apply(1, stub, ctx);
-        } catch (Exception ignored) {}
+            Object[] box      = {null};
+            boolean[] wasNull = {false};
 
-        return (wasNull[0] || box[0] == null) ? "NULL" : box[0].toString();
+            // Use the application classloader — PreparedStatement.class.getClassLoader() can
+            // return null (bootstrap) on Java 17+ module-aware JVMs, causing Proxy.newProxyInstance
+            // to throw NullPointerException or IllegalAccessError.
+            ClassLoader cl = LogCapturePreparedStatement.class.getClassLoader();
+            PreparedStatement stub = (PreparedStatement) Proxy.newProxyInstance(
+                    cl,
+                    new Class[]{PreparedStatement.class},
+                    (proxy, method, args) -> {
+                        String name = method.getName();
+                        if ("setNull".equals(name)) {
+                            wasNull[0] = true;
+                            return null;
+                        }
+                        if (name.startsWith("set") && args != null && args.length >= 2) {
+                            box[0] = args[1];   // args[0] = position index, args[1] = value
+                            return null;
+                        }
+                        Class<?> ret = method.getReturnType();
+                        if (ret == boolean.class) return false;
+                        if (ret == int.class || ret == short.class || ret == byte.class) return 0;
+                        if (ret == long.class) return 0L;
+                        if (ret == float.class) return 0.0f;
+                        if (ret == double.class) return 0.0d;
+                        return null;
+                    });
+
+            try {
+                arg.apply(1, stub, ctx);
+            } catch (Exception ignored) {}
+
+            return (wasNull[0] || box[0] == null) ? "NULL" : box[0].toString();
+        } catch (Throwable t) {
+            return "?";
+        }
     }
 }

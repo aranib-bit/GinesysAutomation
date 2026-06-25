@@ -1,5 +1,6 @@
 package com.gsl.utils.Selenium;
 
+import com.gsl.constants.FrameworkConstants;
 import com.gsl.driver.DriverManager;
 import org.openqa.selenium.Dimension;
 import org.openqa.selenium.JavascriptExecutor;
@@ -13,8 +14,10 @@ import java.nio.file.Paths;
 
 public final class ScreenshotUtils {
 
-    private static final Path SCREENSHOT_DIR =
-            Paths.get(System.getProperty("user.dir"), "reports", "screenshots");
+    /** Resolved lazily so the run ID from FrameworkConstants is already set. */
+    private static Path screenshotDir() {
+        return Paths.get(FrameworkConstants.getRunReportDir(), "screenshots");
+    }
 
     private ScreenshotUtils() {
     }
@@ -24,7 +27,7 @@ public final class ScreenshotUtils {
     }
 
     /**
-     * Captures the current browser screen to a PNG on disk under reports/screenshots/
+     * Captures the current browser screen to a PNG on disk under reports/runs/{runId}/screenshots/
      * and returns the absolute file path. Prefer this over {@link #getScreenshot()} for
      * Extent attachments — file-path references are ~80 bytes vs a base64 PNG which is
      * ~1.3× the raw bytes held inside the live ExtentReports model until suite flush.
@@ -33,13 +36,14 @@ public final class ScreenshotUtils {
         try {
             byte[] bytes = ((TakesScreenshot) DriverManager.getDriver())
                     .getScreenshotAs(OutputType.BYTES);
-            Files.createDirectories(SCREENSHOT_DIR);
+            Path dir = screenshotDir();
+            Files.createDirectories(dir);
             String safeLabel = (stepLabel == null ? "step" : stepLabel)
                     .replaceAll("[^A-Za-z0-9_-]", "_");
             if (safeLabel.length() > 60) safeLabel = safeLabel.substring(0, 60);
             String fileName = safeLabel + "_" + System.currentTimeMillis()
                     + "_T" + Thread.currentThread().getId() + ".png";
-            Path file = SCREENSHOT_DIR.resolve(fileName);
+            Path file = dir.resolve(fileName);
             Files.write(file, bytes);
             return file.toAbsolutePath().toString();
         } catch (IOException e) {

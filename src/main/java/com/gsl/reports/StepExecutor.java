@@ -74,8 +74,13 @@ public final class StepExecutor {
         // Record step in action trail buffer for failure diagnostics
         ActionTrailBuffer.record(stepName);
 
+        long startMs  = System.currentTimeMillis();
+
         // Push step context into the browser so AdvancedJsLogger timing correlation works,
         // and re-inject CustomMetrics observers in case a full-page navigation wiped them.
+        // NOTE: executeScript can block for 1-4s when the browser JS engine is busy after
+        // a post-save navigation — startMs is set first so that wait is included in the step
+        // duration rather than creating a silent gap between steps.
         try {
             if (DriverManager.getDriver() != null) {
                 ((JavascriptExecutor) DriverManager.getDriver()).executeScript(
@@ -94,13 +99,12 @@ public final class StepExecutor {
         ExtentTest node   = parent.createNode(stepName);
         ExtentManager.setExtentTest(node);
         Log.info("[STEP] {}", stepName);
-
-        long startMs  = System.currentTimeMillis();
         long durationMs = 0;
         try {
             action.run();
             durationMs = System.currentTimeMillis() - startMs;
-            node.pass("Step passed — " + durationMs + "ms");
+            node.getModel().setName(stepName + " (" + formatDuration(durationMs) + ")");
+            node.pass("Step passed");
             Log.info("[STEP PASS] {} ({}ms)", stepName, durationMs);
             StepDurationBuffer.record(stepName, durationMs, true);
         } catch (RuntimeException e) {
@@ -123,6 +127,13 @@ public final class StepExecutor {
         } finally {
             ExtentManager.setExtentTest(parent);
         }
+    }
+
+    private static String formatDuration(long ms) {
+        if (ms < 1_000) return ms + "ms";
+        long s = ms / 1_000, rem = ms % 1_000;
+        if (s < 60) return s + "s " + rem + "ms";
+        return (s / 60) + "m " + (s % 60) + "s";
     }
 
     /**

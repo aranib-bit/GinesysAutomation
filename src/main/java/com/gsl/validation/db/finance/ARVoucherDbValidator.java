@@ -6,6 +6,7 @@ import com.gsl.model.finance.FinVchMain;
 import com.gsl.reports.ActualResultsHolder;
 import com.gsl.reports.ExtentLogger;
 import com.gsl.reports.ExtentManager;
+import org.assertj.core.api.SoftAssertions;
 import org.testng.Assert;
 
 import java.util.List;
@@ -57,8 +58,12 @@ public class ARVoucherDbValidator {
         ExtentLogger.info("AR Voucher DB Validation START — [" + context.getVoucherNo() + "]");
         ExtentLogger.info("══════════════════════════════════════════════════");
 
+        // Level 1 field assertions are deferred so that a nartext/vchdt mismatch does NOT
+        // block Levels 2–4. assertAll() is called after Level 4a completes.
+        SoftAssertions deferredLevel1 = new SoftAssertions();
+
         ExtentLogger.info("── Level 1 : finvchmain ──");
-        FinVchMain header = finVchMainValidator.validate(context);
+        FinVchMain header = finVchMainValidator.validate(context, deferredLevel1);
 
         ExtentLogger.info("── Level 2 : finvchdet ──");
         finVchDetValidator.validate(context, header);
@@ -72,42 +77,13 @@ public class ARVoucherDbValidator {
         // Level 4b (AdjAmtCascadeValidator) — temporarily disabled.
         // Re-enable when test data includes invoice finpost rows with populated adjamt.
 
+        // Now surface any Level 1 field mismatches collected above
+        ExtentLogger.info("── Level 1 deferred assertions ──");
+        deferredLevel1.assertAll();
+
         ExtentLogger.info("══════════════════════════════════════════════════");
         ExtentLogger.info("AR Voucher DB Validation COMPLETE — ALL PASSED [" + context.getVoucherNo() + "]");
         ExtentLogger.info("══════════════════════════════════════════════════");
 
-        renderBusinessSummary(context);
-    }
-
-    private static void renderBusinessSummary(VoucherDbContext ctx) {
-        if (!ExtentManager.hasTest()) return;
-
-        com.gsl.testdata.dto.MergedFinanceArVoucherData data = ctx.getTestData();
-        boolean hasCheque = data != null
-                && data.getPaymentInformationList() != null
-                && data.getPaymentInformationList().stream().anyMatch(p ->
-                        p.getPaymentMode() != null
-                        && p.getPaymentMode().toString().toUpperCase().contains("CHEQUE"));
-
-        StringBuilder html = new StringBuilder();
-        html.append("<div style='font-family:monospace;font-size:13px;line-height:2;padding:10px 12px;")
-            .append("background:#f0fff4;border-left:4px solid #38a169;border-radius:2px;'>");
-        html.append("<b style='font-size:14px;'>BUSINESS VALIDATION</b><br/>");
-        html.append("&#10003;&nbsp; Voucher created &mdash; Document No: <b>")
-            .append(escHtml(ctx.getVoucherNo())).append("</b><br/>");
-        html.append("&#10003;&nbsp; Amount matched (finvchmain.damount verified)<br/>");
-        html.append("&#10003;&nbsp; Line amounts validated (finvchdet.camount per SL row)<br/>");
-        html.append("&#10003;&nbsp; GL balanced (finpost entries present and balanced)<br/>");
-        html.append("&#10003;&nbsp; Adjustment tagged (fintag entries linked to voucher)<br/>");
-        if (hasCheque) {
-            html.append("&#10003;&nbsp; Cheque number persisted (chqno + chqdt in finvchdet)<br/>");
-        }
-        html.append("</div>");
-
-        ExtentLogger.infoHtmlOnChildNode("&#9989; Business Validation Summary", html.toString());
-    }
-
-    private static String escHtml(String s) {
-        return s == null ? "" : s.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;");
     }
 }

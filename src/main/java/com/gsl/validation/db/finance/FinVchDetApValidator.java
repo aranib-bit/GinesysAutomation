@@ -56,6 +56,7 @@ public class FinVchDetApValidator {
         List<SubLedgerInformation> inputLines = data.getSubLedgerInformationList();
 
         ReportLogger.info("Level 2 — finvchdet for AP vchcode [" + vchcode + "]");
+        com.gsl.reports.ValidationBuffer.start();
 
         // Existence — BLOCKING
         List<FinVchDet> rows = dao.findByVoucherCode(vchcode);
@@ -95,8 +96,9 @@ public class FinVchDetApValidator {
                     cashBankName, slNames, glNames);
         });
 
-        ReportLogger.info("<b>finvchdet rows:</b>");
-        ReportLogger.infoTable(buildDetTable(rows, slNames, glNames));
+        com.gsl.reports.ValidationBuffer.flushAsPreBlock();
+        ReportLogger.infoLabeledTable("finvchdet rows", buildDetTable(rows, slNames, glNames));
+        ReportLogger.infoHtml(buildLevel2Summary(rows.size(), detDebit, header.getCamount(), data.isTdsProvided()));
         ReportLogger.info("Level 2 — PASSED: vchcode [" + vchcode + "] " + rows.size() + " line(s)");
     }
 
@@ -237,6 +239,20 @@ public class FinVchDetApValidator {
                             + " for vchcode [" + vchcode + "] slcode=" + row.getSlcode())
                     .isEqualToIgnoringCase(expected);
         }
+    }
+
+    // ── Level 2 summary HTML ─────────────────────────────────────────────────
+
+    private static String buildLevel2Summary(int rowCount, BigDecimal sumDebit,
+                                              BigDecimal camount, boolean tdsProvided) {
+        return "<div style='font-family:monospace;font-size:12px;line-height:1.8;padding:8px 12px;"
+            + "background:#f0fff4;border-left:4px solid #38a169;border-radius:2px;margin:4px 0;'>"
+            + "<b>Level 2 &mdash; finvchdet line checks</b><br/>"
+            + "&#10003;&nbsp; Line count: <b>" + rowCount + "</b> row(s)<br/>"
+            + "&#10003;&nbsp; Balance: SUM(damount) = <b>" + sumDebit + "</b>"
+            + " matches finvchmain.camount = <b>" + camount + "</b><br/>"
+            + "&#10003;&nbsp; TDS flag (tds_app): <b>" + (tdsProvided ? "Y" : "N") + "</b><br/>"
+            + "</div>";
     }
 
     // ── Sub-ledger line amount check (Dr side) ────────────────────────────────

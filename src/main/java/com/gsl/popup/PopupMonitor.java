@@ -4,6 +4,7 @@ import com.gsl.config.ConfigFactory;
 import com.gsl.enums.PopupType;
 import com.gsl.exceptions.UnexpectedPopupException;
 import com.gsl.reports.ExtentLogger;
+import com.gsl.reports.PopupTrailBuffer;
 
 /**
  * Single entry point for unexpected popup detection.
@@ -27,14 +28,24 @@ public final class PopupMonitor {
         PopupResult popup = PopupHandler.detectPopup();
         if (popup == null) return;
 
+        // Record every popup (except SUCCESS/INFO) to the trail for diagnostics history
+        if (popup.popupType() != PopupType.SUCCESS && popup.popupType() != PopupType.INFO) {
+            String trailMsg = (popup.message() != null && !popup.message().isBlank())
+                    ? popup.message() : popup.header();
+            PopupTrailBuffer.record("[" + popup.popupType() + " after " + actionName + "] "
+                    + popup.header() + " — " + trailMsg);
+        }
+
         // SUCCESS and INFO are expected responses handled by DocumentMessageBox — ignore them
         if (popup.popupType() == PopupType.SUCCESS || popup.popupType() == PopupType.INFO) return;
 
         // CONFIRM dialogs are expected interaction flows (e.g. concurrent session, discard changes)
         // Not dismissed — page object handles the Yes/No. Just note it and continue.
         if (popup.popupType() == PopupType.CONFIRM) {
+            String msg = (popup.message() != null && !popup.message().isBlank())
+                    ? " | Message: \"" + popup.message() + "\"" : "";
             ExtentLogger.info("ℹ Confirm dialog detected after [" + actionName + "] — \""
-                    + popup.header() + "\" — handled by page flow");
+                    + popup.header() + "\"" + msg + " — handled by page flow");
             return;
         }
 

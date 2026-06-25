@@ -16,7 +16,11 @@ import org.assertj.core.api.SoftAssertions;
  */
 public class FinVchMainValidator extends FinVchMainBaseValidator {
 
-    public FinVchMain validate(VoucherDbContext context) {
+    /**
+     * @param deferredSoft shared SoftAssertions from the orchestrator;
+     *                     assertAll() is called there after all levels complete
+     */
+    public FinVchMain validate(VoucherDbContext context, SoftAssertions deferredSoft) {
         String schemeDocno = context.getVoucherNo();
         MergedFinanceArVoucherData data = context.getTestData();
         DocumentInformation doc = data.getDocumentInformation();
@@ -24,19 +28,17 @@ public class FinVchMainValidator extends FinVchMainBaseValidator {
         FinVchMain h = fetchAndBlock(schemeDocno);
         ActualResultsHolder.get().setHeader(h);
 
-        validateCommonHeaderFields(h, doc, context.getSaveStartTime());
+        String fieldSummary = validateCommonHeaderFields(h, doc, context.getSaveStartTime(), deferredSoft);
 
-        // AR-specific: debit side carries the voucher total
-        SoftAssertions.assertSoftly(soft ->
-            soft.assertThat(h.getDamount())
-                    .as("[Level 1] finvchmain.damount is null")
-                    .isNotNull()
-        );
+        // AR-specific: debit side carries the voucher total (also deferred)
+        deferredSoft.assertThat(h.getDamount())
+                .as("[Level 1] finvchmain.damount is null")
+                .isNotNull();
 
-        ReportLogger.info("<b>finvchmain row:</b>");
-        ReportLogger.infoTable(buildMainTable(h));
-        ReportLogger.info("Level 1 — PASSED: scheme_docno [" + schemeDocno
-                + "] vchcode [" + h.getVchcode() + "]");
+        com.gsl.reports.ValidationBuffer.flushAsPreBlock();
+        ReportLogger.infoLabeledTable("finvchmain", buildMainTable(h));
+        ReportLogger.infoHtml(fieldSummary);
+        ReportLogger.info("Level 1 — field checks deferred; remaining levels will run regardless");
         return h;
     }
 }

@@ -117,7 +117,9 @@ public class CreateApVoucher extends WebTest {
             ActualResultsHolder.get().setUiOnAccount(docInfo.getOnAccount());
         });
 
-        // ── Step 4: Sub-ledger rows (advance: no SelectDocument/FIFO) ────────────
+        // ── Step 4: Sub-ledger rows + TDS (advance) ──────────────────────────────
+        // TDS is called inline (no extra step node) so "Calculate TDS & Net Payable" sub-steps
+        // attach directly under each row group, and the parent timer covers the full duration.
         StepExecutor.step("Fill Sub-Ledger Information", () -> {
             addRef[0].fillSubLedgerRowsForAdvance(testData, true);
             ReportLogger.info("Sub-ledger section complete: "
@@ -130,15 +132,11 @@ public class CreateApVoucher extends WebTest {
                         sl.getId());
                 ActualResultsHolder.get().getUiDeductTdsMap().put(key, uiVal);
             });
-        });
-
-        // ── Step 5: TDS & Net Payable (advance payment only) ─────────────────────
-        if (testData.isTdsProvided()) {
-            StepExecutor.step("Fill TDS and Net Payable", () -> {
+            if (testData.isTdsProvided()) {
                 addRef[0].fillTdsAndNetPayable(testData);
                 ReportLogger.info("TDS rows filled: " + testData.getTdsAndNetPayableList().size());
-            });
-        }
+            }
+        });
 
         // ── Step 5b: Click Save (advance: no SelectDocument → no 5a/5e snapshot) ──
         StepExecutor.step("Click Save", () -> {

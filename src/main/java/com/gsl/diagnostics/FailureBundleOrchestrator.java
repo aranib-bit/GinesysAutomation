@@ -156,9 +156,8 @@ public final class FailureBundleOrchestrator {
                 .add(rootCauseSection(passCustomMetrics, passFrontendPerf))
                 .add(uiComponentSectionForPass(driver))
                 .add(driverCapsSection(driver))
-                .add(activePopupSection(driver))
-                .add(remoteLogSection(ServerRole.APP, remoteLogs))
-                .add(remoteLogSection(ServerRole.DB,  remoteLogs));
+                .add(activePopupSection(driver));
+        // Application logs are collected only for failed tests (see onFailure).
     }
 
     private static DiagnosticSection networkTimingSection(boolean isFailure) {

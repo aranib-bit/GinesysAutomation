@@ -42,4 +42,9 @@ public enum VoucherDomain implements VoucherDocumentLabels {
     public Optional<IVoucherGridColumnHeader> overrideCommonColumn(CommonVoucherGridColumnHeader col) {
         return Optional.empty();
     }
+
+    /** Returns a human-readable voucher label, e.g. "AP Voucher", "AR Voucher". */
+    public String getVoucherLabel() {
+        return name() + " Voucher";
+    }
 }

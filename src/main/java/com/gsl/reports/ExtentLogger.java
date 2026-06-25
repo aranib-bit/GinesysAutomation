@@ -105,7 +105,17 @@ public final class ExtentLogger {
     }
 
     public static void infoTable(String[][] table) {
+        if (ExtentManager.getExtentTest() == null) return;
         ExtentManager.getExtentTest().info(buildScrollableTable(table));
+    }
+
+    /** Renders a bold label line followed by the styled table as a single Info entry. */
+    public static void infoLabeledTable(String label, String[][] table) {
+        if (ExtentManager.getExtentTest() == null) return;
+        String html = "<p style='font-size:12px;font-weight:500;margin:0 0 5px;'>"
+                + escapeHtml(label) + "</p>"
+                + buildScrollableTableHtml(table);
+        ExtentManager.getExtentTest().info((Markup) () -> html);
     }
 
     // ── Categorized logging with color-coded badges ────────────────────────────
@@ -175,25 +185,29 @@ public final class ExtentLogger {
     // ── Table rendering ────────────────────────────────────────────────────────
 
     private static Markup buildScrollableTable(String[][] table) {
+        String html = buildScrollableTableHtml(table);
+        return () -> html;
+    }
+
+    private static String buildScrollableTableHtml(String[][] table) {
         StringBuilder sb = new StringBuilder();
-        sb.append("<div style='overflow-x:auto;width:100%'>")
-          .append("<table style='border-collapse:collapse;font-size:12px;white-space:nowrap'>");
+        sb.append("<div style='overflow-x:auto;background:#f8fbff;border-left:3px solid #6aacf0;padding:6px 10px;'>")
+          .append("<table style='border-collapse:collapse;font-size:11px;font-family:monospace;white-space:nowrap'>");
         for (int r = 0; r < table.length; r++) {
             sb.append("<tr>");
             for (String cell : table[r]) {
                 if (r == 0) {
-                    sb.append("<th style='border:1px solid #ccc;padding:4px 8px;background:#f2f2f2;font-weight:bold'>")
+                    sb.append("<th style='border:1px solid #6aacf0;padding:4px 8px;background:#e8f4fd;font-weight:500;color:#0d47a1'>")
                       .append(cell).append("</th>");
                 } else {
-                    sb.append("<td style='border:1px solid #ccc;padding:4px 8px'>")
+                    sb.append("<td style='border:1px solid #b3d4f5;padding:4px 8px'>")
                       .append(cell == null ? "—" : cell).append("</td>");
                 }
             }
             sb.append("</tr>");
         }
         sb.append("</table></div>");
-        String html = sb.toString();
-        return () -> html;
+        return sb.toString();
     }
 }
 

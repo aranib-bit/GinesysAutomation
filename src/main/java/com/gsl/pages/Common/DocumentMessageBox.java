@@ -77,10 +77,9 @@ public class DocumentMessageBox {
      */
     public DocumentSaveResult verifyDocumentSave() {
         JavascriptExecutorUtils.waitForPageLoad();
-        com.gsl.utils.Selenium.WaitUtils.waitForExtMaskBestEffort("post-save-document-message-box");
+        com.gsl.utils.Selenium.WaitUtils.waitForPostSaveMask("post-save-document-message-box");
         String status = getHeaderStatus();
         String messageText = getMessageText();
-        ExtentLogger.info("Save response — Header: " + status + " | Message: " + messageText);
         Assert.assertNotNull(status, "Header status was not found");
         Assert.assertTrue(isSuccess(),
                 "Document save was not successful. Header: " + status + " | Message: " + messageText);
@@ -89,7 +88,7 @@ public class DocumentMessageBox {
         Assert.assertNotNull(documentNo,
                 "Document number was not found. Message text: " + messageText);
 
-        ExtentLogger.pass("Extracted Document No: " + documentNo);
+        ExtentLogger.infoHtml(buildVerifySaveHtml(documentNo, status, messageText));
         return new DocumentSaveResult(status, documentNo);
     }
 
@@ -105,10 +104,9 @@ public class DocumentMessageBox {
      */
     public DocumentSaveResult verifyDocumentSave(SoftAssert softAssert) {
         JavascriptExecutorUtils.waitForPageLoad();
-        com.gsl.utils.Selenium.WaitUtils.waitForExtMaskBestEffort("post-save-document-message-box-soft");
+        com.gsl.utils.Selenium.WaitUtils.waitForPostSaveMask("post-save-document-message-box-soft");
         String status = getHeaderStatus();
         String messageText = getMessageText();
-        ExtentLogger.info("Save response — Header: " + status + " | Message: " + messageText);
 
         if (status == null) {
             ExtentLogger.warning("Header status was not found on save popup — recorded on soft assert");
@@ -125,12 +123,28 @@ public class DocumentMessageBox {
         Assert.assertNotNull(documentNo,
                 "Document number was not found. Message text: " + messageText);
 
-        ExtentLogger.pass("Extracted Document No: " + documentNo);
+        ExtentLogger.infoHtml(buildVerifySaveHtml(documentNo, status, messageText));
         return new DocumentSaveResult(status, documentNo);
+    }
+
+    private static String buildVerifySaveHtml(String documentNo, String status, String messageText) {
+        return "<div style='font-family:monospace;font-size:13px;line-height:2;padding:10px 12px;"
+            + "background:#f0fff4;border-left:4px solid #38a169;border-radius:2px;'>"
+            + "<b style='font-size:14px;'>VERIFY SAVE RESULT</b><br/>"
+            + "&#10003;&nbsp; Voucher created shown in UI &mdash; Document No: <b>"
+            + esc(documentNo) + "</b><br/>"
+            + "&#10003;&nbsp; Save status: " + esc(status) + "<br/>"
+            + "&#10003;&nbsp; Save message: " + esc(messageText) + "<br/>"
+            + "</div>";
+    }
+
+    private static String esc(String s) {
+        return s == null ? "" : s.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;");
     }
 
     public void clickOk() {
         SeleniumUtils.click(CommonButton.OK.locator(), WaitType.CLICKABLE, "OK_BUTTON_CONFIRM");
+        ExtentLogger.info("Save dialog dismissed");
     }
 
     public void clickProceed() {

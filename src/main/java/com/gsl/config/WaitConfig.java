@@ -77,6 +77,10 @@ public interface WaitConfig extends Config {
     @DefaultValue("1500")
     int popupDetectionTimeoutMs();
 
+    @Key("popup.detection.polling.ms")
+    @DefaultValue("100")
+    int popupDetectionPollingMs();
+
     @Key("doc.selector.mode")
     @DefaultValue("POSITIVE")
     String docSelectorMode();

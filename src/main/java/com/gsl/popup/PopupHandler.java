@@ -4,14 +4,14 @@ import com.gsl.config.ConfigFactory;
 import com.gsl.driver.DriverManager;
 import com.gsl.enums.PopupType;
 import com.gsl.utils.Selenium.ScreenshotUtils;
-import com.gsl.utils.Selenium.WaitUtils;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 import org.openqa.selenium.JavascriptExecutor;
+import org.openqa.selenium.NoSuchElementException;
+import org.openqa.selenium.StaleElementReferenceException;
 import org.openqa.selenium.TimeoutException;
 import org.openqa.selenium.WebElement;
-import org.openqa.selenium.support.ui.ExpectedConditions;
-import org.openqa.selenium.support.ui.WebDriverWait;
+import org.openqa.selenium.support.ui.FluentWait;
 
 import java.time.Duration;
 import java.time.LocalDateTime;
@@ -36,9 +36,20 @@ public final class PopupHandler {
     public static PopupResult detectPopup() {
         try {
             int timeoutMs = ConfigFactory.getWaitConfig().popupDetectionTimeoutMs();
-            WebDriverWait wait = WaitUtils.webDriverWaitMillis(timeoutMs);
-            WebElement container = wait.until(
-                    ExpectedConditions.visibilityOfElementLocated(AppPopupLocators.MESSAGEBOX_CONTAINER));
+            int pollMs    = ConfigFactory.getWaitConfig().popupDetectionPollingMs();
+            WebElement container = new FluentWait<>(DriverManager.getDriver())
+                    .withTimeout(Duration.ofMillis(timeoutMs))
+                    .pollingEvery(Duration.ofMillis(pollMs))
+                    .ignoring(NoSuchElementException.class)
+                    .ignoring(StaleElementReferenceException.class)
+                    .until(d -> {
+                        try {
+                            WebElement el = d.findElement(AppPopupLocators.MESSAGEBOX_CONTAINER);
+                            return el.isDisplayed() ? el : null;
+                        } catch (Exception e) {
+                            return null;
+                        }
+                    });
 
             if (container == null) return null;
 

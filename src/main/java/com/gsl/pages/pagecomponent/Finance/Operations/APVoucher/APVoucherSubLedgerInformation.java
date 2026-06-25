@@ -286,7 +286,7 @@ public class APVoucherSubLedgerInformation extends VoucherSubLedgerInformationBa
                             "Change Reference Site — " + (refSite.isEmpty() ? "(none)" : refSite),
                             () -> setSubLedgerReferenceSite(refSite, idx));
                 } else {
-                    ExtentLogger.info("[AP SL RefSite] Row " + idx
+                    ExtentLogger.info("[AP SL RefSite] Row " + (idx + 1)
                             + ": skipping Pass-2 set (changeReferenceSite=false) — current value kept");
                 }
             }
@@ -445,7 +445,11 @@ public class APVoucherSubLedgerInformation extends VoucherSubLedgerInformationBa
         // (e.g. the same supplier can appear with different Ids), so disambiguate by
         // Name + Id when an Id is provided. Same picker structure as CashBankPopup.
         By option = subLedgerPickerRow(subledgerName, id);
-        SeleniumUtils.click(option, WaitType.CLICKABLE, "SL_OPTION_" + subledgerName);
+        WaitUtils.fluentWaitBuilder().until(driver -> {
+            driver.findElement(option).click();
+            return true;
+        });
+        ExtentLogger.info("SL_OPTION_" + subledgerName + " is clicked successfully");
         // Let the application's combo select handler run its GL + TDS-applicability evaluation.
         JavascriptExecutorUtils.waitForExtJS();
         JavascriptExecutorUtils.waitForPageLoad();
@@ -484,8 +488,10 @@ public class APVoucherSubLedgerInformation extends VoucherSubLedgerInformationBa
             return;
         }
 
-        WebElement cell = DriverManager.getDriver().findElement(cellLocator);
-        new Actions(DriverManager.getDriver()).doubleClick(cell).perform();
+        WaitUtils.fluentWaitBuilder().until(driver -> {
+            new Actions(driver).doubleClick(driver.findElement(cellLocator)).perform();
+            return true;
+        });
         JavascriptExecutorUtils.waitForExtJS();
 
         // Attempt-and-detect: a non-TDS-applicable row reads 'No' but its Deduct TDS cell is NOT
@@ -565,29 +571,33 @@ public class APVoucherSubLedgerInformation extends VoucherSubLedgerInformationBa
         // returns blank and incorrectly routes to the native editor path, causing TimeoutException.
         String existing = waitForReferenceSiteAutoPopulation(rowIndex);
         if (existing != null && !existing.trim().isEmpty()) {
-            ExtentLogger.info("[AP SL RefSite] Row " + rowIndex + ": already '" + existing
+            ExtentLogger.info("[AP SL RefSite] Row " + (rowIndex + 1) + ": already '" + existing
                     + "' — not changing (skip).");
             return;
         }
         String inputId = JavascriptExecutorUtils.openReferenceSiteCellEditor(
                 DriverManager.getDriver(), rowIndex, AP_GRID_ITEM_ID);
         if (inputId == null || inputId.isEmpty()) {
-            ExtentLogger.warning("[AP SL RefSite] Row " + rowIndex
+            ExtentLogger.warning("[AP SL RefSite] Row " + (rowIndex + 1)
                     + ": native editor did not open — using JS injection fallback for '" + referenceSite + "'");
-            Log.warn("[SL_REFSITE_NATIVE] AP row {} — falling back to JS injection for '{}'", rowIndex, referenceSite);
+            Log.warn("[SL_REFSITE_NATIVE] AP row {} — falling back to JS injection for '{}'", rowIndex + 1, referenceSite);
             JavascriptExecutorUtils.setSubLedgerReferenceSite(DriverManager.getDriver(), rowIndex, referenceSite, AP_GRID_ITEM_ID);
             return;
         }
-        ExtentLogger.info("[AP SL RefSite] Row " + rowIndex + ": native path — typing '" + referenceSite + "'");
+        ExtentLogger.info("[AP SL RefSite] Row " + (rowIndex + 1) + ": native path — typing '" + referenceSite + "'");
         By comboInput = By.id(inputId);
         SeleniumUtils.clear(comboInput, "SL_REFSITE");
         SeleniumUtils.sendKeys(comboInput, WaitType.VISIBLE, referenceSite, "SL_REFSITE");
         JavascriptExecutorUtils.waitForExtJS();
         By option = By.xpath("//li[@role='option'][normalize-space(.)='" + referenceSite + "']");
-        SeleniumUtils.click(option, WaitType.CLICKABLE, "SL_REFSITE_OPTION_" + referenceSite);
+        WaitUtils.fluentWaitBuilder().until(driver -> {
+            driver.findElement(option).click();
+            return true;
+        });
+        ExtentLogger.info("SL_REFSITE_OPTION_" + referenceSite + " is clicked successfully");
         JavascriptExecutorUtils.waitForExtJS();
         JavascriptExecutorUtils.waitForPageLoad();
-        ExtentLogger.info("[AP SL RefSite] Row " + rowIndex + ": selected '" + referenceSite + "' via native");
+        ExtentLogger.info("[AP SL RefSite] Row " + (rowIndex + 1) + ": selected '" + referenceSite + "' via native");
     }
 
     /**
@@ -638,7 +648,7 @@ public class APVoucherSubLedgerInformation extends VoucherSubLedgerInformationBa
                 return (val != null && !val.trim().isEmpty()) ? val : null;
             });
         } catch (TimeoutException e) {
-            ExtentLogger.info("[AP SL RefSite] Row " + rowIndex
+            ExtentLogger.info("[AP SL RefSite] Row " + (rowIndex + 1)
                     + ": auto-population did not occur within " + timeoutSeconds
                     + "s — will use native path.");
             return "";
@@ -702,6 +712,10 @@ public class APVoucherSubLedgerInformation extends VoucherSubLedgerInformationBa
             List<PaymentInformation> paymentList) {
 
         for (SubLedgerInformation subLedger : subLedgerList) {
+            final String slKey = (subLedger.getId() != null && !subLedger.getId().isBlank())
+                    ? subLedger.getId() : subLedger.getSubLedger();
+            com.gsl.reports.ActualResultsHolder.get().getUiPaymentInfoPopupMap().put(slKey, false);
+
             final String lineNo = subLedger.getLineNo();
             if (lineNo == null || lineNo.isBlank()) continue;
 
@@ -728,6 +742,7 @@ public class APVoucherSubLedgerInformation extends VoucherSubLedgerInformationBa
             StepExecutor.stepUnder(rowNode, "Payment — " + effectiveType.label(), () -> {
                 clickPaymentButton(subLedger.getSubLedger(), refSite, slid).fillAndSubmit(payment);
                 JavascriptExecutorUtils.waitForExtJS();
+                com.gsl.reports.ActualResultsHolder.get().getUiPaymentInfoPopupMap().put(slKey, true);
             });
         }
     }

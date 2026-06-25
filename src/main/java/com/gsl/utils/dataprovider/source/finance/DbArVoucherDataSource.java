@@ -368,6 +368,7 @@ public class DbArVoucherDataSource implements TestDataSource<MergedFinanceArVouc
         Log.info("[DB] loadFreshForScenario: scenario={}, method={}, subLedgerCount={}, documentCount={}",
                 scenarioType, methodName, opts.getSubLedgerCount(), opts.getDocumentCount());
 
+        com.gsl.database.DbQueryBuffer.start();
         Jdbi jdbi = DatabaseManager.getJdbi();
         DbDialect d = DbDialectFactory.current();
 
@@ -485,8 +486,9 @@ public class DbArVoucherDataSource implements TestDataSource<MergedFinanceArVouc
 
         printGeneratedData(data);
 
-        // P3: Store gathering log in the data object so the test can render it in the report
-        buildAndSetGatheringLog(loginName, ecode, refs, pendingDocsBySlName, data);
+        // P3: Flush buffered queries and store gathering log in the data object for report rendering
+        List<String> executedQueries = com.gsl.database.DbQueryBuffer.flush();
+        buildAndSetGatheringLog(loginName, ecode, refs, pendingDocsBySlName, data, executedQueries);
 
         return data;
     }
@@ -645,7 +647,8 @@ public class DbArVoucherDataSource implements TestDataSource<MergedFinanceArVouc
             String loginName, long ecode,
             LiveDbRefs refs,
             java.util.Map<String, List<com.gsl.model.finance.PendingSlDocument>> pendingDocsBySlName,
-            MergedFinanceArVoucherData data) {
+            MergedFinanceArVoucherData data,
+            List<String> executedQueries) {
 
         List<String> log = new java.util.ArrayList<>();
 
@@ -723,9 +726,18 @@ public class DbArVoucherDataSource implements TestDataSource<MergedFinanceArVouc
                     + "  date=" + sd.getDocumentDate()
                     + "  adjAmt=" + sd.getAdjustmentAmount()));
         }
+        if (!executedQueries.isEmpty()) {
+            log.add("");
+            log.add("───────────────────────────────────────────────────────────");
+            log.add("  QUERIES EXECUTED DURING DATA GATHERING");
+            log.add("───────────────────────────────────────────────────────────");
+            log.addAll(executedQueries);
+        }
+
         log.add("═══════════════════════════════════════════════════════════");
 
         data.setDbGatheringLog(log);
+        log.forEach(line -> Log.info("[DB] {}", line));
     }
 
     private static void printRefs(String loginName, long ecode,

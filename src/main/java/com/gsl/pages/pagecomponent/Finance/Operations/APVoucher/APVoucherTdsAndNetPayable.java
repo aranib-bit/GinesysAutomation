@@ -154,34 +154,37 @@ public class APVoucherTdsAndNetPayable implements TdsNameParent {
             StepExecutor.stepUnder(rowNode,
                     "Calculate TDS & Net Payable — " + tds.getTdsName(), () -> {
 
-                Log.debug("[TDS] Opening TDS popup for SL='{}' lineNo='{}'", sl.getSubLedger(), tds.getLineNo());
-                clickTdsButton(sl.getSubLedger(), sl.getReferenceSite(), sl.getId());
+                StepExecutor.step("TDS Name and Section", () -> {
+                    Log.debug("[TDS] Opening TDS popup for SL='{}' lineNo='{}'", sl.getSubLedger(), tds.getLineNo());
+                    clickTdsButton(sl.getSubLedger(), sl.getReferenceSite(), sl.getId());
+                    setTdsName(tds.getTdsName());
+                });
 
-                setTdsName(tds.getTdsName());
+                StepExecutor.step("Account Information", () -> {
+                    // Delegate amount-filling to the layered architecture:
+                    // Page Object (raw string) → Flow → BusinessLogic (WHAT) → Transaction (HOW)
+                    TdsApplicableAmountFlow.execute(
+                            tds.getTdsApplicableAmountBehaviour(),
+                            this,
+                            tds.getGrossPayable(),
+                            tds.getTdsApplicableAmount()
+                    );
 
-                // Delegate amount-filling to the layered architecture:
-                // Page Object (raw string) → Flow → BusinessLogic (WHAT) → Transaction (HOW)
-                TdsApplicableAmountFlow.execute(
-                        tds.getTdsApplicableAmountBehaviour(),
-                        this,
-                        tds.getGrossPayable(),
-                        tds.getTdsApplicableAmount()
-                );
+                    if ("Yes".equalsIgnoreCase(tds.getPopulateTdsExceptionRate())) {
+                        SeleniumUtils.click(populateTdsExceptionRate, WaitType.CLICKABLE, "POPULATE_TDS_EXCEPTION_RATE");
+                        JavascriptExecutorUtils.waitForExtJS();
+                    }
 
-                if ("Yes".equalsIgnoreCase(tds.getPopulateTdsExceptionRate())) {
-                    SeleniumUtils.click(populateTdsExceptionRate, WaitType.CLICKABLE, "POPULATE_TDS_EXCEPTION_RATE");
-                    JavascriptExecutorUtils.waitForExtJS();
-                }
+                    BigDecimal tdsAmt = readTdsAmount();
+                    data.getCapturedTdsAmounts().put(tds.getLineNo(), tdsAmt);
+                    Log.debug("[TDS] TdsAmount captured={} for lineNo='{}'", tdsAmt, tds.getLineNo());
 
-                BigDecimal tdsAmt = readTdsAmount();
-                data.getCapturedTdsAmounts().put(tds.getLineNo(), tdsAmt);
-                Log.debug("[TDS] TdsAmount captured={} for lineNo='{}'", tdsAmt, tds.getLineNo());
+                    BigDecimal netPay = readNetPayable(tds);
+                    data.getCapturedNetPayables().put(tds.getLineNo(), netPay);
+                    Log.debug("[TDS] NetPayable captured={} for lineNo='{}'", netPay, tds.getLineNo());
 
-                BigDecimal netPay = readNetPayable(tds);
-                data.getCapturedNetPayables().put(tds.getLineNo(), netPay);
-                Log.debug("[TDS] NetPayable captured={} for lineNo='{}'", netPay, tds.getLineNo());
-
-                clickOk();
+                    clickOk();
+                });
             });
         }
     }

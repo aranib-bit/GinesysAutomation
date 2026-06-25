@@ -29,6 +29,9 @@ import java.util.regex.Pattern;
  */
 public class JdbiSqlLogger implements SqlLogger {
 
+    private static final org.apache.logging.log4j.Logger TRACE =
+            org.apache.logging.log4j.LogManager.getLogger("MethodTrace");
+
     private static final Pattern NAMED_PARAM = Pattern.compile(":(\\w+)");
 
     /** Stores nanoTime at statement start so logAfterExecution can compute elapsed ms. */
@@ -87,8 +90,11 @@ public class JdbiSqlLogger implements SqlLogger {
             // Store resolved SQL for logAfterExecution to append timing
             ctx.define("__resolvedSql__", partialSql);
 
-        } catch (Exception e) {
-            ctx.define("__resolvedSql__", "(could not resolve: " + e.getMessage() + ")");
+        } catch (Throwable e) {
+            // catch Throwable (not just Exception) so Errors from Proxy creation
+            // or module-access issues don't escape and cause the JDBI query to fail
+            try { ctx.define("__resolvedSql__", "(could not resolve: " + e.getMessage() + ")"); }
+            catch (Throwable ignored) {}
         }
     }
 
@@ -115,10 +121,26 @@ public class JdbiSqlLogger implements SqlLogger {
                     ? "[DB Query ⏱ " + elapsedMs + "ms] " + resolvedSql
                     : "[DB Query] " + resolvedSql;
 
+            // Echo the resolved SQL into trace.log at the current AOP call depth.
+            // JDBI DAO proxy calls can't be woven by AspectJ, so this is the only
+            // way their SQL appears in the method-trace hierarchy.
+            if (!Boolean.TRUE.equals(SUPPRESS.get())) {
+                int depth = com.gsl.aspects.LoggingAspect.currentDepth();
+                String indent = "  ".repeat(depth);
+                String ts = java.time.LocalDateTime.now()
+                        .format(java.time.format.DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss.SSS"));
+                String traceId = org.apache.logging.log4j.ThreadContext.get("testId");
+                if (traceId == null) traceId = org.apache.logging.log4j.ThreadContext.get("testName");
+                if (traceId == null) traceId = "T-" + Thread.currentThread().getId();
+                TRACE.info("{}[{}] [TRACE_ID={}] [DB]     {}", indent, ts, traceId, line);
+            }
+
             if (DbQueryBuffer.isActive()) {
                 DbQueryBuffer.add(line);
             } else if (CAPTURED.get() != null) {
                 CAPTURED.get().add(line);   // capture for HTML display; skip raw log row
+            } else if (com.gsl.reports.ValidationBuffer.isActive()) {
+                com.gsl.reports.ValidationBuffer.add(line);
             } else if (!Boolean.TRUE.equals(SUPPRESS.get())) {
                 ReportLogger.info(line);
             }

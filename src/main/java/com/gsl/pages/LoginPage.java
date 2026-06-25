@@ -7,8 +7,10 @@ import com.gsl.enums.WaitType;
 import com.gsl.pages.enums.CommonButton;
 import com.gsl.reports.ReportLogger;
 import org.openqa.selenium.By;
+import org.openqa.selenium.NoSuchElementException;
 import org.openqa.selenium.WebDriver;
 import org.openqa.selenium.WebElement;
+import org.openqa.selenium.support.ui.FluentWait;
 import org.testng.SkipException;
 
 import java.time.Duration;
@@ -66,33 +68,36 @@ public class LoginPage {
     private LoginPage handleConcurrentSessionPopup() {
         WebDriver driver = DriverManager.getDriver();
         By yesButton = CommonButton.YES.scopedLocator("//div[contains(@class,'x-message-box')]");
+        long timeoutSec = ConfigFactory.getConfig().timeout();
 
-        long deadline = System.currentTimeMillis()
-                + Duration.ofSeconds(ConfigFactory.getConfig().timeout()).toMillis();
+        try {
+            new FluentWait<>(driver)
+                    .withTimeout(Duration.ofSeconds(timeoutSec))
+                    .pollingEvery(Duration.ofMillis(300))
+                    .ignoring(NoSuchElementException.class)
+                    .until(d -> isVisibleQuiet(d, yesButton) || !isVisibleQuiet(d, Loc.TXTBOX_USERNAME));
 
-        while (System.currentTimeMillis() < deadline) {
+            if (!isVisibleQuiet(driver, yesButton)) {
+                // Login form disappeared without a concurrent-session prompt — clean login.
+                return this;
+            }
+
+            click(yesButton, WaitType.CLICKABLE, "Concurrent Session Yes Button");
+            ReportLogger.info("Concurrent-session prompt detected — clicked 'Yes' to log out the "
+                    + "stale session and continue login.");
+
+            // Wait briefly for the prompt to clear; if it persists, takeover failed → skip.
+            new FluentWait<>(driver)
+                    .withTimeout(Duration.ofSeconds(5))
+                    .pollingEvery(Duration.ofMillis(300))
+                    .ignoring(NoSuchElementException.class)
+                    .until(d -> !isVisibleQuiet(d, yesButton));
+
+        } catch (org.openqa.selenium.TimeoutException e) {
             if (isVisibleQuiet(driver, yesButton)) {
-                click(yesButton, WaitType.CLICKABLE, "Concurrent Session Yes Button");
-                ReportLogger.info("Concurrent-session prompt detected — clicked 'Yes' to log out the "
-                        + "stale session and continue login.");
-
-                // Wait briefly for the prompt to clear; if it persists, takeover failed → skip, don't fail.
-                long recoverDeadline = System.currentTimeMillis() + 5_000;
-                while (System.currentTimeMillis() < recoverDeadline) {
-                    if (!isVisibleQuiet(driver, yesButton)) {
-                        return this;
-                    }
-                    sleepQuietly(300);
-                }
                 throw new SkipException("Login blocked: user already logged in from another browser "
                         + "and the session takeover did not complete — skipping (not a product defect).");
             }
-
-            // Login form gone → login progressed without a concurrent-session prompt.
-            if (!isVisibleQuiet(driver, Loc.TXTBOX_USERNAME)) {
-                return this;
-            }
-            sleepQuietly(300);
         }
         return this;
     }

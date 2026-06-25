@@ -10,10 +10,14 @@ public final class ReportLogger {
         throw new UnsupportedOperationException("Utility class");
     }
 
-    /** INFO message — Extent info + Log4j2 INFO */
+    /** INFO message — Extent info + Log4j2 INFO. Routes to ValidationBuffer when active. */
     public static void info(String message) {
         Log.info(message);
-        ExtentLogger.info(message);
+        if (ValidationBuffer.isActive()) {
+            ValidationBuffer.add(message);
+        } else {
+            ExtentLogger.info(message);
+        }
     }
 
     /** INFO step — Extent info + Log4j2 INFO */
@@ -88,6 +92,11 @@ public final class ReportLogger {
         ExtentLogger.infoCategorized(category, ReportSeverity.HIGH, message);
     }
 
+    /** Logs raw HTML inline on the current Extent test. Log4j2 is skipped (HTML not readable in file). */
+    public static void infoHtml(String html) {
+        ExtentLogger.infoHtml(html);
+    }
+
     // ── Table ─────────────────────────────────────────────────────────────────
 
     /**
@@ -105,6 +114,12 @@ public final class ReportLogger {
     public static void infoTable(String[][] table) {
         ExtentLogger.infoTable(table);
         Log.info(toPlainText(table));
+    }
+
+    /** Logs a labeled table: bold label above the styled table in one Extent Info entry. */
+    public static void infoLabeledTable(String label, String[][] table) {
+        ExtentLogger.infoLabeledTable(label, table);
+        Log.info("[TABLE: " + label + "] " + toPlainText(table));
     }
 
     private static String toPlainText(String[][] table) {

@@ -1,13 +1,10 @@
 package com.gsl.pages.Finance.Operations;
 
-import com.google.common.util.concurrent.Uninterruptibles;
 import com.gsl.annotations.LogStep;
 import com.gsl.enums.WaitType;
 import com.gsl.pages.enums.CommonButton;
 import com.gsl.utils.Selenium.SeleniumUtils;
 import org.openqa.selenium.By;
-
-import java.util.concurrent.TimeUnit;
 
 public class ApVoucherListPage {
 
@@ -24,7 +21,6 @@ public class ApVoucherListPage {
 
     @LogStep("Open New AP Voucher Form")
     public ApVoucherAdd clickAdd() {
-        Uninterruptibles.sleepUninterruptibly(5, TimeUnit.SECONDS);
         SeleniumUtils.click(CommonButton.ADD.locator(), WaitType.CLICKABLE, "APVOUCHERADD");
         return new ApVoucherAdd();
     }
@@ -33,7 +29,6 @@ public class ApVoucherListPage {
     public ApVoucherListPage searchByVoucherNo(String voucherNo) {
         SeleniumUtils.sendKeys(Loc.SEARCH_BOX, WaitType.VISIBLE, voucherNo, "SEARCH_BOX");
         SeleniumUtils.click(Loc.SEARCH_BUTTON, WaitType.CLICKABLE, "SEARCH_BUTTON");
-        Uninterruptibles.sleepUninterruptibly(2, TimeUnit.SECONDS);
         return this;
     }
 

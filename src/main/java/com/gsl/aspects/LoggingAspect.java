@@ -49,6 +49,46 @@ public class LoggingAspect {
         return id;
     }
 
+    /** Returns the current AOP-traced call depth on this thread (0 = top-level). */
+    public static int currentDepth() {
+        return CALL_STACK.get().size();
+    }
+
+    private String formatParamValue(Object v) {
+        if (v == null) return "null";
+        if (v instanceof String) return "\"" + v + "\"";
+        if (v instanceof java.util.Collection<?> c) {
+            String preview = c.stream().limit(5)
+                    .map(Object::toString)
+                    .collect(java.util.stream.Collectors.joining(", "));
+            return "[" + preview + (c.size() > 5 ? ", …(+" + (c.size() - 5) + ")" : "") + "]";
+        }
+        String s = String.valueOf(v);
+        // Truncate very long toString() values (e.g. enum lists, large POJOs)
+        return s.length() > 200 ? s.substring(0, 200) + "…" : s;
+    }
+
+    /**
+     * Returns true for framework/driver types whose toString() is either enormous
+     * or meaningless in a trace log — these are skipped in the → params: line.
+     */
+    private boolean isVerboseFrameworkType(Object v) {
+        if (v == null) return false;
+        Class<?> c = v.getClass();
+        String pkg = c.getName();
+        return pkg.startsWith("org.openqa.selenium")
+                || pkg.startsWith("com.google.common")
+                || pkg.startsWith("org.jdbi.v3.core.Jdbi")
+                || pkg.startsWith("com.zaxxer.hikari")
+                || pkg.startsWith("org.jdbi.v3.core.Handle")
+                || pkg.startsWith("java.sql.")
+                || pkg.startsWith("sun.")
+                || pkg.startsWith("com.sun.")
+                || v instanceof org.openqa.selenium.By      // By is logged separately via structured element block
+                || v instanceof java.io.InputStream
+                || v instanceof java.io.OutputStream;
+    }
+
     private void logStart(int depth, String className, String methodName) {
         String indent = indent(depth);
         String ts     = now();
@@ -82,6 +122,7 @@ public class LoggingAspect {
             "&& !within(com.gsl.reports..*) " +
             "&& !within(com.gsl.aspects..*) " +
             "&& !within(com.gsl.testdata..*) " +
+            "&& !within(com.gsl.database..*) " +
             "&& !within(com.gsl.utils.Selenium.ScreenshotUtils)")
     public Object logMethod(ProceedingJoinPoint pjp) throws Throwable {
         Deque<String> stack = CALL_STACK.get();
@@ -97,6 +138,31 @@ public class LoggingAspect {
         int depth = stack.size() - 1;
 
         logStart(depth, className, methodName);
+
+        // Log parameter name=value pairs for every method.
+        // Skips Selenium/JDBI framework objects whose toString() is either enormous
+        // or meaningless (WebDriver session strings, HikariConfig internals, etc.).
+        try {
+            org.aspectj.lang.reflect.MethodSignature sig =
+                    (org.aspectj.lang.reflect.MethodSignature) pjp.getSignature();
+            String[] paramNames  = sig.getParameterNames();
+            Object[] paramValues = pjp.getArgs();
+            if (paramNames != null && paramNames.length > 0) {
+                StringBuilder params = new StringBuilder();
+                for (int i = 0; i < paramNames.length; i++) {
+                    Object v = paramValues[i];
+                    if (isVerboseFrameworkType(v)) continue;
+                    if (params.length() > 0) params.append(", ");
+                    params.append(paramNames[i]).append("=");
+                    params.append(formatParamValue(v));
+                }
+                if (params.length() > 0) {
+                    TRACE.info("{}  → params: {}", indent(depth), params);
+                }
+            }
+        } catch (Exception ignored) {
+            // Never let param logging break the actual method execution
+        }
 
         // Extract typed args for structured element logging
         By          locator = null;
@@ -142,10 +208,24 @@ public class LoggingAspect {
             //    unwinds through before that conversion happens — which is what made amber skips
             //    render as misleading red fails (ExtentReports shows a node at its highest-severity
             //    log: FAIL > WARNING/SKIP).
+            //
+            //  • Lambda frames throwing NoSuchElementException or StaleElementReferenceException
+            //    are fluent-wait probe attempts — the wait catches and retries them. Log these as
+            //    WARNING with a [RETRY] prefix so the node status is not poisoned by recoverable
+            //    retry-throws on tests that ultimately pass.
             if (ExtentManager.hasTest()
                     && !(e instanceof org.testng.SkipException)
                     && !DataLoadScope.isActive()) {
-                ExtentLogger.fail("[AOP] " + className + "." + methodName + ": " + e.getMessage());
+                boolean isFluentWaitRetry = methodName.contains("lambda$")
+                        && (e instanceof org.openqa.selenium.NoSuchElementException
+                            || e instanceof org.openqa.selenium.StaleElementReferenceException);
+                if (isFluentWaitRetry) {
+                    String shortMsg = e.getMessage() != null
+                            ? e.getMessage().split("\n")[0] : "no message";
+                    ExtentLogger.warning("[RETRY] " + className + "." + methodName + ": " + shortMsg);
+                } else {
+                    ExtentLogger.fail("[AOP] " + className + "." + methodName + ": " + e.getMessage());
+                }
             }
             throw e;
         } finally {
@@ -157,6 +237,64 @@ public class LoggingAspect {
     }
 
     /**
+     * Intercepts calls TO JDBI DAO interface methods from within com.gsl/com.tests code.
+     * Because JDBI generates runtime proxies, execution() never fires for DAO methods —
+     * this call() advice matches at the call site (which IS inside woven code) instead.
+     *
+     * Logs [START]/[END] + "→ params: name=value" lines to trace.log, matching the
+     * format used by logMethod() so DAO calls appear inline in the method-trace hierarchy.
+     */
+    @Around("call(* com.gsl.database.dao..*(..)) && within(com.gsl..*)")
+    public Object logDaoCall(ProceedingJoinPoint pjp) throws Throwable {
+        Deque<String> stack = CALL_STACK.get();
+
+        String className  = pjp.getSignature().getDeclaringType().getSimpleName();
+        String methodName = pjp.getSignature().getName();
+        String fullMethod = className + "." + methodName;
+
+        stack.push(fullMethod);
+        int depth = stack.size() - 1;
+
+        logStart(depth, className, methodName);
+
+        // Log all parameters by name=value — DAO methods use @Bind("name") params
+        // which AspectJ resolves from the compiled call site's debug info.
+        try {
+            org.aspectj.lang.reflect.MethodSignature sig =
+                    (org.aspectj.lang.reflect.MethodSignature) pjp.getSignature();
+            String[] paramNames  = sig.getParameterNames();
+            Object[] paramValues = pjp.getArgs();
+            if (paramNames != null && paramNames.length > 0) {
+                StringBuilder params = new StringBuilder();
+                for (int i = 0; i < paramNames.length; i++) {
+                    if (paramValues[i] instanceof org.jdbi.v3.core.Jdbi) continue;
+                    if (params.length() > 0) params.append(", ");
+                    params.append(paramNames[i]).append("=");
+                    params.append(formatParamValue(paramValues[i]));
+                }
+                if (params.length() > 0) {
+                    TRACE.info("{}  → params: {}", indent(depth), params);
+                }
+            }
+        } catch (Exception ignored) {}
+
+        try {
+            Object result = pjp.proceed();
+            logEnd(depth, className, methodName);
+            return result;
+        } catch (Throwable e) {
+            String ts = now();
+            TRACE.error("{}[{}] [TRACE_ID={}] [ERROR]  {}.{}() — {}",
+                    indent(depth), ts, traceId(), className, methodName, e.getMessage());
+            Log.error("[AOP-DAO] Exception in {}.{}: {}", className, methodName, e.getMessage());
+            throw e;
+        } finally {
+            stack.pop();
+            if (stack.isEmpty()) CALL_STACK.remove();
+        }
+    }
+
+    /**
      * Intercepts methods annotated with @LogStep.
      * Logs the step description to Extent info + Log4j2 INFO.
      * On exception: logs fail message to Extent (if a test is active).
@@ -164,9 +302,6 @@ public class LoggingAspect {
     @Around("@annotation(logStep)")
     public Object logAnnotatedStep(ProceedingJoinPoint pjp, LogStep logStep) throws Throwable {
         Log.info("[STEP] {}", logStep.value());
-        if (ExtentManager.hasTest()) {
-            ExtentLogger.info(logStep.value());
-        }
         try {
             return pjp.proceed();
         } catch (Throwable e) {

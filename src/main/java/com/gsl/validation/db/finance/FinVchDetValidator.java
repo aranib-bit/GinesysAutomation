@@ -60,6 +60,7 @@ public class FinVchDetValidator {
         List<SubLedgerInformation> inputLines = data.getSubLedgerInformationList();
 
         ReportLogger.info("Level 2 — finvchdet for vchcode [" + vchcode + "]");
+        com.gsl.reports.ValidationBuffer.start();
 
         // Existence — BLOCKING
         List<FinVchDet> rows = dao.findByVoucherCode(vchcode);
@@ -100,8 +101,9 @@ public class FinVchDetValidator {
                     cashBankName, slNames, glNames);
         });
 
-        ReportLogger.info("<b>finvchdet rows:</b>");
-        ReportLogger.infoTable(buildDetTable(rows, slNames, glNames));
+        com.gsl.reports.ValidationBuffer.flushAsPreBlock();
+        ReportLogger.infoLabeledTable("finvchdet rows", buildDetTable(rows, slNames, glNames));
+        ReportLogger.infoHtml(buildLevel2Summary(rows.size(), detCredit, header.getDamount(), data.isTdsProvided()));
         ReportLogger.info("Level 2 — PASSED: vchcode [" + vchcode + "] " + rows.size() + " line(s)");
     }
 
@@ -341,6 +343,18 @@ public class FinVchDetValidator {
             };
         }
         return table;
+    }
+
+    private static String buildLevel2Summary(int rowCount, BigDecimal sumCredit,
+                                              BigDecimal damount, boolean tdsProvided) {
+        return "<div style='font-family:monospace;font-size:12px;line-height:1.8;padding:8px 12px;"
+            + "background:#f0fff4;border-left:4px solid #38a169;border-radius:2px;margin:4px 0;'>"
+            + "<b>Level 2 &mdash; finvchdet line checks</b><br/>"
+            + "&#10003;&nbsp; Line count: <b>" + rowCount + "</b> row(s)<br/>"
+            + "&#10003;&nbsp; Balance: SUM(camount) = <b>" + sumCredit + "</b>"
+            + " matches finvchmain.damount = <b>" + damount + "</b><br/>"
+            + "&#10003;&nbsp; TDS flag (tds_app): <b>" + (tdsProvided ? "Y" : "N") + "</b><br/>"
+            + "</div>";
     }
 
     private static String str(Object o) { return o == null ? "—" : o.toString(); }

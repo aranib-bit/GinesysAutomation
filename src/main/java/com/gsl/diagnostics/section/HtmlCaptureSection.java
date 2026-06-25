@@ -1,5 +1,6 @@
 package com.gsl.diagnostics.section;
 
+import com.gsl.constants.FrameworkConstants;
 import com.gsl.diagnostics.DiagnosticSection;
 import com.gsl.utils.Log;
 import org.openqa.selenium.WebDriver;
@@ -23,8 +24,11 @@ import java.nio.file.Paths;
  */
 public final class HtmlCaptureSection implements DiagnosticSection {
 
-    private static final int    PREVIEW_CHARS = 4096;
-    private static final String OUTPUT_DIR    = "reports/html-captures";
+    private static final int PREVIEW_CHARS = 512;
+
+    private static String outputDir() {
+        return FrameworkConstants.getRunReportDir() + "/html-captures";
+    }
 
     private final String capturedPath;
     private final String pageSource;
@@ -89,7 +93,7 @@ public final class HtmlCaptureSection implements DiagnosticSection {
 
     private static String writeToFile(String source, String testName) {
         try {
-            Path dir = Paths.get(OUTPUT_DIR);
+            Path dir = Paths.get(outputDir());
             Files.createDirectories(dir);
             String fileName = sanitize(testName) + "_" + System.currentTimeMillis() + ".html";
             Path   file     = dir.resolve(fileName);

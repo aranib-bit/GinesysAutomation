@@ -5,6 +5,7 @@ import com.gsl.converter.BigDecimalConverter;
 import com.gsl.converter.PaymentSelectionConverter;
 import com.gsl.enums.AdjustmentType;
 import com.gsl.enums.PaymentSelectionType;
+import com.gsl.testdata.Finance.Operations.Vouchers.Common.VoucherSubLedgerRow;
 import com.gsl.testdata.annotations.Mandatory;
 import com.gsl.testdata.annotations.MandatoryType;
 import io.github.sskorol.data.Column;
@@ -19,7 +20,7 @@ import java.math.BigDecimal;
 @NoArgsConstructor
 @AllArgsConstructor
 @Sheet(name= "SubLedgerInformation")
-public class SubLedgerInformation extends SubLedgerInformationBase {
+public class SubLedgerInformation extends SubLedgerInformationBase implements VoucherSubLedgerRow {
 
     @Column(name = "TestCaseID")
     private String testCaseID;

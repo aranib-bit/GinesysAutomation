@@ -4,6 +4,7 @@ import com.google.common.util.concurrent.Uninterruptibles;
 import com.gsl.config.ConfigFactory;
 import com.gsl.driver.DriverManager;
 import com.gsl.enums.WaitType;
+import com.gsl.utils.Selenium.JavascriptExecutorUtils;
 import com.gsl.utils.Selenium.WaitUtils;
 import com.gsl.pages.Finance.Operations.ArVoucherAdd;
 import com.gsl.pages.pagecomponent.Procurement.Operations.GoodsReceiveChallan.GoodsReceiveChallanGeneral;
@@ -51,11 +52,10 @@ public class CashBankPopup {
 
         By selectionBy = getCashBankSelection(cashbankname);
         WebDriverWait wait = WaitUtils.webDriverWait(ConfigFactory.getWaitConfig().popupWaitSeconds());
+        JavascriptExecutorUtils.waitForExtJS();
 
-        // Wait for the grid row to appear after ExtJS search reload
-        wait.until(ExpectedConditions.presenceOfElementLocated(selectionBy));
-        // Allow grid to fully stabilize before clicking
-        Uninterruptibles.sleepUninterruptibly(1, TimeUnit.SECONDS);
+        // Wait for the grid row to appear and be visible after ExtJS search reload
+        wait.until(ExpectedConditions.visibilityOfElementLocated(selectionBy));
 
         // Retry click in case ExtJS re-renders the grid between find and click
         for (int attempt = 0; attempt < 3; attempt++) {

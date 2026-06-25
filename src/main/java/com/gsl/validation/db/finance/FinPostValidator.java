@@ -34,6 +34,7 @@ public class FinPostValidator {
         String voucherNo = context.getVoucherNo();
 
         ReportLogger.info("Level 3 — finpost GL validation for entcode [" + entcode + "]");
+        com.gsl.reports.ValidationBuffer.start();
 
         // Existence — BLOCKING
         List<FinPost> entries = dao.findByEntCode(entcode);
@@ -60,10 +61,20 @@ public class FinPostValidator {
         SoftAssertions.assertSoftly(soft ->
                 entries.forEach(e -> validatePostEntry(soft, e)));
 
-        ReportLogger.info("<b>finpost rows:</b>");
-        ReportLogger.infoTable(buildPostTable(entries));
+        com.gsl.reports.ValidationBuffer.flushAsPreBlock();
+        ReportLogger.infoLabeledTable("finpost rows", buildPostTable(entries));
+        ReportLogger.infoHtml(buildLevel3Summary(entries.size(), totalDebit));
         ReportLogger.info("Level 3 — PASSED: entcode [" + entcode + "] voucherNo [" + voucherNo + "] " + entries.size() + " GL entries balanced at " + totalDebit);
         return entries;
+    }
+
+    private static String buildLevel3Summary(int entryCount, BigDecimal balanced) {
+        return "<div style='font-family:monospace;font-size:12px;line-height:1.8;padding:8px 12px;"
+            + "background:#f0fff4;border-left:4px solid #38a169;border-radius:2px;margin:4px 0;'>"
+            + "<b>Level 3 &mdash; finpost GL balance check</b><br/>"
+            + "&#10003;&nbsp; GL posting entries: <b>" + entryCount + "</b><br/>"
+            + "&#10003;&nbsp; Balanced: debit = credit = <b>" + balanced + "</b><br/>"
+            + "</div>";
     }
 
     private void validatePostEntry(SoftAssertions soft, FinPost e) {

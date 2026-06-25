@@ -51,6 +51,7 @@ public class FinTagValidator {
         }
 
         ReportLogger.info("Level 4a — fintag validation for voucherNo [" + voucherNo + "]");
+        com.gsl.reports.ValidationBuffer.start();
 
         long vchcode = header.getVchcode();
         List<FinTag> tags = finTagDao.findByEntCode1(vchcode);
@@ -94,8 +95,9 @@ public class FinTagValidator {
                 validateTagRow(soft, tag, selectDocs, voucherNo);
         });
 
-        ReportLogger.info("<b>fintag rows:</b>");
-        ReportLogger.infoTable(buildTagTable(tags));
+        com.gsl.reports.ValidationBuffer.flushAsPreBlock();
+        ReportLogger.infoLabeledTable("fintag rows", buildTagTable(tags));
+        ReportLogger.infoHtml(buildLevel4aSummary(tags.size(), totalTagged, header.getDamount()));
         ReportLogger.info("Level 4a — PASSED for voucherNo [" + voucherNo + "]");
     }
 
@@ -112,6 +114,15 @@ public class FinTagValidator {
             };
         }
         return table;
+    }
+
+    private static String buildLevel4aSummary(int tagCount, BigDecimal totalTagged, BigDecimal damount) {
+        return "<div style='font-family:monospace;font-size:12px;line-height:1.8;padding:8px 12px;"
+            + "background:#f0fff4;border-left:4px solid #38a169;border-radius:2px;margin:4px 0;'>"
+            + "<b>Level 4a &mdash; fintag adjustment check</b><br/>"
+            + "&#10003;&nbsp; Tagged entries: <b>" + tagCount + "</b><br/>"
+            + "&#10003;&nbsp; SUM(fintag.amount) = <b>" + totalTagged + "</b><br/>"
+            + "</div>";
     }
 
     private static String str(Object o) { return o == null ? "—" : o.toString(); }

@@ -10,6 +10,7 @@ import com.gsl.enums.VoucherDomain;
 import com.gsl.pages.Finance.Operations.Common.SelectDocumentPopup;
 import com.gsl.pages.pagecomponent.Finance.Operations.Common.VoucherSubLedgerInformationBase;
 import com.gsl.reports.ExtentLogger;
+import com.gsl.utils.Selenium.WaitUtils;
 import com.gsl.reports.StepExecutor;
 import com.gsl.reports.SubLedgerRowStepRegistry;
 import com.aventstack.extentreports.ExtentTest;
@@ -127,7 +128,7 @@ public class ARVoucherSubLedgerInformation extends VoucherSubLedgerInformationBa
                             "Change Reference Site — " + (refSite.isEmpty() ? "(none)" : refSite),
                             () -> setSubLedgerReferenceSite(refSite, idx));
                 } else {
-                    ExtentLogger.info("[AR SL RefSite] Row " + idx
+                    ExtentLogger.info("[AR SL RefSite] Row " + (idx + 1)
                             + ": skipping Pass-2 set (changeReferenceSite=false) — current value kept");
                 }
             }
@@ -374,22 +375,26 @@ public class ARVoucherSubLedgerInformation extends VoucherSubLedgerInformationBa
         String inputId = JavascriptExecutorUtils.openReferenceSiteCellEditor(
                 DriverManager.getDriver(), rowIndex, "arvch_grid");
         if (inputId == null || inputId.isEmpty()) {
-            ExtentLogger.warning("[AR SL RefSite] Row " + rowIndex
+            ExtentLogger.warning("[AR SL RefSite] Row " + (rowIndex + 1)
                     + ": native editor did not open — using JS injection fallback for '" + referenceSite + "'");
-            Log.warn("[SL_REFSITE_NATIVE] AR row {} — falling back to JS injection for '{}'", rowIndex, referenceSite);
+            Log.warn("[SL_REFSITE_NATIVE] AR row {} — falling back to JS injection for '{}'", rowIndex + 1, referenceSite);
             JavascriptExecutorUtils.setSubLedgerReferenceSite(DriverManager.getDriver(), rowIndex, referenceSite);
             return this;
         }
-        ExtentLogger.info("[AR SL RefSite] Row " + rowIndex + ": native path — typing '" + referenceSite + "'");
+        ExtentLogger.info("[AR SL RefSite] Row " + (rowIndex + 1) + ": native path — typing '" + referenceSite + "'");
         By comboInput = By.id(inputId);
         SeleniumUtils.clear(comboInput, "SL_REFSITE");
         SeleniumUtils.sendKeys(comboInput, WaitType.VISIBLE, referenceSite, "SL_REFSITE");
         JavascriptExecutorUtils.waitForExtJS();
         By option = By.xpath("//li[@role='option'][normalize-space(.)='" + referenceSite + "']");
-        SeleniumUtils.click(option, WaitType.CLICKABLE, "SL_REFSITE_OPTION_" + referenceSite);
+        WaitUtils.fluentWaitBuilder().until(driver -> {
+            driver.findElement(option).click();
+            return true;
+        });
+        ExtentLogger.info("SL_REFSITE_OPTION_" + referenceSite + " is clicked successfully");
         JavascriptExecutorUtils.waitForExtJS();
         JavascriptExecutorUtils.waitForPageLoad();
-        ExtentLogger.info("[AR SL RefSite] Row " + rowIndex + ": selected '" + referenceSite + "' via native");
+        ExtentLogger.info("[AR SL RefSite] Row " + (rowIndex + 1) + ": selected '" + referenceSite + "' via native");
         return this;
     }
 
@@ -429,6 +434,10 @@ public class ARVoucherSubLedgerInformation extends VoucherSubLedgerInformationBa
             final String lineNo = subLedger.getLineNo();
             if (lineNo == null || lineNo.isBlank()) continue;
 
+            final String slKey = (subLedger.getId() != null && !subLedger.getId().isBlank())
+                    ? subLedger.getId() : subLedger.getSubLedger();
+            com.gsl.reports.ActualResultsHolder.get().getUiPaymentInfoPopupMap().put(slKey, false);
+
             final PaymentInformation payment = paymentList.stream()
                     .filter(p -> p.getLineNo() != null
                             && p.getLineNo().equalsIgnoreCase(lineNo)
@@ -453,6 +462,7 @@ public class ARVoucherSubLedgerInformation extends VoucherSubLedgerInformationBa
                 clickPaymentButton(subLedger.getSubLedger(), refSite, slid)
                         .fillAndSubmit(payment);
                 JavascriptExecutorUtils.waitForExtJS();
+                com.gsl.reports.ActualResultsHolder.get().getUiPaymentInfoPopupMap().put(slKey, true);
             });
         }
     }

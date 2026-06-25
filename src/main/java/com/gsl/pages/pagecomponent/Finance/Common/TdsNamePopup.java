@@ -5,6 +5,7 @@ import com.gsl.config.ConfigFactory;
 import com.gsl.driver.DriverManager;
 import com.gsl.enums.WaitType;
 import com.gsl.reports.ExtentLogger;
+import com.gsl.utils.Selenium.JavascriptExecutorUtils;
 import com.gsl.utils.Selenium.SeleniumUtils;
 import com.gsl.utils.Selenium.WaitUtils;
 import org.openqa.selenium.By;
@@ -41,12 +42,12 @@ public class TdsNamePopup {
 
     public TdsNameParent selectTdsName(String tdsName) {
         SeleniumUtils.sendKeys(SEARCH_BOX, tdsName, "TDS_NAME_SEARCH");
+        JavascriptExecutorUtils.waitForExtJS();
 
         By row = By.xpath(String.format(SELECTION_TEMPLATE, tdsName));
         WebDriver driver = DriverManager.getDriver();
         WebDriverWait wait = WaitUtils.webDriverWait(ConfigFactory.getWaitConfig().popupWaitSeconds());
-        wait.until(ExpectedConditions.presenceOfElementLocated(row));
-        Uninterruptibles.sleepUninterruptibly(1, TimeUnit.SECONDS);
+        wait.until(ExpectedConditions.visibilityOfElementLocated(row));
 
         for (int attempt = 0; attempt < 3; attempt++) {
             try {

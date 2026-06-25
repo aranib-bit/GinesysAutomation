@@ -1,5 +1,6 @@
 package com.gsl.listeners;
 
+import com.gsl.constants.FrameworkConstants;
 import com.gsl.annotations.FrameworkAnnotation;
 import com.gsl.annotations.FrameworkValidation;
 import com.gsl.annotations.TestCaseId;
@@ -39,11 +40,11 @@ import com.gsl.remote.model.OSType;
 import com.gsl.remote.parser.RegexLogParser;
 import com.gsl.remote.retry.RetryPolicy;
 import com.gsl.reports.ActionTrailBuffer;
-import com.gsl.reports.ActualResultsHolder;
-import com.gsl.reports.ActualResultsLogger;
+import com.gsl.reports.FinanceDomainReporter;
 import com.gsl.reports.SummaryReportBuilder;
-import com.gsl.reports.ApVoucherDescriptionBuilder;
-import com.gsl.reports.ArVoucherDescriptionBuilder;
+import com.gsl.reports.PopupTrailBuffer;
+import com.gsl.reports.contract.DomainReporter;
+import com.gsl.reports.contract.DomainReporterRegistry;
 import com.gsl.reports.RetryHistoryBuffer;
 import com.gsl.reports.StepDurationBuffer;
 import com.gsl.reports.WaitDurationBuffer;
@@ -57,8 +58,6 @@ import com.gsl.reports.RuntimeProfileBuilder;
 import com.gsl.reports.RuntimeProfileHolder;
 import com.gsl.reports.profile.RuntimeExecutionProfile;
 import com.gsl.testdata.InvocationData;
-import com.gsl.testdata.dto.MergedFinanceApVoucherData;
-import com.gsl.testdata.dto.MergedFinanceArVoucherData;
 import com.gsl.utils.Log;
 import com.gsl.utils.TestContextManager;
 
@@ -73,6 +72,7 @@ import org.testng.ITestResult;
 import java.time.Instant;
 import java.util.Arrays;
 import java.util.List;
+import java.util.Optional;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
 
@@ -105,6 +105,7 @@ public class TestListener implements ITestListener, ISuiteListener {
     @Override
     public void onStart(ISuite suite) {
         Log.logHeap("suite-start:" + suite.getName());
+        DomainReporterRegistry.register(new FinanceDomainReporter());
         ExtentReport.initReports();
 
         // Build the runtime profile ONCE — frozen for the entire suite.
@@ -154,6 +155,7 @@ public class TestListener implements ITestListener, ISuiteListener {
         }
         SummaryReportBuilder.build();
         ExtentReport.flushReports();
+        copyToLatest();
         Log.logHeap("suite-finish:" + suite.getName());
     }
 
@@ -201,6 +203,7 @@ public class TestListener implements ITestListener, ISuiteListener {
         StepDurationBuffer.clear();
         WaitDurationBuffer.clear();
         RetryHistoryBuffer.clear();
+        PopupTrailBuffer.clear();
         Log.info("TEST STARTED: {}", methodName);
 
         // @FrameworkValidation methods are pre-execution validation checks.
@@ -236,34 +239,14 @@ public class TestListener implements ITestListener, ISuiteListener {
                 .map(p -> (InvocationData) p)
                 .findFirst()
                 .orElse(null);
-        MergedFinanceArVoucherData arData = Arrays.stream(params)
-                .filter(p -> p instanceof MergedFinanceArVoucherData)
-                .map(p -> (MergedFinanceArVoucherData) p)
-                .findFirst()
-                .orElse(null);
-        MergedFinanceApVoucherData apData = Arrays.stream(params)
-                .filter(p -> p instanceof MergedFinanceApVoucherData)
-                .map(p -> (MergedFinanceApVoucherData) p)
-                .findFirst()
-                .orElse(null);
+
+        Optional<DomainReporter> domainReporter = DomainReporterRegistry.resolve(params);
+        Object domainData = domainReporter.map(r -> r.extractTestData(params)).orElse(null);
 
         if (invData != null) {
 
-            String richName = null;
-            if (arData != null && arData.getMasterTestData() != null) {
-                String tcName = arData.getMasterTestData().getTestcasename();
-                if (tcName != null && !tcName.isBlank()
-                        && !tcName.equalsIgnoreCase("createArVoucher")) {
-                    richName = tcName;
-                }
-            } else if (apData != null && apData.getMasterTestData() != null) {
-                String tcName = apData.getMasterTestData().getTestcasename();
-                if (tcName != null && !tcName.isBlank()
-                        && !tcName.equalsIgnoreCase("createApVoucherAdvancePayment")
-                        && !tcName.equalsIgnoreCase("createApVoucherDocumentPayment")) {
-                    richName = tcName;
-                }
-            }
+            String richName = (domainReporter.isPresent() && domainData != null)
+                    ? domainReporter.get().buildRichName(domainData) : null;
 
             String tcId = (tcIdAnnotation != null)
                     ? String.format("%s-%02d", tcIdAnnotation.value(), invData.getInvocationIndex())
@@ -273,9 +256,8 @@ public class TestListener implements ITestListener, ISuiteListener {
             String prefix = (tcId != null) ? "[" + tcId + "] " : "";
 
             // Title: human-readable sentence after the ID; technical params go to description
-            String sentence = (arData != null) ? ArVoucherDescriptionBuilder.build(arData)
-                            : (apData != null) ? ApVoucherDescriptionBuilder.build(apData)
-                            : null;
+            String sentence = (domainReporter.isPresent() && domainData != null)
+                    ? domainReporter.get().buildSentence(domainData) : null;
             String titleText = (sentence != null && !sentence.isBlank())
                     ? sentence
                     : (richName != null ? richName : result.getMethod().getDescription());
@@ -356,13 +338,12 @@ public class TestListener implements ITestListener, ISuiteListener {
         Log.info("TEST PASSED: {}", result.getName());
         ExtentLogger.pass(result.getName() + " is passed");
 
+        Optional<DomainReporter> successReporter = DomainReporterRegistry.resolve(result.getParameters());
         try {
             ActionTrailBuffer.record("Actual Results");
-            ActualResultsLogger.flushToReport();
+            successReporter.ifPresent(r -> r.onTestSuccess(r.getAccumulator()));
         } catch (Exception e) {
             Log.warn("[TestListener] Actual Results flush failed on success: {}", e.getMessage());
-        } finally {
-            ActualResultsHolder.clear();
         }
 
         try {
@@ -373,6 +354,19 @@ public class TestListener implements ITestListener, ISuiteListener {
         }
 
         ExtentReport.recordTestResult(result, "PASS");
+
+        // Force PASS status on the node — ExtentReports uses highest-severity log entry
+        // (FAIL > PASS), so AOP fail() entries from fluent-wait retry-throws on internally
+        // recovered exceptions would otherwise make a passing test appear red in the report.
+        com.aventstack.extentreports.ExtentTest extentNode = ExtentManager.getExtentTest();
+        if (extentNode != null) {
+            extentNode.getModel().setStatus(com.aventstack.extentreports.Status.PASS);
+        }
+        com.aventstack.extentreports.ExtentTest shardNode = ExtentManager.getShardTest();
+        if (shardNode != null) {
+            shardNode.getModel().setStatus(com.aventstack.extentreports.Status.PASS);
+        }
+
         TestContextManager.clear();
     }
 
@@ -396,13 +390,12 @@ public class TestListener implements ITestListener, ISuiteListener {
         // One top-level status marker; full exception details are in the StepExecutor child node.
         ExtentLogger.fail(result.getName() + " FAILED");
 
+        Optional<DomainReporter> failureReporter = DomainReporterRegistry.resolve(result.getParameters());
         try {
             ActionTrailBuffer.record("Actual Results");
-            ActualResultsLogger.flushToReport();
+            failureReporter.ifPresent(r -> r.onTestFailure(r.getAccumulator()));
         } catch (Exception e) {
             Log.warn("[TestListener] Actual Results flush failed on failure: {}", e.getMessage());
-        } finally {
-            ActualResultsHolder.clear();
         }
 
         // Compact failure summary — exception, last step, environment fingerprint.
@@ -458,5 +451,23 @@ public class TestListener implements ITestListener, ISuiteListener {
         }
         ExtentReport.recordTestResult(result, "SKIP");
         TestContextManager.clear();
+    }
+
+    // ── Phase 0: copy run report to reports/latest/ for CI pickup ──────────────
+
+    private static void copyToLatest() {
+        try {
+            java.nio.file.Path runDir    = java.nio.file.Paths.get(FrameworkConstants.getRunReportDir());
+            java.nio.file.Path latestDir = java.nio.file.Paths.get(FrameworkConstants.getLatestReportDir());
+            java.nio.file.Files.createDirectories(latestDir);
+            java.nio.file.Files.copy(
+                runDir.resolve("index.html"),
+                latestDir.resolve("index.html"),
+                java.nio.file.StandardCopyOption.REPLACE_EXISTING
+            );
+            Log.info("[Phase0] Latest report copied to {}", latestDir.resolve("index.html"));
+        } catch (Exception e) {
+            Log.warn("[Phase0] Could not copy report to latest/: {}", e.getMessage());
+        }
     }
 }

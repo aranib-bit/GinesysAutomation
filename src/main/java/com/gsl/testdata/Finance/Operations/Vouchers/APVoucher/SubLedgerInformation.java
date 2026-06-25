@@ -6,6 +6,7 @@ import com.gsl.converter.PaymentSelectionConverter;
 import com.gsl.enums.AdjustmentType;
 import com.gsl.enums.PaymentSelectionType;
 import com.gsl.testdata.Finance.Operations.Vouchers.ARVoucher.SubLedgerInformationBase;
+import com.gsl.testdata.Finance.Operations.Vouchers.Common.VoucherSubLedgerRow;
 import io.github.sskorol.data.Column;
 import io.github.sskorol.data.Sheet;
 import lombok.Getter;
@@ -27,7 +28,7 @@ import java.math.BigDecimal;
 @Getter
 @NoArgsConstructor
 @Sheet(name = "SubLedgerInformation")
-public class SubLedgerInformation extends SubLedgerInformationBase {
+public class SubLedgerInformation extends SubLedgerInformationBase implements VoucherSubLedgerRow {
 
     @Column(name = "TestCaseID")
     private String testCaseID;

@@ -5,18 +5,26 @@ import java.util.stream.Collectors;
 
 public enum AdjustmentType {
 
-    SELECT_DOCUMENT("SelectDocument"),
-    FIFO_SETOFF("FIFO Set-Off"),
-    REFERENCE_SITEWISE_FIFO_SETOFF("Reference Site wise FIFO set-off");
+    SELECT_DOCUMENT("SelectDocument",                          "Select Document"),
+    FIFO_SETOFF("FIFO Set-Off",                               "FIFO Set-Off"),
+    REFERENCE_SITEWISE_FIFO_SETOFF("Reference Site wise FIFO set-off", "Reference Site wise FIFO set-off");
 
     private final String label;
+    private final String displayLabel;
 
-    AdjustmentType(String label) {
-        this.label = label;
+    AdjustmentType(String label, String displayLabel) {
+        this.label        = label;
+        this.displayLabel = displayLabel;
     }
 
+    /** Excel parse key — used by {@link #fromExcel} and {@link #toString}. */
     public String label() {
         return label;
+    }
+
+    /** Human-readable label for reports (e.g. "Select Document" vs parse key "SelectDocument"). */
+    public String displayLabel() {
+        return displayLabel;
     }
 
     @Override

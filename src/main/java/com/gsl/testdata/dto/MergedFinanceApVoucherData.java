@@ -30,7 +30,8 @@ import java.util.stream.Collectors;
 public class MergedFinanceApVoucherData
         implements InvocationData,
                    PostSaveDialogHandler.PostSaveSpec,
-                   VoucherDbContextBuilder.InvoiceScoped {
+                   VoucherDbContextBuilder.InvoiceScoped,
+                   VoucherReportData {
 
     private MasterTestData masterTestData;
 
@@ -119,6 +120,21 @@ public class MergedFinanceApVoucherData
     public Optional<BigDecimal> getNetPayableForLine(String lineNo) {
         if (lineNo == null || capturedNetPayables == null) return Optional.empty();
         return Optional.ofNullable(capturedNetPayables.get(lineNo));
+    }
+
+    // Explicit overrides to prevent Lombok from generating conflicting getter signatures.
+    // Lombok aborts all getter generation when it detects a name clash between its inferred
+    // return type (concrete) and the interface's declared return type (covariant/wildcard).
+    // Adding these explicit methods removes the ambiguity; Lombok skips them and generates
+    // all remaining methods (isNeedsPaymentInfoWarning, builder, etc.) normally.
+    @Override public DocumentInformation      getDocumentInformation()      { return documentInformation; }
+    @Override public List<SubLedgerInformation> getSubLedgerInformationList() { return subLedgerInformationList; }
+    @Override public List<SelectDocument>       getSelectDocumentList()       { return selectDocumentList; }
+    @Override public List<PaymentInformation>   getPaymentInformationList()   { return paymentInformationList; }
+
+    @Override
+    public String getScenarioTypeLabel() {
+        return scenarioType != null ? scenarioType.name() : "";
     }
 
     @Override

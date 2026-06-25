@@ -94,15 +94,9 @@ public final class NavigationUtils {
         FinanceHomePage financeHomePage = homePage.getTopModuleMenuComponent()
                 .navigateToModule(MainModuleType.FINANCE);
 
-        // 2. Wait for the module to fully load before checking the active sub-menu state
-        SeleniumUtils.elementDisappear(FrameworkConstants.getLoadingMask(), "Loading Mask");
-
         // 3. Navigate to the desired sub-menu, which returns the correct page object
         OperationsHomePage operationsHomePage = financeHomePage.getFinanceTopMenuComponent()
                 .navigateToSubMenu(subMenu, OperationsHomePage.class);
-
-        // 4. Wait for the loader to disappear before interacting with the side menu
-        SeleniumUtils.elementDisappear(FrameworkConstants.getLoadingMask(), "Loading Mask");
 
         // 5. Click the final side menu item — scoped to Finance container only
         T page = operationsHomePage.getOperationsSideMenuComponent()

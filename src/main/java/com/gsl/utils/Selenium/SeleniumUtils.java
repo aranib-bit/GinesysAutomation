@@ -7,6 +7,7 @@ import com.gsl.popup.PopupMonitor;
 import com.gsl.reports.ExtentLogger;
 import com.gsl.utils.ElementMeta;
 import com.gsl.utils.Log;
+import com.gsl.utils.SensitiveDataMasker;
 import org.openqa.selenium.By;
 import org.openqa.selenium.ElementClickInterceptedException;
 import org.openqa.selenium.Keys;
@@ -88,30 +89,36 @@ public class SeleniumUtils {
     public static void sendKeys(By by, WaitType waitType,String value, String elementName) {
         JavascriptExecutorUtils.waitForPageLoad();
         JavascriptExecutorUtils.waitForExtJS();
+        String display = SensitiveDataMasker.isSensitiveByName(elementName)
+                || SensitiveDataMasker.isSensitive(null, by)
+                ? SensitiveDataMasker.mask(value) : value;
         WebElement element;
         if (waitType == WaitType.PRESENCE) {
             element = waitUntilElementPresent(by);
             element.clear();
             element.sendKeys(value);
-            ExtentLogger.info("SendKeys is done successfully for element "+elementName + " with value "+value);
+            ExtentLogger.info("SendKeys is done successfully for element " + elementName + " with value " + display);
         } else if (waitType == WaitType.CLICKABLE) {
             element = waitUntilElementClickable(by);
             element.clear();
             element.sendKeys(value);
-            ExtentLogger.info("SendKeys is done successfully for element "+elementName + " with value "+value);
+            ExtentLogger.info("SendKeys is done successfully for element " + elementName + " with value " + display);
         } else if (waitType == WaitType.VISIBLE) {
             element = waitUntilElementVisible(by);
             element.clear();
             element.sendKeys(value);
-            ExtentLogger.info("SendKeys is done successfully for element "+elementName + " with value "+value);
+            ExtentLogger.info("SendKeys is done successfully for element " + elementName + " with value " + display);
         }
     }
 
     public static void sendKeys(By by, String value, String elementName) {
+        String display = SensitiveDataMasker.isSensitiveByName(elementName)
+                || SensitiveDataMasker.isSensitive(null, by)
+                ? SensitiveDataMasker.mask(value) : value;
         WebElement element = waitUntilElementPresent(by);
         element.clear();
         element.sendKeys(value);
-        ExtentLogger.info(value + " is entered sucessfully in " + elementName);
+        ExtentLogger.info(display + " is entered sucessfully in " + elementName);
     }
 
     public static void pressTab(By by, String elementName) {

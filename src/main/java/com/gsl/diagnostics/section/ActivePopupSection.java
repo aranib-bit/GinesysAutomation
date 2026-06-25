@@ -2,6 +2,7 @@ package com.gsl.diagnostics.section;
 
 import com.gsl.config.ConfigFactory;
 import com.gsl.diagnostics.DiagnosticSection;
+import com.gsl.reports.PopupTrailBuffer;
 import com.gsl.utils.Log;
 import org.openqa.selenium.JavascriptExecutor;
 import org.openqa.selenium.NoAlertPresentException;
@@ -21,37 +22,52 @@ import java.util.List;
  */
 public final class ActivePopupSection implements DiagnosticSection {
 
-    private final List<String> captured = new ArrayList<>();
+    private final List<String> captured  = new ArrayList<>();  // live snapshot
+    private final List<String> trailAll  = new ArrayList<>();  // popups during the test
 
     public ActivePopupSection(WebDriver driver) {
-        if (driver == null) return;
-        if (!ConfigFactory.getDiagnosticsConfig().diagnosticsActivePopupEnabled()) return;
+        trailAll.addAll(PopupTrailBuffer.getAll());
 
-        captureJsAlert(driver);
-        captureUiModals(driver);
+        if (driver != null && ConfigFactory.getDiagnosticsConfig().diagnosticsActivePopupEnabled()) {
+            captureJsAlert(driver);
+            captureUiModals(driver);
+        }
     }
 
     @Override
     public String sectionTitle() {
-        return "Active Popups (" + captured.size() + ")";
+        int total = captured.size() + trailAll.size();
+        return "Active Popups (" + total + ")";
     }
 
     @Override
     public String renderHtml() {
         StringBuilder sb = new StringBuilder();
         sb.append("<div style='font-family:monospace;font-size:11px;'>");
-        for (String entry : captured) {
-            sb.append("<div style='padding:2px 0;border-bottom:1px solid #eee;'>")
-              .append(esc(entry))
-              .append("</div>");
+
+        if (!captured.isEmpty()) {
+            sb.append("<div style='font-weight:bold;padding:4px 0 2px;color:#c0392b;'>Currently visible:</div>");
+            for (String entry : captured) {
+                sb.append("<div style='padding:2px 0;border-bottom:1px solid #eee;'>")
+                  .append(esc(entry)).append("</div>");
+            }
         }
+
+        if (!trailAll.isEmpty()) {
+            sb.append("<div style='font-weight:bold;padding:6px 0 2px;color:#2c3e50;'>Handled during test:</div>");
+            for (String entry : trailAll) {
+                sb.append("<div style='padding:2px 0;border-bottom:1px solid #eee;color:#555;'>")
+                  .append(esc(entry)).append("</div>");
+            }
+        }
+
         sb.append("</div>");
         return sb.toString();
     }
 
     @Override
     public boolean hasData() {
-        return !captured.isEmpty();
+        return !captured.isEmpty() || !trailAll.isEmpty();
     }
 
     // ── helpers ───────────────────────────────────────────────────────────────

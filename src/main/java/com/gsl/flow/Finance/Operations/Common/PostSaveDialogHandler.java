@@ -73,6 +73,8 @@ public enum PostSaveDialogHandler {
                 ReportLogger.warn("TDS decision flow rejected journal creation — no success message box");
             }
         }
+        ReportLogger.info("All post-save dialogs handled — after OK, form will close and return to "
+                + this.name() + " Voucher List");
         return box;
     }
 

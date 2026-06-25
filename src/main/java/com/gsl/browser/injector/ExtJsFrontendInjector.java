@@ -131,6 +131,12 @@ public final class ExtJsFrontendInjector implements FrontendDiagnosticsInjector 
 
     private static final String EXTJS_SCRIPT = """
             (function() {
+                // Outer guard: entire script is a no-op if patches are already applied.
+                // Without this, Ext.onReady() is called on every step even when the page
+                // is already patched — and if ExtJS is mid-render that enqueue blocks the
+                // JS engine for 1-4 seconds, creating a silent gap between step durations.
+                if (window.__gslExtJsPatched) return;
+
                 function applyExtJsPatches() {
                     // Guard: skip if already patched in this page lifecycle
                     if (window.__gslExtJsPatched) return;

@@ -18,7 +18,8 @@ public class ExtJsUtils {
     //
     // ExtJS radio buttons do NOT update the DOM `checked` attribute when selected.
     // State is tracked internally; the only reliable DOM signal is the CSS class
-    // `x-form-cb-checked` added to the <input class="x-form-cb-input"> element.
+    // `x-form-cb-checked` is added to the outer .x-form-item div, not the <input>.
+    // Use descendant selector `.x-form-cb-checked .x-form-cb-label` to read the label.
     // XPath attribute checks on `checked` will always fail — use JS for detection.
 
     /**
@@ -87,9 +88,8 @@ public class ExtJsUtils {
      */
     public static String getSelectedExtJsRadioLabel() {
         return (String) ((JavascriptExecutor) DriverManager.getDriver()).executeScript(
-                "return document.querySelector('.x-form-cb-input.x-form-cb-checked')" +
-                "?.closest('.x-form-cb')" +
-                "?.querySelector('.x-form-cb-label')?.innerText?.trim();"
+                "var label = document.querySelector('.x-form-cb-checked .x-form-cb-label');" +
+                "return label ? label.innerText.trim() : null;"
         );
     }
 
@@ -108,9 +108,8 @@ public class ExtJsUtils {
                 "if (!fieldSpan) return null;" +
                 "var formItem = fieldSpan.closest('.x-form-item');" +
                 "if (!formItem) return null;" +
-                "var checked = formItem.querySelector('.x-form-cb-input.x-form-cb-checked');" +
-                "if (!checked) return null;" +
-                "return checked.closest('.x-form-cb')?.querySelector('.x-form-cb-label')?.innerText?.trim();",
+                "var label = formItem.querySelector('.x-form-cb-checked .x-form-cb-label');" +
+                "return label ? label.innerText.trim() : null;",
                 fieldLabel
         );
     }

@@ -24,7 +24,8 @@ import java.util.stream.Collectors;
 public class MergedFinanceArVoucherData
         implements InvocationData,
                    PostSaveDialogHandler.PostSaveSpec,
-                   VoucherDbContextBuilder.InvoiceScoped {
+                   VoucherDbContextBuilder.InvoiceScoped,
+                   VoucherReportData {
 
     private MasterTestData masterTestData;
 
@@ -103,6 +104,17 @@ public class MergedFinanceArVoucherData
      * Used by {@code ArVoucherPredicateFactory.NEGATIVE_FORM_VALIDATION_BEHAVIOR}.
      */
     private NegativeValidation expectedValidation;
+
+    // Explicit overrides — see MergedFinanceApVoucherData for rationale.
+    @Override public DocumentInformation      getDocumentInformation()      { return documentInformation; }
+    @Override public List<SubLedgerInformation> getSubLedgerInformationList() { return subLedgerInformationList; }
+    @Override public List<SelectDocument>       getSelectDocumentList()       { return selectDocumentList; }
+    @Override public List<PaymentInformation>   getPaymentInformationList()   { return paymentInformationList; }
+
+    @Override
+    public String getScenarioTypeLabel() {
+        return scenarioType != null ? scenarioType.name() : "";
+    }
 
     @Override
     public int getInvocationIndex() {

@@ -11,6 +11,10 @@ public class SensitiveDataMasker {
             "password", "pwd", "pass", "pin", "otp", "secret", "token"
     );
 
+    public static boolean isSensitiveByName(String elementName) {
+        return containsKeyword(elementName);
+    }
+
     public static boolean isSensitive(ElementMeta meta, By locator) {
         if (meta != null && meta.isSensitive())                     return true;
         if (meta != null && containsKeyword(meta.getName()))        return true;

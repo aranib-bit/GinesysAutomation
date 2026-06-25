@@ -105,6 +105,11 @@ public abstract class VoucherDocumentInformationBase {
     // ── Protected setters — available to subclasses for custom ordering ───────
 
     protected void setDocScheme(String docscheme) {
+        String current = SeleniumUtils.getAttribute(docScheme, "value", "DOC_SCHEME");
+        if (current != null && current.equalsIgnoreCase(docscheme)) {
+            Log.info("DOC_SCHEME is already '{}' — skipping update", docscheme);
+            return;
+        }
         JavascriptExecutorUtils.waitForExtJS();
         SeleniumUtils.clear(docScheme, "DOC_SCHEME");
         SeleniumUtils.sendKeys(docScheme, WaitType.CLICKABLE, docscheme, "DOC_SCHEME");

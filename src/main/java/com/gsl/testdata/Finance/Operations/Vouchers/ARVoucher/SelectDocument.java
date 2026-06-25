@@ -2,6 +2,7 @@ package com.gsl.testdata.Finance.Operations.Vouchers.ARVoucher;
 
 import com.gsl.converter.BigDecimalConverter;
 import com.gsl.converter.SafeDateConverter;
+import com.gsl.testdata.Finance.Operations.Vouchers.Common.VoucherSelectDocRow;
 import io.github.sskorol.data.Column;
 import io.github.sskorol.data.Sheet;
 import lombok.AllArgsConstructor;
@@ -15,7 +16,7 @@ import java.time.LocalDate;
 @NoArgsConstructor
 @AllArgsConstructor
 @Sheet(name = "SelectDocument")
-public class SelectDocument {
+public class SelectDocument implements VoucherSelectDocRow {
     @Column(name="TestCaseID")
     private String testCaseID;
     @Column(name="LineNo")
