@@ -1,5 +1,6 @@
 package com.gsl.reports;
 
+import com.gsl.testdata.Finance.Operations.Vouchers.ARVoucher.ReferenceSitewiseFIFOsetoff;
 import com.gsl.testdata.Finance.Operations.Vouchers.Common.VoucherSubLedgerRow;
 import com.gsl.testdata.dto.MergedFinanceArVoucherData;
 
@@ -53,16 +54,17 @@ public final class ArVoucherExtentDescriptionLogger
 
     @Override
     protected void logPositiveExpected(MergedFinanceArVoucherData data) {
-        int slCount    = data.getSubLedgerInformationList() != null ? data.getSubLedgerInformationList().size() : 0;
-        boolean hasPmt = data.getPaymentInformationList()   != null && !data.getPaymentInformationList().isEmpty();
-        boolean hasDoc = data.getSelectDocumentList()        != null && !data.getSelectDocumentList().isEmpty();
+        int slCount    = data.getSubLedgerInformationList()       != null ? data.getSubLedgerInformationList().size() : 0;
+        boolean hasPmt = data.getPaymentInformationList()         != null && !data.getPaymentInformationList().isEmpty();
+        boolean hasDoc = data.getSelectDocumentList()             != null && !data.getSelectDocumentList().isEmpty();
+        boolean hasFifo= data.getReferenceSitewiseFIFOList()      != null && !data.getReferenceSitewiseFIFOList().isEmpty();
 
         String vchdet = slCount + " row(s): slcode, glcode, camount (credit), payment_mode"
                 + (hasPmt ? ", chqno + chqdt validated for CHEQUE/NEFT lines" : "");
 
-        String fintag = hasDoc
-                ? "Tag entries matching selected document adjustment amounts (COLLECT — non-blocking)"
-                : "Tag entries for FIFO set-off adjustments (COLLECT — non-blocking)";
+        String fintag = hasDoc  ? "Tag entries matching selected document adjustment amounts (COLLECT — non-blocking)"
+                      : hasFifo ? "Tag entries matching FIFO set-off amounts (COLLECT — non-blocking)"
+                      :            "Tag entries for FIFO set-off adjustments (COLLECT — non-blocking)";
 
         ExtentLogger.infoTable(new String[][]{
             { "Expected Outcome", "Details" },
@@ -72,5 +74,49 @@ public final class ArVoucherExtentDescriptionLogger
             { "DB — finpost",     "GL balance postings created and balanced (BLOCKING — test fails if absent)" },
             { "DB — fintag",      fintag },
         });
+    }
+
+    // ── Hooks ──────────────────────────────────────────────────────────────────
+
+    @Override
+    protected void appendExtraConsoleSections(MergedFinanceArVoucherData data, StringBuilder sb) {
+        List<ReferenceSitewiseFIFOsetoff> fifoList = data.getReferenceSitewiseFIFOList();
+        if (fifoList != null && !fifoList.isEmpty()) {
+            sb.append("------------------------------------------------------------\n");
+            sb.append("  Reference Site FIFO:\n");
+            for (ReferenceSitewiseFIFOsetoff r : fifoList) {
+                sb.append(String.format(
+                        "    lineNo=%s | refSite=%s | site=%s | adjAmt=%s%n",
+                        nullSafe(r.getLineNo()),
+                        nullSafe(r.getReferenceSiteName()),
+                        nullSafe(r.getSiteName()),
+                        r.getAdjustmentAmount() != null ? r.getAdjustmentAmount().toPlainString() : ""));
+            }
+        }
+    }
+
+    @Override
+    protected void logMiddleSections(MergedFinanceArVoucherData data) {
+        logFifoTable(data);
+    }
+
+    // ── AR-specific table ──────────────────────────────────────────────────────
+
+    private void logFifoTable(MergedFinanceArVoucherData data) {
+        List<ReferenceSitewiseFIFOsetoff> fifoList = data.getReferenceSitewiseFIFOList();
+        if (fifoList == null || fifoList.isEmpty()) return;
+        String[][] table = new String[1 + fifoList.size()][4];
+        table[0] = new String[]{ "SL Line#", "Reference Site Name", "Site Name", "Adj Amount" };
+        for (int i = 0; i < fifoList.size(); i++) {
+            ReferenceSitewiseFIFOsetoff r = fifoList.get(i);
+            table[i + 1] = new String[]{
+                nullSafe(r.getLineNo()),
+                nullSafe(r.getReferenceSiteName()),
+                nullSafe(r.getSiteName()),
+                r.getAdjustmentAmount() != null ? r.getAdjustmentAmount().toPlainString() : ""
+            };
+        }
+        ExtentLogger.info("<b>Reference Site wise FIFO Set-Off</b>");
+        ExtentLogger.infoTable(table);
     }
 }

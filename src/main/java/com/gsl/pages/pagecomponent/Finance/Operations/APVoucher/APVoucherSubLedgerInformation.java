@@ -25,6 +25,7 @@ import com.gsl.utils.Selenium.SeleniumUtils;
 import com.gsl.pages.enums.Finance.Operations.APVoucher.APVoucherGridColumnHeader;
 import com.gsl.pages.enums.Finance.Operations.Common.CommonVoucherGridColumnHeader;
 import com.gsl.reports.ExtentLogger;
+import com.gsl.reports.ReportLogger;
 import com.gsl.reports.StepExecutor;
 import com.gsl.reports.SubLedgerRowStepRegistry;
 import com.aventstack.extentreports.ExtentTest;
@@ -242,6 +243,9 @@ public class APVoucherSubLedgerInformation extends VoucherSubLedgerInformationBa
                 if (idx > 0) addSubLedgerRow();
                 try {
                     setSubLedgerName(slName, slId, refSite, idx);
+                    ReportLogger.trace("[SL Row " + (idx + 1) + "] slName=" + slName
+                            + " slId=" + (slId.isEmpty() ? "—" : slId)
+                            + " refSite=" + (refSite.isEmpty() ? "—" : refSite));
                     // The Amount (Dr) cell is disabled only when Deduct TDS = Yes — the app then
                     // calculates & populates it via the native "Calc. Amount → Calculate TDS & Net
                     // Payable" popup (handled later by fillTdsAndNetPayable). For Deduct TDS = No
@@ -249,8 +253,10 @@ public class APVoucherSubLedgerInformation extends VoucherSubLedgerInformationBa
                     if (isAmountAutoCalculated(slName, refSite, slId, mode)) {
                         ExtentLogger.info("[SL_AMOUNT] Row " + idx + " (" + slName + "): Deduct TDS = Yes — "
                                 + "Amount is app-calculated via Calc TDS / Net Payable; skipping native amount entry.");
+                        ReportLogger.trace("[SL Row " + (idx + 1) + "] amountDr → auto-calculated (TDS=Yes), skipping native entry");
                     } else {
                         setSubLedgerAmount(sl.getAmountDr().toPlainString(), idx);
+                        ReportLogger.trace("[SL Row " + (idx + 1) + "] amountDr → typed=" + sl.getAmountDr());
                     }
                 } catch (InterruptedException e) {
                     Thread.currentThread().interrupt();
@@ -371,9 +377,13 @@ public class APVoucherSubLedgerInformation extends VoucherSubLedgerInformationBa
                                     .collect(Collectors.toList());
                     com.gsl.pages.Finance.Operations.Common.ReferenceSiteWiseFIFOPopup fifoPopup =
                             adjustmentEntry.openReferenceSiteWiseFIFOPopup();
-                    for (com.gsl.testdata.Finance.Operations.Vouchers.APVoucher.ReferenceSitewiseFIFOsetoff rs : refSites) {
-                        fifoPopup.selectAndAutoAdjust(rs.getReferenceSiteName(), rs.getSiteName());
+                    for (int i = 0; i < refSites.size(); i++) {
+                        com.gsl.testdata.Finance.Operations.Vouchers.APVoucher.ReferenceSitewiseFIFOsetoff rs = refSites.get(i);
+                        if (i > 0) fifoPopup.addRow();
+                        fifoPopup.selectReferenceSiteInCombo(rs.getReferenceSiteName())
+                                 .selectSubSiteRow(rs.getSiteName());
                     }
+                    fifoPopup.clickAutoAdjust();
                     com.gsl.pages.Finance.Operations.Common.AdjustmentAmountSnapshot snapshot =
                             adjustmentEntry.captureAmounts();
                     Log.info("RefSiteFIFO amounts — txn={} adj={} pending={}",
@@ -456,6 +466,8 @@ public class APVoucherSubLedgerInformation extends VoucherSubLedgerInformationBa
         JavascriptExecutorUtils.waitForComponentReady();
 
         Log.debug("[SL_NATIVE] Selected SL='{}' (id='{}') on row {}", subledgerName, id, rowIndex);
+        ReportLogger.trace("[SL_NATIVE] row=" + rowIndex + " selected SL='" + subledgerName
+                + "' id='" + (id.isEmpty() ? "—" : id) + "'");
 
         if (referenceSite != null && !referenceSite.trim().isEmpty()) {
             setSubLedgerReferenceSite(referenceSite, rowIndex);

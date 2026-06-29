@@ -379,12 +379,13 @@ public final class FailureBundleOrchestrator {
     private static RemoteLogSection remoteLogSection(
             ServerRole role, Map<ServerRole, LogFetchResponse> results) {
         String displayName = (role == ServerRole.APP) ? "Application Logs" : "DB Server Logs";
+        String roleKey     = (role == ServerRole.APP) ? "app" : "db";
         String host  = resolveHost(role);
         String label = displayName + (host != null ? " — " + host : "");
 
         if (!results.containsKey(role)) {
             String reason = displayName + ": capture disabled — set remote.logs.capture.mode=ALWAYS"
-                    + " or ON_FAILURE in config.properties";
+                    + " or ON_FAILURE in remote-log.properties";
             return new RemoteLogSection(label, reason);
         }
 
@@ -392,11 +393,36 @@ public final class FailureBundleOrchestrator {
         if (resp == null) {
             String reason = (host == null)
                     ? displayName + ": host not configured — set remote."
-                      + (role == ServerRole.APP ? "app" : "db") + ".server.host in config.properties"
-                    : displayName + ": credentials not configured — set REMOTE_LOG_WINRM_USER/PASS"
-                      + " env vars or remote.*server.winrm.username/password in config.properties";
+                            + roleKey + ".server.host in remote-log.properties"
+                    : displayName + ": log collection error — check console/log4j output for details";
             return new RemoteLogSection(label, reason);
         }
+
+        if (resp.getSkipReason() != null) {
+            String reason;
+            switch (resp.getSkipReason()) {
+                case CREDS_MISSING_WINRM:
+                    reason = displayName + ": credentials not configured — set "
+                            + "REMOTE_LOG_WINRM_USER/PASS env vars or remote."
+                            + roleKey + ".server.winrm.username/password in remote-log.properties";
+                    break;
+                case CREDS_MISSING_SSH:
+                    reason = displayName + ": credentials not configured — set "
+                            + "REMOTE_LOG_SSH_USER/PASS env vars or remote."
+                            + roleKey + ".server.ssh.username/password in remote-log.properties";
+                    break;
+                case FETCH_FAILED:
+                    reason = displayName + ": collection failed — "
+                            + (resp.getStderr() != null && !resp.getStderr().isBlank()
+                                    ? resp.getStderr()
+                                    : "see test logs for details");
+                    break;
+                default:
+                    reason = displayName + ": skipped";
+            }
+            return new RemoteLogSection(label, reason);
+        }
+
         return new RemoteLogSection(resp, label);
     }
 

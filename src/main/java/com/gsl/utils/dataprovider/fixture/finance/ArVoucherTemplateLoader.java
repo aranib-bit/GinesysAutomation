@@ -16,6 +16,7 @@ import com.gsl.model.finance.PendingSlDocument;
 import com.gsl.model.finance.SlNameWithId;
 import com.gsl.testdata.Finance.Operations.Vouchers.ARVoucher.DocumentInformation;
 import com.gsl.testdata.Finance.Operations.Vouchers.ARVoucher.PaymentInformation;
+import com.gsl.testdata.Finance.Operations.Vouchers.ARVoucher.ReferenceSitewiseFIFOsetoff;
 import com.gsl.testdata.Finance.Operations.Vouchers.ARVoucher.SelectDocument;
 import com.gsl.testdata.Finance.Operations.Vouchers.ARVoucher.SubLedgerInformation;
 import com.gsl.testdata.MasterTestData;
@@ -246,12 +247,28 @@ public final class ArVoucherTemplateLoader {
         List<PaymentInformation> payments = refs.getCashBankType() == CashBankType.CASH
                 ? buildPayments(id, subLedgers, SelectDocumentVariant.PaymentMode.CASH)
                 : List.of();
+        // Build one ReferenceSitewiseFIFOsetoff per SL from the DB-resolved ref site names.
+        // Line numbers follow the same 1-based sequential order as buildSubLedgers so the
+        // ARVoucherSubLedgerInformation.fillSubLedgerRows lineNo filter matches.
+        List<ReferenceSitewiseFIFOsetoff> fifoList = new ArrayList<>();
+        List<SlNameWithId> slNames = refs.getPendingSlNames();
+        Map<String, String> slToRefSite = refs.getSlToRefSiteName();
+        for (int i = 0; i < slNames.size(); i++) {
+            String key = PendingAdjQuery.compositeKey(slNames.get(i).getSlName(), slNames.get(i).getSlId());
+            String refSiteName = slToRefSite.get(key);
+            if (refSiteName == null) continue;
+            ReferenceSitewiseFIFOsetoff row = new ReferenceSitewiseFIFOsetoff();
+            row.setReferenceSiteName(refSiteName);
+            row.setSiteName(refSiteName);
+            row.setLineNo(String.valueOf(i + 1));
+            fifoList.add(row);
+        }
         return MergedFinanceArVoucherData.builder()
                 .masterTestData(buildMaster("createArVoucher", id))
                 .documentInformation(buildDoc(id, refs, FakerUtils.randomRemarks(), FakerUtils.randomReference()))
                 .subLedgerInformationList(subLedgers)
                 .selectDocumentList(List.of())
-                .referenceSitewiseFIFOList(List.of())
+                .referenceSitewiseFIFOList(fifoList)
                 .paymentInformationList(payments)
                 .paymentProvided(!payments.isEmpty())
                 .needsPaymentInfoWarning(computeNeedsPaymentInfoWarning(subLedgers, payments, refs.getCashBankType()))

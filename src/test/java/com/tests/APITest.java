@@ -37,7 +37,7 @@ public abstract class APITest extends BaseTest {
         TestContextManager.setTestName(method.getName());
         TestContextManager.setTestId();
 
-        UserCredential apiUser = UserPool.acquireSet1User(UserType.API);
+        UserCredential apiUser = UserPool.acquireSet1User(UserType.API, method.getName());
         apiUserFromPool.set(true);
 
         try {

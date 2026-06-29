@@ -54,7 +54,8 @@ public final class WaitUtils {
                 .pollingEvery(Duration.ofMillis(ConfigFactory.getWaitConfig().pollingMillis()))
                 .ignoring(NoSuchElementException.class)
                 .ignoring(StaleElementReferenceException.class)
-                .ignoring(ElementNotInteractableException.class);
+                .ignoring(ElementNotInteractableException.class)
+                .ignoring(ElementClickInterceptedException.class);
     }
 
     // ── Expected-condition waits (public, reusable; default polling = no timing change) ──

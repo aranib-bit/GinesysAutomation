@@ -61,6 +61,12 @@ public class FinVchDetApValidator {
         // Existence — BLOCKING
         List<FinVchDet> rows = dao.findByVoucherCode(vchcode);
         ActualResultsHolder.get().setDetRowCount(rows.size());
+        com.gsl.reports.ReportLogger.trace("[finvchdet] fetched " + rows.size()
+                + " row(s) for vchcode=" + vchcode
+                + (rows.isEmpty() ? "" : " | first: slcode=" + rows.get(0).getSlcode()
+                + " damount=" + rows.get(0).getDamount()
+                + " camount=" + rows.get(0).getCamount()
+                + " tds_app=" + rows.get(0).getTdsApp()));
         Assert.assertFalse(rows.isEmpty(),
                 "[Level 2] No finvchdet rows for vchcode [" + vchcode + "]");
 
@@ -72,6 +78,9 @@ public class FinVchDetApValidator {
 
         // AP: sum debit side of finvchdet
         BigDecimal detDebit = dao.sumDebitByVoucherCode(vchcode);
+        com.gsl.reports.ReportLogger.trace("[finvchdet] SUM(damount)=" + detDebit
+                + " | finvchmain.camount=" + header.getCamount()
+                + " | balanced=" + (detDebit != null && detDebit.compareTo(header.getCamount()) == 0));
 
         SoftAssertions.assertSoftly(soft -> {
             if (inputLines != null && !inputLines.isEmpty())

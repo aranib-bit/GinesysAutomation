@@ -40,12 +40,17 @@ public final class ApVoucherDescriptionBuilder {
     private static String buildNegativeDescription(String scenarioName) {
         if (scenarioName == null) return null;
         return switch (scenarioName) {
-            case "NEG_BLANK_CASHBANK"            -> "Verify that saving without a Cash/Bank GL shows a 'Cash/Bank is required' validation error.";
-            case "NEG_BLANK_SUBLEDGER"           -> "Verify that saving with an empty Sub-Ledger grid shows the sub-ledger required validation error.";
-            case "NEG_BLANK_MANDATORY_REFERENCE" -> "Verify that saving with a blank mandatory Reference shows a 'Reference No. is required' validation error.";
-            case "BOUND_AMOUNT_MIN_INVALID"      -> "Verify that a zero line amount shows an inline validation message and cannot be saved.";
-            case "BOUND_AMOUNT_MIN_VALID"        -> "Verify that a minimum line amount (0.01) is accepted and the voucher saves successfully.";
-            case "BLANK_REFERENCE_ALLOWED"       -> "Verify that two AP Vouchers with no Reference both save successfully (blank reference is allowed).";
+            case "NEG_BLANK_CASHBANK"                -> "Verify that saving without a Cash/Bank GL shows a 'Cash/Bank is required' validation error.";
+            case "NEG_BLANK_CASHBANK_ADD_ROW"         -> "Verify that clicking Add Row without a Cash/Bank GL shows a 'Please select cash/bank ledger first' error.";
+            case "NEG_BLANK_CASHBANK_ADD_ROW_RECOVER" -> "Verify that after dismissing the Cash/Bank error, filling the GL and saving completes successfully (form is recoverable without a page reload).";
+            case "NEG_BLANK_SUBLEDGER"               -> "Verify that saving with an empty Sub-Ledger grid shows the sub-ledger required validation error.";
+            case "NEG_BLANK_SUBLEDGER_RECOVER"        -> "Verify that after dismissing the Sub-Ledger required error, filling the SL rows and saving completes successfully.";
+            case "NEG_BLANK_MANDATORY_REFERENCE"      -> "Verify that saving with a blank mandatory Reference shows a 'Reference No. is required' validation error.";
+            case "BOUND_AMOUNT_MIN_INVALID"           -> "Verify that a zero line amount shows an inline validation message and cannot be saved.";
+            case "BOUND_AMOUNT_MIN_VALID"             -> "Verify that a minimum line amount (0.01) is accepted and the voucher saves successfully.";
+            case "BLANK_REFERENCE_ALLOWED"            -> "Verify that two AP Vouchers with no Reference both save successfully (blank reference is allowed).";
+            case "DOC_AMOUNT_NOT_ADJUSTED_INVALID"    -> "Verify that a document-path voucher with an unadjusted amount shows a validation error and cannot be saved.";
+            case "DOC_AMOUNT_READ_ONLY"               -> "Verify that the adjusted amount field is read-only on the document payment path and cannot be edited manually.";
             default -> null;
         };
     }

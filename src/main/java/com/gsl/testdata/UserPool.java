@@ -7,8 +7,11 @@ import com.gsl.reports.ExtentLogger;
 import com.gsl.utils.Log;
 
 import java.util.EnumMap;
+import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.LinkedBlockingQueue;
 import java.util.concurrent.Semaphore;
@@ -22,26 +25,29 @@ import java.util.concurrent.atomic.AtomicLong;
  * Each thread acquires a unique user and releases it in {@code @AfterMethod}.
  * Guarantees one user = one browser at a time.
  *
- * <h3>Starvation detection (stall-based, two-threshold strategy)</h3>
- * Both thresholds measure <b>how long the pool has gone without turning over</b> (no user
- * released), NOT how long an individual thread waited. A thread queued behind long-but-progressing
- * tests therefore never fails — every release resets the clock. Only a pool that has genuinely
- * stopped releasing (a stuck/hung holder) is treated as starvation.
+ * <h3>Starvation detection (heartbeat-based)</h3>
+ * A holder is "starving" only if it has not touched the browser (no Selenium command,
+ * no wait, no page interaction) for at least the configured threshold. A long-but-
+ * progressing test never trips the warning; a frozen page or stuck script trips it
+ * immediately and the snapshot names the exact test method that has gone silent.
+ *
+ * <p>The heartbeat is fed by {@code HeartbeatListener} (a {@code WebDriverListener}
+ * attached when a fresh WebDriver is stored in {@code DriverManager.setDriver}). Every
+ * WebDriver/WebElement/Navigation/TargetLocator call updates {@link #LAST_ACTIVITY_MS}
+ * for the current thread's user. Callers may also feed the heartbeat manually via
+ * {@link #heartbeat(UserType, String)}.</p>
+ *
+ * <p>Two thresholds, both measured as <b>min(max-holder-idle, my-wait)</b> — i.e. you
+ * only count time during which BOTH a holder has been silent AND the current thread is
+ * queued for a user. A pool full of fresh holders is healthy by definition.</p>
  * <ul>
  *   <li><b>pool.warn.at.seconds</b> (default 300) — emits a WARN log and an ExtentReport
- *       infrastructure-node entry listing every active user and which thread holds them.
- *       Not a failure; purely for visibility when the pool stays idle longer than a normal test.</li>
+ *       infrastructure-node entry listing every active user with their {@code idle}
+ *       (seconds since last browser call) and {@code held} (seconds since acquire)
+ *       durations. Not a failure; purely for visibility.</li>
  *   <li><b>pool.acquire.timeout.seconds</b> (default 600) — throws
- *       {@link UserPoolAcquisitionTimeoutException} with a full active-user snapshot when no user
- *       is released for this long. Bound this to the longest <em>single</em> test's hold time
- *       (≈2× is comfortable), NOT to total queue length. For soak/endurance runs use a separate
- *       config-soak.properties with a value of 14400 (4 hours) or higher.</li>
+ *       {@link UserPoolAcquisitionTimeoutException} with a full active-user snapshot.</li>
  * </ul>
- *
- * <p><b>Note:</b> primary concurrency control is TestNG's parallel data-provider pool
- * ({@code data-provider-thread-count} at the <em>suite</em> level == UI-user count): it admits
- * exactly that many rows and starts the next row's setUp only on a teardown. The semaphore below
- * then never blocks in normal operation; this stall detector is the deadlock safety net.</p>
  *
  * <h3>SET-2 (concurrent / synchronized tests)</h3>
  * Users are grouped by {@code groupId}; threads in a group share a fixed user list
@@ -91,13 +97,13 @@ public final class UserPool {
             new EnumMap<>(UserType.class);
 
     /**
-     * Per-type timestamp of the last pool turnover (a user released back to the pool).
-     * Starvation is measured as "how long the pool has gone WITHOUT turning over", not
-     * "how long this thread personally waited". A thread queued behind long-but-progressing
-     * tests must never fail — only a pool that has genuinely stopped releasing (a stuck/hung
-     * holder) is starvation. Updated on every release and on {@link #initialize}.
+     * Per-user heartbeat: epoch-ms of the last browser interaction by the holder.
+     * Seeded on acquire, updated by {@link #heartbeat(UserType, String)} on every Selenium
+     * command (wired from {@code HeartbeatListener}), removed on release. A holder whose
+     * heartbeat has not advanced for {@code pool.warn.at.seconds} is considered silent and
+     * surfaces in the infrastructure warning.
      */
-    private static final EnumMap<UserType, AtomicLong> LAST_PROGRESS_MS =
+    private static final EnumMap<UserType, ConcurrentHashMap<String, AtomicLong>> LAST_ACTIVITY_MS =
             new EnumMap<>(UserType.class);
 
     static {
@@ -105,7 +111,7 @@ public final class UserPool {
             SET1_QUEUES.put(type, new LinkedBlockingQueue<>());
             INITIAL_COUNTS.put(type, 0);
             ACTIVE_USERS.put(type, new ConcurrentHashMap<>());
-            LAST_PROGRESS_MS.put(type, new AtomicLong(System.currentTimeMillis()));
+            LAST_ACTIVITY_MS.put(type, new ConcurrentHashMap<>());
         }
     }
 
@@ -119,7 +125,7 @@ public final class UserPool {
         for (UserType type : UserType.values()) {
             INITIAL_COUNTS.put(type, 0);
             ACTIVE_USERS.get(type).clear();
-            LAST_PROGRESS_MS.get(type).set(System.currentTimeMillis());
+            LAST_ACTIVITY_MS.get(type).clear();
         }
 
         for (UserCredential cred : credentials) {
@@ -163,21 +169,27 @@ public final class UserPool {
     // ─── Acquire / Release ────────────────────────────────────────────────────
 
     /**
+     * Back-compat overload: acquires a user without a test label. New code should call
+     * {@link #acquireSet1User(UserType, String)} with the test method name so the
+     * starvation snapshot can identify the holder.
+     */
+    public static UserCredential acquireSet1User(UserType type) {
+        return acquireSet1User(type, "<unknown>");
+    }
+
+    /**
      * Acquires the next available SET-1 user of the given type.
      *
      * <p>Uses a 500 ms poll loop so warn/timeout thresholds can be checked mid-wait
-     * without a separate scheduled task:</p>
-     * <ul>
-     *   <li>At {@code pool.warn.at.seconds}: one WARN log entry + ExtentReport
-     *       infrastructure node entry listing all active holders. Not a failure.</li>
-     *   <li>At {@code pool.acquire.timeout.seconds}: throws
-     *       {@link UserPoolAcquisitionTimeoutException} with a full snapshot.</li>
-     * </ul>
+     * without a separate scheduled task. Stall is measured as
+     * {@code min(max-holder-idle, my-wait)} — see class Javadoc.</p>
      *
-     * <p>The only way a test is <em>skipped</em> is if zero users of this type were
-     * configured in {@code UsersList.xlsx}.</p>
+     * @param type       the user type to acquire (UI/API)
+     * @param testLabel  human-readable identifier of the test claiming the user
+     *                   (typically the test method name). Surfaces in the starvation
+     *                   snapshot.
      */
-    public static UserCredential acquireSet1User(UserType type) {
+    public static UserCredential acquireSet1User(UserType type, String testLabel) {
         int configured = INITIAL_COUNTS.getOrDefault(type, 0);
 
         // Immediate fast-fail — no users of this type were ever loaded
@@ -193,22 +205,25 @@ public final class UserPool {
         long startMs         = System.currentTimeMillis();
         boolean warnSent     = false;
         Semaphore sem        = SET1_PERMITS.get(type);
+        String label         = (testLabel == null || testLabel.isBlank()) ? "<unknown>" : testLabel;
 
         while (true) {
             try {
                 boolean acquired = sem.tryAcquire(500, TimeUnit.MILLISECONDS);
                 if (acquired) {
                     UserCredential cred = SET1_QUEUES.get(type).poll();
+                    long now = System.currentTimeMillis();
                     ACTIVE_USERS.get(type).put(
                             cred.username(),
                             new ActiveUserEntry(
+                                    label,
                                     Thread.currentThread().getName(),
-                                    Thread.currentThread().getName(),
-                                    System.currentTimeMillis()
+                                    now
                             )
                     );
-                    Log.info("[UserPool] [T-{}] Acquired SET1 {} user '{}'.",
-                            Thread.currentThread().getId(), type, cred.username());
+                    LAST_ACTIVITY_MS.get(type).put(cred.username(), new AtomicLong(now));
+                    Log.info("[UserPool] [T-{}] Acquired SET1 {} user '{}' for '{}'.",
+                            Thread.currentThread().getId(), type, cred.username(), label);
                     return cred;
                 }
             } catch (InterruptedException e) {
@@ -217,53 +232,93 @@ public final class UserPool {
                         "[UserPool] Interrupted while waiting for a SET1 " + type + " user.", e);
             }
 
-            // Stall-based accounting: measure how long the POOL has gone without turning over,
-            // not how long this thread personally waited. max(startMs, lastProgress) prevents a
-            // freshly-arrived waiter from inheriting an old stall. Each release resets lastProgress,
-            // so a thread queued behind long-but-progressing tests never fails — only a pool that
-            // has genuinely stopped releasing (a stuck/hung holder) trips the timeout.
-            long now         = System.currentTimeMillis();
-            long reference   = Math.max(startMs, LAST_PROGRESS_MS.get(type).get());
-            long stalledFor  = now - reference;
+            // Heartbeat-based stall accounting: a holder is silent only if no browser
+            // interaction has updated its heartbeat for `warnAtMs`. We take min(holderIdle,
+            // myWaitMs) so a freshly-arrived waiter cannot inherit an old stall, and so
+            // healthy queueing behind a fully-active pool never trips the warning.
+            long now            = System.currentTimeMillis();
+            long maxHolderIdle  = computeMaxHolderIdleMs(type, now);
+            long myWaitMs       = now - startMs;
+            long effectiveStall = Math.min(maxHolderIdle, myWaitMs);
 
-            // Warn threshold — fires once per wait, not on every tick
-            if (!warnSent && stalledFor >= warnAtMs) {
+            if (!warnSent && effectiveStall >= warnAtMs) {
                 warnSent = true;
-                String snapshot = buildActiveUserSnapshot(type);
-                Log.warn("[UserPool] {} pool has not turned over for {}s (thread '{}' waiting). Active users:\n{}",
-                        type, stalledFor / 1000, Thread.currentThread().getName(), snapshot);
+                String snapshot = buildActiveUserSnapshot(type, now);
+                Log.warn("[UserPool] {} pool has a holder silent for {}s (thread '{}' waiting). Active users:\n{}",
+                        type, effectiveStall / 1000, Thread.currentThread().getName(), snapshot);
                 ExtentLogger.infoHtmlOnChildNode(
                         "Infrastructure Warnings",
-                        "<b>[UserPool] " + type + " pool idle " + (stalledFor / 1000)
+                        "<b>[UserPool] " + type + " pool silent " + (effectiveStall / 1000)
                         + "s — thread '" + Thread.currentThread().getName() + "' waiting.</b><br>"
                         + snapshot.replace("\n", "<br>"));
             }
 
-            // Hard timeout — genuine starvation: the pool has not released a single user for
-            // poolAcquireTimeoutSeconds. This is bounded by the longest SINGLE test's hold time,
-            // never by total queue length, so healthy queueing across many rows is safe.
-            if (stalledFor >= timeoutMs) {
-                String snapshot = buildActiveUserSnapshot(type);
+            // Hard timeout — genuine starvation: a holder has been silent for
+            // poolAcquireTimeoutSeconds with at least one thread queued behind it.
+            if (effectiveStall >= timeoutMs) {
+                String snapshot = buildActiveUserSnapshot(type, now);
                 throw new UserPoolAcquisitionTimeoutException(
-                        "[UserPool] " + type + " pool made no progress for "
-                        + cfg.poolAcquireTimeoutSeconds() + "s — no user was released in that window "
+                        "[UserPool] " + type + " pool has a holder silent for "
+                        + cfg.poolAcquireTimeoutSeconds() + "s while a thread is queued "
                         + "(a holder is likely stuck/hung).\n"
                         + "Active users at timeout:\n" + snapshot);
             }
         }
     }
 
-    private static String buildActiveUserSnapshot(UserType type) {
+    private static long computeMaxHolderIdleMs(UserType type, long now) {
+        ConcurrentHashMap<String, AtomicLong> heartbeats = LAST_ACTIVITY_MS.get(type);
+        long maxIdle = 0;
+        for (Map.Entry<String, AtomicLong> e : heartbeats.entrySet()) {
+            long idle = now - e.getValue().get();
+            if (idle > maxIdle) maxIdle = idle;
+        }
+        return maxIdle;
+    }
+
+    private static String buildActiveUserSnapshot(UserType type, long now) {
         ConcurrentHashMap<String, ActiveUserEntry> map = ACTIVE_USERS.get(type);
         if (map == null || map.isEmpty()) return "  (none)";
+        ConcurrentHashMap<String, AtomicLong> heartbeats = LAST_ACTIVITY_MS.get(type);
+
+        // Identify thread names that appear more than once so we can flag them in the snapshot.
+        Map<String, Integer> threadCounts = new HashMap<>();
+        map.values().forEach(e -> threadCounts.merge(e.threadName(), 1, Integer::sum));
+        Set<String> duplicatedThreads = new HashSet<>();
+        threadCounts.forEach((tn, count) -> { if (count > 1) duplicatedThreads.add(tn); });
+
         StringBuilder sb = new StringBuilder();
         map.forEach((username, entry) -> {
-            long runningFor = (System.currentTimeMillis() - entry.startMs()) / 1000;
+            long held   = (now - entry.startMs()) / 1000;
+            AtomicLong heartbeat = heartbeats.get(username);
+            long idleMs = heartbeat == null ? (now - entry.startMs()) : (now - heartbeat.get());
+            long idle   = idleMs / 1000;
             sb.append("  ").append(username)
-              .append(" → thread: ").append(entry.threadName())
-              .append(" (running ").append(runningFor).append("s)\n");
+              .append(" → ").append(entry.testName())
+              .append(" (thread: ").append(entry.threadName())
+              .append(", idle ").append(idle).append("s")
+              .append(", held ").append(held).append("s)");
+            if (duplicatedThreads.contains(entry.threadName())) {
+                sb.append(" (duplicate thread name — different TestNG pool)");
+            }
+            sb.append("\n");
         });
         return sb.toString();
+    }
+
+    /**
+     * Records a browser interaction for the given user. Called by {@code HeartbeatListener}
+     * on every WebDriver/WebElement/Navigation/TargetLocator call. Lock-free and cheap —
+     * a single {@code AtomicLong.set} per call. No-op if the user is not currently a
+     * registered holder (e.g. released between two interleaved browser calls during
+     * teardown).
+     */
+    public static void heartbeat(UserType type, String username) {
+        if (username == null) return;
+        ConcurrentHashMap<String, AtomicLong> map = LAST_ACTIVITY_MS.get(type);
+        if (map == null) return;
+        AtomicLong stamp = map.get(username);
+        if (stamp != null) stamp.set(System.currentTimeMillis());
     }
 
     /**
@@ -276,10 +331,8 @@ public final class UserPool {
         if (cred.executionSet() != ExecutionSet.SET1) return;
 
         ACTIVE_USERS.get(cred.userType()).remove(cred.username());
+        LAST_ACTIVITY_MS.get(cred.userType()).remove(cred.username());
         SET1_QUEUES.get(cred.userType()).offer(cred);
-        // Record pool turnover BEFORE releasing the permit so any waiter that wakes immediately
-        // sees a fresh progress timestamp and resets its stall clock.
-        LAST_PROGRESS_MS.get(cred.userType()).set(System.currentTimeMillis());
         SET1_PERMITS.get(cred.userType()).release(); // unblocks the next waiting thread (FIFO)
         Log.info("[UserPool] [T-{}] Released SET1 {} user '{}'.",
                 Thread.currentThread().getId(), cred.userType(), cred.username());

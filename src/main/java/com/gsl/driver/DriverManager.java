@@ -3,6 +3,7 @@ package com.gsl.driver;
 import com.gsl.enums.PlatformType;
 import com.gsl.testdata.UserCredential;
 import org.openqa.selenium.WebDriver;
+import org.openqa.selenium.support.events.EventFiringDecorator;
 
 import java.util.EnumMap;
 
@@ -50,9 +51,18 @@ public final class DriverManager {
         return CONTEXT_DRIVERS.get(activeContext.get()).get();
     }
 
-    /** Stores a WebDriver in the current thread's active context. */
+    /**
+     * Stores a WebDriver in the current thread's active context, wrapped with
+     * a {@link HeartbeatListener} so every browser interaction feeds
+     * {@code UserPool.heartbeat}. The wrap is the chokepoint for starvation
+     * detection — all provider factories (Chrome/Firefox/Edge/Remote/Grid/etc.)
+     * funnel through here, so one hook covers them all.
+     */
     public static void setDriver(WebDriver driver) {
-        CONTEXT_DRIVERS.get(activeContext.get()).set(driver);
+        WebDriver instrumented = (driver == null)
+                ? null
+                : new EventFiringDecorator<>(new HeartbeatListener()).decorate(driver);
+        CONTEXT_DRIVERS.get(activeContext.get()).set(instrumented);
     }
 
     /** Removes the WebDriver for the current thread's active context. Prevents memory leaks. */

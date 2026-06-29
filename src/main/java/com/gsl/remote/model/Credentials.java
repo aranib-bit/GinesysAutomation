@@ -49,7 +49,7 @@ public class Credentials {
         if (user != null && pass != null) return new Credentials(user, pass);
         if (configUser != null && !configUser.isBlank()
                 && configPass != null && !configPass.isBlank()) {
-            Log.warn("[Credentials] Using plaintext WinRM credentials from config.properties"
+            Log.warn("[Credentials] Using plaintext WinRM credentials from remote-log.properties"
                     + " — prefer env vars REMOTE_LOG_WINRM_USER / REMOTE_LOG_WINRM_PASS");
             return new Credentials(configUser, configPass);
         }
@@ -66,7 +66,7 @@ public class Credentials {
         if (user != null && pass != null) return new Credentials(user, pass);
         if (configUser != null && !configUser.isBlank()
                 && configPass != null && !configPass.isBlank()) {
-            Log.warn("[Credentials] Using plaintext SSH credentials from config.properties"
+            Log.warn("[Credentials] Using plaintext SSH credentials from remote-log.properties"
                     + " — prefer env vars REMOTE_LOG_SSH_USER / REMOTE_LOG_SSH_PASS");
             return new Credentials(configUser, configPass);
         }

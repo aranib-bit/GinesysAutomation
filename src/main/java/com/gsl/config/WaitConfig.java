@@ -41,13 +41,9 @@ public interface WaitConfig extends Config {
     @DefaultValue("500")
     int selectDocJumpRenderMs();
 
-    @Key("selectdoc.scroll.max.attempts")
-    @DefaultValue("20")
-    int selectDocScrollMaxAttempts();
-
-    @Key("selectdoc.scroll.min.attempts")
-    @DefaultValue("5")
-    int selectDocScrollMinAttempts();
+    @Key("selectdoc.scroll.safety.cap")
+    @DefaultValue("1000")
+    int selectDocScrollSafetyCap();
 
     @Key("selectdoc.scroll.step.wait.ms")
     @DefaultValue("400")

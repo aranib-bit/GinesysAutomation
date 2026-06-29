@@ -6,6 +6,7 @@ import com.gsl.model.finance.FinVchMain;
 import com.gsl.reports.ActualResultsHolder;
 import com.gsl.reports.ExtentLogger;
 import com.gsl.reports.ExtentManager;
+import com.gsl.reports.ReportLogger;
 import com.gsl.testdata.dto.MergedFinanceApVoucherData;
 import org.assertj.core.api.SoftAssertions;
 import org.testng.Assert;
@@ -64,10 +65,15 @@ public class APVoucherDbValidator {
         SoftAssertions deferredLevel1 = new SoftAssertions();
 
         ExtentLogger.info("── Level 1 : finvchmain ──");
+        ReportLogger.trace("[APValidator] Level 1 START — finvchmain header for voucherNo=" + context.getVoucherNo());
         FinVchMain header = finVchMainApValidator.validate(context, deferredLevel1);
+        ReportLogger.trace("[APValidator] Level 1 DONE — vchcode=" + header.getVchcode()
+                + " camount=" + header.getCamount());
 
         ExtentLogger.info("── Level 2 : finvchdet ──");
+        ReportLogger.trace("[APValidator] Level 2 START — finvchdet lines for vchcode=" + header.getVchcode());
         finVchDetApValidator.validate(context, header);
+        ReportLogger.trace("[APValidator] Level 2 DONE");
 
         // FinPostValidator only uses voucherNo — a minimal shim is safe here.
         VoucherDbContext finPostCtx = VoucherDbContext.builder()
@@ -77,10 +83,14 @@ public class APVoucherDbValidator {
                 .build();
 
         ExtentLogger.info("── Level 3 : finpost (GL balance) ──");
+        ReportLogger.trace("[APValidator] Level 3 START — finpost GL balance for vchcode=" + header.getVchcode());
         List<FinPost> postEntries = finPostValidator.validate(finPostCtx, header);
+        ReportLogger.trace("[APValidator] Level 3 DONE — " + postEntries.size() + " GL entries");
 
         ExtentLogger.info("── Level 4a: fintag (adjustment tagging) ──");
+        ReportLogger.trace("[APValidator] Level 4a START — fintag adjustment tagging");
         finTagApValidator.validate(context, header, postEntries);
+        ReportLogger.trace("[APValidator] Level 4a DONE");
 
         // Now surface any Level 1 field mismatches collected above
         ExtentLogger.info("── Level 1 deferred assertions ──");
@@ -89,6 +99,7 @@ public class APVoucherDbValidator {
         ExtentLogger.info("══════════════════════════════════════════════════");
         ExtentLogger.info("AP Voucher DB Validation COMPLETE — ALL PASSED [" + context.getVoucherNo() + "]");
         ExtentLogger.info("══════════════════════════════════════════════════");
+        ReportLogger.trace("[APValidator] ALL LEVELS PASSED for voucherNo=" + context.getVoucherNo());
 
     }
 }

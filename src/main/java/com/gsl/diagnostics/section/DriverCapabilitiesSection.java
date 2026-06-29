@@ -2,7 +2,9 @@ package com.gsl.diagnostics.section;
 
 import com.gsl.diagnostics.DiagnosticSection;
 import org.openqa.selenium.Capabilities;
+import org.openqa.selenium.HasCapabilities;
 import org.openqa.selenium.WebDriver;
+import org.openqa.selenium.WrapsDriver;
 import org.openqa.selenium.remote.RemoteWebDriver;
 
 import java.util.LinkedHashMap;
@@ -20,11 +22,21 @@ public final class DriverCapabilitiesSection implements DiagnosticSection {
     public DriverCapabilitiesSection(WebDriver driver) {
         if (driver == null) return;
         try {
-            Capabilities c = ((RemoteWebDriver) driver).getCapabilities();
-            put("browserName",    c.getBrowserName());
-            put("browserVersion", String.valueOf(c.getBrowserVersion()));
-            put("platformName",   String.valueOf(c.getPlatformName()));
-            put("sessionId",      ((RemoteWebDriver) driver).getSessionId().toString());
+            // The driver may be wrapped by EventFiringDecorator; unwrap to reach the real driver.
+            WebDriver unwrapped = driver;
+            while (unwrapped instanceof WrapsDriver) {
+                unwrapped = ((WrapsDriver) unwrapped).getWrappedDriver();
+            }
+
+            if (unwrapped instanceof HasCapabilities) {
+                Capabilities c = ((HasCapabilities) unwrapped).getCapabilities();
+                put("browserName",    c.getBrowserName());
+                put("browserVersion", String.valueOf(c.getBrowserVersion()));
+                put("platformName",   String.valueOf(c.getPlatformName()));
+            }
+            if (unwrapped instanceof RemoteWebDriver) {
+                put("sessionId", ((RemoteWebDriver) unwrapped).getSessionId().toString());
+            }
         } catch (Exception e) {
             put("error", "Could not read capabilities: " + e.getMessage());
         }

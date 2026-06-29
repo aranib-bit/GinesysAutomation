@@ -3,8 +3,17 @@ package com.gsl.reports;
 import com.gsl.enums.LogCategory;
 import com.gsl.enums.ReportSeverity;
 import com.gsl.utils.Log;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
+import org.apache.logging.log4j.ThreadContext;
+import org.slf4j.MDC;
 
 public final class ReportLogger {
+
+    private static final Logger TRACE_LOG = LogManager.getLogger("MethodTrace");
+
+    private static final java.time.format.DateTimeFormatter TRACE_FMT =
+            java.time.format.DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss.SSS");
 
     private ReportLogger() {
         throw new UnsupportedOperationException("Utility class");
@@ -49,20 +58,47 @@ public final class ReportLogger {
         Log.debug(message);
     }
 
+    /**
+     * Writes a data-flow marker to trace.log (MethodTrace logger) at the current AOP call depth,
+     * AND to framework.log at DEBUG level. Use this to surface key in-method data values —
+     * field values set on the UI, DB row counts, or assertion context — inline in the trace hierarchy.
+     * Format in trace.log: indented [DATA] line between the enclosing [START]/[END] lines.
+     */
+    public static void trace(String message) {
+        try {
+            int depth = com.gsl.aspects.LoggingAspect.currentDepth();
+            String indent = "  ".repeat(depth);
+            String ts = java.time.LocalDateTime.now().format(TRACE_FMT);
+            String traceId = ThreadContext.get("testId");
+            if (traceId == null) traceId = ThreadContext.get("testName");
+            if (traceId == null) traceId = "T-" + Thread.currentThread().getId();
+            TRACE_LOG.info("{}[{}] [TRACE_ID={}] [DATA]   {}", indent, ts, traceId, message);
+        } catch (Exception ignored) {}
+        Log.debug("[TRACE_DATA] {}", message);
+    }
+
     /** ERROR with exception — stack trace to log file, abbreviated message to Extent */
     public static void error(String message, Throwable t) {
         Log.error(message, t);
         ExtentLogger.fail(message + " — " + t.getClass().getSimpleName() + ": " + t.getMessage());
     }
 
-    // ── Categorized overloads — badge + Log4j2 ────────────────────────────────
+    // ── Categorized overloads — badge + Log4j2 + audience routing ───────────
+    // Each method sets MDC "logCategory" before the Log call so the Log4j2
+    // RoutingAppender in log4j2.xml can write to the correct audience file.
+    // The key is always removed in a finally block to prevent MDC leakage.
 
     /**
      * Logs to Extent with a colored category badge and to Log4j2 with a [CATEGORY] prefix.
      * Severity defaults to MEDIUM (badge suppressed).
      */
     public static void info(LogCategory category, String message) {
-        Log.info("[{}] {}", category.name(), message);
+        MDC.put("logCategory", category.name());
+        try {
+            Log.info("[{}] {}", category.name(), message);
+        } finally {
+            MDC.remove("logCategory");
+        }
         ExtentLogger.infoCategorized(category, message);
     }
 
@@ -71,7 +107,12 @@ public final class ReportLogger {
      * MEDIUM severity suppresses the severity badge in Extent but still logs the level to file.
      */
     public static void info(LogCategory category, ReportSeverity severity, String message) {
-        Log.info("[{}][{}] {}", category.name(), severity.name(), message);
+        MDC.put("logCategory", category.name());
+        try {
+            Log.info("[{}][{}] {}", category.name(), severity.name(), message);
+        } finally {
+            MDC.remove("logCategory");
+        }
         ExtentLogger.infoCategorized(category, severity, message);
     }
 
@@ -80,7 +121,12 @@ public final class ReportLogger {
      * Use for blocking failures, data corruption, or unexpected app state.
      */
     public static void critical(LogCategory category, String message) {
-        Log.error("[{}][CRITICAL] {}", category.name(), message);
+        MDC.put("logCategory", category.name());
+        try {
+            Log.error("[{}][CRITICAL] {}", category.name(), message);
+        } finally {
+            MDC.remove("logCategory");
+        }
         ExtentLogger.infoCategorized(category, ReportSeverity.CRITICAL, message);
     }
 
@@ -88,7 +134,12 @@ public final class ReportLogger {
      * Logs a HIGH severity entry — business-rule failure, unexpected state.
      */
     public static void high(LogCategory category, String message) {
-        Log.warn("[{}][HIGH] {}", category.name(), message);
+        MDC.put("logCategory", category.name());
+        try {
+            Log.warn("[{}][HIGH] {}", category.name(), message);
+        } finally {
+            MDC.remove("logCategory");
+        }
         ExtentLogger.infoCategorized(category, ReportSeverity.HIGH, message);
     }
 

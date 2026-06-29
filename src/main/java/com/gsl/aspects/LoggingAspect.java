@@ -108,6 +108,38 @@ public class LoggingAspect {
     }
 
     /**
+     * Logs the return value of a method to trace.log, immediately before the [END] line.
+     * Skips null (void methods), framework/driver objects, and empty strings.
+     * Collections show size + up to first 3 items for readability.
+     */
+    private void logResult(int depth, Object result) {
+        if (result == null) return;
+        if (isVerboseFrameworkType(result)) return;
+        try {
+            String rendered;
+            if (result instanceof java.util.Collection<?> c) {
+                if (c.isEmpty()) {
+                    rendered = "[] (empty)";
+                } else {
+                    String preview = c.stream().limit(3)
+                            .map(item -> isVerboseFrameworkType(item) ? item.getClass().getSimpleName()
+                                    : formatParamValue(item))
+                            .collect(java.util.stream.Collectors.joining(", "));
+                    rendered = "[" + c.size() + " item(s): " + preview
+                            + (c.size() > 3 ? ", …(+" + (c.size() - 3) + " more)" : "") + "]";
+                }
+            } else {
+                rendered = formatParamValue(result);
+            }
+            if (rendered != null && !rendered.isBlank()) {
+                TRACE.info("{}  → result: {}", indent(depth), rendered);
+            }
+        } catch (Exception ignored) {
+            // Never let result logging break method execution
+        }
+    }
+
+    /**
      * Intercepts ALL methods (any visibility) in com.gsl and com.tests packages.
      * Logs indented [START]/[END] lines with timestamps to trace.log via MethodTrace logger.
      * When args contain By + ElementMeta, logs structured element name and locator.
@@ -192,6 +224,7 @@ public class LoggingAspect {
 
         try {
             Object result = pjp.proceed();
+            logResult(depth, result);
             logEnd(depth, className, methodName);
             return result;
         } catch (Throwable e) {
@@ -280,6 +313,7 @@ public class LoggingAspect {
 
         try {
             Object result = pjp.proceed();
+            logResult(depth, result);
             logEnd(depth, className, methodName);
             return result;
         } catch (Throwable e) {

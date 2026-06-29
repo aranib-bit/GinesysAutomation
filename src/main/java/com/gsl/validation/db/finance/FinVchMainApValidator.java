@@ -27,6 +27,11 @@ public class FinVchMainApValidator extends FinVchMainBaseValidator {
 
         FinVchMain h = fetchAndBlock(schemeDocno);
         ActualResultsHolder.get().setHeader(h);
+        ReportLogger.trace("[finvchmain] fetched: scheme_docno=" + schemeDocno
+                + " vchcode=" + h.getVchcode()
+                + " camount=" + h.getCamount()
+                + " nartext=" + h.getNartext()
+                + " vchdt=" + h.getVchdt());
 
         String fieldSummary = validateCommonHeaderFields(h, doc, context.getSaveStartTime(), deferredSoft);
 

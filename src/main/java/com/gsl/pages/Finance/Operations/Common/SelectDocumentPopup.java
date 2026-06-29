@@ -5,6 +5,7 @@ import com.gsl.config.ConfigFactory;
 import com.gsl.driver.DriverManager;
 import com.gsl.enums.WaitType;
 import com.gsl.pages.enums.CommonButton;
+import com.gsl.utils.Selenium.ActionUtils;
 import com.gsl.utils.Selenium.JavascriptExecutorUtils;
 import com.gsl.utils.Selenium.SeleniumUtils;
 import com.gsl.utils.Selenium.WaitUtils;
@@ -16,6 +17,8 @@ import org.openqa.selenium.support.ui.ExpectedConditions;
 import org.openqa.selenium.support.ui.WebDriverWait;
 
 import java.time.Duration;
+import java.util.Map;
+import java.util.Objects;
 import java.util.concurrent.TimeUnit;
 
 import com.gsl.utils.Log;
@@ -65,27 +68,82 @@ public class SelectDocumentPopup {
                 }
             }
 
-            // ── Strategy 2: proportional scroll loop — fallback for BufferedStore
-            //    (target page not yet loaded in memory).
-            //    Step = scrollHeight/15, so ≤ 15 steps covers the full grid
-            //    regardless of whether it has 500 or 60 000 rows.
+            // ── Strategy 2: mouse-wheel scroll loop — fallback for BufferedStore
+            //    (target page not yet loaded in memory). Uses a TRUSTED W3C
+            //    wheel event so ExtJS's renderer always reacts (a synthetic
+            //    scrollTop= write can be ignored by the buffered renderer).
+            //    Terminates on content-based end-of-list, not a fixed attempt
+            //    count: at-bottom + store-not-loading + no progress in
+            //    scrollTop/storeCount/top-doc/bottom-doc for 2 iterations.
+            //    The safety cap is a runaway-loop guard, not a tuning knob.
             if (checkbox == null) {
-                Log.warn("SelectDocumentPopup: Starting proportional scroll-poll loop for [{}] — grid diagnostics: {}",
-                        documentNumber, JavascriptExecutorUtils.getGridDiagnostics());
-                int maxAttempts = Math.max(
-                        ConfigFactory.getWaitConfig().selectDocScrollMinAttempts(),
-                        ConfigFactory.getWaitConfig().selectDocScrollMaxAttempts());
-                for (int attempt = 1; attempt <= maxAttempts && checkbox == null; attempt++) {
-                    long newScrollTop = JavascriptExecutorUtils.scrollSelectDocumentGridDown();
-                    Log.warn("SelectDocumentPopup: Proportional scroll attempt [{}], scrollTop=[{}] for [{}]", attempt, newScrollTop, documentNumber);
-                    Uninterruptibles.sleepUninterruptibly(
-                            ConfigFactory.getWaitConfig().selectDocScrollStepWaitMs(), TimeUnit.MILLISECONDS);
+                WebElement gridView = JavascriptExecutorUtils.getActiveGridViewElement();
+                Map<String, Object> prev = JavascriptExecutorUtils.getGridScrollProgress();
+                long prevScrollTop   = readLong(prev, "scrollTop", 0L);
+                long scrollHeight    = readLong(prev, "scrollHeight", 0L);
+                long clientHeight    = readLong(prev, "clientHeight", 360L);
+                long prevStoreCount  = readLong(prev, "storeCount", -1L);
+                String prevTopDoc    = readString(prev, "topDocNumber");
+                String prevBottomDoc = readString(prev, "bottomDocNumber");
+
+                // One viewport per tick. Smaller than scrollHeight/15 so the
+                // BufferedRenderer's leading buffer zone overlaps consecutive
+                // ticks — every row is rendered into the DOM at least once.
+                int deltaY      = (int) Math.max(200L, clientHeight);
+                int safetyCap   = ConfigFactory.getWaitConfig().selectDocScrollSafetyCap();
+                long stepWaitMs = ConfigFactory.getWaitConfig().selectDocScrollStepWaitMs();
+                int noProgressStreak = 0;
+
+                Log.warn("SelectDocumentPopup: Starting mouse-wheel scroll loop for [{}] — clientHeight=[{}] scrollHeight=[{}] deltaY=[{}] diagnostics: {}",
+                        documentNumber, clientHeight, scrollHeight, deltaY, JavascriptExecutorUtils.getGridDiagnostics());
+
+                for (int attempt = 1; attempt <= safetyCap && checkbox == null; attempt++) {
+                    if (gridView != null) {
+                        ActionUtils.scrollByWheel(gridView, deltaY);
+                    } else {
+                        // No origin element → fall back to JS scroll for this tick.
+                        JavascriptExecutorUtils.scrollSelectDocumentGridDown();
+                    }
+                    Uninterruptibles.sleepUninterruptibly(stepWaitMs, TimeUnit.MILLISECONDS);
+
+                    Map<String, Object> curr = JavascriptExecutorUtils.getGridScrollProgress();
+                    long currScrollTop   = readLong(curr, "scrollTop", prevScrollTop);
+                    long currStoreCount  = readLong(curr, "storeCount", prevStoreCount);
+                    String currTopDoc    = readString(curr, "topDocNumber");
+                    String currBottomDoc = readString(curr, "bottomDocNumber");
+                    boolean atBottom     = readBool(curr, "atBottom", false);
+                    boolean storeLoading = readBool(curr, "storeLoading", false);
+
+                    Log.warn("SelectDocumentPopup: wheel attempt [{}] target=[{}] viewport top=[{}] bottom=[{}] scrollTop=[{}] storeCount=[{}]",
+                            attempt, documentNumber, currTopDoc, currBottomDoc, currScrollTop, currStoreCount);
+
                     try {
                         checkbox = driver.findElement(checkboxBy);
-                        Log.warn("SelectDocumentPopup: Checkbox found at proportional scroll attempt [{}] for [{}]", attempt, documentNumber);
+                        Log.warn("SelectDocumentPopup: Checkbox found at wheel attempt [{}] for [{}]", attempt, documentNumber);
+                        break;
                     } catch (NoSuchElementException ex) {
-                        // row not rendered yet — continue
+                        // row not rendered yet — evaluate progress and continue
                     }
+
+                    boolean progressed =
+                            currScrollTop > prevScrollTop ||
+                            currStoreCount > prevStoreCount ||
+                            !Objects.equals(currTopDoc, prevTopDoc) ||
+                            !Objects.equals(currBottomDoc, prevBottomDoc);
+                    if (atBottom && !storeLoading && !progressed) {
+                        noProgressStreak++;
+                    } else {
+                        noProgressStreak = 0;
+                    }
+                    if (noProgressStreak >= 2) {
+                        Log.warn("SelectDocumentPopup: End-of-list reached at attempt [{}] for [{}] (atBottom & no progress for 2 iterations)",
+                                attempt, documentNumber);
+                        break;
+                    }
+                    prevScrollTop  = currScrollTop;
+                    prevStoreCount = currStoreCount;
+                    prevTopDoc     = currTopDoc;
+                    prevBottomDoc  = currBottomDoc;
                 }
             }
 
@@ -109,7 +167,8 @@ public class SelectDocumentPopup {
 
             if (checkbox == null) {
                 throw new NoSuchElementException(
-                    "SelectDocumentPopup: Checkbox for [" + documentNumber + "] not found after direct jump + 20 proportional scroll attempts + focusRow fallback");
+                    "SelectDocumentPopup: Checkbox for [" + documentNumber + "] not found after direct jump + mouse-wheel scroll to end-of-list + focusRow fallback. Final diagnostics: "
+                            + JavascriptExecutorUtils.getGridDiagnostics());
             }
         }
 
@@ -137,5 +196,26 @@ public class SelectDocumentPopup {
     public void clickSelect() {
         SeleniumUtils.click(CommonButton.SELECT.locator(), WaitType.CLICKABLE, "SELECT_BUTTON");
         JavascriptExecutorUtils.waitForExtJS();
+    }
+
+    // Tiny readers that coerce values out of the JS-returned progress Map.
+    // Selenium returns JS numbers as Long or Double depending on the value,
+    // so we normalise both here.
+    private static long readLong(Map<String, Object> m, String key, long fallback) {
+        if (m == null) return fallback;
+        Object v = m.get(key);
+        return v instanceof Number ? ((Number) v).longValue() : fallback;
+    }
+
+    private static boolean readBool(Map<String, Object> m, String key, boolean fallback) {
+        if (m == null) return fallback;
+        Object v = m.get(key);
+        return v instanceof Boolean ? (Boolean) v : fallback;
+    }
+
+    private static String readString(Map<String, Object> m, String key) {
+        if (m == null) return null;
+        Object v = m.get(key);
+        return v == null ? null : v.toString();
     }
 }

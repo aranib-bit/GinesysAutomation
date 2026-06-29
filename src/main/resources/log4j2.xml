@@ -4,6 +4,11 @@
     <Properties>
         <Property name="LOG_DIR">logs</Property>
         <Property name="LOG_PATTERN">%d{yyyy-MM-dd HH:mm:ss.SSS} [%-15t] %-5level [exec=%X{executionId}][test=%X{testName}][tcId=%X{testCaseId}][id=%X{testId}][user=%X{uiUser}][browser=%X{browser}][env=%X{env}] %logger{36} - %msg%n</Property>
+        <!-- Phase 1: audience-segmented log patterns -->
+        <!-- business.log — plain English, readable by QA Manager without tooling -->
+        <Property name="BUSINESS_LOG_PATTERN">%d{HH:mm:ss} | [%X{testCaseId}] %msg%n</Property>
+        <!-- ui-actions, db-validation, diagnostics — retain timestamp + testCaseId for cross-reference -->
+        <Property name="AUDIENCE_LOG_PATTERN">%d{yyyy-MM-dd HH:mm:ss.SSS} [%X{testCaseId}][%X{testName}] %-5level - %msg%n</Property>
     </Properties>
 
     <Appenders>
@@ -56,9 +61,115 @@
             <AppenderRef ref="TraceFileAppender"/>
         </Async>
 
+        <!-- ── Phase 1: Audience-segmented log files ──────────────────────────
+             Each file receives only the log category(s) assigned to its audience.
+             Category routing is driven by the MDC key "logCategory" set in ReportLogger.
+             Uncategorized calls (no logCategory in MDC) are ignored by these appenders.
+        -->
+
+        <!-- QA Manager / Business Reviewer — plain English business flow steps -->
+        <RollingFile name="BusinessFileAppender"
+                     fileName="${LOG_DIR}/business.log"
+                     filePattern="${LOG_DIR}/business-%d{yyyy-MM-dd}-%i.log.gz">
+            <PatternLayout pattern="${BUSINESS_LOG_PATTERN}"/>
+            <Policies>
+                <TimeBasedTriggeringPolicy interval="1" modulate="true"/>
+                <SizeBasedTriggeringPolicy size="5 MB"/>
+            </Policies>
+            <DefaultRolloverStrategy max="10"/>
+        </RollingFile>
+
+        <!-- QA Engineer — Selenium interactions + assertion results -->
+        <RollingFile name="UIActionsFileAppender"
+                     fileName="${LOG_DIR}/ui-actions.log"
+                     filePattern="${LOG_DIR}/ui-actions-%d{yyyy-MM-dd}-%i.log.gz">
+            <PatternLayout pattern="${AUDIENCE_LOG_PATTERN}"/>
+            <Policies>
+                <TimeBasedTriggeringPolicy interval="1" modulate="true"/>
+                <SizeBasedTriggeringPolicy size="10 MB"/>
+            </Policies>
+            <DefaultRolloverStrategy max="10"/>
+        </RollingFile>
+
+        <!-- Automation Engineer — SQL queries, DB validation results -->
+        <RollingFile name="DBValidationFileAppender"
+                     fileName="${LOG_DIR}/db-validation.log"
+                     filePattern="${LOG_DIR}/db-validation-%d{yyyy-MM-dd}-%i.log.gz">
+            <PatternLayout pattern="${AUDIENCE_LOG_PATTERN}"/>
+            <Policies>
+                <TimeBasedTriggeringPolicy interval="1" modulate="true"/>
+                <SizeBasedTriggeringPolicy size="10 MB"/>
+            </Policies>
+            <DefaultRolloverStrategy max="10"/>
+        </RollingFile>
+
+        <!-- Automation Engineer / Dev — JS errors, perf metrics, RCA hints, framework internals -->
+        <RollingFile name="DiagnosticsFileAppender"
+                     fileName="${LOG_DIR}/diagnostics.log"
+                     filePattern="${LOG_DIR}/diagnostics-%d{yyyy-MM-dd}-%i.log.gz">
+            <PatternLayout pattern="${AUDIENCE_LOG_PATTERN}"/>
+            <Policies>
+                <TimeBasedTriggeringPolicy interval="1" modulate="true"/>
+                <SizeBasedTriggeringPolicy size="10 MB"/>
+            </Policies>
+            <DefaultRolloverStrategy max="10"/>
+        </RollingFile>
+
+        <!--
+            Routes one log event to exactly one audience file based on the "logCategory"
+            MDC key set by ReportLogger before each categorized log call.
+            Events without logCategory in MDC match no route and are silently ignored
+            by this appender (they still write to framework.log via AsyncRollingFile).
+        -->
+        <Routing name="CategoryRoutingAppender">
+            <Routes pattern="${ctx:logCategory}">
+                <Route key="BUSINESS">
+                    <AppenderRef ref="BusinessFileAppender"/>
+                </Route>
+                <Route key="UI_ACTION">
+                    <AppenderRef ref="UIActionsFileAppender"/>
+                </Route>
+                <Route key="VALIDATION">
+                    <AppenderRef ref="UIActionsFileAppender"/>
+                </Route>
+                <Route key="DB">
+                    <AppenderRef ref="DBValidationFileAppender"/>
+                </Route>
+                <Route key="JS">
+                    <AppenderRef ref="DiagnosticsFileAppender"/>
+                </Route>
+                <Route key="PERF">
+                    <AppenderRef ref="DiagnosticsFileAppender"/>
+                </Route>
+                <Route key="RCA">
+                    <AppenderRef ref="DiagnosticsFileAppender"/>
+                </Route>
+                <Route key="FRAMEWORK">
+                    <AppenderRef ref="DiagnosticsFileAppender"/>
+                </Route>
+                <!-- NETWORK — treated as diagnostics for engineers -->
+                <Route key="NETWORK">
+                    <AppenderRef ref="DiagnosticsFileAppender"/>
+                </Route>
+            </Routes>
+        </Routing>
+
     </Appenders>
 
     <Loggers>
+        <!--
+            Phase 1: "Framework" is the logger name used by Log.java (LoggerFactory.getLogger("Framework")).
+            It must be explicit here so the CategoryRoutingAppender is wired in.
+            All ReportLogger.info(LogCategory, ...) calls set MDC "logCategory" before calling Log.info(),
+            so those events are routed to the audience-specific file. Uncategorized Log.info() calls
+            write only to framework.log (no logCategory in MDC → no route match → routing appender no-ops).
+        -->
+        <Logger name="Framework" level="DEBUG" additivity="false">
+            <AppenderRef ref="ConsoleAppender"/>
+            <AppenderRef ref="AsyncRollingFile"/>
+            <AppenderRef ref="CategoryRoutingAppender"/>
+        </Logger>
+
         <!-- Framework packages at DEBUG so all internal detail is captured -->
         <Logger name="com.gsl" level="DEBUG" additivity="false">
             <AppenderRef ref="ConsoleAppender"/>

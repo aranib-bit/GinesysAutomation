@@ -1,6 +1,7 @@
 package com.gsl.pages.Finance.Operations.Common;
 
 import com.gsl.pages.enums.CommonButton;
+import com.gsl.pages.enums.Finance.Operations.Common.AdjustmentPopups;
 import com.gsl.pages.enums.Finance.Operations.Common.CommonVoucherGridColumnHeader;
 import org.openqa.selenium.By;
 import org.openqa.selenium.TimeoutException;
@@ -10,10 +11,12 @@ import com.gsl.config.ConfigFactory;
 import com.gsl.constants.FrameworkConstants;
 import com.gsl.driver.DriverManager;
 import com.gsl.pages.pagecomponent.Finance.Common.AdjustmentEntryParent;
+import com.gsl.reports.ExtentLogger;
 import com.gsl.utils.Log;
 import com.gsl.utils.Selenium.ActionUtils;
 import com.gsl.utils.Selenium.JavascriptExecutorUtils;
 import com.gsl.utils.Selenium.SeleniumUtils;
+import com.gsl.popup.PopupMonitor;
 import com.gsl.utils.Selenium.WaitUtils;
 import com.gsl.enums.WaitType;
 
@@ -32,18 +35,10 @@ public class AdjustmentEntry {
     // ===========================
 
     // CANCEL_BUTTON → CommonButton.CANCEL.locator() (plain Cancel, no positional constraint)
+    // Adjusted Document menu options → AdjustmentPopups.<X>.menuOptionLocator()
     private static final class Loc {
         static final By ADJUSTED_DOCUMENT_MENU =
                 By.xpath("//div[text()='Adjusted Document']//following::*[contains(@class,'mdi mdi-20px mdi-dots-horizontal')]");
-
-        static final By SELECT_DOCUMENT_OPTION =
-                By.xpath("//span[text()='Select Document' and @class='x-btn-inner x-btn-inner-default-toolbar-small']");
-
-        static final By FIFO_SET_OFF_OPTION =
-                By.xpath("//span[text()='FIFO Set-Off' and @class='x-btn-inner x-btn-inner-default-toolbar-small']");
-
-        static final By REF_SITE_FIFO_OPTION =
-                By.xpath("//span[text()='Reference Site wise FIFO set-off' and @class='x-btn-inner x-btn-inner-default-toolbar-small']");
 
         // Scoped OK — positioned relative to Show Reference Site Summary; NOT the generic OK button
         static final By OK_BUTTON =
@@ -89,7 +84,8 @@ public class AdjustmentEntry {
     }
 
     public SelectDocumentPopup selectDocument() {
-        SeleniumUtils.click(Loc.SELECT_DOCUMENT_OPTION, WaitType.CLICKABLE, "Select Document Option");
+        SeleniumUtils.click(AdjustmentPopups.SELECT_DOCUMENT.menuOptionLocator(),
+                WaitType.CLICKABLE, "Select Document Option");
         JavascriptExecutorUtils.waitForExtJS();
         Log.warn("AdjustmentEntry.selectDocument: waitForExtJS done — checking loader mask [{}]",
                 FrameworkConstants.getSelectDocGridLoader());
@@ -117,19 +113,28 @@ public class AdjustmentEntry {
     }
 
     public AdjustmentEntry fifoSetOff() {
-        SeleniumUtils.click(Loc.FIFO_SET_OFF_OPTION, WaitType.CLICKABLE, "FIFO Set-Off Option");
+        SeleniumUtils.click(AdjustmentPopups.FIFO_SETOFF.menuOptionLocator(),
+                WaitType.CLICKABLE, "FIFO Set-Off Option");
         return this;
     }
 
     public AdjustmentEntry referenceSiteWiseFIFO() {
-        SeleniumUtils.click(Loc.REF_SITE_FIFO_OPTION, WaitType.CLICKABLE, "Reference Site Wise FIFO Option");
+        SeleniumUtils.click(AdjustmentPopups.REFERENCE_SITEWISE_FIFO_SETOFF.menuOptionLocator(),
+                WaitType.CLICKABLE, "Reference Site Wise FIFO Option");
         return this;
     }
 
-    /** Clicks the menu item and returns a ready-to-use popup object. */
+    /** Clicks the menu item, waits for the popup window to actually become visible,
+     *  then returns a ready-to-use popup object. The visibility wait is load-bearing —
+     *  without it, the first native action on the popup grid can race the dialog's
+     *  render and fail to find the row-0 cell. */
     public ReferenceSiteWiseFIFOPopup openReferenceSiteWiseFIFOPopup() {
-        SeleniumUtils.click(Loc.REF_SITE_FIFO_OPTION, WaitType.CLICKABLE, "Reference Site Wise FIFO Option");
+        SeleniumUtils.click(AdjustmentPopups.REFERENCE_SITEWISE_FIFO_SETOFF.menuOptionLocator(),
+                WaitType.CLICKABLE, "Reference Site Wise FIFO Option");
         JavascriptExecutorUtils.waitForExtJS();
+        WaitUtils.webDriverWait(ConfigFactory.getFinanceConfig().extjsTimeout())
+                .until(ExpectedConditions.visibilityOfElementLocated(
+                        AdjustmentPopups.REFERENCE_SITEWISE_FIFO_SETOFF.popupWindowLocator()));
         return new ReferenceSiteWiseFIFOPopup();
     }
 
@@ -140,7 +145,13 @@ public class AdjustmentEntry {
     }
 
     public AdjustmentEntry showReferenceSiteSummary() {
-        SeleniumUtils.click(Loc.SHOW_REF_SITE_SUMMARY, WaitType.CLICKABLE, "Show Reference Site Summary");
+        WaitUtils.fluentWaitBuilder().until(driver -> {
+            driver.findElement(Loc.SHOW_REF_SITE_SUMMARY).click();
+            return true;
+        });
+        ExtentLogger.info("Show Reference Site Summary is clicked successfully");
+        WaitUtils.waitForExtMask("Show Reference Site Summary");
+        PopupMonitor.checkAfterAction("Show Reference Site Summary");
         return this;
     }
 

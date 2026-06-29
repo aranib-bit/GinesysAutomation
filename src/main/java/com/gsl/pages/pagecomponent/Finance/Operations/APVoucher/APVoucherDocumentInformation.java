@@ -5,6 +5,7 @@ import com.gsl.enums.VoucherDomain;
 import com.gsl.pages.enums.Finance.Operations.General.VoucherDocumentFormLabel;
 import com.gsl.pages.pagecomponent.Finance.Common.CashBankParent;
 import com.gsl.pages.pagecomponent.Finance.Operations.Common.VoucherDocumentInformationBase;
+import com.gsl.reports.ReportLogger;
 import com.gsl.testdata.Finance.Operations.Vouchers.APVoucher.DocumentInformation;
 import com.gsl.utils.Selenium.ExtJsUtils;
 import com.gsl.utils.Selenium.SeleniumUtils;
@@ -28,7 +29,10 @@ public class APVoucherDocumentInformation extends VoucherDocumentInformationBase
      */
     public APVoucherDocumentInformation fillDocumentHeader(DocumentInformation docInfo) {
         setDocScheme(docInfo.getVoucherno());
+        ReportLogger.trace("[DocHeader] docScheme → input=" + docInfo.getVoucherno());
         setDocumentDate(formatDate(docInfo.getDocumentdate()));
+        ReportLogger.trace("[DocHeader] documentDate → input=" + docInfo.getDocumentdate()
+                + " formatted=" + formatDate(docInfo.getDocumentdate()));
         setReference(docInfo.getReference());
         // T-03 negative scenario NEG_BLANK_CASHBANK leaves Cash/Bank deliberately empty so Save
         // raises "Cash/Bank is required". Skip the picker entirely when no value is supplied;
@@ -37,8 +41,13 @@ public class APVoucherDocumentInformation extends VoucherDocumentInformationBase
         if (cashbank != null && !cashbank.isBlank()) {
             clickCashBankSearch();
             selectCashBank(cashbank);
+            ReportLogger.trace("[DocHeader] cashBank → selected=" + cashbank);
+        } else {
+            ReportLogger.trace("[DocHeader] cashBank → skipped (blank/null — negative scenario)");
         }
         setOnAccount(docInfo.isOnAccount(), docInfo.getOnAccountConfirmAction());
+        ReportLogger.trace("[DocHeader] onAccount → value=" + docInfo.isOnAccount()
+                + " confirmAction=" + docInfo.getOnAccountConfirmAction());
         setRemarks(docInfo.getRemarks());
         return this;
     }

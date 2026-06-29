@@ -40,6 +40,10 @@ public final class RemoteLogCollector {
         return t;
     });
 
+    // Fires the unloaded-config sanity log at most once per JVM.
+    private static final java.util.concurrent.atomic.AtomicBoolean CONFIG_SANITY_CHECKED =
+            new java.util.concurrent.atomic.AtomicBoolean(false);
+
     private final SshConnectionPool pool;
 
     public RemoteLogCollector() {
@@ -57,6 +61,10 @@ public final class RemoteLogCollector {
      */
     public Map<ServerRole, LogFetchResponse> collect(
             String appHost, String dbHost, Instant start, Instant end) {
+
+        warnIfConfigUnloaded();
+        warnIfHostUnreachable(appHost, ServerRole.APP);
+        warnIfHostUnreachable(dbHost,  ServerRole.DB);
 
         Map<ServerRole, LogFetchResponse> result = new EnumMap<>(ServerRole.class);
         result.put(ServerRole.APP, null);
@@ -91,6 +99,33 @@ public final class RemoteLogCollector {
 
     // ── private ───────────────────────────────────────────────────────────────
 
+    // One-shot startup sanity log: if remote-log capture is enabled but every host
+    // AND every credential key resolves blank, Owner almost certainly didn't load
+    // remote-log.properties (wrong JVM working dir / missing file). Surface that
+    // explicitly so the user isn't left chasing a generic "credentials not configured".
+    private static void warnIfConfigUnloaded() {
+        if (!CONFIG_SANITY_CHECKED.compareAndSet(false, true)) return;
+        var cfg = ConfigFactory.getRemoteLogConfig();
+        if ("NEVER".equalsIgnoreCase(cfg.remoteLogsCaptureMode())) return;
+        boolean allBlank =
+                isBlank(cfg.remoteAppServerHost())
+                        && isBlank(cfg.remoteDbServerHost())
+                        && isBlank(cfg.remoteAppServerWinrmUsername())
+                        && isBlank(cfg.remoteDbServerWinrmUsername())
+                        && isBlank(cfg.remoteAppServerSshUsername())
+                        && isBlank(cfg.remoteDbServerSshUsername());
+        if (allBlank) {
+            Log.warn("[RemoteLogCollector] remote-log.properties looks unloaded — every host/credential key is blank. "
+                    + "Expected at {}/src/test/resources/config/remote-log.properties. "
+                    + "Verify the JVM working directory points at the project root.",
+                    System.getProperty("user.dir"));
+        }
+    }
+
+    private static boolean isBlank(String s) {
+        return s == null || s.isBlank();
+    }
+
     private LogFetchResponse collectOne(ServerRole role, String host, Instant start, Instant end) {
         try {
             List<String> keywords = keywords();
@@ -106,7 +141,20 @@ public final class RemoteLogCollector {
 
             if (creds == null) {
                 Log.warn("[RemoteLogCollector] No credentials for {} ({}) — skipping", role.label, osType);
-                return null;
+                LogFetchResponse.SkipReason reason = (osType == OSType.LINUX)
+                        ? LogFetchResponse.SkipReason.CREDS_MISSING_SSH
+                        : LogFetchResponse.SkipReason.CREDS_MISSING_WINRM;
+                return LogFetchResponse.builder()
+                        .skipReason(reason)
+                        .entries(List.of())
+                        .stderr("")
+                        .exitCode(0)
+                        .retriesUsed(0)
+                        .durationMs(0)
+                        .configuredPaths(logPaths(role))
+                        .timeWindowStart(start)
+                        .timeWindowEnd(end)
+                        .build();
             }
 
             LogFetchRequest request = buildRequest(role, host, osType, creds, start, end);
@@ -118,12 +166,11 @@ public final class RemoteLogCollector {
                     .timeWindowEnd(request.getEndUtc())
                     .build();
 
-        } catch (Exception e) {
+        } catch (Throwable e) {
             Log.warn("[RemoteLogCollector] Collection failed for {} host={}: {}",
                     role.label, host, e.getMessage());
-            // Return a non-null response so the report shows the actual error rather than
-            // a misleading "set credentials" skip message.
             return LogFetchResponse.builder()
+                    .skipReason(LogFetchResponse.SkipReason.FETCH_FAILED)
                     .entries(List.of())
                     .stderr("Log collection failed: " + e.getMessage())
                     .exitCode(-1)
@@ -133,6 +180,21 @@ public final class RemoteLogCollector {
                     .timeWindowStart(start)
                     .timeWindowEnd(end)
                     .build();
+        }
+    }
+
+    private static void warnIfHostUnreachable(String host, ServerRole role) {
+        if (host == null || host.isBlank()) return;
+        try {
+            if (!java.net.InetAddress.getByName(host).isReachable(3_000)) {
+                Log.warn("[RemoteLogCollector] {} host {} did not respond to ping — "
+                        + "remote log collection will likely fail. "
+                        + "Verify the host is up and WinRM/SSH port is open.",
+                        role.label, host);
+            }
+        } catch (Exception e) {
+            Log.warn("[RemoteLogCollector] Could not probe {} host {}: {}",
+                    role.label, host, e.getMessage());
         }
     }
 

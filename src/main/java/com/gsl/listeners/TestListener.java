@@ -275,8 +275,12 @@ public class TestListener implements ITestListener, ISuiteListener {
             TestContextManager.setTestCaseId(baseId);
 
             String prefix = (baseId != null) ? "[" + baseId + "] " : "";
+            String sentence = (domainReporter.isPresent() && domainData != null)
+                    ? domainReporter.get().buildSentence(domainData) : null;
             String desc = result.getMethod().getDescription();
-            ExtentReport.createTest(prefix + (desc != null && !desc.isBlank() ? desc : methodName));
+            String titleText = (sentence != null && !sentence.isBlank()) ? sentence
+                    : (desc != null && !desc.isBlank() ? desc : methodName);
+            ExtentReport.createTest(prefix + titleText);
         }
 
         FrameworkAnnotation fa = result.getMethod()
@@ -368,6 +372,7 @@ public class TestListener implements ITestListener, ISuiteListener {
         }
 
         TestContextManager.clear();
+        ExtentManager.clearAll();
     }
 
     @Override
@@ -425,6 +430,7 @@ public class TestListener implements ITestListener, ISuiteListener {
 
         ExtentReport.recordTestResult(result, "FAIL");
         TestContextManager.clear();
+        ExtentManager.clearAll();
     }
 
     @Override
@@ -434,10 +440,26 @@ public class TestListener implements ITestListener, ISuiteListener {
         Throwable t = result.getThrowable();
         boolean dataSkip = t instanceof org.testng.SkipException;
         if (!ExtentManager.hasTest()) {
-            // No node yet (skip surfaced at DataProvider time). A SkipException is a clean
-            // data-availability skip → amber; anything else is a genuine DataProvider failure → red.
-            String title = (dataSkip ? "SKIPPED — " : "DATA PROVIDER FAILURE — ")
-                    + result.getMethod().getMethodName();
+            // No node yet — circuit breaker threw before onTestStart created a node, or
+            // the skip surfaced at DataProvider time. Build a proper title from annotations.
+            TestCaseId skipTcId = result.getMethod().getConstructorOrMethod().getMethod()
+                    .getAnnotation(TestCaseId.class);
+            String skipPrefix = (skipTcId != null) ? "[" + skipTcId.value() + "] " : "";
+            String skipDesc   = result.getMethod().getDescription();
+            String skipLabel  = (skipDesc != null && !skipDesc.isBlank())
+                    ? skipDesc : result.getMethod().getMethodName();
+            Object[] skipParams = result.getParameters();
+            InvocationData skipInvData = (skipParams != null)
+                    ? Arrays.stream(skipParams)
+                            .filter(p -> p instanceof InvocationData)
+                            .map(p -> (InvocationData) p)
+                            .findFirst().orElse(null)
+                    : null;
+            String indexSuffix = (skipInvData != null)
+                    ? " [" + skipInvData.getInvocationIndex() + "/" + skipInvData.getTotalInvocations() + "]"
+                    : "";
+            String title = (dataSkip ? "" : "DATA PROVIDER FAILURE — ")
+                    + skipPrefix + skipLabel + indexSuffix;
             ExtentReport.createTest(title);
             String detail = (t != null) ? t.getMessage() : "DataProvider returned no data";
             if (dataSkip) {
@@ -446,11 +468,57 @@ public class TestListener implements ITestListener, ISuiteListener {
                 ExtentLogger.fail(detail);
             }
         } else {
+            // Parallel DataSupplier race: onTestStart may have run before parameters were bound
+            // (result.getParameters() returns [] at that moment), so the node got a generic title.
+            // By onTestSkipped time, parameters are always bound — try to enrich the title now.
+            Object[] lateParams = result.getParameters();
+            if (lateParams != null && lateParams.length > 0) {
+                Optional<DomainReporter> lateReporter = DomainReporterRegistry.resolve(lateParams);
+                if (lateReporter.isPresent()) {
+                    Object lateData = lateReporter.get().extractTestData(lateParams);
+                    InvocationData lateInvData = Arrays.stream(lateParams)
+                            .filter(p -> p instanceof InvocationData)
+                            .map(p -> (InvocationData) p)
+                            .findFirst().orElse(null);
+                    if (lateData != null && lateInvData != null) {
+                        String lateSentence = lateReporter.get().buildSentence(lateData);
+                        if (lateSentence != null && !lateSentence.isBlank()) {
+                            TestCaseId lateId = result.getMethod().getConstructorOrMethod()
+                                    .getMethod().getAnnotation(TestCaseId.class);
+                            String lateTcId = (lateId != null)
+                                    ? String.format("%s-%02d", lateId.value(), lateInvData.getInvocationIndex())
+                                    : null;
+                            String latePrefix = (lateTcId != null) ? "[" + lateTcId + "] " : "";
+                            String enrichedTitle = latePrefix + lateSentence
+                                    + " [" + lateInvData.getInvocationIndex()
+                                    + "/" + lateInvData.getTotalInvocations() + "]";
+                            if (ExtentManager.getExtentTest() != null)
+                                ExtentManager.getExtentTest().getModel().setName(enrichedTitle);
+                            if (ExtentManager.getShardTest() != null)
+                                ExtentManager.getShardTest().getModel().setName(enrichedTitle);
+                        }
+                    }
+                }
+            }
             // Use an explicit SKIP entry (amber) rather than a WARNING so the node status reads as Skip.
-            ExtentLogger.skip("Test skipped" + (t != null ? ": " + t.getMessage() : ""));
+            // Truncate Selenium session diagnostic noise — take only the first line of the message.
+            String skipReason = "";
+            if (t != null) {
+                String msg = t.getMessage();
+                if (msg != null) {
+                    String firstLine = msg.split("\\n")[0].trim();
+                    int hostIdx = firstLine.indexOf(" Host info:");
+                    if (hostIdx > 0) firstLine = firstLine.substring(0, hostIdx).trim();
+                    int buildIdx = firstLine.indexOf(" Build info:");
+                    if (buildIdx > 0) firstLine = firstLine.substring(0, buildIdx).trim();
+                    skipReason = ": " + firstLine;
+                }
+            }
+            ExtentLogger.skip("Test skipped" + skipReason);
         }
         ExtentReport.recordTestResult(result, "SKIP");
         TestContextManager.clear();
+        ExtentManager.clearAll();
     }
 
     // ── Phase 0: copy run report to reports/latest/ for CI pickup ──────────────

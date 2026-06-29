@@ -1,44 +1,42 @@
 package com.gsl.pages.pagecomponent.Finance.Operations.ARVoucher;
 
-import com.google.common.util.concurrent.Uninterruptibles;
 import com.gsl.driver.DriverManager;
 import com.gsl.enums.AdjustmentType;
 import com.gsl.enums.PaymentSelectionType;
 import com.gsl.enums.WaitType;
+import com.gsl.pages.Finance.Operations.Common.AdjustmentAmountSnapshot;
 import com.gsl.pages.Finance.Operations.Common.AdjustmentEntry;
 import com.gsl.enums.VoucherDomain;
+import com.gsl.pages.Finance.Operations.Common.ReferenceSiteWiseFIFOPopup;
 import com.gsl.pages.Finance.Operations.Common.SelectDocumentPopup;
 import com.gsl.pages.pagecomponent.Finance.Operations.Common.VoucherSubLedgerInformationBase;
 import com.gsl.reports.ExtentLogger;
-import com.gsl.utils.Selenium.WaitUtils;
+import com.gsl.reports.ReportLogger;
 import com.gsl.reports.StepExecutor;
 import com.gsl.reports.SubLedgerRowStepRegistry;
 import com.aventstack.extentreports.ExtentTest;
 import com.gsl.testdata.Finance.Operations.Vouchers.ARVoucher.PaymentInformation;
+import com.gsl.testdata.Finance.Operations.Vouchers.ARVoucher.ReferenceSitewiseFIFOsetoff;
 import com.gsl.testdata.Finance.Operations.Vouchers.ARVoucher.SelectDocument;
 import com.gsl.testdata.Finance.Operations.Vouchers.ARVoucher.SubLedgerInformation;
 import com.gsl.testdata.dto.MergedFinanceArVoucherData;
 import com.gsl.utils.dataprovider.fixture.finance.SelectDocumentVariant;
 import com.gsl.utils.BigDecimalUtils;
 import com.gsl.utils.Log;
-import com.gsl.utils.Selenium.ActionUtils;
 import com.gsl.utils.Selenium.JavascriptExecutorUtils;
-import com.gsl.utils.Selenium.SeleniumActions;
 import com.gsl.utils.Selenium.SeleniumUtils;
-import org.openqa.selenium.*;
-import org.openqa.selenium.interactions.Actions;
-import org.openqa.selenium.support.ui.ExpectedConditions;
-import org.openqa.selenium.support.ui.WebDriverWait;
+import com.gsl.utils.Selenium.WaitUtils;
+import org.openqa.selenium.By;
+import org.openqa.selenium.TimeoutException;
+import org.openqa.selenium.WebDriver;
 
 import java.math.BigDecimal;
-import java.time.Duration;
 import java.util.List;
-import java.util.concurrent.TimeUnit;
 import java.util.stream.Collectors;
 
 import com.gsl.pages.Finance.Operations.Common.ArPaymentInformationPopup;
 import com.gsl.pages.Finance.Operations.Common.PaymentInformationPopup;
-import static com.gsl.utils.Selenium.ExtJsUtils.setExtJsComboByName;
+import com.gsl.config.ConfigFactory;
 
 public class ARVoucherSubLedgerInformation extends VoucherSubLedgerInformationBase {
 
@@ -50,14 +48,14 @@ public class ARVoucherSubLedgerInformation extends VoucherSubLedgerInformationBa
     protected PaymentInformationPopup createPaymentPopup() {
         return new ArPaymentInformationPopup();
     }
-    private static final By SUBLEDGERNAMEBLANK=By.xpath("(//div[contains(@class,'x-window')]//table[contains(@class,'x-grid-item')])[last()]//tr[last()]//td[3]");
-    private static final String SUBLEDGERSELECTION_XPATH="//span[text()='%s']";
-    private static final By SUBLEDGERAMOUNTCR = By.xpath("//tr[.//td/div[normalize-space()='ABUL KASHEM MOLLHA'] and .//td/div[normalize-space()='Hena Embroidery']]//td[contains(@data-columnid,'numbercolumn')]//div");
-    // ── Active ExtJS editor – works regardless of row content ────────────────
-    private static final By ACTIVE_EDITOR_INPUT = By.xpath(
-            "//div[contains(@class,'x-editor') " +
-                    "and not(contains(@class,'x-hide-display'))]//input"
-    );
+
+    private static final String AR_GRID_ITEM_ID = "arvch_grid";
+
+    private static final By SUBLEDGERNAMEBLANK = By.xpath(
+            "(//div[contains(@class,'x-window')]//table[contains(@class,'x-grid-item')])" +
+            "[last()]//tr[last()]//td[3]");
+
+    private static final String SUBLEDGERSELECTION_XPATH = "//span[text()='%s']";
 
     // ── Public API ────────────────────────────────────────────────────────────
 
@@ -74,7 +72,6 @@ public class ARVoucherSubLedgerInformation extends VoucherSubLedgerInformationBa
 
         final List<SubLedgerInformation> sls = data.getSubLedgerInformationList();
 
-        // Start each test's row grouping clean (ThreadLocal — safe under parallel="methods").
         SubLedgerRowStepRegistry.clear();
 
         // ── Pass 1: set sub-ledger name and amount ────────────────────────────
@@ -93,8 +90,6 @@ public class ARVoucherSubLedgerInformation extends VoucherSubLedgerInformationBa
             final String slId    = sl.getId()            != null ? sl.getId().trim()            : "";
             final String refSite = sl.getReferenceSite() != null ? sl.getReferenceSite().trim() : "";
 
-            // Create the per-row group node and register it so the later passes
-            // (reference site, adjustment, payment) report under this same row.
             final String rowKey = SubLedgerRowStepRegistry.key(sl.getLineNo(), idx);
             ExtentTest rowNode = StepExecutor.group(
                     "SL Row " + (idx + 1) + " — " + slName
@@ -106,7 +101,11 @@ public class ARVoucherSubLedgerInformation extends VoucherSubLedgerInformationBa
                 if (idx > 0) addSubLedgerRow();
                 try {
                     setSubLedgerName(slName, slId, refSite, idx);
+                    ReportLogger.trace("[SL Row " + (idx + 1) + "] slName=" + slName
+                            + " slId=" + (slId.isEmpty() ? "—" : slId)
+                            + " refSite=" + (refSite.isEmpty() ? "—" : refSite));
                     setSubLedgerAmount(sl.getAmountCr().toPlainString(), idx);
+                    ReportLogger.trace("[SL Row " + (idx + 1) + "] amountCr → typed=" + sl.getAmountCr());
                 } catch (InterruptedException e) {
                     Thread.currentThread().interrupt();
                     throw new RuntimeException("Interrupted setting sub-ledger amount on row " + idx, e);
@@ -151,7 +150,7 @@ public class ARVoucherSubLedgerInformation extends VoucherSubLedgerInformationBa
             }
         }
 
-        // ── Adjustments (Adjust button → adjustment entry → details → back to grid) ──
+        // ── Adjustments ───────────────────────────────────────────────────────
         List<SubLedgerInformation> adjustRows = sls.stream()
                 .filter(r -> r.getAdjustmentType() != null)
                 .collect(Collectors.toList());
@@ -185,7 +184,6 @@ public class ARVoucherSubLedgerInformation extends VoucherSubLedgerInformationBa
                     for (SelectDocument doc : docs) {
                         BigDecimal excelAmount = doc.getAdjustmentAmount();
                         if (excelAmount == null || excelAmount.compareTo(BigDecimal.ZERO) == 0) continue;
-                        // P1: Reject negative adjustment amounts before touching the UI
                         if (excelAmount.compareTo(BigDecimal.ZERO) < 0) {
                             throw new IllegalArgumentException(
                                 "Adjustment amount cannot be negative for document ["
@@ -208,11 +206,38 @@ public class ARVoucherSubLedgerInformation extends VoucherSubLedgerInformationBa
                     }
 
                 } else if (adjType == AdjustmentType.REFERENCE_SITEWISE_FIFO_SETOFF) {
+                    String lineNo = row.getLineNo();
+                    List<ReferenceSitewiseFIFOsetoff> fifoRows =
+                            data.getReferenceSitewiseFIFOList() != null
+                                    ? data.getReferenceSitewiseFIFOList() : List.of();
+                    List<ReferenceSitewiseFIFOsetoff> refSites = fifoRows.stream()
+                            .filter(r -> lineNo != null && lineNo.equalsIgnoreCase(r.getLineNo()))
+                            .collect(Collectors.toList());
+
+                    ReferenceSiteWiseFIFOPopup fifoPopup = adjustmentEntry.openReferenceSiteWiseFIFOPopup();
+                    for (int i = 0; i < refSites.size(); i++) {
+                        ReferenceSitewiseFIFOsetoff rs = refSites.get(i);
+                        ExtentLogger.info("[FIFO] Reference Site: " + rs.getReferenceSiteName()
+                                + " | Site: " + rs.getSiteName());
+                        if (i > 0) fifoPopup.addRow();
+                        fifoPopup.selectReferenceSiteInCombo(rs.getReferenceSiteName())
+                                 .selectSubSiteRow(rs.getSiteName());
+                    }
+                    fifoPopup.clickAutoAdjust();
+
+                    AdjustmentAmountSnapshot snapshot = adjustmentEntry.captureAmounts();
+                    Log.info("RefSiteFIFO amounts — txn={} adj={} pending={}",
+                             snapshot.getTransactionAmount(),
+                             snapshot.getAdjustedAmount(),
+                             snapshot.getPendingToAdjust());
+                    ExtentLogger.info("[FIFO] Amounts — Txn: " + snapshot.getTransactionAmount()
+                            + " | Adjusted: " + snapshot.getAdjustedAmount()
+                            + " | Pending: " + snapshot.getPendingToAdjust());
+
                     if (needsConfirmation) {
-                        adjustmentEntry.referenceSiteWiseFIFO().showReferenceSiteSummary()
-                                .clickOKExpectingConfirmation().clickProceedAnyway();
+                        adjustmentEntry.clickOKExpectingConfirmation().clickProceedAnyway();
                     } else {
-                        adjustmentEntry.referenceSiteWiseFIFO().showReferenceSiteSummary().clickOK();
+                        adjustmentEntry.clickOK();
                     }
 
                 } else if (adjType == AdjustmentType.FIFO_SETOFF) {
@@ -225,7 +250,7 @@ public class ARVoucherSubLedgerInformation extends VoucherSubLedgerInformationBa
             });
         }
 
-        // ── Payment (Cheque/RTGS) ───────────────────────────────────────────────
+        // ── Payment (Cheque/RTGS) ─────────────────────────────────────────────
         if (data.isPaymentProvided()) {
             handlePaymentInformation(sls, data.getPaymentInformationList());
         }
@@ -235,10 +260,6 @@ public class ARVoucherSubLedgerInformation extends VoucherSubLedgerInformationBa
 
     // ── Private helpers ───────────────────────────────────────────────────────
 
-    /**
-     * Clicks the Adjust button for the given sub-ledger row, then creates and
-     * opens the AdjustmentEntry dialog (previously split across ArVoucherAdd).
-     */
     private AdjustmentEntry openAdjustmentEntry(String subLedgerName,
                                                  String referenceSite, String slid) {
         clickAdjust(subLedgerName, referenceSite, slid);
@@ -247,139 +268,86 @@ public class ARVoucherSubLedgerInformation extends VoucherSubLedgerInformationBa
         return entry;
     }
 
-    private void setSubLedgerName1(String subledgerName) {
-        SeleniumUtils.click(
-                SUBLEDGERNAMEBLANK,
-                WaitType.CLICKABLE,
-                "SUBLEDGER NAME BLANK"
-        );
-        Uninterruptibles.sleepUninterruptibly(5, TimeUnit.SECONDS);
-        System.out.println("After Sub Ledger Blank Row Click");
-        setExtJsComboByName("subLedgerName", subledgerName);
-        System.out.println("After Sub Ledger Set Value");
-    }
-
-    private ARVoucherSubLedgerInformation setSubLedgerName(String subledgerName, String id, String referenceSite) {
-        WebDriver driver = DriverManager.getDriver();
-        System.out.println("=== STEP 1 : START Set Sub Ledger for Row 0 ===");
-        JavascriptExecutorUtils.setSubLedger(driver, subledgerName, id, referenceSite);
-        System.out.println("=== STEP 2 : setSubLedger completed ===");
-        return this;
-    }
-
-    private ARVoucherSubLedgerInformation setSubLedgerAmountold(String subLedgerAmount) {
-        System.out.println("Before double click");
-        ActionUtils.doubleClick(SUBLEDGERAMOUNTCR);
-        System.out.println("After double click");
-        SeleniumUtils.sendKeys(SUBLEDGERAMOUNTCR,subLedgerAmount,"SUBLEDGERAMOUNTCR");
-        return this;
-    }
-
-    private ARVoucherSubLedgerInformation setSubLedgerAmountold2(String subLedgerAmount) throws InterruptedException {
-        WebDriver driver = DriverManager.getDriver();
-        JavascriptExecutor js = (JavascriptExecutor) driver;
-        Thread.sleep(500);
-        String result = (String) js.executeScript(
-                "try {" +
-                        "    var amount = parseFloat(arguments[0]);" +
-                        "    var grids = Ext.ComponentQuery.query('grid');" +
-                        "    for (var i = 0; i < grids.length; i++) {" +
-                        "        var store = grids[i].getStore();" +
-                        "        if (store && store.getCount() > 0) {" +
-                        "            var rec = store.getAt(0);" +
-                        "            rec.set('amount', amount);" +
-                        "            return 'SUCCESS: amount=' + rec.get('amount') +" +
-                        "                   ' dirty=' + rec.dirty;" +
-                        "        }" +
-                        "    }" +
-                        "    return 'ERROR: No grid with records found';" +
-                        "} catch(e) {" +
-                        "    return 'ERROR: ' + e.message;" +
-                        "}",
-                subLedgerAmount
-        );
-        System.out.println("setSubLedgerAmount result: " + result);
-        Thread.sleep(300);
-        return this;
-    }
-
-    private ARVoucherSubLedgerInformation setSubLedgerAmount2(String subLedgerAmount) throws InterruptedException {
-        JavascriptExecutor js = (JavascriptExecutor) DriverManager.getDriver();
-        Thread.sleep(500);
-        String result = (String) js.executeScript(
-                "try {" +
-                        "    var amount = parseFloat(arguments[0]);" +
-                        "    var childGrid = Ext.ComponentQuery.query('gridpanel[itemId=arvch_grid]')[0];" +
-                        "    if (!childGrid) return 'ERROR: arvch_grid not found';" +
-                        "    var store = childGrid.getStore();" +
-                        "    if (!store) return 'ERROR: store not found';" +
-                        "    if (store.getCount() === 0) return 'ERROR: store is empty';" +
-                        "    var rec = store.getAt(0);" +
-                        "    rec.set('amount', amount);" +
-                        "    return 'SUCCESS: amount=' + rec.get('amount') + ' dirty=' + rec.dirty;" +
-                        "} catch(e) {" +
-                        "    return 'ERROR: ' + e.message;" +
-                        "}",
-                subLedgerAmount
-        );
-        System.out.println("setSubLedgerAmount result: " + result);
-        Thread.sleep(300);
-        return this;
-    }
-
-    private ARVoucherSubLedgerInformation setSubLedgerAmount(String subLedgerAmount) throws InterruptedException {
-        JavascriptExecutor js = (JavascriptExecutor) DriverManager.getDriver();
-        Thread.sleep(500);
-        String result = (String) js.executeScript(
-                "try {" +
-                        "    var amount = parseFloat(arguments[0]);" +
-                        "    var childGrid = Ext.ComponentQuery.query('gridpanel[itemId=arvch_grid]')[0];" +
-                        "    if (!childGrid) return 'ERROR: arvch_grid not found';" +
-                        "    var store = childGrid.getStore();" +
-                        "    if (!store || store.getCount() === 0) return 'ERROR: arvch_grid store empty';" +
-                        "    var rec = store.getAt(0);" +
-                        "    rec.set('amount', amount);" +
-                        "    return 'SUCCESS: amount=' + rec.get('amount') + ' dirty=' + rec.dirty;" +
-                        "} catch(e) {" +
-                        "    return 'ERROR: ' + e.message;" +
-                        "}",
-                subLedgerAmount
-        );
-        System.out.println("setSubLedgerAmount result: " + result);
-        Thread.sleep(300);
-        return this;
+    private void setSubLedgerName(String subledgerName, String id, String referenceSite, int rowIndex) {
+        setSubLedgerNameNative(subledgerName, id, referenceSite, rowIndex);
     }
 
     /**
-     * Adds a new empty row to the subledger grid.
+     * NATIVE sub-ledger selection: open the real inline grid combo, type the sub-ledger name,
+     * and click the matching dropdown option — exactly as a user would. This makes the
+     * application run its own combo {@code select} handler, which evaluates GL fields.
+     * AR has no TDS/DeductTDS column so no applicability check is needed after selection.
      */
-    private ARVoucherSubLedgerInformation addSubLedgerRow() {
-        JavascriptExecutorUtils.addSubLedgerRow(DriverManager.getDriver());
-        return this;
-    }
-
-    /**
-     * Sets the subledger name on the specified row index.
-     */
-    private ARVoucherSubLedgerInformation setSubLedgerName(String subledgerName, String id, String referenceSite, int rowIndex) {
-        if (rowIndex == 0) {
-            JavascriptExecutorUtils.setSubLedger(DriverManager.getDriver(), subledgerName, id, referenceSite);
-        } else {
-            JavascriptExecutorUtils.setSubLedgerForRow(DriverManager.getDriver(), rowIndex, subledgerName, id, referenceSite);
+    private void setSubLedgerNameNative(String subledgerName, String id, String referenceSite, int rowIndex) {
+        String inputId = JavascriptExecutorUtils.openSubLedgerComboEditor(
+                DriverManager.getDriver(), rowIndex, AR_GRID_ITEM_ID);
+        if (inputId == null || inputId.isEmpty()) {
+            throw new IllegalStateException(
+                    "[SL_NATIVE] Could not open Sub-Ledger combo editor on row " + rowIndex
+                    + " for '" + subledgerName + "'");
         }
-        return this;
+
+        By comboInput = By.id(inputId);
+        SeleniumUtils.clear(comboInput, "SL_COMBO_INPUT");
+        SeleniumUtils.sendKeys(comboInput, WaitType.VISIBLE, subledgerName, "SL_COMBO_INPUT");
+        JavascriptExecutorUtils.waitForExtJS();
+
+        By option = subLedgerPickerRow(subledgerName, id);
+        WaitUtils.fluentWaitBuilder().until(driver -> {
+            driver.findElement(option).click();
+            return true;
+        });
+        ExtentLogger.info("SL_OPTION_" + subledgerName + " is clicked successfully");
+        JavascriptExecutorUtils.waitForExtJS();
+        JavascriptExecutorUtils.waitForPageLoad();
+        JavascriptExecutorUtils.waitForComponentReady();
+
+        Log.debug("[SL_NATIVE] Selected SL='{}' (id='{}') on row {}", subledgerName, id, rowIndex);
+        ReportLogger.trace("[SL_NATIVE] row=" + rowIndex + " selected SL='" + subledgerName
+                + "' id='" + (id.isEmpty() ? "—" : id) + "'");
+
+        if (referenceSite != null && !referenceSite.trim().isEmpty()) {
+            setSubLedgerReferenceSite(referenceSite, rowIndex);
+        }
     }
 
-    private ARVoucherSubLedgerInformation setSubLedgerReferenceSite(String referenceSite, int rowIndex) {
-        if (referenceSite == null || referenceSite.trim().isEmpty()) return this;
+    /**
+     * Build the locator for a row in the Sub-Ledger grid picker.
+     * When an {@code id} is supplied, match a row that contains BOTH the exact Name and the
+     * exact Id (sub-ledger names are not unique). Otherwise match by Name only.
+     */
+    private By subLedgerPickerRow(String name, String id) {
+        String n = name.trim();
+        String base = "//div[contains(@class,'x-boundlist-floating')]"
+                + "//div[contains(@class,'x-boundlist-item')";
+        if (id != null && !id.trim().isEmpty()) {
+            return By.xpath(base + " and .//td[@data-qtip=\"" + n + "\"]"
+                                 + " and .//td[@data-qtip=\"" + id.trim() + "\"]]");
+        }
+        return By.xpath(base + " and .//td[@data-qtip=\"" + n + "\"]]");
+    }
+
+    private void addSubLedgerRow() {
+        JavascriptExecutorUtils.addSubLedgerRow(DriverManager.getDriver(), AR_GRID_ITEM_ID);
+    }
+
+    private void setSubLedgerReferenceSite(String referenceSite, int rowIndex) {
+        if (referenceSite == null || referenceSite.trim().isEmpty()) return;
+        // Poll for auto-population before deciding skip vs. native path.
+        String existing = waitForReferenceSiteAutoPopulation(rowIndex);
+        if (existing != null && !existing.trim().isEmpty()) {
+            ExtentLogger.info("[AR SL RefSite] Row " + (rowIndex + 1) + ": already '" + existing
+                    + "' — not changing (skip).");
+            return;
+        }
         String inputId = JavascriptExecutorUtils.openReferenceSiteCellEditor(
-                DriverManager.getDriver(), rowIndex, "arvch_grid");
+                DriverManager.getDriver(), rowIndex, AR_GRID_ITEM_ID);
         if (inputId == null || inputId.isEmpty()) {
             ExtentLogger.warning("[AR SL RefSite] Row " + (rowIndex + 1)
                     + ": native editor did not open — using JS injection fallback for '" + referenceSite + "'");
             Log.warn("[SL_REFSITE_NATIVE] AR row {} — falling back to JS injection for '{}'", rowIndex + 1, referenceSite);
-            JavascriptExecutorUtils.setSubLedgerReferenceSite(DriverManager.getDriver(), rowIndex, referenceSite);
-            return this;
+            JavascriptExecutorUtils.setSubLedgerReferenceSite(DriverManager.getDriver(), rowIndex, referenceSite, AR_GRID_ITEM_ID);
+            return;
         }
         ExtentLogger.info("[AR SL RefSite] Row " + (rowIndex + 1) + ": native path — typing '" + referenceSite + "'");
         By comboInput = By.id(inputId);
@@ -395,20 +363,39 @@ public class ARVoucherSubLedgerInformation extends VoucherSubLedgerInformationBa
         JavascriptExecutorUtils.waitForExtJS();
         JavascriptExecutorUtils.waitForPageLoad();
         ExtentLogger.info("[AR SL RefSite] Row " + (rowIndex + 1) + ": selected '" + referenceSite + "' via native");
-        return this;
+    }
+
+    /**
+     * Waits up to {@code shortWaitSeconds} for the UI to auto-populate the Reference Site cell
+     * after a sub-ledger is selected. Returns the populated value, or {@code ""} on timeout.
+     */
+    private String waitForReferenceSiteAutoPopulation(int rowIndex) {
+        long timeoutSeconds = ConfigFactory.getWaitConfig().shortWaitSeconds();
+        try {
+            return WaitUtils.webDriverWait(timeoutSeconds).until(driver -> {
+                String val = JavascriptExecutorUtils.getSubLedgerReferenceSiteName(
+                        driver, rowIndex, AR_GRID_ITEM_ID);
+                return (val != null && !val.trim().isEmpty()) ? val : null;
+            });
+        } catch (TimeoutException e) {
+            ExtentLogger.info("[AR SL RefSite] Row " + (rowIndex + 1)
+                    + ": auto-population did not occur within " + timeoutSeconds
+                    + "s — will use native path.");
+            return "";
+        }
     }
 
     private String getSubLedgerReferenceSite(int rowIndex) {
-        return JavascriptExecutorUtils.getSubLedgerReferenceSiteName(DriverManager.getDriver(), rowIndex);
+        return JavascriptExecutorUtils.getSubLedgerReferenceSiteName(DriverManager.getDriver(), rowIndex, AR_GRID_ITEM_ID);
     }
 
-    private ARVoucherSubLedgerInformation setSubLedgerAmount(String subLedgerAmount, int rowIndex) throws InterruptedException {
+    private void setSubLedgerAmount(String subLedgerAmount, int rowIndex) throws InterruptedException {
         String inputId = JavascriptExecutorUtils.openAmountCellEditor(
-                DriverManager.getDriver(), rowIndex, "arvch_grid");
+                DriverManager.getDriver(), rowIndex, AR_GRID_ITEM_ID);
         if (inputId == null || inputId.isEmpty()) {
             throw new IllegalStateException(
                     "[SL_AMOUNT_NATIVE] Could not open Amount editor on row " + rowIndex
-                    + " for AR grid [arvch_grid]");
+                    + " for AR grid [" + AR_GRID_ITEM_ID + "]");
         }
         By amountInput = By.id(inputId);
         SeleniumUtils.clear(amountInput, "SL_AMOUNT");
@@ -417,13 +404,6 @@ public class ARVoucherSubLedgerInformation extends VoucherSubLedgerInformationBa
         // written to the underlying record, causing "Amount is required" on Save.
         SeleniumUtils.pressTab(amountInput, "SL_AMOUNT");
         JavascriptExecutorUtils.waitForExtJS();
-        return this;
-    }
-
-    private By getSubLedgerNameSelection(String subLedgerName) {
-        String xpath = String.format(SUBLEDGERSELECTION_XPATH, subLedgerName);
-        System.out.println("Generated XPath: " + xpath);
-        return By.xpath(xpath);
     }
 
     private void handlePaymentInformation(

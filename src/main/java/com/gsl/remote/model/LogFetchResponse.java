@@ -15,6 +15,20 @@ import java.util.stream.Collectors;
 @Builder(toBuilder = true)
 public class LogFetchResponse {
 
+    /** Reason a collection attempt produced no entries. Null on a normal fetch. */
+    public enum SkipReason {
+        CREDS_MISSING_WINRM,
+        CREDS_MISSING_SSH,
+        FETCH_FAILED
+    }
+
+    /**
+     * Non-null when collection was skipped or failed before producing entries. The
+     * orchestrator uses this to render a precise reason in the failure-bundle report
+     * instead of guessing from a null response.
+     */
+    SkipReason skipReason;
+
     /** Parsed and filtered log entries. May be empty but never null. */
     List<LogEntry> entries;
 
@@ -46,7 +60,7 @@ public class LogFetchResponse {
     /** Wall-clock duration of the entire fetch operation in milliseconds. */
     long           durationMs;
 
-    /** Log path patterns that were configured for this fetch (from config.properties). */
+    /** Log path patterns that were configured for this fetch (from remote-log.properties). */
     List<String>   configuredPaths;
 
     /** Start of the test time window used to filter entries (UTC). */

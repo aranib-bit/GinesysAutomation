@@ -11,6 +11,7 @@ import com.gsl.database.dialect.DbDialectFactory;
 import com.gsl.enums.CashBankType;
 import com.gsl.database.query.AdmClsQuery;
 import com.gsl.database.query.PendingAdjQuery;
+import com.gsl.database.query.ReferenceSiteQuery;
 import com.gsl.model.finance.AdmCls;
 import com.gsl.model.finance.FinGl;
 import com.gsl.model.finance.FinSl;
@@ -36,6 +37,8 @@ import com.gsl.config.WaitConfig;
 import com.gsl.utils.dataprovider.source.TestDataSource;
 import org.jdbi.v3.core.Jdbi;
 
+import java.math.BigDecimal;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -140,11 +143,12 @@ public class DbArVoucherDataSource implements TestDataSource<MergedFinanceArVouc
                     || scenario == ArVoucherScenarioType.NEG_BLANK_MANDATORY_REFERENCE
                     || scenario == ArVoucherScenarioType.BOUND_AMOUNT_MIN_VALID
                     || scenario == ArVoucherScenarioType.BOUND_AMOUNT_MIN_INVALID) {
-                // T-03 Negative & Boundary — one placeholder each, emitted for every group
-                // (the negative test method's suite block sets no arv.group → activeGroup null).
-                placeholders.add(buildPlaceholder(testMethodName, loginName, loginPwd, scenario,
-                        ArVoucherFixtureOptions.forCashBankType(CashBankType.BANK),
-                        "DB_" + scenario.name(), scenario.name()));
+                // T-03 Negative & Boundary — gated to REGRESSION_PHASE1 so mandatory suite stays lean.
+                if (matchesGroup(activeGroup, ArVoucherExecutionGroup.REGRESSION_PHASE1)) {
+                    placeholders.add(buildPlaceholder(testMethodName, loginName, loginPwd, scenario,
+                            ArVoucherFixtureOptions.forCashBankType(CashBankType.BANK),
+                            "DB_" + scenario.name(), scenario.name()));
+                }
 
             } else {
                 // FIFO_SETOFF / REFERENCE_SITEWISE_FIFO:
@@ -451,6 +455,48 @@ public class DbArVoucherDataSource implements TestDataSource<MergedFinanceArVouc
             }
         }
 
+        // 5c. Resolve Reference Site name per SL — mirrors AP step 5d.
+        //     Required by Reference Sitewise FIFO Set-Off: the FIFO popup needs one row per
+        //     SL keyed to a ref site that actually has open AR documents.
+        //     For non-RefSiteFIFO scenarios the default-site resolution is harmless (kept
+        //     symmetric with AP so future templates can read the map unconditionally).
+        Map<String, String> slToRefSiteName = new LinkedHashMap<>();
+        String defaultSiteName = ReferenceSiteQuery.resolveDefaultSiteName(jdbi);
+        for (SlNameWithId sl : pendingSlNames) {
+            String key  = PendingAdjQuery.compositeKey(sl.getSlName(), sl.getSlId());
+            FinSl finSl = finSlDao.findBySlnameAndSlid(sl.getSlName(), sl.getSlId());
+            if (finSl == null) continue;
+            AdmCls admCls  = AdmClsQuery.findByClsCode(jdbi, finSl.getClscode()).orElse(null);
+            String clstype = admCls != null ? admCls.getClstype() : null;
+            String refSite = ReferenceSiteQuery.resolveForSl(jdbi, finSl.getSlcode(), clstype, defaultSiteName);
+            slToRefSiteName.put(key, refSite);
+            Log.info("[DB] SL '{}': clstype='{}', refSite='{}'", sl.getSlName(), clstype, refSite);
+        }
+        // For REFERENCE_SITEWISE_FIFO: overwrite with the pending-balance-aware resolution
+        // (v_pending_adj grouped by ref_admsite_name, amount ceiling reserved). AR uses
+        // debit_credit = 'D' — opposite of AP's 'C'.
+        if (scenarioType == ArVoucherScenarioType.REFERENCE_SITEWISE_FIFO) {
+            for (SlNameWithId sl : pendingSlNames) {
+                String key  = PendingAdjQuery.compositeKey(sl.getSlName(), sl.getSlId());
+                FinSl finSl = finSlDao.findBySlnameAndSlid(sl.getSlName(), sl.getSlId());
+                if (finSl == null) continue;
+                BigDecimal slPending = pendingDocsBySlName.getOrDefault(key, List.of())
+                        .stream()
+                        .map(PendingSlDocument::getPending)
+                        .filter(p -> p != null && p.compareTo(BigDecimal.ZERO) > 0)
+                        .reduce(BigDecimal.ZERO, BigDecimal::add);
+                String refSiteName = ReferenceSiteQuery.findBestRefSiteForSl(
+                        jdbi, d, finSl.getSlcode(), ouCodes, "D", slPending, sl.getSlName(), sl.getSlId());
+                if (refSiteName != null) {
+                    slToRefSiteName.put(key, refSiteName);
+                    Log.info("[DB] RefSiteFIFO SL '{}': refSite='{}', slPending={}",
+                            sl.getSlName(), refSiteName, slPending);
+                } else {
+                    Log.warn("[DB] RefSiteFIFO SL '{}': no reservable reference site found.", sl.getSlName());
+                }
+            }
+        }
+
         // 7. AR Voucher doc scheme verified for user's site
         String docSchemeName = findArVoucherDocSchemeName(jdbi, d, siteCodes);
 
@@ -462,6 +508,7 @@ public class DbArVoucherDataSource implements TestDataSource<MergedFinanceArVouc
                 .pendingSlNames(pendingSlNames)
                 .pendingDocsBySlName(pendingDocsBySlName)
                 .slToArApName(slToArApName)
+                .slToRefSiteName(slToRefSiteName)
                 .cashBankType(targetCashBankType)
                 .tdsBehaviour(null)     // not applicable for AR Voucher
                 // slToTdsResolution intentionally omitted — defaults to empty map

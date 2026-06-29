@@ -174,6 +174,86 @@ public final class JavascriptExecutorUtils {
     }
 
     /**
+     * Returns the DOM element of the active ExtJS grid view so Selenium can
+     * target it for trusted wheel/mouse actions. Resolution order:
+     *   1. Active ExtJS window → first gridpanel/grid found inside it.
+     *   2. Fallback: first visible gridpanel anywhere on the page.
+     * Returns null if no grid is currently visible.
+     */
+    public static WebElement getActiveGridViewElement() {
+        String script =
+            "try {" +
+            "  var win = Ext.WindowManager.getActive();" +
+            "  if (win) {" +
+            "    var g = win.down('gridpanel') || win.down('grid');" +
+            "    if (g) return g.getView().el.dom;" +
+            "  }" +
+            "  var grids = Ext.ComponentQuery.query('gridpanel');" +
+            "  for (var i = 0; i < grids.length; i++) {" +
+            "    if (grids[i].isVisible()) return grids[i].getView().el.dom;" +
+            "  }" +
+            "  return null;" +
+            "} catch(e) { return null; }";
+        Object result = getJsExecutor().executeScript(script);
+        return result instanceof WebElement ? (WebElement) result : null;
+    }
+
+    /**
+     * Single round-trip diagnostic snapshot of the active grid's scroll state.
+     * Returns a map with:
+     *   scrollTop, clientHeight, scrollHeight (numbers)
+     *   storeCount        — currently loaded records in the (Buffered)Store
+     *   storeLoading      — true if a page fetch is in flight
+     *   topDocNumber      — text of the first rendered row's doc-number cell
+     *   bottomDocNumber   — text of the last rendered row's doc-number cell
+     *   atBottom          — true when scrollTop + clientHeight >= scrollHeight - 2
+     *
+     * Used by SelectDocumentPopup's mouse-wheel loop to (a) log the viewport
+     * doc-number range after each wheel tick and (b) decide when the grid has
+     * genuinely been scrolled to the end so a "not found" can be declared.
+     * Returns null when no grid is available.
+     */
+    @SuppressWarnings("unchecked")
+    public static Map<String, Object> getGridScrollProgress() {
+        String script =
+            "try {" +
+            "  var win = Ext.WindowManager.getActive();" +
+            "  var g = null;" +
+            "  if (win) g = win.down('gridpanel') || win.down('grid');" +
+            "  if (!g) {" +
+            "    var grids = Ext.ComponentQuery.query('gridpanel');" +
+            "    for (var i = 0; i < grids.length; i++) {" +
+            "      if (grids[i].isVisible()) { g = grids[i]; break; }" +
+            "    }" +
+            "  }" +
+            "  if (!g) return null;" +
+            "  var v = g.getView().el.dom;" +
+            "  var store = g.getStore();" +
+            "  var rows = v.querySelectorAll('tr.x-grid-row');" +
+            "  function docOf(r) {" +
+            "    if (!r) return null;" +
+            "    var c = r.querySelectorAll('td.x-grid-cell');" +
+            "    if (c.length < 2) return null;" +
+            // Column 0 = checkbox, column 1 = document number.
+            "    var i = c[1].querySelector('.x-grid-cell-inner');" +
+            "    return ((i ? i.textContent : c[1].textContent) || '').trim();" +
+            "  }" +
+            "  return {" +
+            "    scrollTop:       v.scrollTop," +
+            "    clientHeight:    v.clientHeight," +
+            "    scrollHeight:    v.scrollHeight," +
+            "    storeCount:      store ? store.getCount() : -1," +
+            "    storeLoading:    store ? !!store.isLoading() : false," +
+            "    topDocNumber:    docOf(rows[0])," +
+            "    bottomDocNumber: docOf(rows[rows.length - 1])," +
+            "    atBottom:        (v.scrollTop + v.clientHeight) >= (v.scrollHeight - 2)" +
+            "  };" +
+            "} catch(e) { return null; }";
+        Object result = getJsExecutor().executeScript(script);
+        return result instanceof Map ? (Map<String, Object>) result : null;
+    }
+
+    /**
      * LAST-RESORT strategy for SelectDocument popup.
      *
      * Uses the ExtJS public API view.focusRow(index) to scroll the virtualized
@@ -4160,48 +4240,6 @@ public final class JavascriptExecutorUtils {
                 "} catch(e){ return ''; }";
         return openCellEditorViaClick(driver, gridItemId, rowIndex,
                 "di==='referenceSiteCode' || di==='referenceSiteName'", idScript, 2, "[SL_REFSITE_NATIVE]");
-    }
-
-    /**
-     * Opens the Reference Site Name combo editor in the "Ref. Site-wise FIFO Set-Off" popup.
-     *
-     * <p>Locates the visible FIFO window via ExtJS component query (no fragile DOM id needed),
-     * adds a blank record to the store when it is empty, then calls
-     * {@code plugin.startEdit(rec, col0)} — the same reliable approach used by
-     * {@link #openSubLedgerComboEditor} for the SubLedger grid.</p>
-     *
-     * @return the combo {@code inputEl.dom.id} that Selenium can type into,
-     *         or a string starting with {@code "ERR:"} on failure
-     */
-    public static String openFifoRefSiteComboEditor(WebDriver driver) {
-        String script =
-                "try {" +
-                "  var wins = Ext.ComponentQuery.query('window');" +
-                "  var win = null;" +
-                "  for (var i = 0; i < wins.length; i++) {" +
-                "    if (wins[i].isVisible() && wins[i].title && wins[i].title.indexOf('FIFO') >= 0)" +
-                "      { win = wins[i]; break; }" +
-                "  }" +
-                "  if (!win) return 'ERR:no_window';" +
-                "  var grids = win.query('gridpanel');" +
-                "  if (!grids || !grids.length) return 'ERR:no_grid';" +
-                "  var grid = grids[0];" +
-                "  var plugin = grid.editingPlugin || grid.findPlugin('cellediting');" +
-                "  if (!plugin) return 'ERR:no_plugin';" +
-                "  var store = grid.getStore();" +
-                "  if (store.getCount() === 0) { store.add({}); }" +
-                "  var rec = store.getAt(0);" +
-                "  if (!rec) return 'ERR:no_rec';" +
-                "  var cols = grid.getColumnManager().getColumns();" +
-                "  if (!cols || !cols.length) return 'ERR:no_cols';" +
-                // Pass record object (not integer 0) to avoid the ExtJS falsy-zero bug in startEdit
-                "  plugin.startEdit(rec, cols[0]);" +
-                "  var combo = plugin.activeEditor && plugin.activeEditor.field;" +
-                "  if (!combo) return 'ERR:no_combo';" +
-                "  return combo.inputEl && combo.inputEl.dom ? combo.inputEl.dom.id : 'ERR:no_input_id';" +
-                "} catch(e) { return 'ERR:' + e.message; }";
-        Object result = ((JavascriptExecutor) driver).executeScript(script);
-        return result != null ? result.toString() : "ERR:null";
     }
 
 }

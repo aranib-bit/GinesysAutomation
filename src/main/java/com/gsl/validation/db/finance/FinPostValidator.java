@@ -40,6 +40,8 @@ public class FinPostValidator {
         List<FinPost> entries = dao.findByEntCode(entcode);
         ActualResultsHolder.get().setPostEntryCount(entries.size());
         ActualResultsHolder.get().setPostEntries(entries);
+        ReportLogger.trace("[finpost] fetched " + entries.size()
+                + " GL entries for entcode=" + entcode);
         Assert.assertFalse(entries.isEmpty(),
                 "[Level 3] No finpost rows for entcode [" + entcode
                         + "]. Posting engine may not have run.");
@@ -51,6 +53,9 @@ public class FinPostValidator {
         // Golden Rule — BLOCKING
         BigDecimal totalDebit  = dao.sumDebitByEntCode(entcode);
         BigDecimal totalCredit = dao.sumCreditByEntCode(entcode);
+        ReportLogger.trace("[finpost] golden rule: SUM(damount)=" + totalDebit
+                + " SUM(camount)=" + totalCredit
+                + " balanced=" + (totalDebit.compareTo(totalCredit) == 0));
 
         Assert.assertEquals(totalDebit.compareTo(totalCredit), 0,
                 "[Level 3] finpost NOT balanced for entcode [" + entcode

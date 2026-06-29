@@ -41,4 +41,10 @@ public final class ExtentManager {
     public static ShardKey getCurrentShardKey() {
         return shardKeyLocal.get();
     }
+
+    public static void clearAll() {
+        threadLocal.remove();
+        shardThreadLocal.remove();
+        shardKeyLocal.remove();
+    }
 }

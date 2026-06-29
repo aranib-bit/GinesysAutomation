@@ -61,7 +61,7 @@ public abstract class WebTest extends BaseTest {
                     Thread.currentThread().getId(), uiUser.username());
         } else {
             // Pool mode — blocks until a user is free (one user = one session guarantee)
-            uiUser = UserPool.acquireSet1User(UserType.UI);
+            uiUser = UserPool.acquireSet1User(UserType.UI, method.getName());
             uiUserFromPool.set(true);
         }
 
@@ -91,7 +91,7 @@ public abstract class WebTest extends BaseTest {
                         Thread.currentThread().getId(), apiUser.username());
             } else if (UserPool.hasUsersOfType(UserType.API)) {
                 // Only acquire from pool when API users are actually configured
-                apiUser = UserPool.acquireSet1User(UserType.API);
+                apiUser = UserPool.acquireSet1User(UserType.API, method.getName());
                 apiUserFromPool.set(true);
             } else {
                 // No API users configured — this is normal for UI-only tests

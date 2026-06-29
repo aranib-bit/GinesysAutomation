@@ -37,7 +37,7 @@ public abstract class MobileTest extends BaseTest {
         TestContextManager.setTestName(method.getName());
         TestContextManager.setTestId();
 
-        UserCredential uiUser = UserPool.acquireSet1User(UserType.UI);
+        UserCredential uiUser = UserPool.acquireSet1User(UserType.UI, method.getName());
         uiUserFromPool.set(true);
 
         try {

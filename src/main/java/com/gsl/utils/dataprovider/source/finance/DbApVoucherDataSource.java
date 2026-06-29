@@ -4,7 +4,6 @@ import com.gsl.config.ConfigFactory;
 import com.gsl.config.WaitConfig;
 import com.gsl.database.DatabaseManager;
 import com.gsl.database.DocumentReservationRegistry;
-import com.gsl.database.ReferenceSiteAmountRegistry;
 import com.gsl.database.DocumentSelectionResult;
 import com.gsl.database.dao.HrEmpDao;
 import com.gsl.database.dao.HrEmpOuDao;
@@ -210,8 +209,7 @@ public class DbApVoucherDataSource implements TestDataSource<MergedFinanceApVouc
                     }
 
                 // ── T-03 Negative & Boundary (advance path) ─────────────────────────────
-                //    One placeholder each; emitted for every group (the negative test method's
-                //    suite block sets no apv.group, so activeGroup is null → always matches).
+                //    Gated to REGRESSION_PHASE1 so mandatory suite stays lean.
                 } else if (scenario == ApVoucherScenarioType.NEG_BLANK_CASHBANK
                         || scenario == ApVoucherScenarioType.NEG_BLANK_CASHBANK_ADD_ROW
                         || scenario == ApVoucherScenarioType.NEG_BLANK_CASHBANK_ADD_ROW_RECOVER
@@ -220,10 +218,12 @@ public class DbApVoucherDataSource implements TestDataSource<MergedFinanceApVouc
                         || scenario == ApVoucherScenarioType.BLANK_REFERENCE_ALLOWED
                         || scenario == ApVoucherScenarioType.BOUND_AMOUNT_MIN_VALID
                         || scenario == ApVoucherScenarioType.BOUND_AMOUNT_MIN_INVALID) {
-                    batch.add(buildPlaceholder(testMethodName, loginName, scenario,
-                            ApVoucherFixtureOptions.forAdvance(CashBankType.BANK),
-                            "DB_" + scenario.name(),
-                            scenario.name()));
+                    if (matchesGroup(activeGroup, ApVoucherExecutionGroup.REGRESSION_PHASE1)) {
+                        batch.add(buildPlaceholder(testMethodName, loginName, scenario,
+                                ApVoucherFixtureOptions.forAdvance(CashBankType.BANK),
+                                "DB_" + scenario.name(),
+                                scenario.name()));
+                    }
                 }
 
             } else {
@@ -283,10 +283,12 @@ public class DbApVoucherDataSource implements TestDataSource<MergedFinanceApVouc
 
                 } else if (scenario == ApVoucherScenarioType.DOC_AMOUNT_NOT_ADJUSTED_INVALID
                         || scenario == ApVoucherScenarioType.DOC_AMOUNT_READ_ONLY) {
-                    // NEG scenarios on the document path — one placeholder, any group
-                    batch.add(buildPlaceholder(testMethodName, loginName, scenario,
-                            ApVoucherFixtureOptions.forCashBankType(CashBankType.BANK),
-                            "DB_" + scenario.name(), scenario.name()));
+                    // NEG scenarios on the document path — gated to REGRESSION_PHASE1
+                    if (matchesGroup(activeGroup, ApVoucherExecutionGroup.REGRESSION_PHASE1)) {
+                        batch.add(buildPlaceholder(testMethodName, loginName, scenario,
+                                ApVoucherFixtureOptions.forCashBankType(CashBankType.BANK),
+                                "DB_" + scenario.name(), scenario.name()));
+                    }
                 }
             }
 
@@ -477,7 +479,8 @@ public class DbApVoucherDataSource implements TestDataSource<MergedFinanceApVouc
                         .map(PendingSlDocument::getPending)
                         .filter(p -> p != null && p.compareTo(BigDecimal.ZERO) > 0)
                         .reduce(BigDecimal.ZERO, BigDecimal::add);
-                String refSiteName = findBestRefSiteForSl(jdbi, d, finSl.getSlcode(), ouCodes, slPending, sl.getSlName(), sl.getSlId());
+                String refSiteName = ReferenceSiteQuery.findBestRefSiteForSl(
+                        jdbi, d, finSl.getSlcode(), ouCodes, "C", slPending, sl.getSlName(), sl.getSlId());
                 if (refSiteName != null) {
                     slToRefSiteName.put(key, refSiteName);
                     Log.info("[DB] RefSiteFIFO SL '{}': refSite='{}', slPending={}", sl.getSlName(), refSiteName, slPending);
@@ -755,69 +758,6 @@ public class DbApVoucherDataSource implements TestDataSource<MergedFinanceApVouc
                         "'. Check appusername in config.properties."));
         HrEmpOuDao hrOuDao = jdbi.onDemand(HrEmpOuDao.class);
         return hrOuDao.findOuCodesByEcode(ecode);
-    }
-
-    // ─── Reference Site Wise FIFO — ref site resolution ──────────────────────
-
-    /**
-     * Queries {@code v_pending_adj} for the given SL, grouped by {@code ref_admsite_name},
-     * and returns the name of the first reference site for which
-     * {@link ReferenceSiteAmountRegistry#tryReserve} succeeds.
-     *
-     * <p>Sites are ordered by descending pending amount so the largest pool is tried first.
-     * Returns {@code null} if all candidates are already fully reserved by parallel threads.
-     *
-     * @param slCode     numeric finsl.slcode for the sub-ledger
-     * @param ouCodes    user's OU codes — scopes the query to the user's organisation
-     * @param slPending  total pending AP amount for this SL (from v_pending_adj documents)
-     * @param slName     sub-ledger name (used as registry key component)
-     * @param slId       sub-ledger ID (used as registry key component)
-     */
-    private static String findBestRefSiteForSl(Jdbi jdbi, DbDialect d,
-                                               long slCode, List<Long> ouCodes,
-                                               BigDecimal slPending,
-                                               String slName, String slId) {
-        if (ouCodes == null || ouCodes.isEmpty()) return null;
-
-        String inList = ouCodes.stream()
-                .map(String::valueOf)
-                .collect(Collectors.joining(","));
-
-        String sql =
-            "SELECT ref_admsite_name, SUM(pending) AS site_pending " +
-            "FROM v_pending_adj " +
-            "WHERE slcode = :slCode " +
-            "  AND admou_code IN (" + inList + ") " +
-            "  AND debit_credit = 'C' " +
-            "  AND pending > 0 " +
-            "  AND " + d.castToDate("document_date") + " <= " + d.currentDate() + " " +
-            "  AND ref_admsite_name IS NOT NULL " +
-            "GROUP BY ref_admsite_name " +
-            "ORDER BY site_pending DESC " +
-            d.limitBind("lim");
-
-        List<String[]> candidates = jdbi.withHandle(handle ->
-            handle.createQuery(sql)
-                .bind("slCode", slCode)
-                .bind("lim", 10)
-                .map((rs, ctx) -> new String[]{
-                        rs.getString("ref_admsite_name"),
-                        rs.getBigDecimal("site_pending").toPlainString()})
-                .list()
-        );
-
-        for (String[] row : candidates) {
-            String refSiteName = row[0];
-            BigDecimal sitePending = new BigDecimal(row[1]);
-            // Use slPending as the reservation amount — voucher amount equals total SL pending.
-            // Registry ceiling = sitePending (can't adjust more than ref site has pending).
-            BigDecimal ceiling = sitePending.min(slPending.compareTo(BigDecimal.ZERO) > 0
-                    ? slPending : sitePending);
-            if (ReferenceSiteAmountRegistry.tryReserve(slName, slId, refSiteName, ceiling, sitePending)) {
-                return refSiteName;
-            }
-        }
-        return null;
     }
 
     // ─── Dialect-sensitive inline queries ─────────────────────────────────────
