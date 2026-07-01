@@ -250,6 +250,12 @@ public class DbApVoucherDataSource implements TestDataSource<MergedFinanceApVouc
                         || scenario == ApVoucherScenarioType.DOC_REFERENCE_SITEWISE_FIFO) {
                     String baseId  = scenarioBaseId(scenario);
                     String scenLbl = scenarioShortLabel(scenario);
+                    // MANDATORY: Bank GL + System SL (mirrors AR Voucher MAND-03 / MAND-04)
+                    if (systemClsCode > 0 && matchesGroup(activeGroup, ApVoucherExecutionGroup.MANDATORY)) {
+                        batch.add(buildPlaceholder(testMethodName, loginName, scenario,
+                                ApVoucherFixtureOptions.forCashBankTypeAndClsCode(CashBankType.BANK, systemClsCode),
+                                baseId + "_BANK_SYSTEM", scenLbl + " | [Bank GL] | System SL"));
+                    }
                     // Phase-1: Cash GL + Bank User SL
                     if (matchesGroup(activeGroup, ApVoucherExecutionGroup.REGRESSION_PHASE1)) {
                         batch.add(buildPlaceholder(testMethodName, loginName, scenario,
@@ -511,6 +517,7 @@ public class DbApVoucherDataSource implements TestDataSource<MergedFinanceApVouc
                 .slToRefSiteName(slToRefSiteName)
                 .slToCmpCode(slToCmpCode)
                 .slToClstype(slToClstype)
+                .selectDocPaymentMode(opts.getSelectDocPaymentMode())
                 .build();
 
         // 8. Build fully populated test data for this specific scenario
@@ -563,19 +570,38 @@ public class DbApVoucherDataSource implements TestDataSource<MergedFinanceApVouc
 
         List<SelectDocumentVariant> variants = new ArrayList<>();
 
+        // For MANDATORY runs, restrict to Supplier SLs only (clstype='S').
+        // Customer / Jobber / Others / Channel classification types are explicitly omitted
+        // from the mandatory smoke suite per AR_AP_Smoke_Test_Case_Combination.xlsx.
+        List<AdmCls> eligibleTypes = (activeGroup == ApVoucherExecutionGroup.MANDATORY)
+                ? classificationTypes.stream()
+                        .filter(c -> "S".equalsIgnoreCase(c.getClstype()))
+                        .collect(java.util.stream.Collectors.toList())
+                : classificationTypes;
+
         // Group 0: mandatory baselines per classification type
-        for (AdmCls cls : classificationTypes) {
+        for (AdmCls cls : eligibleTypes) {
             variants.add(SelectDocumentCombinations.mandatoryBaselineVariant(cls));
             if (cls.getCmpcode() == 1) {
                 variants.add(SelectDocumentCombinations.mandatoryBankRandomVariant(cls));
             }
         }
 
+        // Group 0b: REGRESSION_PHASE1 baselines for non-Supplier system SLs
+        // (Customer / Jobber / Others / Channel — omitted from mandatory, belong in REGRESSION_PHASE1)
+        List<AdmCls> nonSupplierSystemTypes = classificationTypes.stream()
+                .filter(c -> c.getCmpcode() == 1 && !"S".equalsIgnoreCase(c.getClstype()))
+                .collect(java.util.stream.Collectors.toList());
+        for (AdmCls cls : nonSupplierSystemTypes) {
+            variants.add(SelectDocumentCombinations.regressionPhase1BaselineVariant(cls));
+            variants.add(SelectDocumentCombinations.regressionPhase1BankRandomVariant(cls));
+        }
+
         // Group 1: reference-uniqueness static variants (Phase-1)
         variants.addAll(SelectDocumentCombinations.group1Variants());
 
         // Group 2: per classification type — system (10 variants) or user (3 variants) each
-        for (AdmCls cls : classificationTypes) {
+        for (AdmCls cls : eligibleTypes) {
             if (cls.getCmpcode() == 1) {
                 variants.addAll(SelectDocumentCombinations.forSystemClassificationType(cls));
             } else {

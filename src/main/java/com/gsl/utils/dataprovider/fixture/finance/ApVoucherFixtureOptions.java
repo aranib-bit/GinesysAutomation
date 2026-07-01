@@ -125,6 +125,16 @@ public class ApVoucherFixtureOptions {
      */
     private final String preferredTdsType;
 
+    /**
+     * Payment mode declared by the {@link SelectDocumentVariant} for DOC_SELECT_DOCUMENT scenarios.
+     * Carried through to {@link com.gsl.utils.dataprovider.fixture.LiveDbRefs} and resolved inside
+     * {@link ApVoucherTemplateLoader#docSelectDocumentTemplate}. RANDOM resolves to CHEQUE or
+     * NEFT_RTGS only — NONE is a dedicated separate variant.
+     * Defaults to {@link SelectDocumentVariant.PaymentMode#NONE} for all non-Select-Document scenarios.
+     */
+    @Builder.Default
+    private final SelectDocumentVariant.PaymentMode selectDocPaymentMode = SelectDocumentVariant.PaymentMode.NONE;
+
     // ─── Factory methods ──────────────────────────────────────────────────────
 
     /**
@@ -284,6 +294,7 @@ public class ApVoucherFixtureOptions {
                 .glType(v.getGlType())
                 .slClsCode(v.getSlClsCode())
                 .docTypeFilter(docTypeFilter)
+                .selectDocPaymentMode(v.getPaymentMode())
                 .build();
     }
 

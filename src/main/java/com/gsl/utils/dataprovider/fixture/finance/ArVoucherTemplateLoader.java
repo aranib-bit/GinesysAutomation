@@ -93,7 +93,7 @@ public final class ArVoucherTemplateLoader {
 
         // ── 0. Resolve payment mode — enforce GL-type rules ───────────────────
         // Cash GL: always CASH (payment_mode='H' for all SL lines).
-        // Bank GL with RANDOM: resolve to NONE, CHEQUE, or NEFT/RTGS.
+        // Bank GL with RANDOM: resolve to CHEQUE or NEFT/RTGS only — NONE is a dedicated separate variant.
         SelectDocumentVariant.PaymentMode effectivePaymentMode = variant.getPaymentMode();
         if (refs.getCashBankType() == CashBankType.CASH) {
             if (effectivePaymentMode != SelectDocumentVariant.PaymentMode.CASH) {
@@ -103,7 +103,6 @@ public final class ArVoucherTemplateLoader {
             }
         } else if (effectivePaymentMode == SelectDocumentVariant.PaymentMode.RANDOM) {
             List<SelectDocumentVariant.PaymentMode> pool = List.of(
-                    SelectDocumentVariant.PaymentMode.NONE,
                     SelectDocumentVariant.PaymentMode.CHEQUE,
                     SelectDocumentVariant.PaymentMode.NEFT_RTGS);
             effectivePaymentMode = FakerUtils.randomElement(pool);

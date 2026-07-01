@@ -1,5 +1,6 @@
 package com.gsl.browser;
 
+import com.gsl.reports.ReportLogger;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 import org.openqa.selenium.JavascriptExecutor;
@@ -99,6 +100,7 @@ public final class CustomMetricsObserverInjector {
             ((JavascriptExecutor) driver).executeScript(INJECTION_SCRIPT);
         } catch (Exception e) {
             LOG.debug("[CustomMetricsObserverInjector] Injection skipped: {}", e.getMessage());
+            ReportLogger.perf("[CustomMetricsObserverInjector] Injection skipped: {}", e.getMessage());
         }
     }
 }

@@ -37,7 +37,7 @@ public abstract class FinVchMainBaseValidator {
     // ── Shared blocking fetch ─────────────────────────────────────────────────
 
     protected FinVchMain fetchAndBlock(String schemeDocno) {
-        ReportLogger.info("Level 1 — finvchmain for scheme_docno [" + schemeDocno + "]");
+        ReportLogger.db("Level 1 — finvchmain for scheme_docno [" + schemeDocno + "]");
         com.gsl.reports.ValidationBuffer.start();
         System.out.println("scheme_docno (voucherNo) is " + schemeDocno);
 
@@ -54,7 +54,7 @@ public abstract class FinVchMainBaseValidator {
         Assert.assertTrue(h.getVchcode() > 0,
                 "[Level 1] finvchmain.vchcode invalid for scheme_docno [" + schemeDocno + "]");
 
-        ReportLogger.info("Level 1 — scheme_docno [" + schemeDocno
+        ReportLogger.db("Level 1 — scheme_docno [" + schemeDocno
                 + "] resolved to vchcode [" + h.getVchcode() + "]");
         return h;
     }
@@ -83,7 +83,7 @@ public abstract class FinVchMainBaseValidator {
             ActualResultsHolder.get().setCreationDtDelaySeconds(diffSeconds);
             ActualResultsHolder.get().setCreationDtToleranceSeconds(toleranceSeconds);
             String result = diffSeconds <= toleranceSeconds ? "&#10003; within tolerance" : "&#10007; exceeds tolerance";
-            ReportLogger.info("[Level 1] creation_dt: saved at " + saveStartTime.format(TIME_FMT)
+            ReportLogger.db("[Level 1] creation_dt: saved at " + saveStartTime.format(TIME_FMT)
                     + ", DB recorded at " + h.getCreationDt().format(TIME_FMT)
                     + " (" + diffSeconds + "s delay — " + result + " of " + toleranceSeconds + "s)");
         }

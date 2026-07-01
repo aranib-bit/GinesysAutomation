@@ -5,6 +5,7 @@ import com.gsl.enums.Finance.Operations.APVoucher.TdsApplicableAmountBehaviour;
 import com.gsl.model.finance.PendingSlDocument;
 import com.gsl.model.finance.SlNameWithId;
 import com.gsl.model.finance.TdsResolution;
+import com.gsl.utils.dataprovider.fixture.finance.SelectDocumentVariant;
 import lombok.Builder;
 import lombok.Value;
 
@@ -107,4 +108,14 @@ public class LiveDbRefs {
      */
     @Builder.Default
     Map<String, String> slToClstype = Collections.emptyMap();
+
+    /**
+     * Payment mode for DOC_SELECT_DOCUMENT variants, sourced from
+     * {@link com.gsl.utils.dataprovider.fixture.finance.ApVoucherFixtureOptions#getSelectDocPaymentMode()}.
+     * RANDOM is resolved to CHEQUE or NEFT_RTGS (never NONE) inside
+     * {@link com.gsl.utils.dataprovider.fixture.finance.ApVoucherTemplateLoader#docSelectDocumentTemplate}.
+     * Defaults to NONE for all non-Select-Document scenarios (AR Voucher, Advance, etc.).
+     */
+    @Builder.Default
+    SelectDocumentVariant.PaymentMode selectDocPaymentMode = SelectDocumentVariant.PaymentMode.NONE;
 }

@@ -6,6 +6,7 @@ import com.gsl.model.finance.FinVchMain;
 import com.gsl.reports.ActualResultsHolder;
 import com.gsl.reports.ExtentLogger;
 import com.gsl.reports.ExtentManager;
+import com.gsl.reports.ReportLogger;
 import org.assertj.core.api.SoftAssertions;
 import org.testng.Assert;
 
@@ -57,21 +58,26 @@ public class ARVoucherDbValidator {
         ExtentLogger.info("══════════════════════════════════════════════════");
         ExtentLogger.info("AR Voucher DB Validation START — [" + context.getVoucherNo() + "]");
         ExtentLogger.info("══════════════════════════════════════════════════");
+        ReportLogger.db("AR Voucher DB Validation START — [{}]", context.getVoucherNo());
 
         // Level 1 field assertions are deferred so that a nartext/vchdt mismatch does NOT
         // block Levels 2–4. assertAll() is called after Level 4a completes.
         SoftAssertions deferredLevel1 = new SoftAssertions();
 
         ExtentLogger.info("── Level 1 : finvchmain ──");
+        ReportLogger.db("── Level 1 : finvchmain ──");
         FinVchMain header = finVchMainValidator.validate(context, deferredLevel1);
 
         ExtentLogger.info("── Level 2 : finvchdet ──");
+        ReportLogger.db("── Level 2 : finvchdet ──");
         finVchDetValidator.validate(context, header);
 
         ExtentLogger.info("── Level 3 : finpost (GL balance) ──");
+        ReportLogger.db("── Level 3 : finpost (GL balance) ──");
         List<FinPost> postEntries = finPostValidator.validate(context, header);
 
         ExtentLogger.info("── Level 4a: fintag (adjustment tagging) ──");
+        ReportLogger.db("── Level 4a: fintag (adjustment tagging) ──");
         finTagValidator.validate(context, header, postEntries);
 
         // Level 4b (AdjAmtCascadeValidator) — temporarily disabled.
@@ -84,6 +90,7 @@ public class ARVoucherDbValidator {
         ExtentLogger.info("══════════════════════════════════════════════════");
         ExtentLogger.info("AR Voucher DB Validation COMPLETE — ALL PASSED [" + context.getVoucherNo() + "]");
         ExtentLogger.info("══════════════════════════════════════════════════");
+        ReportLogger.db("AR Voucher DB Validation COMPLETE — ALL PASSED [{}]", context.getVoucherNo());
 
     }
 }

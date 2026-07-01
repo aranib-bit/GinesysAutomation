@@ -143,6 +143,64 @@ public final class ReportLogger {
         ExtentLogger.infoCategorized(category, ReportSeverity.HIGH, message);
     }
 
+    // ── Category shorthand helpers ────────────────────────────────────────────
+    // All methods delegate to info/critical/high above — no new MDC plumbing.
+
+    public static void business(String msg)              { info(LogCategory.BUSINESS, msg); }
+    public static void business(String fmt, Object... a) { info(LogCategory.BUSINESS, fmt(fmt, a)); }
+
+    public static void db(String msg)                    { info(LogCategory.DB, msg); }
+    public static void db(String fmt, Object... a)       { info(LogCategory.DB, fmt(fmt, a)); }
+    public static void dbWarn(String msg)                { high(LogCategory.DB, msg); }
+    public static void dbWarn(String fmt, Object... a)   { high(LogCategory.DB, fmt(fmt, a)); }
+    public static void dbError(String msg)               { critical(LogCategory.DB, msg); }
+    public static void dbError(String fmt, Object... a)  { critical(LogCategory.DB, fmt(fmt, a)); }
+
+    public static void uiAction(String msg)              { info(LogCategory.UI_ACTION, msg); }
+    public static void uiAction(String fmt, Object... a) { info(LogCategory.UI_ACTION, fmt(fmt, a)); }
+
+    public static void validation(String msg)               { info(LogCategory.VALIDATION, msg); }
+    public static void validation(String fmt, Object... a)  { info(LogCategory.VALIDATION, fmt(fmt, a)); }
+    public static void validationWarn(String msg)           { high(LogCategory.VALIDATION, msg); }
+    public static void validationWarn(String fmt, Object... a) { high(LogCategory.VALIDATION, fmt(fmt, a)); }
+    public static void validationError(String msg)          { critical(LogCategory.VALIDATION, msg); }
+    public static void validationError(String fmt, Object... a) { critical(LogCategory.VALIDATION, fmt(fmt, a)); }
+
+    public static void network(String msg)               { info(LogCategory.NETWORK, msg); }
+    public static void network(String fmt, Object... a)  { info(LogCategory.NETWORK, fmt(fmt, a)); }
+    public static void networkWarn(String msg)           { high(LogCategory.NETWORK, msg); }
+    public static void networkWarn(String fmt, Object... a) { high(LogCategory.NETWORK, fmt(fmt, a)); }
+    public static void networkError(String msg)          { critical(LogCategory.NETWORK, msg); }
+    public static void networkError(String fmt, Object... a) { critical(LogCategory.NETWORK, fmt(fmt, a)); }
+
+    public static void js(String msg)                    { info(LogCategory.JS, msg); }
+    public static void js(String fmt, Object... a)       { info(LogCategory.JS, fmt(fmt, a)); }
+    public static void jsWarn(String msg)                { high(LogCategory.JS, msg); }
+    public static void jsWarn(String fmt, Object... a)   { high(LogCategory.JS, fmt(fmt, a)); }
+    public static void jsError(String msg)               { critical(LogCategory.JS, msg); }
+    public static void jsError(String fmt, Object... a)  { critical(LogCategory.JS, fmt(fmt, a)); }
+
+    public static void perf(String msg)                  { info(LogCategory.PERF, msg); }
+    public static void perf(String fmt, Object... a)     { info(LogCategory.PERF, fmt(fmt, a)); }
+
+    public static void rca(String msg)                   { info(LogCategory.RCA, msg); }
+    public static void rca(String fmt, Object... a)      { info(LogCategory.RCA, fmt(fmt, a)); }
+    public static void rcaWarn(String msg)               { high(LogCategory.RCA, msg); }
+    public static void rcaWarn(String fmt, Object... a)  { high(LogCategory.RCA, fmt(fmt, a)); }
+    public static void rcaError(String msg)              { critical(LogCategory.RCA, msg); }
+    public static void rcaError(String fmt, Object... a) { critical(LogCategory.RCA, fmt(fmt, a)); }
+
+    public static void framework(String msg)               { info(LogCategory.FRAMEWORK, msg); }
+    public static void framework(String fmt, Object... a)  { info(LogCategory.FRAMEWORK, fmt(fmt, a)); }
+    public static void frameworkWarn(String msg)           { high(LogCategory.FRAMEWORK, msg); }
+    public static void frameworkWarn(String fmt, Object... a) { high(LogCategory.FRAMEWORK, fmt(fmt, a)); }
+    public static void frameworkError(String msg)          { critical(LogCategory.FRAMEWORK, msg); }
+    public static void frameworkError(String fmt, Object... a) { critical(LogCategory.FRAMEWORK, fmt(fmt, a)); }
+
+    private static String fmt(String template, Object... args) {
+        return org.slf4j.helpers.MessageFormatter.arrayFormat(template, args).getMessage();
+    }
+
     /** Logs raw HTML inline on the current Extent test. Log4j2 is skipped (HTML not readable in file). */
     public static void infoHtml(String html) {
         ExtentLogger.infoHtml(html);

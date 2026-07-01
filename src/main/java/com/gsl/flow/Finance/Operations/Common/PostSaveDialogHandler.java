@@ -58,22 +58,22 @@ public enum PostSaveDialogHandler {
     public DocumentMessageBox handle(DocumentPopup savePopup, PostSaveSpec spec) {
         DocumentMessageBox box;
         if (spec.isNeedsPaymentInfoWarning()) {
-            ReportLogger.info("Post-save dialog: payment-info-check warning for " + this
+            ReportLogger.business("Post-save dialog: payment-info-check warning for " + this
                     + " (\"" + warning.getMessageSubstring() + "\") — clicking proceed");
             box = savePopup.verifyPaymentInfoCheckWarning(warning).clickProceed(warning);
         } else {
-            ReportLogger.info("Post-save: no payment-info warning expected — waiting for message box");
+            ReportLogger.business("Post-save: no payment-info warning expected — waiting for message box");
             box = savePopup.waitForMessageBox();
         }
 
         if (spec.isTdsProvided()) {
-            ReportLogger.info("Post-save: TDS provided — applying " + this + " post-save TDS handling");
+            ReportLogger.business("Post-save: TDS provided — applying " + this + " post-save TDS handling");
             box = tdsFlow.apply(box);
             if (box == null) {
                 ReportLogger.warn("TDS decision flow rejected journal creation — no success message box");
             }
         }
-        ReportLogger.info("All post-save dialogs handled — after OK, form will close and return to "
+        ReportLogger.business("All post-save dialogs handled — after OK, form will close and return to "
                 + this.name() + " Voucher List");
         return box;
     }

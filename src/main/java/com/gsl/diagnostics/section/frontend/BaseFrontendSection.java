@@ -1,5 +1,6 @@
 package com.gsl.diagnostics.section.frontend;
 
+import com.gsl.reports.ReportLogger;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 import org.openqa.selenium.JavascriptExecutor;
@@ -92,6 +93,7 @@ public abstract class BaseFrontendSection implements FrontendPerformanceSection 
 
             } catch (Exception e) {
                 LOG.warn("[BaseFrontendSection] Collection failed: {}", e.getMessage());
+            ReportLogger.perf("[BaseFrontendSection] Collection failed: {}", e.getMessage());
             }
         }
 

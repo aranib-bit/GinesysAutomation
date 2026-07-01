@@ -1,5 +1,6 @@
 package com.gsl.browser.injector;
 
+import com.gsl.reports.ReportLogger;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 import org.openqa.selenium.JavascriptExecutor;
@@ -232,6 +233,7 @@ public final class AngularFrontendInjector implements FrontendDiagnosticsInjecto
             js.executeScript(ANGULAR_SCRIPT);
         } catch (Exception e) {
             LOG.debug("[AngularFrontendInjector] Injection skipped: {}", e.getMessage());
+            ReportLogger.js("[AngularFrontendInjector] Injection skipped: {}", e.getMessage());
         }
     }
 

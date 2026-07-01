@@ -1,5 +1,6 @@
 package com.gsl.browser.injector;
 
+import com.gsl.reports.ReportLogger;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 import org.openqa.selenium.JavascriptExecutor;
@@ -298,6 +299,7 @@ public final class ExtJsFrontendInjector implements FrontendDiagnosticsInjector 
             js.executeScript(EXTJS_SCRIPT);
         } catch (Exception e) {
             LOG.debug("[ExtJsFrontendInjector] Injection skipped: {}", e.getMessage());
+            ReportLogger.js("[ExtJsFrontendInjector] Injection skipped: {}", e.getMessage());
         }
     }
 

@@ -6,6 +6,7 @@ import com.gsl.driver.DriverManager;
 import com.gsl.enums.WaitType;
 import com.gsl.pages.enums.CommonButton;
 import com.gsl.reports.ReportLogger;
+import com.gsl.reports.StepExecutor;
 import org.openqa.selenium.By;
 import org.openqa.selenium.NoSuchElementException;
 import org.openqa.selenium.WebDriver;
@@ -83,7 +84,7 @@ public class LoginPage {
             }
 
             click(yesButton, WaitType.CLICKABLE, "Concurrent Session Yes Button");
-            ReportLogger.info("Concurrent-session prompt detected — clicked 'Yes' to log out the "
+            ReportLogger.business("Concurrent-session prompt detected — clicked 'Yes' to log out the "
                     + "stale session and continue login.");
 
             // Wait briefly for the prompt to clear; if it persists, takeover failed → skip.
@@ -133,11 +134,21 @@ public class LoginPage {
 
     @LogStep("Login to Application")
     public HomePage loginToApplication(String username, String password) {
-        return checkSplashScreenLoader()
-                .setUserName(username)
-                .setPassword(password)
-                .setLogin()
-                .handleConcurrentSessionPopup()
-                .checkAuthenticationLoader();
+        StepExecutor.step("Pre-Login: Wait for App to Load", () ->
+                checkSplashScreenLoader());
+
+        StepExecutor.step("Enter Credentials", () -> {
+            setUserName(username);
+            setPassword(password);
+        });
+
+        final HomePage[] result = {null};
+        StepExecutor.step("Submit & Authenticate", () -> {
+            setLogin();
+            handleConcurrentSessionPopup();
+            result[0] = checkAuthenticationLoader();
+        });
+
+        return result[0];
     }
 }

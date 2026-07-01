@@ -28,14 +28,17 @@ public final class JavascriptExecutorUtils {
     }
 
     public static void scrollToElement(WebElement element) {
+        ReportLogger.uiAction("jsScrollToElement element={}", element);
         getJsExecutor().executeScript("arguments[0].scrollIntoView({behavior: 'smooth', block: 'center'});", element);
     }
 
     public static void scrollToElement(By by) {
+        ReportLogger.uiAction("jsScrollToElement {}", by);
         scrollToElement(findElement(by));
     }
 
     public static void scrollIntoViewForced(WebElement element) {
+        ReportLogger.uiAction("jsScrollIntoViewForced element={}", element);
         getJsExecutor().executeScript("arguments[0].scrollIntoView(true);", element);
     }
 
@@ -340,10 +343,12 @@ public final class JavascriptExecutorUtils {
     }
 
     public static void click(WebElement element) {
+        ReportLogger.uiAction("jsClick element={}", element);
         getJsExecutor().executeScript("arguments[0].click();", element);
     }
 
     public static void click(By by) {
+        ReportLogger.uiAction("jsClick {}", by);
         click(findElement(by));
     }
 
@@ -364,6 +369,7 @@ public final class JavascriptExecutorUtils {
     }
 
     public static Object executeScript(String script, Object... args) {
+        ReportLogger.uiAction("jsExec: {}", script.length() > 120 ? script.substring(0, 120) + "…" : script);
         return getJsExecutor().executeScript(script, args);
     }
 

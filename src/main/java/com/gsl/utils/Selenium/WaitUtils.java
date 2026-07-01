@@ -3,6 +3,7 @@ package com.gsl.utils.Selenium;
 import com.gsl.config.ConfigFactory;
 import com.gsl.driver.DriverManager;
 import com.gsl.enums.WaitType;
+import com.gsl.reports.ReportLogger;
 import com.gsl.reports.WaitDurationBuffer;
 import org.openqa.selenium.*;
 import org.openqa.selenium.support.ui.ExpectedConditions;
@@ -61,30 +62,37 @@ public final class WaitUtils {
     // ── Expected-condition waits (public, reusable; default polling = no timing change) ──
 
     public static WebElement untilClickable(By by) {
+        ReportLogger.uiAction("waitUntilClickable {}", by);
         return webDriverWait().until(ExpectedConditions.elementToBeClickable(by));
     }
 
     public static WebElement untilClickable(By by, long seconds) {
+        ReportLogger.uiAction("waitUntilClickable {}s {}", seconds, by);
         return webDriverWait(seconds).until(ExpectedConditions.elementToBeClickable(by));
     }
 
     public static WebElement untilPresent(By by) {
+        ReportLogger.uiAction("waitUntilPresent {}", by);
         return webDriverWait().until(ExpectedConditions.presenceOfElementLocated(by));
     }
 
     public static WebElement untilPresent(By by, long seconds) {
+        ReportLogger.uiAction("waitUntilPresent {}s {}", seconds, by);
         return webDriverWait(seconds).until(ExpectedConditions.presenceOfElementLocated(by));
     }
 
     public static WebElement untilVisible(By by) {
+        ReportLogger.uiAction("waitUntilVisible {}", by);
         return webDriverWait().until(ExpectedConditions.visibilityOfElementLocated(by));
     }
 
     public static WebElement untilVisible(By by, long seconds) {
+        ReportLogger.uiAction("waitUntilVisible {}s {}", seconds, by);
         return webDriverWait(seconds).until(ExpectedConditions.visibilityOfElementLocated(by));
     }
 
     public static boolean untilInvisible(By by) {
+        ReportLogger.uiAction("waitUntilInvisible {}", by);
         return webDriverWait().until(ExpectedConditions.invisibilityOfElementLocated(by));
     }
 
@@ -104,6 +112,7 @@ public final class WaitUtils {
      * re-checks more often. Lives here so any util/test can reuse it.
      */
     public static WebElement fluentClickable(By by) {
+        ReportLogger.uiAction("fluentClickable {}", by);
         return fluentWaitBuilder().until(ExpectedConditions.elementToBeClickable(by));
     }
 

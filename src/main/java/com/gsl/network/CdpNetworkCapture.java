@@ -2,6 +2,7 @@ package com.gsl.network;
 
 import com.gsl.browser.AdvancedJsLogger;
 import com.gsl.config.ConfigFactory;
+import com.gsl.reports.ReportLogger;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 import org.openqa.selenium.WebDriver;
@@ -126,8 +127,10 @@ public final class CdpNetworkCapture implements NetworkCapture {
 
             started = true;
             LOG.debug("[CdpNetworkCapture] CDP network capture started.");
+            ReportLogger.network("[CdpNetworkCapture] CDP network capture started.");
         } catch (Exception ex) {
             LOG.warn("[CdpNetworkCapture] Failed to start: {}", ex.getMessage());
+            ReportLogger.networkError("[CdpNetworkCapture] Failed to start: {}", ex.getMessage());
         }
     }
 

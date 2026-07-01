@@ -45,12 +45,12 @@ public class FinTagValidator {
         List<SelectDocument> selectDocs = data.getSelectDocumentList();
 
         if (selectDocs == null || selectDocs.isEmpty()) {
-            ReportLogger.info("Level 4a — skipped [" + voucherNo + "]: ADVANCE_PAYMENT (no SelectDocument)");
+            ReportLogger.db("Level 4a — skipped [" + voucherNo + "]: ADVANCE_PAYMENT (no SelectDocument)");
             ActualResultsHolder.get().setTagCount(-1);
             return;
         }
 
-        ReportLogger.info("Level 4a — fintag validation for voucherNo [" + voucherNo + "]");
+        ReportLogger.db("Level 4a — fintag validation for voucherNo [" + voucherNo + "]");
         com.gsl.reports.ValidationBuffer.start();
 
         long vchcode = header.getVchcode();
@@ -58,7 +58,7 @@ public class FinTagValidator {
         ActualResultsHolder.get().setTagCount(tags.size());
 
         if (tags.isEmpty()) {
-            ReportLogger.info("Level 4a — no fintag rows found for entcode1 (vchcode) [" + vchcode + "]");
+            ReportLogger.db("Level 4a — no fintag rows found for entcode1 (vchcode) [" + vchcode + "]");
             return;
         }
 
@@ -98,7 +98,7 @@ public class FinTagValidator {
         com.gsl.reports.ValidationBuffer.flushAsPreBlock();
         ReportLogger.infoLabeledTable("fintag rows", buildTagTable(tags));
         ReportLogger.infoHtml(buildLevel4aSummary(tags.size(), totalTagged, header.getDamount()));
-        ReportLogger.info("Level 4a — PASSED for voucherNo [" + voucherNo + "]");
+        ReportLogger.db("Level 4a — PASSED for voucherNo [" + voucherNo + "]");
     }
 
     private static String[][] buildTagTable(List<FinTag> rows) {

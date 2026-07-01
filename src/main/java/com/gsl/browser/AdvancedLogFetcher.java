@@ -1,6 +1,7 @@
 package com.gsl.browser;
 
 import com.gsl.driver.DriverManager;
+import com.gsl.reports.ReportLogger;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 import org.openqa.selenium.JavascriptExecutor;
@@ -72,6 +73,7 @@ public final class AdvancedLogFetcher {
             }
         } catch (Exception e) {
             LOG.warn("[AdvancedLogFetcher] Error fetching browser logs: {}", e.getMessage());
+            ReportLogger.jsWarn("[AdvancedLogFetcher] Error fetching browser logs: {}", e.getMessage());
         }
         return records;
     }

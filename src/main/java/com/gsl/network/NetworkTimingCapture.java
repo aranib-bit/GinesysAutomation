@@ -7,6 +7,7 @@ import com.gsl.model.network.CallFrameEntry;
 import com.gsl.model.network.NetworkTimingSnapshot;
 import com.gsl.model.network.RequestCookieEntry;
 import com.gsl.model.network.ServerTimingEntry;
+import com.gsl.reports.ReportLogger;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 import org.openqa.selenium.devtools.DevTools;
@@ -96,8 +97,10 @@ public final class NetworkTimingCapture {
 
             registerListeners(devTools, netCfg);
             LOG.debug("[NetworkTimingCapture] Timing listeners attached.");
+            ReportLogger.network("[NetworkTimingCapture] Timing listeners attached.");
         } catch (Exception ex) {
             LOG.warn("[NetworkTimingCapture] Failed to attach listeners: {}", ex.getMessage());
+            ReportLogger.networkError("[NetworkTimingCapture] Failed to attach listeners: {}", ex.getMessage());
         }
     }
 

@@ -33,7 +33,7 @@ public class FinPostValidator {
         String entcode = String.valueOf(header.getVchcode());
         String voucherNo = context.getVoucherNo();
 
-        ReportLogger.info("Level 3 — finpost GL validation for entcode [" + entcode + "]");
+        ReportLogger.db("Level 3 — finpost GL validation for entcode [" + entcode + "]");
         com.gsl.reports.ValidationBuffer.start();
 
         // Existence — BLOCKING
@@ -69,7 +69,7 @@ public class FinPostValidator {
         com.gsl.reports.ValidationBuffer.flushAsPreBlock();
         ReportLogger.infoLabeledTable("finpost rows", buildPostTable(entries));
         ReportLogger.infoHtml(buildLevel3Summary(entries.size(), totalDebit));
-        ReportLogger.info("Level 3 — PASSED: entcode [" + entcode + "] voucherNo [" + voucherNo + "] " + entries.size() + " GL entries balanced at " + totalDebit);
+        ReportLogger.db("Level 3 — PASSED: entcode [" + entcode + "] voucherNo [" + voucherNo + "] " + entries.size() + " GL entries balanced at " + totalDebit);
         return entries;
     }
 

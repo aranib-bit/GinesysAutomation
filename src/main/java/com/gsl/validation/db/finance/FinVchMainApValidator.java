@@ -43,7 +43,7 @@ public class FinVchMainApValidator extends FinVchMainBaseValidator {
         com.gsl.reports.ValidationBuffer.flushAsPreBlock();
         ReportLogger.infoLabeledTable("finvchmain", buildMainTable(h));
         ReportLogger.infoHtml(fieldSummary);
-        ReportLogger.info("Level 1 — field checks deferred; remaining levels will run regardless");
+        ReportLogger.db("Level 1 — field checks deferred; remaining levels will run regardless");
         return h;
     }
 }

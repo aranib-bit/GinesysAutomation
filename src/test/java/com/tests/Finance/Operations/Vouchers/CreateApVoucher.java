@@ -88,7 +88,7 @@ public class CreateApVoucher extends WebTest {
         StepExecutor.step("Login to Application", () -> {
             UserCredential u = DriverManager.getCurrentUser();
             homeRef[0] = new LoginPage().loginToApplication(u.username(), u.password());
-            ReportLogger.info("Logged in as: " + u.username());
+            ReportLogger.business("Logged in as: " + u.username());
         });
 
         // ── Step 2: Navigate ──────────────────────────────────────────────────────
@@ -98,7 +98,7 @@ public class CreateApVoucher extends WebTest {
                     MainMenuType.OPERATIONS,
                     OperationsMenuType.APVOUCHER,
                     ApVoucherListPage.class);
-            ReportLogger.info("AP Voucher list page opened");
+            ReportLogger.business("AP Voucher list page opened");
         });
 
         // ── Step 3: Document header ───────────────────────────────────────────────
@@ -106,12 +106,12 @@ public class CreateApVoucher extends WebTest {
             addRef[0] = listRef[0].clickAdd()
                     .fillDocumentHeader(testData.getDocumentInformation());
             var docInfo = addRef[0].getDocumentInformation();
-            ReportLogger.info("Doc Scheme  (UI): " + docInfo.getDocScheme());
-            ReportLogger.info("Doc Date    (UI): " + docInfo.getDocumentDate());
-            ReportLogger.info("Reference   (UI): " + docInfo.getReference());
-            ReportLogger.info("Cash / Bank (UI): " + docInfo.getCashBank());
-            ReportLogger.info("On Account  (UI): " + docInfo.getOnAccount());
-            ReportLogger.info("Remarks     (UI): " + docInfo.getRemarks());
+            ReportLogger.business("Doc Scheme  (UI): " + docInfo.getDocScheme());
+            ReportLogger.business("Doc Date    (UI): " + docInfo.getDocumentDate());
+            ReportLogger.business("Reference   (UI): " + docInfo.getReference());
+            ReportLogger.business("Cash / Bank (UI): " + docInfo.getCashBank());
+            ReportLogger.business("On Account  (UI): " + docInfo.getOnAccount());
+            ReportLogger.business("Remarks     (UI): " + docInfo.getRemarks());
             ActualResultsHolder.get().setUiOwnerSite(docInfo.getOwnerSite());
             ActualResultsHolder.get().setUiCashBank(docInfo.getCashBank());
             ActualResultsHolder.get().setUiOnAccount(docInfo.getOnAccount());
@@ -122,7 +122,7 @@ public class CreateApVoucher extends WebTest {
         // attach directly under each row group, and the parent timer covers the full duration.
         StepExecutor.step("Fill Sub-Ledger Information", () -> {
             addRef[0].fillSubLedgerRowsForAdvance(testData, true);
-            ReportLogger.info("Sub-ledger section complete: "
+            ReportLogger.business("Sub-ledger section complete: "
                     + testData.getSubLedgerInformationList().size() + " rows");
             testData.getSubLedgerInformationList().forEach(sl -> {
                 String key = (sl.getId() != null && !sl.getId().isBlank()) ? sl.getId() : sl.getSubLedger();
@@ -134,7 +134,7 @@ public class CreateApVoucher extends WebTest {
             });
             if (testData.isTdsProvided()) {
                 addRef[0].fillTdsAndNetPayable(testData);
-                ReportLogger.info("TDS rows filled: " + testData.getTdsAndNetPayableList().size());
+                ReportLogger.business("TDS rows filled: " + testData.getTdsAndNetPayableList().size());
             }
         });
 
@@ -161,13 +161,13 @@ public class CreateApVoucher extends WebTest {
                 msgBoxRef[0].clickOk();
             }
             addRef[0].close().clickYes();   // returns to AP Voucher list
-            ReportLogger.info("Voucher page closed, returned to list");
+            ReportLogger.business("Voucher page closed, returned to list");
         });
 
         // ── Step 7: Logout (terminal) ─────────────────────────────────────────────
         StepExecutor.step("Logout", () -> {
             new HomePage().logoutFromApplication();
-            ReportLogger.info("Logged out of application");
+            ReportLogger.business("Logged out of application");
         });
 
         // ── Step 8: Database Validation ───────────────────────────────────────────
@@ -233,7 +233,7 @@ public class CreateApVoucher extends WebTest {
         StepExecutor.step("Login to Application", () -> {
             UserCredential u = DriverManager.getCurrentUser();
             homeRef[0] = new LoginPage().loginToApplication(u.username(), u.password());
-            ReportLogger.info("Logged in as: " + u.username());
+            ReportLogger.business("Logged in as: " + u.username());
         });
 
         // ── Step 2: Navigate ──────────────────────────────────────────────────────
@@ -243,7 +243,7 @@ public class CreateApVoucher extends WebTest {
                     MainMenuType.OPERATIONS,
                     OperationsMenuType.APVOUCHER,
                     ApVoucherListPage.class);
-            ReportLogger.info("AP Voucher list page opened");
+            ReportLogger.business("AP Voucher list page opened");
         });
 
         // ── Step 3: Document header ───────────────────────────────────────────────
@@ -251,12 +251,12 @@ public class CreateApVoucher extends WebTest {
             addRef[0] = listRef[0].clickAdd()
                     .fillDocumentHeader(testData.getDocumentInformation());
             var docInfo = addRef[0].getDocumentInformation();
-            ReportLogger.info("Doc Scheme  (UI): " + docInfo.getDocScheme());
-            ReportLogger.info("Doc Date    (UI): " + docInfo.getDocumentDate());
-            ReportLogger.info("Reference   (UI): " + docInfo.getReference());
-            ReportLogger.info("Cash / Bank (UI): " + docInfo.getCashBank());
-            ReportLogger.info("On Account  (UI): " + docInfo.getOnAccount());
-            ReportLogger.info("Remarks     (UI): " + docInfo.getRemarks());
+            ReportLogger.business("Doc Scheme  (UI): " + docInfo.getDocScheme());
+            ReportLogger.business("Doc Date    (UI): " + docInfo.getDocumentDate());
+            ReportLogger.business("Reference   (UI): " + docInfo.getReference());
+            ReportLogger.business("Cash / Bank (UI): " + docInfo.getCashBank());
+            ReportLogger.business("On Account  (UI): " + docInfo.getOnAccount());
+            ReportLogger.business("Remarks     (UI): " + docInfo.getRemarks());
             ActualResultsHolder.get().setUiOwnerSite(docInfo.getOwnerSite());
             ActualResultsHolder.get().setUiCashBank(docInfo.getCashBank());
             ActualResultsHolder.get().setUiOnAccount(docInfo.getOnAccount());
@@ -265,7 +265,7 @@ public class CreateApVoucher extends WebTest {
         // ── Step 4: Sub-ledger rows + SelectDocument + FIFO + Payment ────────────
         StepExecutor.step("Fill Sub-Ledger Information", () -> {
             addRef[0].fillSubLedgerRowsForDocument(testData, true);
-            ReportLogger.info("Sub-ledger section complete: "
+            ReportLogger.business("Sub-ledger section complete: "
                     + testData.getSubLedgerInformationList().size() + " rows");
         });
 
@@ -300,13 +300,13 @@ public class CreateApVoucher extends WebTest {
                 msgBoxRef[0].clickOk();
             }
             addRef[0].close().clickYes();   // returns to AP Voucher list
-            ReportLogger.info("Voucher page closed, returned to list");
+            ReportLogger.business("Voucher page closed, returned to list");
         });
 
         // ── Step 7: Logout (terminal) ─────────────────────────────────────────────
         StepExecutor.step("Logout", () -> {
             new HomePage().logoutFromApplication();
-            ReportLogger.info("Logged out of application");
+            ReportLogger.business("Logged out of application");
         });
 
         // ── Step 8: Database Validation ───────────────────────────────────────────
@@ -376,7 +376,7 @@ public class CreateApVoucher extends WebTest {
         StepExecutor.step("Login to Application", () -> {
             UserCredential u = DriverManager.getCurrentUser();
             homeRef[0] = new LoginPage().loginToApplication(u.username(), u.password());
-            ReportLogger.info("Logged in as: " + u.username());
+            ReportLogger.business("Logged in as: " + u.username());
         });
 
         // ── Step 2: Navigate ──────────────────────────────────────────────────────
@@ -386,13 +386,13 @@ public class CreateApVoucher extends WebTest {
                     MainMenuType.OPERATIONS,
                     OperationsMenuType.APVOUCHER,
                     ApVoucherListPage.class);
-            ReportLogger.info("AP Voucher list page opened");
+            ReportLogger.business("AP Voucher list page opened");
         });
 
         // ── Step 3: Open Add form ─────────────────────────────────────────────────
         StepExecutor.step("Open Add Form", () -> {
             addRef[0] = listRef[0].clickAdd();
-            ReportLogger.info("Scenario: " + testData.getScenarioType()
+            ReportLogger.business("Scenario: " + testData.getScenarioType()
                     + (testData.getExpectedValidation() != null
                         ? " | expect error: " + testData.getExpectedValidation().expectedMessage()
                         : " | expect: successful save"));

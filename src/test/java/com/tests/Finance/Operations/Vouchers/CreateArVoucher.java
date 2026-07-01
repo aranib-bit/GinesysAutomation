@@ -39,7 +39,7 @@ import org.testng.asserts.SoftAssert;
 public class CreateArVoucher extends WebTest {
 
     @FrameworkAnnotation(value = TestAuthor.ARANI, module = MainModuleType.FINANCE, subModule = "FinanceARVoucher", operation = AppOperation.ADD)
-    @TestCaseId("FIN-AR-ADD")
+    @TestCaseId("FIN-AR-ADD-DOC")
     @Test(description = "Create AR Voucher",   // P2: human-readable sentence set dynamically in TestListener
             dataProvider = "dataSupplier", dataProviderClass = MergedFinArVoucherDataSupplier.class)
     public void createArVoucher(UserCredential user, MergedFinanceArVoucherData data) {
@@ -90,7 +90,7 @@ public class CreateArVoucher extends WebTest {
         StepExecutor.step("Login to Application", () -> {
             UserCredential u = DriverManager.getCurrentUser();
             homeRef[0] = new LoginPage().loginToApplication(u.username(), u.password());
-            ReportLogger.info("Logged in as: " + u.username());
+            ReportLogger.business("Logged in as: " + u.username());
         });
 
         // ── Step 2: Navigate ──────────────────────────────────────────────────────
@@ -100,7 +100,7 @@ public class CreateArVoucher extends WebTest {
                     MainMenuType.OPERATIONS,
                     OperationsMenuType.ARVOUCHER,
                     ArVoucherListPage.class);
-            ReportLogger.info("AR Voucher list page opened");
+            ReportLogger.business("AR Voucher list page opened");
         });
 
         // ── Step 3: Document header ───────────────────────────────────────────────
@@ -108,11 +108,11 @@ public class CreateArVoucher extends WebTest {
             addRef[0] = listRef[0].clickAdd()
                     .fillDocumentHeader(testData.getDocumentInformation());
             var docInfo = addRef[0].getDocumentInformation();
-            ReportLogger.info("Doc Scheme  (UI): " + docInfo.getDocScheme());
-            ReportLogger.info("Doc Date    (UI): " + docInfo.getDocumentDate());
-            ReportLogger.info("Reference   (UI): " + docInfo.getReference());
-            ReportLogger.info("Cash / Bank (UI): " + docInfo.getCashBank());
-            ReportLogger.info("Remarks     (UI): " + docInfo.getRemarks());
+            ReportLogger.business("Doc Scheme  (UI): " + docInfo.getDocScheme());
+            ReportLogger.business("Doc Date    (UI): " + docInfo.getDocumentDate());
+            ReportLogger.business("Reference   (UI): " + docInfo.getReference());
+            ReportLogger.business("Cash / Bank (UI): " + docInfo.getCashBank());
+            ReportLogger.business("Remarks     (UI): " + docInfo.getRemarks());
             ActualResultsHolder.get().setUiOwnerSite(docInfo.getOwnerSite());
             ActualResultsHolder.get().setUiCashBank(docInfo.getCashBank());
         });
@@ -120,7 +120,7 @@ public class CreateArVoucher extends WebTest {
         // ── Step 4: Sub-ledger rows + adjustments + payment ───────────────────────
         StepExecutor.step("Fill Sub-Ledger Information", () -> {
             addRef[0].fillSubLedgerRows(testData, true);
-            ReportLogger.info("Sub-ledger section complete: "
+            ReportLogger.business("Sub-ledger section complete: "
                     + testData.getSubLedgerInformationList().size() + " rows");
         });
 
@@ -156,13 +156,13 @@ public class CreateArVoucher extends WebTest {
                 msgBoxRef[0].clickOk();
             }
             listRef[0] = addRef[0].close().clickYes();   // returns ArVoucherListPage — keep the handle
-            ReportLogger.info("Voucher page closed, returned to list");
+            ReportLogger.business("Voucher page closed, returned to list");
         });
 
         // ── Step 7: Logout (terminal; runs once after the last entry) ─────────────
         StepExecutor.step("Logout", () -> {
             new HomePage().logoutFromApplication();
-            ReportLogger.info("Logged out of application");
+            ReportLogger.business("Logged out of application");
         });
 
         // ── Step 8: Database Validation ───────────────────────────────────────────
@@ -223,7 +223,7 @@ public class CreateArVoucher extends WebTest {
         StepExecutor.step("Login to Application", () -> {
             UserCredential u = DriverManager.getCurrentUser();
             homeRef[0] = new LoginPage().loginToApplication(u.username(), u.password());
-            ReportLogger.info("Logged in as: " + u.username());
+            ReportLogger.business("Logged in as: " + u.username());
         });
 
         // ── Step 2: Navigate ──────────────────────────────────────────────────────
@@ -233,13 +233,13 @@ public class CreateArVoucher extends WebTest {
                     MainMenuType.OPERATIONS,
                     OperationsMenuType.ARVOUCHER,
                     ArVoucherListPage.class);
-            ReportLogger.info("AR Voucher list page opened");
+            ReportLogger.business("AR Voucher list page opened");
         });
 
         // ── Step 3: Open Add form ─────────────────────────────────────────────────
         StepExecutor.step("Open Add Form", () -> {
             addRef[0] = listRef[0].clickAdd();
-            ReportLogger.info("Scenario: " + testData.getScenarioType()
+            ReportLogger.business("Scenario: " + testData.getScenarioType()
                     + (testData.getExpectedValidation() != null
                         ? " | expect error: " + testData.getExpectedValidation().expectedMessage()
                         : " | expect: successful save"));

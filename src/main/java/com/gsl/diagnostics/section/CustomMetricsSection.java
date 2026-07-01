@@ -2,6 +2,7 @@ package com.gsl.diagnostics.section;
 
 import com.gsl.config.DiagnosticsConfig;
 import com.gsl.diagnostics.DiagnosticSection;
+import com.gsl.reports.ReportLogger;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 import org.openqa.selenium.JavascriptExecutor;
@@ -152,6 +153,7 @@ public final class CustomMetricsSection implements DiagnosticSection {
             ok = true;
         } catch (Exception e) {
             LOG.warn("[CustomMetricsSection] Collection failed: {}", e.getMessage());
+            ReportLogger.perf("[CustomMetricsSection] Collection failed: {}", e.getMessage());
         }
 
         this.userMeasures   = measures;

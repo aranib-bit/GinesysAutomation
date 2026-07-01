@@ -75,7 +75,7 @@ public class EditArVoucher extends WebTest {
         StepExecutor.step("Login to Application", () -> {
             UserCredential u = DriverManager.getCurrentUser();
             homeRef[0] = new LoginPage().loginToApplication(u.username(), u.password());
-            ReportLogger.info("Logged in as: " + u.username());
+            ReportLogger.business("Logged in as: " + u.username());
         });
 
         // ── Step 2: Navigate ──────────────────────────────────────────────────────
@@ -85,13 +85,13 @@ public class EditArVoucher extends WebTest {
                     MainMenuType.OPERATIONS,
                     OperationsMenuType.ARVOUCHER,
                     ArVoucherListPage.class);
-            ReportLogger.info("AR Voucher list page opened");
+            ReportLogger.business("AR Voucher list page opened");
         });
 
         // ── Step 3: Search ────────────────────────────────────────────────────────
         StepExecutor.step("Search AR Voucher by Document Number", () -> {
             listRef[0].searchByVoucherNo(testData.getExistingVoucherNo());
-            ReportLogger.info("Searched for voucher: " + testData.getExistingVoucherNo());
+            ReportLogger.business("Searched for voucher: " + testData.getExistingVoucherNo());
         });
 
         // ── Step 4: Unpost if posted ──────────────────────────────────────────────
@@ -102,9 +102,9 @@ public class EditArVoucher extends WebTest {
                 //   navigate to Document Adjustment and remove the tagging before editing.
                 //   Until Document Adjustment page object is available, this step will
                 //   fail at runtime if the voucher is tagged.
-                ReportLogger.info("Voucher unposted (was release_status='P')");
+                ReportLogger.business("Voucher unposted (was release_status='P')");
             } else {
-                ReportLogger.info("Voucher status='" + testData.getReleaseStatus()
+                ReportLogger.business("Voucher status='" + testData.getReleaseStatus()
                         + "' — unpost not required");
             }
         });
@@ -112,13 +112,13 @@ public class EditArVoucher extends WebTest {
         // ── Step 5: Open for Edit ─────────────────────────────────────────────────
         StepExecutor.step("Open Voucher for Edit", () -> {
             editRef[0] = listRef[0].clickEditForVoucher();
-            ReportLogger.info("Voucher opened for edit: " + testData.getExistingVoucherNo());
+            ReportLogger.business("Voucher opened for edit: " + testData.getExistingVoucherNo());
         });
 
         // ── Step 6: Apply changes to document header ──────────────────────────────
         StepExecutor.step("Apply Changes to Document Header", () -> {
             editRef[0].fillDocumentHeader(testData.getDocumentInformation());
-            ReportLogger.info("Updated date/reference/remarks via fillDocumentHeader");
+            ReportLogger.business("Updated date/reference/remarks via fillDocumentHeader");
         });
 
         // ── Step 7b: Click Save (edit: no DB capture → no 5a/5e snapshot) ─────────
@@ -143,13 +143,13 @@ public class EditArVoucher extends WebTest {
                 msgBoxRef[0].clickOk();
             }
             listRef[0] = editRef[0].close().clickYes();   // returns ArVoucherListPage — keep the handle
-            ReportLogger.info("Voucher page closed, returned to list");
+            ReportLogger.business("Voucher page closed, returned to list");
         });
 
         // ── Step 9: Logout (terminal) ─────────────────────────────────────────────
         StepExecutor.step("Logout", () -> {
             new HomePage().logoutFromApplication();
-            ReportLogger.info("Logged out of application");
+            ReportLogger.business("Logged out of application");
         });
 
         // ── Step 10: Database Validation ──────────────────────────────────────────

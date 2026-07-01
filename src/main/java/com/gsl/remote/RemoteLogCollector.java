@@ -12,6 +12,7 @@ import com.gsl.remote.model.*;
 import com.gsl.remote.parser.RegexLogParser;
 import com.gsl.remote.pool.SshConnectionPool;
 import com.gsl.remote.retry.RetryPolicy;
+import com.gsl.reports.ReportLogger;
 import com.gsl.utils.Log;
 
 import java.time.Instant;
@@ -89,8 +90,10 @@ public final class RemoteLogCollector {
                         .get(120, TimeUnit.SECONDS);
             } catch (TimeoutException e) {
                 Log.warn("[RemoteLogCollector] Timed out waiting for remote log collection (120s cap)");
+                ReportLogger.frameworkWarn("[RemoteLogCollector] Timed out waiting for remote log collection (120s cap)");
             } catch (Exception e) {
                 Log.warn("[RemoteLogCollector] Error during concurrent log collection: {}", e.getMessage());
+                ReportLogger.frameworkWarn("[RemoteLogCollector] Error during concurrent log collection: {}", e.getMessage());
             }
         }
 
@@ -168,6 +171,8 @@ public final class RemoteLogCollector {
 
         } catch (Throwable e) {
             Log.warn("[RemoteLogCollector] Collection failed for {} host={}: {}",
+                    role.label, host, e.getMessage());
+            ReportLogger.frameworkWarn("[RemoteLogCollector] Collection failed for {} host={}: {}",
                     role.label, host, e.getMessage());
             return LogFetchResponse.builder()
                     .skipReason(LogFetchResponse.SkipReason.FETCH_FAILED)

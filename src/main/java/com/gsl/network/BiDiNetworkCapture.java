@@ -1,6 +1,7 @@
 package com.gsl.network;
 
 import com.gsl.config.ConfigFactory;
+import com.gsl.reports.ReportLogger;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 import org.openqa.selenium.WebDriver;
@@ -77,8 +78,10 @@ public final class BiDiNetworkCapture implements NetworkCapture {
             });
 
             LOG.debug("[BiDiNetworkCapture] BiDi network capture started.");
+            ReportLogger.network("[BiDiNetworkCapture] BiDi network capture started.");
         } catch (Exception ex) {
             LOG.warn("[BiDiNetworkCapture] Failed to start: {}", ex.getMessage());
+            ReportLogger.networkError("[BiDiNetworkCapture] Failed to start: {}", ex.getMessage());
         }
     }
 

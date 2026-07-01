@@ -59,18 +59,21 @@ public class APVoucherDbValidator {
         ExtentLogger.info("══════════════════════════════════════════════════");
         ExtentLogger.info("AP Voucher DB Validation START — [" + context.getVoucherNo() + "]");
         ExtentLogger.info("══════════════════════════════════════════════════");
+        ReportLogger.db("AP Voucher DB Validation START — [{}]", context.getVoucherNo());
 
         // Level 1 field assertions are deferred so that a nartext/vchdt mismatch does NOT
         // block Levels 2–4. assertAll() is called after Level 4a completes.
         SoftAssertions deferredLevel1 = new SoftAssertions();
 
         ExtentLogger.info("── Level 1 : finvchmain ──");
+        ReportLogger.db("── Level 1 : finvchmain ──");
         ReportLogger.trace("[APValidator] Level 1 START — finvchmain header for voucherNo=" + context.getVoucherNo());
         FinVchMain header = finVchMainApValidator.validate(context, deferredLevel1);
         ReportLogger.trace("[APValidator] Level 1 DONE — vchcode=" + header.getVchcode()
                 + " camount=" + header.getCamount());
 
         ExtentLogger.info("── Level 2 : finvchdet ──");
+        ReportLogger.db("── Level 2 : finvchdet ──");
         ReportLogger.trace("[APValidator] Level 2 START — finvchdet lines for vchcode=" + header.getVchcode());
         finVchDetApValidator.validate(context, header);
         ReportLogger.trace("[APValidator] Level 2 DONE");
@@ -83,11 +86,13 @@ public class APVoucherDbValidator {
                 .build();
 
         ExtentLogger.info("── Level 3 : finpost (GL balance) ──");
+        ReportLogger.db("── Level 3 : finpost (GL balance) ──");
         ReportLogger.trace("[APValidator] Level 3 START — finpost GL balance for vchcode=" + header.getVchcode());
         List<FinPost> postEntries = finPostValidator.validate(finPostCtx, header);
         ReportLogger.trace("[APValidator] Level 3 DONE — " + postEntries.size() + " GL entries");
 
         ExtentLogger.info("── Level 4a: fintag (adjustment tagging) ──");
+        ReportLogger.db("── Level 4a: fintag (adjustment tagging) ──");
         ReportLogger.trace("[APValidator] Level 4a START — fintag adjustment tagging");
         finTagApValidator.validate(context, header, postEntries);
         ReportLogger.trace("[APValidator] Level 4a DONE");
@@ -99,6 +104,7 @@ public class APVoucherDbValidator {
         ExtentLogger.info("══════════════════════════════════════════════════");
         ExtentLogger.info("AP Voucher DB Validation COMPLETE — ALL PASSED [" + context.getVoucherNo() + "]");
         ExtentLogger.info("══════════════════════════════════════════════════");
+        ReportLogger.db("AP Voucher DB Validation COMPLETE — ALL PASSED [{}]", context.getVoucherNo());
         ReportLogger.trace("[APValidator] ALL LEVELS PASSED for voucherNo=" + context.getVoucherNo());
 
     }

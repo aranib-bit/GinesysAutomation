@@ -1,6 +1,7 @@
 package com.gsl.network;
 
 import com.gsl.config.ConfigFactory;
+import com.gsl.reports.ReportLogger;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 import org.openqa.selenium.WebDriver;
@@ -29,13 +30,17 @@ public final class NetworkServiceFactory {
         }
         if (driver instanceof HasDevTools) {
             LOG.debug("[NetworkServiceFactory] Using CDP network capture.");
+            ReportLogger.network("[NetworkServiceFactory] Using CDP network capture.");
             return new CdpNetworkCapture(driver);
         }
         if (driver instanceof HasBiDi) {
             LOG.debug("[NetworkServiceFactory] Using BiDi network capture.");
+            ReportLogger.network("[NetworkServiceFactory] Using BiDi network capture.");
             return new BiDiNetworkCapture(driver);
         }
         LOG.warn("[NetworkServiceFactory] Driver {} supports neither CDP nor BiDi — network capture disabled.",
+                driver.getClass().getSimpleName());
+        ReportLogger.networkWarn("[NetworkServiceFactory] Driver {} supports neither CDP nor BiDi — network capture disabled.",
                 driver.getClass().getSimpleName());
         return new NoOpNetworkCapture();
     }

@@ -80,9 +80,9 @@ public class DocumentPopup {
         WebDriver driver = DriverManager.getDriver();
         WebDriverWait wait = WaitUtils.webDriverWait();
 
-        ReportLogger.info("Waiting for payment-info-check warning dialog (" + warning + ")...");
+        ReportLogger.business("Waiting for payment-info-check warning dialog (" + warning + ")...");
         WaitUtils.fluentWaitBuilder().until(ExpectedConditions.visibilityOfElementLocated(warning.proceedLocator()));
-        ReportLogger.info("Payment info warning dialog confirmed visible for " + warning);
+        ReportLogger.business("Payment info warning dialog confirmed visible for " + warning);
         com.gsl.reports.ActualResultsHolder.get().setUiPaymentInfoWarningAppeared(true);
 
         // Non-blocking message-text read for diagnostics — same AOP caveat as before.
@@ -100,7 +100,7 @@ public class DocumentPopup {
                 }
             }
             if (msgEl != null)
-                ReportLogger.info("Warning popup message: " + msgEl.getAttribute("innerText"));
+                ReportLogger.business("Warning popup message: " + msgEl.getAttribute("innerText"));
         } catch (Exception e) {
             System.out.println("Could not read warning message text (non-fatal): " + e.getMessage());
         }
@@ -123,10 +123,10 @@ public class DocumentPopup {
         WebDriver driver = DriverManager.getDriver();
         WebDriverWait wait = WaitUtils.webDriverWait();
 
-        ReportLogger.info("Waiting for validation error popup to appear...");
+        ReportLogger.business("Waiting for validation error popup to appear...");
         WaitUtils.fluentWaitBuilder().until(ExpectedConditions.visibilityOfElementLocated(Loc.MESSAGE_TEXT));
         String actualMessage = driver.findElement(Loc.MESSAGE_TEXT).getText();
-        ReportLogger.info("Validation error popup message: " + actualMessage);
+        ReportLogger.business("Validation error popup message: " + actualMessage);
 
         if (actualMessage == null || !actualMessage.contains(expectedMessage)) {
             throw new AssertionError(

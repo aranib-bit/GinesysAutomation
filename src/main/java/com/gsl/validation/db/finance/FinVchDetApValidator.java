@@ -55,7 +55,7 @@ public class FinVchDetApValidator {
         MergedFinanceApVoucherData data = context.getTestData();
         List<SubLedgerInformation> inputLines = data.getSubLedgerInformationList();
 
-        ReportLogger.info("Level 2 — finvchdet for AP vchcode [" + vchcode + "]");
+        ReportLogger.db("Level 2 — finvchdet for AP vchcode [" + vchcode + "]");
         com.gsl.reports.ValidationBuffer.start();
 
         // Existence — BLOCKING
@@ -108,7 +108,7 @@ public class FinVchDetApValidator {
         com.gsl.reports.ValidationBuffer.flushAsPreBlock();
         ReportLogger.infoLabeledTable("finvchdet rows", buildDetTable(rows, slNames, glNames));
         ReportLogger.infoHtml(buildLevel2Summary(rows.size(), detDebit, header.getCamount(), data.isTdsProvided()));
-        ReportLogger.info("Level 2 — PASSED: vchcode [" + vchcode + "] " + rows.size() + " line(s)");
+        ReportLogger.db("Level 2 — PASSED: vchcode [" + vchcode + "] " + rows.size() + " line(s)");
     }
 
     // ── Payment-mode validation ───────────────────────────────────────────────
@@ -203,7 +203,7 @@ public class FinVchDetApValidator {
         String instrNo   = paymentInfo.getInstrumentNo();
         String instrDate = paymentInfo.getInstrumentDate();
 
-        ReportLogger.info("Instrument Validation:"
+        ReportLogger.db("Instrument Validation:"
                 + " payment_mode=" + mode
                 + " | expected chqno=" + (instrNo   != null ? instrNo.trim()   : "—")
                 + " | DB chqno="      + (row.getChqno() != null ? row.getChqno() : "—")
@@ -277,7 +277,7 @@ public class FinVchDetApValidator {
             Optional<BigDecimal> netPayable = data.getNetPayableForLine(line.getLineNo());
             if (netPayable.isPresent()) {
                 dr = netPayable.get();
-                ReportLogger.info("[Level 2] Advance+TDS: using NetPayable=" + dr
+                ReportLogger.db("[Level 2] Advance+TDS: using NetPayable=" + dr
                         + " for lineNo='" + line.getLineNo() + "' (DB damount validation)");
             }
         }

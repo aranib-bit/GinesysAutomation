@@ -45,7 +45,7 @@ public final class DbQueryLogger {
      *                       e.g. {@code "vchcode", 10042, "slcode", 5}
      */
     public static void log(String queryTemplate, Object... nameValuePairs) {
-        ReportLogger.info("[DB Query] " + resolve(queryTemplate, nameValuePairs));
+        ReportLogger.db("[DB Query] " + resolve(queryTemplate, nameValuePairs));
     }
 
     // -------------------------------------------------------------------------

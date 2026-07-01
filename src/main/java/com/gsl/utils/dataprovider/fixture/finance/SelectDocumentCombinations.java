@@ -103,6 +103,60 @@ public final class SelectDocumentCombinations {
                 .build();
     }
 
+    // ─── Regression Phase-1 baselines (non-Supplier system SLs) ─────────────
+
+    /**
+     * Regression-Phase-1 baseline for a non-Supplier system SL classification type
+     * (Customer / Jobber / Others / Channel). Mirrors {@link #mandatoryBaselineVariant}
+     * but tagged {@code REGRESSION_PHASE1} so it is excluded from the mandatory smoke suite
+     * and runs only during regression.
+     */
+    public static SelectDocumentVariant regressionPhase1BaselineVariant(AdmCls cls) {
+        String label = cls.getClsname() + "(" + cls.cmpLabel() + ")";
+        String id    = "SD_REG1_" + cls.getClsname().toUpperCase().replace(" ", "_")
+                       + "_" + cls.cmpLabel().toUpperCase();
+        return SelectDocumentVariant.builder()
+                .variantId(id)
+                .testCaseName("SEL_DOC | [Bank GL] | " + label
+                        + " | 1SL-1Doc | Amt:FULL | Grid:EQUAL | Pmt:NONE | Date:TODAY")
+                .glType(CashBankType.BANK)
+                .slClsCode(cls.getClscode())
+                .customerTypeSl(cls.isCustomerType())
+                .slCount(1).docsPerSl(1)
+                .amountMode(AmountMode.FULL)
+                .gridRelation(GridRelation.EQUAL)
+                .paymentMode(PaymentMode.NONE)
+                .dateMode(DateMode.CURRENT_DATE)
+                .allowDuplicateReference(false)
+                .executionGroup(ArVoucherExecutionGroup.REGRESSION_PHASE1)
+                .build();
+    }
+
+    /**
+     * Regression-Phase-1 UniqueRandom-payment variant for a non-Supplier system SL
+     * classification type. Mirrors {@link #mandatoryBankRandomVariant} but tagged
+     * {@code REGRESSION_PHASE1}.
+     */
+    public static SelectDocumentVariant regressionPhase1BankRandomVariant(AdmCls cls) {
+        String label = cls.getClsname() + "(" + cls.cmpLabel() + ")";
+        String id    = "SD_REG1_BANK_RANDOM_" + cls.getClsname().toUpperCase().replace(" ", "_");
+        return SelectDocumentVariant.builder()
+                .variantId(id)
+                .testCaseName("SEL_DOC | [Bank GL] | " + label
+                        + " | 1SL-1Doc | Amt:FULL | Grid:EQUAL | Pmt:UniqueRandom(CHEQUE/NEFT_RTGS) | Date:TODAY")
+                .glType(CashBankType.BANK)
+                .slClsCode(cls.getClscode())
+                .customerTypeSl(cls.isCustomerType())
+                .slCount(1).docsPerSl(1)
+                .amountMode(AmountMode.FULL)
+                .gridRelation(GridRelation.EQUAL)
+                .paymentMode(PaymentMode.RANDOM)
+                .dateMode(DateMode.CURRENT_DATE)
+                .allowDuplicateReference(false)
+                .executionGroup(ArVoucherExecutionGroup.REGRESSION_PHASE1)
+                .build();
+    }
+
     // ─── Group 1: Reference uniqueness (static, Bank GL) ─────────────────────
 
     /**

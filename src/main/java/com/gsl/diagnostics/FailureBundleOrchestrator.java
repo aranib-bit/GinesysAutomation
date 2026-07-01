@@ -25,6 +25,7 @@ import com.gsl.remote.RemoteLogCollector;
 import com.gsl.remote.model.CaptureMode;
 import com.gsl.remote.model.LogFetchResponse;
 import com.gsl.reports.ActionTrailBuffer;
+import com.gsl.reports.ReportLogger;
 import com.gsl.utils.Log;
 import org.openqa.selenium.NoSuchElementException;
 import org.openqa.selenium.TimeoutException;
@@ -52,6 +53,7 @@ public final class FailureBundleOrchestrator {
      * Assembles the full failure evidence bundle for the given test result.
      */
     public static DiagnosticReport onFailure(ITestResult result) {
+        ReportLogger.rca("RCA bundle START: test={}", result.getName());
         Throwable t      = result.getThrowable();
         WebDriver driver = DriverManager.getDriver();
         Instant   start  = Instant.ofEpochMilli(result.getStartMillis());
@@ -120,6 +122,7 @@ public final class FailureBundleOrchestrator {
         // Threshold check uses the same instance — no second JS round-trip
         enforceCustomMetricsThreshold(customMetrics);
 
+        ReportLogger.rca("RCA bundle COMPLETE: test={}", result.getName());
         return report;
     }
 
@@ -199,6 +202,7 @@ public final class FailureBundleOrchestrator {
             return logs != null ? logs : List.of();
         } catch (Exception e) {
             Log.warn("[FailureBundleOrchestrator] Browser log fetch failed: {}", e.getMessage());
+            ReportLogger.rcaWarn("Browser log fetch failed: {}", e.getMessage());
             return List.of();
         }
     }

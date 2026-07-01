@@ -1,6 +1,7 @@
 package com.gsl.driver;
 
 import com.gsl.enums.PlatformType;
+import com.gsl.reports.ReportLogger;
 import com.gsl.testdata.UserCredential;
 import org.openqa.selenium.WebDriver;
 import org.openqa.selenium.support.events.EventFiringDecorator;
@@ -63,10 +64,14 @@ public final class DriverManager {
                 ? null
                 : new EventFiringDecorator<>(new HeartbeatListener()).decorate(driver);
         CONTEXT_DRIVERS.get(activeContext.get()).set(instrumented);
+        if (driver != null) {
+            ReportLogger.framework("WebDriver initialized — context={}", activeContext.get());
+        }
     }
 
     /** Removes the WebDriver for the current thread's active context. Prevents memory leaks. */
     public static void unloadDriver() {
+        ReportLogger.framework("WebDriver unloaded — context={}", activeContext.get());
         CONTEXT_DRIVERS.get(activeContext.get()).remove();
     }
 

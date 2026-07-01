@@ -4,6 +4,7 @@ import com.gsl.diagnostics.DiagnosticSection;
 import com.gsl.extjs.ComponentState;
 import com.gsl.extjs.UiFrameworkAdapter;
 import com.gsl.extjs.UiFrameworkAdapterFactory;
+import com.gsl.reports.ReportLogger;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 import org.openqa.selenium.WebDriver;
@@ -40,6 +41,7 @@ public final class UiComponentSection implements DiagnosticSection {
             route  = adapter.getActiveRoute(driver);
         } catch (Exception e) {
             LOG.warn("[UiComponentSection] Adapter {} failed: {}", frameworkName, e.getMessage());
+            ReportLogger.frameworkWarn("[UiComponentSection] Adapter {} failed: {}", frameworkName, e.getMessage());
         }
         this.components   = cmps;
         this.activeModule = module;

@@ -61,7 +61,7 @@ public class DeleteArVoucher extends WebTest {
         StepExecutor.step("Login to Application", () -> {
             UserCredential u = DriverManager.getCurrentUser();
             homeRef[0] = new LoginPage().loginToApplication(u.username(), u.password());
-            ReportLogger.info("Logged in as: " + u.username());
+            ReportLogger.business("Logged in as: " + u.username());
         });
 
         // ── Step 2: Navigate ──────────────────────────────────────────────────────
@@ -71,13 +71,13 @@ public class DeleteArVoucher extends WebTest {
                     MainMenuType.OPERATIONS,
                     OperationsMenuType.ARVOUCHER,
                     ArVoucherListPage.class);
-            ReportLogger.info("AR Voucher list page opened");
+            ReportLogger.business("AR Voucher list page opened");
         });
 
         // ── Step 3: Search ────────────────────────────────────────────────────────
         StepExecutor.step("Search AR Voucher by Document Number", () -> {
             listRef[0].searchByVoucherNo(testData.getExistingVoucherNo());
-            ReportLogger.info("Searched for voucher: " + testData.getExistingVoucherNo());
+            ReportLogger.business("Searched for voucher: " + testData.getExistingVoucherNo());
         });
 
         // ── Step 4: Unpost + untag if posted ──────────────────────────────────────
@@ -89,9 +89,9 @@ public class DeleteArVoucher extends WebTest {
                 //   Until the Document Adjustment page object is available, this step will
                 //   fail at runtime if the voucher is tagged. Add the fintag query and
                 //   DocumentAdjustmentPage.removeTagForVoucher(voucherNo) call here.
-                ReportLogger.info("Voucher unposted (was release_status='P'). Fintag check: TODO.");
+                ReportLogger.business("Voucher unposted (was release_status='P'). Fintag check: TODO.");
             } else {
-                ReportLogger.info("Voucher status='" + testData.getReleaseStatus()
+                ReportLogger.business("Voucher status='" + testData.getReleaseStatus()
                         + "' — unpost not required");
             }
         });

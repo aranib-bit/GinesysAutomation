@@ -59,7 +59,7 @@ public class FinVchDetValidator {
         MergedFinanceArVoucherData data = context.getTestData();
         List<SubLedgerInformation> inputLines = data.getSubLedgerInformationList();
 
-        ReportLogger.info("Level 2 — finvchdet for vchcode [" + vchcode + "]");
+        ReportLogger.db("Level 2 — finvchdet for vchcode [" + vchcode + "]");
         com.gsl.reports.ValidationBuffer.start();
 
         // Existence — BLOCKING
@@ -104,7 +104,7 @@ public class FinVchDetValidator {
         com.gsl.reports.ValidationBuffer.flushAsPreBlock();
         ReportLogger.infoLabeledTable("finvchdet rows", buildDetTable(rows, slNames, glNames));
         ReportLogger.infoHtml(buildLevel2Summary(rows.size(), detCredit, header.getDamount(), data.isTdsProvided()));
-        ReportLogger.info("Level 2 — PASSED: vchcode [" + vchcode + "] " + rows.size() + " line(s)");
+        ReportLogger.db("Level 2 — PASSED: vchcode [" + vchcode + "] " + rows.size() + " line(s)");
     }
 
     // -------------------------------------------------------------------------
@@ -239,7 +239,7 @@ public class FinVchDetValidator {
         String instrDate = paymentInfo.getInstrumentDate();
 
         // Log correlation context before assertions so report readers can cross-reference easily
-        ReportLogger.info("Instrument Validation:"
+        ReportLogger.db("Instrument Validation:"
                 + " payment_mode=" + mode
                 + " | expected chqno=" + (instrNo   != null ? instrNo.trim()   : "—")
                 + " | DB chqno="      + (row.getChqno() != null ? row.getChqno() : "—")

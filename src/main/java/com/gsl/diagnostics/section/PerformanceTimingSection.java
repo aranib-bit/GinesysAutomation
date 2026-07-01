@@ -1,6 +1,7 @@
 package com.gsl.diagnostics.section;
 
 import com.gsl.diagnostics.DiagnosticSection;
+import com.gsl.reports.ReportLogger;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 import org.openqa.selenium.JavascriptExecutor;
@@ -59,6 +60,7 @@ public final class PerformanceTimingSection implements DiagnosticSection {
             }
         } catch (Exception e) {
             LOG.warn("[PerformanceTimingSection] Could not capture timing: {}", e.getMessage());
+            ReportLogger.perf("[PerformanceTimingSection] Could not capture timing: {}", e.getMessage());
         }
         this.domReadyMs    = domR;
         this.pageLoadMs    = load;

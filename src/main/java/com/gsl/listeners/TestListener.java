@@ -58,6 +58,7 @@ import com.gsl.reports.RuntimeProfileBuilder;
 import com.gsl.reports.RuntimeProfileHolder;
 import com.gsl.reports.profile.RuntimeExecutionProfile;
 import com.gsl.testdata.InvocationData;
+import com.gsl.reports.ReportLogger;
 import com.gsl.utils.Log;
 import com.gsl.utils.TestContextManager;
 
@@ -164,11 +165,13 @@ public class TestListener implements ITestListener, ISuiteListener {
     @Override
     public void onStart(ITestContext context) {
         Log.info("SUITE STARTED: {}", context.getName());
+        ReportLogger.framework("TEST CONTEXT STARTED: {}", context.getName());
     }
 
     @Override
     public void onFinish(ITestContext context) {
         Log.info("SUITE FINISHED: {}", context.getName());
+        ReportLogger.framework("TEST CONTEXT FINISHED: {}", context.getName());
 
         // When the last validation <test> block finishes, inject the snapshot node.
         // Validation tests complete in milliseconds while Selenium tests are still
@@ -205,6 +208,7 @@ public class TestListener implements ITestListener, ISuiteListener {
         RetryHistoryBuffer.clear();
         PopupTrailBuffer.clear();
         Log.info("TEST STARTED: {}", methodName);
+        ReportLogger.framework("TEST STARTED: {} | thread={}", methodName, Thread.currentThread().getName());
 
         // @FrameworkValidation methods are pre-execution validation checks.
         // Create a visible ExtentTest node so they appear in the dashboard count,
@@ -340,6 +344,7 @@ public class TestListener implements ITestListener, ISuiteListener {
             return;
         }
         Log.info("TEST PASSED: {}", result.getName());
+        ReportLogger.framework("TEST PASSED: {}", result.getName());
         ExtentLogger.pass(result.getName() + " is passed");
 
         Optional<DomainReporter> successReporter = DomainReporterRegistry.resolve(result.getParameters());
@@ -392,6 +397,9 @@ public class TestListener implements ITestListener, ISuiteListener {
         Log.error("TEST FAILED: {}", result.getName());
         Log.error("Failure cause: {}",
                 result.getThrowable() != null ? result.getThrowable().getMessage() : "no throwable");
+        ReportLogger.frameworkError("TEST FAILED: {} — {}",
+                result.getName(),
+                result.getThrowable() != null ? result.getThrowable().getMessage() : "no throwable");
         // One top-level status marker; full exception details are in the StepExecutor child node.
         ExtentLogger.fail(result.getName() + " FAILED");
 
@@ -436,6 +444,7 @@ public class TestListener implements ITestListener, ISuiteListener {
     @Override
     public void onTestSkipped(ITestResult result) {
         Log.warn("TEST SKIPPED: {}", result.getName());
+        ReportLogger.frameworkWarn("TEST SKIPPED: {}", result.getName());
 
         Throwable t = result.getThrowable();
         boolean dataSkip = t instanceof org.testng.SkipException;

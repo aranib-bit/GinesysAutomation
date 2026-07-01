@@ -1,6 +1,7 @@
 package com.gsl.browser;
 
 import com.gsl.driver.DriverManager;
+import com.gsl.reports.ReportLogger;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 import org.openqa.selenium.JavascriptExecutor;
@@ -96,6 +97,7 @@ public final class AdvancedJsLogger {
                 "try { sessionStorage.removeItem('_fwTestLogs'); } catch(e) {}");
         } catch (Exception e) {
             LOG.warn("[AdvancedJsLogger] Could not clear logs: {}", e.getMessage());
+            ReportLogger.jsWarn("[AdvancedJsLogger] Could not clear logs: {}", e.getMessage());
         }
     }
 
@@ -104,8 +106,10 @@ public final class AdvancedJsLogger {
             JavascriptExecutor js = (JavascriptExecutor) DriverManager.getDriver();
             js.executeScript(INJECTION_SCRIPT);
             LOG.debug("[AdvancedJsLogger] JS logger injected.");
+            ReportLogger.js("[AdvancedJsLogger] JS logger injected.");
         } catch (Exception e) {
             LOG.warn("[AdvancedJsLogger] Could not inject JS logger: {}", e.getMessage());
+            ReportLogger.jsWarn("[AdvancedJsLogger] Could not inject JS logger: {}", e.getMessage());
         }
     }
 }

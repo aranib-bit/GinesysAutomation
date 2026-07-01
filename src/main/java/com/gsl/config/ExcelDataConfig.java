@@ -20,6 +20,9 @@ public interface ExcelDataConfig extends Config {
     @Key("apVoucherPath")
     String apVoucherPath();
 
+    @Key("finAccGroupPath")
+    String finAccGroupPath();
+
     @Key("userslist.path")
     @DefaultValue("UsersList.xlsx")
     String usersListPath();

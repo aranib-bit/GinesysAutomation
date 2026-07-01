@@ -142,7 +142,7 @@ public class JdbiSqlLogger implements SqlLogger {
             } else if (com.gsl.reports.ValidationBuffer.isActive()) {
                 com.gsl.reports.ValidationBuffer.add(line);
             } else if (!Boolean.TRUE.equals(SUPPRESS.get())) {
-                ReportLogger.info(line);
+                ReportLogger.db(line);
             }
         } catch (Exception ignored) {
             START_NS.remove();

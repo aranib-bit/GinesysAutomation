@@ -488,16 +488,44 @@ public final class ApVoucherTemplateLoader {
      * Builds test data for the "document payment via manual Select Document popup" scenario.
      * {@code selectDocumentList} is pre-populated from {@link LiveDbRefs#getPendingDocsBySlName()}
      * so the predicate knows exactly which document numbers to tick in the UI popup.
+     *
+     * <p>Payment mode is driven by {@link LiveDbRefs#getSelectDocPaymentMode()}:
+     * <ul>
+     *   <li>NONE — no payment rows; Bank GL will trigger the "Ignore &amp; Proceed" dialog.</li>
+     *   <li>CHEQUE / NEFT_RTGS — one payment row per SL with a generated instrument number.</li>
+     *   <li>RANDOM — resolved at runtime to CHEQUE or NEFT_RTGS (never NONE — NONE is a
+     *       dedicated separate variant).</li>
+     *   <li>CASH — overridden automatically when a Cash GL is detected.</li>
+     * </ul>
      */
     public static MergedFinanceApVoucherData docSelectDocumentTemplate(LiveDbRefs refs) {
         String id = "DB_AP_SEL_DOC";
         List<SubLedgerInformation> subLedgers = buildSubLedgersForDocument(
                 refs.getPendingSlNames(), AdjustmentType.SELECT_DOCUMENT,
                 refs.getPendingDocsBySlName(), refs.getSlToRefSiteName(), refs.getSlToArApName());
-        List<PaymentInformation> payments = List.of();
+
+        // Resolve payment mode — Cash GL always CASH; RANDOM → CHEQUE or NEFT_RTGS only.
+        SelectDocumentVariant.PaymentMode paymentMode = refs.getSelectDocPaymentMode();
+        if (refs.getCashBankType() == CashBankType.CASH) {
+            paymentMode = SelectDocumentVariant.PaymentMode.CASH;
+        } else if (paymentMode == SelectDocumentVariant.PaymentMode.RANDOM) {
+            java.util.List<SelectDocumentVariant.PaymentMode> pool = List.of(
+                    SelectDocumentVariant.PaymentMode.CHEQUE,
+                    SelectDocumentVariant.PaymentMode.NEFT_RTGS);
+            paymentMode = FakerUtils.randomElement(pool);
+            Log.info("[Template] RANDOM payment → resolved to: {} (GL type: Bank)", paymentMode);
+        }
+
+        List<PaymentInformation> payments = (paymentMode == SelectDocumentVariant.PaymentMode.NONE)
+                ? List.of()
+                : buildPayments(id, subLedgers, paymentMode);
+
+        String resolvedPmtLabel = paymentMode == SelectDocumentVariant.PaymentMode.NEFT_RTGS
+                ? "NEFT/RTGS" : paymentMode.name();
+
         return MergedFinanceApVoucherData.builder()
                 .masterTestData(buildMaster("createApVoucherDocumentPayment", id,
-                        "SEL_DOC | " + glLabel(refs)))
+                        "SEL_DOC | " + glLabel(refs) + " | Pmt:" + resolvedPmtLabel))
                 .documentInformation(buildDoc(id, refs, FakerUtils.randomRemarks(),
                         FakerUtils.randomReference(), "No"))
                 .subLedgerInformationList(subLedgers)
@@ -508,7 +536,7 @@ public final class ApVoucherTemplateLoader {
                 .tdsAndNetPayableList(List.of())
                 .onAccount(false)
                 .tdsProvided(false)
-                .paymentProvided(false)
+                .paymentProvided(!payments.isEmpty())
                 .needsPaymentInfoWarning(computeNeedsPaymentInfoWarning(subLedgers, payments, refs.getCashBankType()))
                 .invocationIndex(1)
                 .totalInvocations(1)
@@ -901,13 +929,16 @@ public final class ApVoucherTemplateLoader {
     private static PaymentSelectionType resolvePaymentType(
             SelectDocumentVariant.PaymentMode paymentMode, int slIndex) {
         switch (paymentMode) {
-            case CHEQUE:   return PaymentSelectionType.CHEQUE;
+            case CHEQUE:    return PaymentSelectionType.CHEQUE;
             case NEFT_RTGS: return PaymentSelectionType.NEFT_RTGS;
-            case CASH:     return PaymentSelectionType.CASH;
-            case MIX:      return slIndex % 2 == 0
-                               ? PaymentSelectionType.NEFT_RTGS
-                               : PaymentSelectionType.CHEQUE;
-            default:       return PaymentSelectionType.CHEQUE;
+            case CASH:      return PaymentSelectionType.CASH;
+            case MIX:       return slIndex % 2 == 0
+                                ? PaymentSelectionType.NEFT_RTGS
+                                : PaymentSelectionType.CHEQUE;
+            case RANDOM:    throw new IllegalStateException(
+                                "PaymentMode.RANDOM must be resolved before calling buildPayments — " +
+                                "resolve in the template method, not here.");
+            default:        return PaymentSelectionType.CHEQUE;
         }
     }
 
