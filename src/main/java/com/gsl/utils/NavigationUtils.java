@@ -7,6 +7,7 @@ import com.gsl.pages.enums.Inventory.Product_Definition.Product_DefintionMenuTyp
 import com.gsl.pages.enums.topmenucomponent.MainModuleType;
 import com.gsl.pages.pagecomponent.Finance.FinanceHomePage;
 import com.gsl.pages.pagecomponent.Finance.Operations.OperationsHomePage;
+import com.gsl.pages.pagecomponent.Finance.Setup.SetupHomePage;
 import com.gsl.pages.pagecomponent.Inventory.InventoryHomePage;
 import com.gsl.pages.pagecomponent.Inventory.Product_Definition.ProductDefinitionHomePage;
 import com.gsl.pages.pagecomponent.Procurement.ProcurementHomePage;
@@ -107,6 +108,28 @@ public final class NavigationUtils {
         return page;
     }
 
+
+    /**
+     * Navigates from the application's home page to a specific side menu item within Finance Setup.
+     */
+    public static <T> T navigateToFinanceSetupSideMenu(
+            HomePage homePage,
+            com.gsl.pages.enums.Finance.MainMenuType subMenu,
+            com.gsl.pages.enums.Finance.Setup.SetupMenuType sideMenu,
+            Class<T> expectedPage) {
+
+        FinanceHomePage financeHomePage = homePage.getTopModuleMenuComponent()
+                .navigateToModule(MainModuleType.FINANCE);
+
+        SetupHomePage setupHomePage = financeHomePage.getFinanceTopMenuComponent()
+                .navigateToSubMenu(subMenu, SetupHomePage.class);
+
+        T page = setupHomePage.getSetupSideMenuComponent()
+                .clickMenuItem(sideMenu.getName(), expectedPage);
+
+        SeleniumUtils.elementDisappear(FrameworkConstants.getLoadingMask(), "Loading Mask");
+        return page;
+    }
 
     // You can add other common navigation workflows here as needed.
     /*
