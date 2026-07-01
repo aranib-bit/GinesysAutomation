@@ -1,0 +1,25 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE suite SYSTEM "http://testng.org/testng-1.0.dtd">
+<!--
+    Account Group Setup Suite — creates Finance Account Group hierarchy from Excel.
+    Processes all rows in a single login session. Duplicate rows are skipped automatically.
+
+    Smoke run  : mvn clean test -Ptestng-accountgroup -Dsuite.type=smoke
+    Full run   : mvn clean test -Ptestng-accountgroup -Dsuite.type=regression
+-->
+<suite name="Finance Setup — Account Group" parallel="none">
+
+    <listeners>
+        <listener class-name="com.gsl.listeners.RetryAnnotationTransformer"/>
+        <listener class-name="com.gsl.listeners.TestListener"/>
+        <listener class-name="com.gsl.listeners.SuiteDataLoader"/>
+        <listener class-name="com.gsl.listeners.AnnotationMethodInterceptor"/>
+    </listeners>
+
+    <test name="Create Account Group Hierarchy">
+        <classes>
+            <class name="com.tests.Finance.Setup.CreateAccountGroup"/>
+        </classes>
+    </test>
+
+</suite>
