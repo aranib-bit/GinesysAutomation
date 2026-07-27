@@ -1,7 +1,9 @@
 package com.gsl.validation.db.finance;
 
+import com.gsl.enums.VoucherType;
 import com.gsl.model.finance.FinVchMain;
 import com.gsl.reports.ActualResultsHolder;
+import com.gsl.reports.DatabaseLogger;
 import com.gsl.reports.ReportLogger;
 import com.gsl.testdata.Finance.Operations.Vouchers.APVoucher.DocumentInformation;
 import com.gsl.testdata.dto.MergedFinanceApVoucherData;
@@ -33,12 +35,18 @@ public class FinVchMainApValidator extends FinVchMainBaseValidator {
                 + " nartext=" + h.getNartext()
                 + " vchdt=" + h.getVchdt());
 
-        String fieldSummary = validateCommonHeaderFields(h, doc, context.getSaveStartTime(), deferredSoft);
+        String fieldSummary = validateCommonHeaderFields(h, doc, context.getSaveStartTime(), VoucherType.AP, deferredSoft);
 
         // AP-specific: credit side carries the voucher total (also deferred)
         deferredSoft.assertThat(h.getCamount())
                 .as("[Level 1] finvchmain.camount is null")
                 .isNotNull();
+        if (h.getCamount() != null) {
+            DatabaseLogger.checkPassed("finvchmain.camount populated", String.valueOf(h.getCamount()));
+        } else {
+            DatabaseLogger.checkFailed("finvchmain.camount populated", "non-null amount", null,
+                    "SELECT camount FROM finvchmain WHERE scheme_docno = ?", schemeDocno, 0, 1);
+        }
 
         com.gsl.reports.ValidationBuffer.flushAsPreBlock();
         ReportLogger.infoLabeledTable("finvchmain", buildMainTable(h));

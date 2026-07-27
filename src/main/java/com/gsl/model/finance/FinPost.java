@@ -20,7 +20,7 @@ public class FinPost {
     private long postcode;
     private long entcode;
     private String entno;
-    private String doctype;
+    private String enttype;
     private String docno;
     private long glcode;
     private BigDecimal damount;
@@ -33,5 +33,5 @@ public class FinPost {
      */
     private BigDecimal adjamt;
 
-    private String narration;
+    private String nartext;
 }

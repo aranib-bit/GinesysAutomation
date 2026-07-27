@@ -72,7 +72,7 @@ public final class FailureBundleOrchestrator {
         JsErrorJsonExporter.export(result, jsLogs, netLogs, correlatedUrls, driver);
 
         // Pre-collect remote logs concurrently (APP + DB in parallel) before builder chain
-        Map<ServerRole, LogFetchResponse> remoteLogs = collectRemoteLogs(start, end);
+        Map<ServerRole, LogFetchResponse> remoteLogs = collectRemoteLogs(start, end, true);
 
         // Collect Custom Metrics once — reused for both the report and threshold check
         CustomMetricsSection customMetrics = buildCustomMetricsSection(driver, true);
@@ -137,7 +137,7 @@ public final class FailureBundleOrchestrator {
 
         List<BrowserLogRecord> jsLogs  = fetchBrowserLogs(driver);
 
-        Map<ServerRole, LogFetchResponse> remoteLogs = collectRemoteLogs(start, end);
+        Map<ServerRole, LogFetchResponse> remoteLogs = collectRemoteLogs(start, end, false);
 
         CustomMetricsSection passCustomMetrics = buildCustomMetricsSection(driver, false);
         FrontendPerformanceSection passFrontendPerf = buildFrontendPerfSection(driver, false);
@@ -347,9 +347,16 @@ public final class FailureBundleOrchestrator {
 
     // ── remote log helpers ────────────────────────────────────────────────────
 
-    private static Map<ServerRole, LogFetchResponse> collectRemoteLogs(Instant start, Instant end) {
+    private static Map<ServerRole, LogFetchResponse> collectRemoteLogs(
+            Instant start, Instant end, boolean isFailure) {
         try {
-            if (resolveCaptureMode() == CaptureMode.NEVER) return Map.of();
+            // ON_FAILURE must be honored on BOTH paths: a passing test collects only under
+            // ALWAYS. Before this gate, every passing row triggered a multi-minute WinRM fetch
+            // on the shared 2-thread collector (each test blocking up to the 120s cap), which
+            // serialized the whole run behind remote log I/O.
+            CaptureMode mode = resolveCaptureMode();
+            if (mode == CaptureMode.NEVER) return Map.of();
+            if (!isFailure && mode != CaptureMode.ALWAYS) return Map.of();
 
             String appHost = resolveHost(ServerRole.APP);
             String dbHost  = resolveHost(ServerRole.DB);

@@ -31,7 +31,7 @@
         <dependency>
             <groupId>org.seleniumhq.selenium</groupId>
             <artifactId>selenium-devtools-v147</artifactId>
-            <version>4.43.0</version>
+            <version>4.45.0</version>
         </dependency>
         <!-- https://mvnrepository.com/artifact/io.github.bonigarcia/webdrivermanager -->
         <dependency>
@@ -294,9 +294,81 @@
                         <configuration>
                             <testFailureIgnore>true</testFailureIgnore>
                             <suiteXmlFiles>
-                                <suiteXmlFile>testng.xml</suiteXmlFile>
+                                <suiteXmlFile>testng-smoke.xml</suiteXmlFile>
                             </suiteXmlFiles>
                             <argLine>${test.jvm.args} --add-opens java.base/java.lang=ALL-UNNAMED</argLine>
+                        </configuration>
+                    </plugin>
+                </plugins>
+            </build>
+        </profile>
+
+        <!-- AP Voucher ONLY — isolation suite to prove login-once/session-reuse before
+             merging back with Account Group + AR Voucher (see testng-ap-smoke.xml header) -->
+        <profile>
+            <id>ap-smoke</id>
+            <build>
+                <plugins>
+                    <plugin>
+                        <groupId>org.apache.maven.plugins</groupId>
+                        <artifactId>maven-surefire-plugin</artifactId>
+                        <version>3.2.5</version>
+                        <configuration>
+                            <testFailureIgnore>true</testFailureIgnore>
+                            <suiteXmlFiles>
+                                <suiteXmlFile>testng-ap-smoke.xml</suiteXmlFile>
+                            </suiteXmlFiles>
+                            <argLine>${test.jvm.args} --add-opens java.base/java.lang=ALL-UNNAMED</argLine>
+                        </configuration>
+                    </plugin>
+                </plugins>
+            </build>
+        </profile>
+
+        <!-- AP Voucher — Mandatory (standalone) -->
+        <profile>
+            <id>ap-mandatory</id>
+            <build>
+                <plugins>
+                    <plugin>
+                        <groupId>org.apache.maven.plugins</groupId>
+                        <artifactId>maven-surefire-plugin</artifactId>
+                        <version>3.2.5</version>
+                        <configuration>
+                            <testFailureIgnore>true</testFailureIgnore>
+                            <suiteXmlFiles>
+                                <suiteXmlFile>testng-ap-mandatory.xml</suiteXmlFile>
+                            </suiteXmlFiles>
+                            <argLine>${test.jvm.args} --add-opens java.base/java.lang=ALL-UNNAMED</argLine>
+                            <systemPropertyVariables>
+                                <apv.group>MANDATORY</apv.group>
+                            </systemPropertyVariables>
+                        </configuration>
+                    </plugin>
+                </plugins>
+            </build>
+        </profile>
+
+        <!-- AR + AP Voucher — Mandatory, MERGED into one <test> block so a SessionPool session
+             can carry over between voucher domains (see testng-ar-ap-mandatory.xml header) -->
+        <profile>
+            <id>ar-ap-mandatory</id>
+            <build>
+                <plugins>
+                    <plugin>
+                        <groupId>org.apache.maven.plugins</groupId>
+                        <artifactId>maven-surefire-plugin</artifactId>
+                        <version>3.2.5</version>
+                        <configuration>
+                            <testFailureIgnore>true</testFailureIgnore>
+                            <suiteXmlFiles>
+                                <suiteXmlFile>testng-ar-ap-mandatory.xml</suiteXmlFile>
+                            </suiteXmlFiles>
+                            <argLine>${test.jvm.args} --add-opens java.base/java.lang=ALL-UNNAMED</argLine>
+                            <systemPropertyVariables>
+                                <arv.group>MANDATORY</arv.group>
+                                <apv.group>MANDATORY</apv.group>
+                            </systemPropertyVariables>
                         </configuration>
                     </plugin>
                 </plugins>
@@ -392,6 +464,33 @@
                             <argLine>${test.jvm.args} --add-opens java.base/java.lang=ALL-UNNAMED</argLine>
                             <systemPropertyVariables>
                                 <arv.group>REGRESSION_PHASE3</arv.group>
+                            </systemPropertyVariables>
+                        </configuration>
+                    </plugin>
+                </plugins>
+            </build>
+        </profile>
+
+        <!-- Account Class — single-row ad hoc verification (see testng-accountclass-single.xml
+             header). Runs only accountClassScenario against a dedicated 1-row Excel file so
+             exactly one Account Class gets created, instead of the 14 rows in the full
+             AccountClassLifecycle.xlsx used by the standalone accountclasslifecycle run. -->
+        <profile>
+            <id>accountclass-single</id>
+            <build>
+                <plugins>
+                    <plugin>
+                        <groupId>org.apache.maven.plugins</groupId>
+                        <artifactId>maven-surefire-plugin</artifactId>
+                        <version>3.2.5</version>
+                        <configuration>
+                            <testFailureIgnore>true</testFailureIgnore>
+                            <suiteXmlFiles>
+                                <suiteXmlFile>testng-accountclass-single.xml</suiteXmlFile>
+                            </suiteXmlFiles>
+                            <argLine>${test.jvm.args} --add-opens java.base/java.lang=ALL-UNNAMED</argLine>
+                            <systemPropertyVariables>
+                                <finAccountClassLifecyclePath>Finance/Setup/AccountClassLifecycle_Single.xlsx</finAccountClassLifecyclePath>
                             </systemPropertyVariables>
                         </configuration>
                     </plugin>

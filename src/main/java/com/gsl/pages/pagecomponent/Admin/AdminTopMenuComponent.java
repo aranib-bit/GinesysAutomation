@@ -1,5 +1,6 @@
 package com.gsl.pages.pagecomponent.Admin;
 
+import com.gsl.enums.LogCategory;
 import com.gsl.enums.WaitType;
 import com.gsl.pages.enums.Admin.MainMenuType;
 import com.gsl.pages.pagecomponent.Admin.Finance.FinanceHomePage;
@@ -18,7 +19,7 @@ public class AdminTopMenuComponent {
      * @return The text of the selected menu item.
      */
     public String getSelectedMenu() {
-        return SeleniumUtils.getText(LBL_SELECTED_MENU, "Selected Menu");
+        return SeleniumUtils.getText(LBL_SELECTED_MENU, "Selected Menu", LogCategory.MENU);
     }
 
     /**
@@ -30,7 +31,7 @@ public class AdminTopMenuComponent {
         String currentSubMenu = getSelectedMenu();
         if (!currentSubMenu.equalsIgnoreCase(requiredSubMenu.getName())) {
             String xpath = String.format(MENU_ITEM, requiredSubMenu.getName());
-            SeleniumUtils.click(By.xpath(xpath), WaitType.CLICKABLE, requiredSubMenu.getName());
+            SeleniumUtils.click(By.xpath(xpath), WaitType.CLICKABLE, requiredSubMenu.getName(), LogCategory.MENU);
         }
         return getPageObjectForSubMenu(requiredSubMenu);
     }

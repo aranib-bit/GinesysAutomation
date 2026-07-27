@@ -6,11 +6,18 @@ import com.gsl.config.ConfigFactory;
 import com.gsl.database.DocumentReservationRegistry;
 import com.gsl.driver.Driver;
 import com.gsl.driver.DriverManager;
+import com.gsl.driver.ExecutionContext;
+import com.gsl.driver.ExecutionManager;
+import com.gsl.driver.FailureClassifier;
+import com.gsl.driver.FailureClassifier.FailureCategory;
+import com.gsl.reports.ReportLogger;
 import com.gsl.testdata.UserCredential;
 import com.gsl.testdata.UserPool;
 import com.gsl.testdata.UserType;
 import com.gsl.utils.Log;
 import com.gsl.utils.TestContextManager;
+import org.testng.ITestResult;
+import org.testng.Reporter;
 import org.testng.annotations.AfterMethod;
 import org.testng.annotations.BeforeMethod;
 
@@ -43,35 +50,38 @@ public abstract class WebTest extends BaseTest {
 
     private static final ThreadLocal<Boolean> uiUserFromPool  = ThreadLocal.withInitial(() -> false);
     private static final ThreadLocal<Boolean> apiUserFromPool = ThreadLocal.withInitial(() -> false);
+    /** True while the current row holds a SessionPool session — routes tearDown to giveBack(). */
+    private static final ThreadLocal<Boolean> sessionBorrowed = ThreadLocal.withInitial(() -> false);
 
     @BeforeMethod
     public void setUp(Method method, Object[] testParams) {
         TestContextManager.setTestName(method.getName());
         TestContextManager.setTestId();
 
-        // ── Resolve UI user ───────────────────────────────────────────────────
+        String qualifiedLabel = method.getDeclaringClass().getSimpleName() + "." + method.getName();
+
+        // ── SessionPool mode (default): borrow a pooled logged-in session for exactly this row.
+        // The pool binds EVERYTHING session-scoped to this thread (driver, ui/api user, network
+        // capture, ExecutionContext with nav cache, MDC [user=...]) before returning, so the
+        // row's Step-1 SessionManager.ensureLoggedIn() gets a cached HomePage on reuse and
+        // mid-row DB loads resolve login → hrdemp.abbre → ecode for the user this row ACTUALLY
+        // runs as. tearDown's finally gives the session back after every row — rows from all
+        // @Test methods interleave across all pool sessions (work-stealing), no thread ever
+        // holds a user between rows.
         UserCredential uiFromParam = extractCredential(testParams, UserType.UI);
-        UserCredential uiUser;
-
-        if (uiFromParam != null) {
-            // Credential supplied directly by DataSupplier row — use as-is, skip pool
-            uiUser = uiFromParam;
-            uiUserFromPool.set(false);
-            Log.info("[WebTest] [T-{}] UI user '{}' supplied by DataSupplier.",
-                    Thread.currentThread().getId(), uiUser.username());
-        } else {
-            // Pool mode — blocks until a user is free (one user = one session guarantee)
-            uiUser = UserPool.acquireSet1User(UserType.UI, method.getName());
-            uiUserFromPool.set(true);
+        if (uiFromParam == null) {
+            com.gsl.driver.SessionPool.borrow(qualifiedLabel);
+            sessionBorrowed.set(true);
+            ExecutionManager.logState("setUp:borrowed");
+            return;
         }
 
-        // Validation: UI user must always be present
-        if (uiUser == null) {
-            throw new org.testng.SkipException(
-                    "[WebTest] [T-" + Thread.currentThread().getId() + "] " +
-                    "No SET1 UI user available. " +
-                    "Ensure UsersList.xlsx has rows with userType=UI and executionSet=SET1.");
-        }
+        // ── Legacy branch: DataSupplier supplied the credential directly — per-method driver
+        // lifecycle, no pool involvement. (Currently unused — kept for future use.)
+        UserCredential uiUser = uiFromParam;
+        uiUserFromPool.set(false);
+        Log.info("[WebTest] [T-{}] UI user '{}' supplied by DataSupplier.",
+                Thread.currentThread().getId(), uiUser.username());
 
         // ── Guard: release acquired pool users if any subsequent setup step throws ──────────
         // Without this, an exception after acquire() but before tearDown() can snapshot a null
@@ -91,7 +101,7 @@ public abstract class WebTest extends BaseTest {
                         Thread.currentThread().getId(), apiUser.username());
             } else if (UserPool.hasUsersOfType(UserType.API)) {
                 // Only acquire from pool when API users are actually configured
-                apiUser = UserPool.acquireSet1User(UserType.API, method.getName());
+                apiUser = UserPool.acquireSet1User(UserType.API, qualifiedLabel);
                 apiUserFromPool.set(true);
             } else {
                 // No API users configured — this is normal for UI-only tests
@@ -120,6 +130,7 @@ public abstract class WebTest extends BaseTest {
                 FrontendDiagnosticsInjectorFactory.get().inject(DriverManager.getDriver());
             }
 
+            ExecutionManager.logState("setUp:freshAcquire");
         } catch (Exception e) {
             // Release any pool-acquired users so other waiting threads are not starved
             long tid = Thread.currentThread().getId();
@@ -143,18 +154,49 @@ public abstract class WebTest extends BaseTest {
     @AfterMethod(alwaysRun = true)
     public void tearDown() {
         long tid = Thread.currentThread().getId();
-
-        // Snapshot users before cleanup so we can release them even if DriverManager is cleared
-        UserCredential ui  = DriverManager.getCurrentUser();
-        UserCredential api = DriverManager.getApiUser();
-        boolean uiFromPool  = Boolean.TRUE.equals(uiUserFromPool.get());
-        boolean apiFromPool = Boolean.TRUE.equals(apiUserFromPool.get());
+        ExecutionManager.logState("tearDown:start");
 
         try {
             DocumentReservationRegistry.releaseCurrentThread();
         } catch (Exception e) {
             Log.warn("[WebTest] [T-{}] DocumentReservationRegistry.releaseCurrentThread() threw: {}", tid, e.getMessage());
         }
+
+        // ── SessionPool mode: give the borrowed session back after EVERY row. On a genuine
+        // session/browser/navigation failure (never a plain assertion/DB-validation failure —
+        // see FailureClassifier), RecoveryManager Level-4 closes the session first and notifies
+        // the pool, so the giveBack in the finally just unbinds and drops it; the freed capacity
+        // slot lets any waiting thread create a fresh replacement.
+        if (Boolean.TRUE.equals(sessionBorrowed.get())) {
+            try {
+                ExecutionContext ctx = ExecutionContext.current();
+                ReportLogger.session("[T-{}] tearDown: returning session to pool — user='{}', module='{}', subModule='{}'.",
+                        tid, ctx.getUser() != null ? ctx.getUser().username() : "unknown",
+                        ctx.getCurrentModule(), ctx.getCurrentSubModule());
+                ITestResult result = Reporter.getCurrentTestResult();
+                if (result != null && result.getStatus() == ITestResult.FAILURE) {
+                    FailureCategory category = FailureClassifier.classify(result.getThrowable());
+                    if (category == FailureCategory.NAVIGATION_FAILURE
+                            || category == FailureCategory.SESSION_FAILURE
+                            || category == FailureCategory.BROWSER_FAILURE) {
+                        com.gsl.driver.RecoveryManager.forceFreshSessionNextTime(category);
+                    }
+                    // TEST_FAILURE / ENVIRONMENT_FAILURE: no session action — return it for reuse.
+                }
+            } finally {
+                com.gsl.driver.SessionPool.giveBack();
+                sessionBorrowed.remove();
+                TestContextManager.clear();
+            }
+            return;
+        }
+
+        // ── Legacy per-method mode (test never called SessionManager) — unchanged. ──────────
+        // Snapshot users before cleanup so we can release them even if DriverManager is cleared
+        UserCredential ui  = DriverManager.getCurrentUser();
+        UserCredential api = DriverManager.getApiUser();
+        boolean uiFromPool  = Boolean.TRUE.equals(uiUserFromPool.get());
+        boolean apiFromPool = Boolean.TRUE.equals(apiUserFromPool.get());
 
         try {
             Driver.quitDriver();

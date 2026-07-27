@@ -1,0 +1,47 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE suite SYSTEM "http://testng.org/testng-1.0.dtd">
+<!--
+    AP Voucher ISOLATION Smoke Suite — CreateApVoucher alone, nothing else competing for the
+    shared SET1 UserPool. Purpose: prove the SessionPool ("single sign-on") model end-to-end in
+    isolation before Account Group and AR Voucher are merged back into one suite (testng-smoke.xml).
+
+    Execution model (SessionPool, com.gsl.driver.SessionPool): logged-in browser sessions live in
+    a borrow/return pool DECOUPLED from threads. The 3 @Test methods run in parallel
+    (parallel="methods" thread-count="4") and each method's DataProvider rows also run in
+    parallel (runInParallel=true, data-provider-thread-count="4") — every row borrows a pooled
+    session in WebTest.setUp and returns it in tearDown, so rows from ALL methods interleave
+    across all (capacity = UI-user count = 4) sessions work-stealing style:
+      1. a session pays its one-time cold start (browser + login + first navigation) when
+         created, up to 4 total,
+      2. every later row that borrows it gets "Already Loaded" cache hits — no re-login, no new
+         browser, just the row's own actions,
+      3. sessions cycle only on lease expiry (session.max.lease.rows/seconds — hygiene) or
+         genuine session/browser failure (Level-4 recovery),
+      4. at block end TestListener.onFinish(ITestContext) calls SessionPool.drainAll: every
+         session gets a REAL application logout, then its browser is closed and its user
+         released — nothing leaks past the block.
+
+    Success criteria in logs/diagnostics.log:
+      - zero [UserPool TIMEOUT] and zero [SessionPool] borrow timeouts,
+      - rows of all 3 methods interleaving across [S-1..S-4] sessions,
+      - "Already Loaded" cache hits from each session's 2nd borrow onward,
+      - at TEST CONTEXT FINISHED: per-session Logout entries then [UserPool RELEASED] x4.
+
+    Run: mvn clean test -Pap-smoke
+-->
+<suite name="Finance Smoke — AP Voucher Only" parallel="none" data-provider-thread-count="4">
+
+    <listeners>
+        <listener class-name="com.gsl.listeners.RetryAnnotationTransformer"/>
+        <listener class-name="com.gsl.listeners.TestListener"/>
+        <listener class-name="com.gsl.listeners.SuiteDataLoader"/>
+        <listener class-name="com.gsl.listeners.AnnotationMethodInterceptor"/>
+    </listeners>
+
+    <test name="AP Voucher" parallel="methods" thread-count="4">
+        <classes>
+            <class name="com.tests.Finance.Operations.Vouchers.CreateApVoucher"/>
+        </classes>
+    </test>
+
+</suite>

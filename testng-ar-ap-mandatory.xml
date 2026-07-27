@@ -1,0 +1,60 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE suite SYSTEM "http://testng.org/testng-1.0.dtd">
+<!--
+    AR + AP Voucher MANDATORY Suite (MERGED) — the counterpart to testng-ap-mandatory.xml, built
+    specifically to exercise the AR<->AP voucher-type SWITCH on a single held SessionPool session,
+    which no run has exercised yet (every prior SessionPool run has been AP-only).
+
+    Why the Create block holds BOTH classes: SessionPool (com.gsl.driver.SessionPool) is drained
+    at every <test>-block boundary (TestListener.onFinish -> SessionPool.drainAll), so two
+    separate <test> blocks never share a live session. Putting CreateArVoucher and CreateApVoucher
+    in ONE <test> block lets the same pooled session serve rows from BOTH classes, work-stealing
+    style — proving out the switch mechanism in NavigationUtils.navigateToFinanceSideMenu:
+      1. isCachedSubMenuStillValid only checks Finance/Operations, not which specific voucher list
+         was last open, so a session moving from AP to AR (or vice versa) still cache-hits
+         "Finance — Already Loaded" / "OPERATIONS — Already Loaded",
+      2. the final side-menu click (clickMenuItem) runs UNCONDITIONALLY every call, cache-hit or
+         not — this is the actual switch, opening whichever voucher list this row needs,
+      3. verifyAndRecordPage then updates ctx.currentPage to the new voucher type.
+
+    Validation blocks stay separate (each <test> sets one voucherDomain parameter) — only the
+    Create block's class-sharing matters for session reuse across domains.
+
+    Run: mvn clean test -Par-ap-mandatory
+-->
+<suite name="AR + AP Voucher — Mandatory Suite (Merged)" parallel="none" data-provider-thread-count="4">
+
+    <listeners>
+        <listener class-name="com.gsl.listeners.RetryAnnotationTransformer"/>
+        <listener class-name="com.gsl.listeners.TestListener"/>
+        <listener class-name="com.gsl.listeners.SuiteDataLoader"/>
+        <listener class-name="com.gsl.listeners.AnnotationMethodInterceptor"/>
+    </listeners>
+
+    <test name="AR Voucher Validation — Mandatory">
+        <parameter name="voucherDomain" value="AR"/>
+        <parameter name="executionType" value="MANDATORY"/>
+        <classes>
+            <class name="com.tests.Validation.RuleTest"/>
+        </classes>
+    </test>
+
+    <test name="AP Voucher Validation — Mandatory">
+        <parameter name="voucherDomain" value="AP"/>
+        <parameter name="executionType" value="MANDATORY"/>
+        <classes>
+            <class name="com.tests.Validation.RuleTest"/>
+        </classes>
+    </test>
+
+    <!-- Both classes in ONE block — this is what lets a session carry over between voucher types -->
+    <test name="AR + AP Voucher Create — Mandatory" parallel="methods" thread-count="4">
+        <parameter name="arv.group" value="MANDATORY"/>
+        <parameter name="apv.group" value="MANDATORY"/>
+        <classes>
+            <class name="com.tests.Finance.Operations.Vouchers.CreateArVoucher"/>
+            <class name="com.tests.Finance.Operations.Vouchers.CreateApVoucher"/>
+        </classes>
+    </test>
+
+</suite>

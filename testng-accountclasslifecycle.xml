@@ -1,0 +1,30 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE suite SYSTEM "http://testng.org/testng-1.0.dtd">
+<!--
+    Account Class Lifecycle Suite (standalone) — Create (14 naming-convention scenario rows,
+    one Excel row = one independent parallel invocation) + dropdown fixed-values check +
+    Export-to-Excel + DB-driven boundary-length check, each with DB validation.
+
+    data-provider-thread-count="1" here deliberately keeps rows sequential for the FIRST
+    verification pass, since several locators (Actions button, dropdown reopen quirk, discard-Yes)
+    are new/unverified — see testng-ap-accountclass-mandatory.xml for the parallel run alongside
+    AP Voucher once this passes single-threaded.
+
+    Run: mvn clean test -DsuiteXmlFile=testng-accountclasslifecycle.xml
+-->
+<suite name="Finance Setup — Account Class Lifecycle" parallel="none" data-provider-thread-count="1">
+
+    <listeners>
+        <listener class-name="com.gsl.listeners.RetryAnnotationTransformer"/>
+        <listener class-name="com.gsl.listeners.TestListener"/>
+        <listener class-name="com.gsl.listeners.SuiteDataLoader"/>
+        <listener class-name="com.gsl.listeners.AnnotationMethodInterceptor"/>
+    </listeners>
+
+    <test name="Account Class Lifecycle" parallel="methods" thread-count="1">
+        <classes>
+            <class name="com.tests.Finance.Setup.AccountClassLifecycle"/>
+        </classes>
+    </test>
+
+</suite>

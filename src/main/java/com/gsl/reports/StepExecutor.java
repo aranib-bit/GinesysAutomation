@@ -6,6 +6,7 @@ import com.gsl.browser.CustomMetricsObserverInjector;
 import com.gsl.browser.injector.FrontendDiagnosticsInjectorFactory;
 import com.gsl.config.ConfigFactory;
 import com.gsl.driver.DriverManager;
+import com.gsl.enums.LogCategory;
 import com.gsl.utils.Log;
 import com.gsl.utils.Selenium.ScreenshotMetadata;
 import com.gsl.utils.Selenium.ScreenshotUtils;
@@ -47,16 +48,15 @@ public final class StepExecutor {
      * adjustments, payment, AP TDS) report under the sub-ledger row group created in
      * Pass 1, even though they run after that pass has returned.
      */
-    public static void stepUnder(ExtentTest parentNode, String stepName, StepAction action) {
+    public static long stepUnder(ExtentTest parentNode, String stepName, StepAction action) {
         if (parentNode == null) {
             // Defensive: no captured group — fall back to a normal step under the current node.
-            step(stepName, action);
-            return;
+            return step(stepName, action);
         }
         ExtentTest previous = ExtentManager.getExtentTest();
         ExtentManager.setExtentTest(parentNode);
         try {
-            step(stepName, action);
+            return step(stepName, action);
         } finally {
             ExtentManager.setExtentTest(previous);
         }
@@ -70,7 +70,7 @@ public final class StepExecutor {
      * All ReportLogger/ExtentLogger calls inside the action log to the child node
      * because ExtentManager's ThreadLocal is temporarily swapped.
      */
-    public static void step(String stepName, StepAction action) {
+    public static long step(String stepName, StepAction action) {
         // Record step in action trail buffer for failure diagnostics
         ActionTrailBuffer.record(stepName);
 
@@ -104,24 +104,25 @@ public final class StepExecutor {
             action.run();
             durationMs = System.currentTimeMillis() - startMs;
             node.getModel().setName(stepName + " (" + formatDuration(durationMs) + ")");
-            node.pass("Step passed");
+            ExtentLogger.passCategorized(LogCategory.TEST_STEP_STATUS, "Step passed");
             Log.info("[STEP PASS] {} ({}ms)", stepName, durationMs);
             StepDurationBuffer.record(stepName, durationMs, true);
+            return durationMs;
         } catch (RuntimeException e) {
             durationMs = System.currentTimeMillis() - startMs;
             StepDurationBuffer.record(stepName, durationMs, false);
-            failNode(node, stepName, e);
+            failNode(node, stepName, durationMs, e);
             throw e;
         } catch (Exception e) {
             durationMs = System.currentTimeMillis() - startMs;
             StepDurationBuffer.record(stepName, durationMs, false);
-            failNode(node, stepName, e);
+            failNode(node, stepName, durationMs, e);
             throw new RuntimeException("Step failed: " + stepName, e);
         } catch (Throwable t) {
             // Catches Errors (e.g. AssertionError, SoftAssertionError) that are not Exception subclasses
             durationMs = System.currentTimeMillis() - startMs;
             StepDurationBuffer.record(stepName, durationMs, false);
-            failNode(node, stepName, t);
+            failNode(node, stepName, durationMs, t);
             if (t instanceof Error) throw (Error) t;
             throw new RuntimeException("Step failed: " + stepName, t);
         } finally {
@@ -129,7 +130,7 @@ public final class StepExecutor {
         }
     }
 
-    private static String formatDuration(long ms) {
+    static String formatDuration(long ms) {
         if (ms < 1_000) return ms + "ms";
         long s = ms / 1_000, rem = ms % 1_000;
         if (s < 60) return s + "s " + rem + "ms";
@@ -141,7 +142,8 @@ public final class StepExecutor {
      * then attaches a screenshot if a live browser session is available.
      * Accepts Throwable to also handle AssertionError / SoftAssertionError (not Exception subclasses).
      */
-    private static void failNode(ExtentTest node, String stepName, Throwable e) {
+    private static void failNode(ExtentTest node, String stepName, long durationMs, Throwable e) {
+        node.getModel().setName(stepName + " (" + formatDuration(durationMs) + ")");
         Log.error("[STEP FAIL] {} — {}", stepName, e.getMessage());
         node.fail("Exception  : " + e.getClass().getSimpleName());
         node.fail("Message    : " + e.getMessage());

@@ -1,6 +1,7 @@
 package com.gsl.pages.pagecomponent.Finance;
 
 import com.gsl.constants.FrameworkConstants;
+import com.gsl.enums.LogCategory;
 import com.gsl.enums.WaitType;
 import com.gsl.utils.Selenium.SeleniumUtils;
 import com.gsl.pages.enums.Finance.MainMenuType;
@@ -12,7 +13,7 @@ public class FinanceTopMenuComponent {
     private static final By LBL_SELECTED_MENU = By.xpath("//span[@class='active']");
 
     public String getSelectedMenu() {
-        return SeleniumUtils.getText(LBL_SELECTED_MENU, "Selected Menu");
+        return SeleniumUtils.getText(LBL_SELECTED_MENU, "Selected Menu", LogCategory.MENU);
     }
 
     public <T> T navigateToSubMenu(MainMenuType requiredSubMenu, Class<T> expectedPage) {
@@ -20,7 +21,7 @@ public class FinanceTopMenuComponent {
 
         if (!currentSubMenu.equalsIgnoreCase(requiredSubMenu.getName())) {
             String xpath = String.format(MENU_ITEM, requiredSubMenu.getName());
-            SeleniumUtils.click(By.xpath(xpath), WaitType.CLICKABLE, requiredSubMenu.getName());
+            SeleniumUtils.click(By.xpath(xpath), WaitType.CLICKABLE, requiredSubMenu.getName(), LogCategory.MENU);
             SeleniumUtils.elementDisappear(FrameworkConstants.getLoadingMask(), "Loading Mask");
         }
 

@@ -77,12 +77,26 @@ public abstract class BaseSetTwoTest extends WebTest {
         Driver.initDriver();
     }
 
-    /** Call this after filling the form, before clicking Save. */
+    /**
+     * Call this after filling the form, before clicking Save.
+     *
+     * Extension point for future SET-2 test classes that want {@code RecoveryManager} on the
+     * failure path: if a test's own action between rendezvous points throws, classify it via
+     * {@link com.gsl.driver.FailureClassifier} first. For a {@code NAVIGATION_FAILURE}/
+     * {@code SESSION_FAILURE}/{@code BROWSER_FAILURE} here, do NOT attempt Recovery Levels 3-4 —
+     * the other participant(s) are already blocked waiting on this same barrier, and trying to
+     * silently recover and rejoin would either miss the checkpoint window or falsify the
+     * race-condition scenario the test exists to prove. Let the barrier break naturally (it
+     * correctly fails the other participant too via {@code BrokenBarrierException}) instead.
+     * Recovery Levels 1-2 (a fast retry/refresh) are fine *before* a barrier checkpoint, as long
+     * as they complete well inside {@code ExecutionConfig.syncTimeoutSeconds()} (default 30s).
+     * Not wired in here since no concrete SET-2 test class exists yet to validate against.
+     */
     protected void awaitBeforeSave() {
         ConcurrentSyncManager.await(BEFORE_SAVE_BARRIERS.get(groupId), groupId + ".beforeSave");
     }
 
-    /** Call this after clicking Save, before asserting results. */
+    /** Call this after clicking Save, before asserting results. See {@link #awaitBeforeSave()}. */
     protected void awaitAfterSave() {
         ConcurrentSyncManager.await(AFTER_SAVE_BARRIERS.get(groupId), groupId + ".afterSave");
     }

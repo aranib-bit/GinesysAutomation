@@ -20,9 +20,9 @@ public interface FinVchMainDao {
     @SqlQuery("SELECT vchcode FROM finvchmain WHERE scheme_docno = :schemeDocno")
     long findVchcodeBySchemeDocno(@Bind("schemeDocno") String schemeDocno);
 
-    @SqlQuery("SELECT *, admsite_code_owner AS siteid FROM finvchmain WHERE scheme_docno = :schemeDocno")
+    @SqlQuery("SELECT * FROM finvchmain WHERE scheme_docno = :schemeDocno")
     Optional<FinVchMain> findBySchemeDocno(@Bind("schemeDocno") String schemeDocno);
 
-    @SqlQuery("SELECT *, admsite_code_owner AS siteid FROM finvchmain WHERE vchcode = :vchcode")
+    @SqlQuery("SELECT * FROM finvchmain WHERE vchcode = :vchcode")
     Optional<FinVchMain> findByVoucherCode(@Bind("vchcode") long vchcode);
 }

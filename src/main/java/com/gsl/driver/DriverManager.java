@@ -69,6 +69,17 @@ public final class DriverManager {
         }
     }
 
+    /**
+     * Binds an ALREADY-INSTRUMENTED WebDriver (one that previously went through
+     * {@link #setDriver}) to the current thread — the {@link SessionPool} re-bind path when a
+     * thread borrows an existing session. Never pass a raw driver here and never route a pooled
+     * driver back through {@code setDriver}: that would wrap a second
+     * {@code EventFiringDecorator(HeartbeatListener)} around the first and double every heartbeat.
+     */
+    public static void bindExistingDriver(WebDriver alreadyInstrumented) {
+        CONTEXT_DRIVERS.get(activeContext.get()).set(alreadyInstrumented);
+    }
+
     /** Removes the WebDriver for the current thread's active context. Prevents memory leaks. */
     public static void unloadDriver() {
         ReportLogger.framework("WebDriver unloaded — context={}", activeContext.get());

@@ -244,8 +244,7 @@ public class MergedReceiptTest extends WebTest {
 //            return; // exit cleanly, test is ready for next iteration
 //            receiptsListPage
 //                    .clickAdd();
-            HomePage homePage1=new HomePage();
-            homePage1.logoutFromApplication();
+            com.gsl.driver.SessionManager.closeSessionAndReleaseUser("Receipt scenario complete");
 
         }
     }

@@ -1,10 +1,11 @@
 package com.gsl.validation.db.finance;
 
 import com.aventstack.extentreports.ExtentTest;
+import com.gsl.enums.VoucherType;
 import com.gsl.model.finance.FinPost;
 import com.gsl.model.finance.FinVchMain;
 import com.gsl.reports.ActualResultsHolder;
-import com.gsl.reports.ExtentLogger;
+import com.gsl.reports.DatabaseLogger;
 import com.gsl.reports.ExtentManager;
 import com.gsl.reports.ReportLogger;
 import com.gsl.testdata.dto.MergedFinanceApVoucherData;
@@ -46,7 +47,7 @@ public class APVoucherDbValidator {
         MergedFinanceApVoucherData apData = context.getTestData();
         ActualResultsHolder holder = ActualResultsHolder.get();
         holder.setVoucherNo(context.getVoucherNo());
-        holder.setVoucherType("AP");
+        holder.setVoucherType(VoucherType.AP.name());
         holder.setTestData(apData);
         if (apData != null) {
             holder.setOnAccount(apData.isOnAccount());
@@ -56,27 +57,23 @@ public class APVoucherDbValidator {
         ExtentTest test = ExtentManager.getExtentTest();
         if (test != null) test.assignCategory("DB Validation");
 
-        ExtentLogger.info("══════════════════════════════════════════════════");
-        ExtentLogger.info("AP Voucher DB Validation START — [" + context.getVoucherNo() + "]");
-        ExtentLogger.info("══════════════════════════════════════════════════");
-        ReportLogger.db("AP Voucher DB Validation START — [{}]", context.getVoucherNo());
+        DatabaseLogger.validationStart("AP Voucher DB Validation — [" + context.getVoucherNo() + "]");
 
         // Level 1 field assertions are deferred so that a nartext/vchdt mismatch does NOT
         // block Levels 2–4. assertAll() is called after Level 4a completes.
         SoftAssertions deferredLevel1 = new SoftAssertions();
 
-        ExtentLogger.info("── Level 1 : finvchmain ──");
         ReportLogger.db("── Level 1 : finvchmain ──");
         ReportLogger.trace("[APValidator] Level 1 START — finvchmain header for voucherNo=" + context.getVoucherNo());
         FinVchMain header = finVchMainApValidator.validate(context, deferredLevel1);
         ReportLogger.trace("[APValidator] Level 1 DONE — vchcode=" + header.getVchcode()
                 + " camount=" + header.getCamount());
 
-        ExtentLogger.info("── Level 2 : finvchdet ──");
         ReportLogger.db("── Level 2 : finvchdet ──");
         ReportLogger.trace("[APValidator] Level 2 START — finvchdet lines for vchcode=" + header.getVchcode());
         finVchDetApValidator.validate(context, header);
         ReportLogger.trace("[APValidator] Level 2 DONE");
+        DatabaseLogger.checkPassed("Level 2 — finvchdet lines", "damount/Dr comparison OK");
 
         // FinPostValidator only uses voucherNo — a minimal shim is safe here.
         VoucherDbContext finPostCtx = VoucherDbContext.builder()
@@ -85,26 +82,29 @@ public class APVoucherDbValidator {
                 .postState(Collections.emptyMap())
                 .build();
 
-        ExtentLogger.info("── Level 3 : finpost (GL balance) ──");
         ReportLogger.db("── Level 3 : finpost (GL balance) ──");
         ReportLogger.trace("[APValidator] Level 3 START — finpost GL balance for vchcode=" + header.getVchcode());
         List<FinPost> postEntries = finPostValidator.validate(finPostCtx, header);
         ReportLogger.trace("[APValidator] Level 3 DONE — " + postEntries.size() + " GL entries");
+        DatabaseLogger.checkPassed("Level 3 — finpost GL balance", postEntries.size() + " GL entries balanced");
 
-        ExtentLogger.info("── Level 4a: fintag (adjustment tagging) ──");
         ReportLogger.db("── Level 4a: fintag (adjustment tagging) ──");
         ReportLogger.trace("[APValidator] Level 4a START — fintag adjustment tagging");
         finTagApValidator.validate(context, header, postEntries);
         ReportLogger.trace("[APValidator] Level 4a DONE");
+        DatabaseLogger.checkPassed("Level 4a — fintag adjustment tagging", "OK");
 
         // Now surface any Level 1 field mismatches collected above
-        ExtentLogger.info("── Level 1 deferred assertions ──");
-        deferredLevel1.assertAll();
+        try {
+            deferredLevel1.assertAll();
+            DatabaseLogger.checkPassed("Level 1 — finvchmain header fields", "all deferred field checks passed");
+        } catch (AssertionError e) {
+            DatabaseLogger.checkFailed("Level 1 — finvchmain header fields", "all fields valid", e.getMessage(),
+                    "(see finvchmain fetch above)", context.getVoucherNo(), 0, 1);
+            throw e;
+        }
 
-        ExtentLogger.info("══════════════════════════════════════════════════");
-        ExtentLogger.info("AP Voucher DB Validation COMPLETE — ALL PASSED [" + context.getVoucherNo() + "]");
-        ExtentLogger.info("══════════════════════════════════════════════════");
-        ReportLogger.db("AP Voucher DB Validation COMPLETE — ALL PASSED [{}]", context.getVoucherNo());
+        DatabaseLogger.validationComplete("AP Voucher DB Validation — [" + context.getVoucherNo() + "]", true);
         ReportLogger.trace("[APValidator] ALL LEVELS PASSED for voucherNo=" + context.getVoucherNo());
 
     }

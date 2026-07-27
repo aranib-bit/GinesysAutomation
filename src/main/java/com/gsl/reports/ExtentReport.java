@@ -49,6 +49,11 @@ public final class ExtentReport {
     public static void initReports() {
         extent = new ExtentReports();
         ExtentSparkReporter sparkReporter = new ExtentSparkReporter(FrameworkConstants.getReportPath());
+        // Without this, the HTML is written using the JVM's platform-default charset (not UTF-8
+        // on this Windows/JDK17 setup), so every non-ASCII character used in step names/table
+        // cells (→, —, •, etc.) gets replaced with U+FFFD when the browser renders the file as
+        // UTF-8 per its own <meta charset> tag.
+        sparkReporter.config().setEncoding("UTF-8");
         // P4: widen the built-in timestamp column so timestamps never wrap
         sparkReporter.config().setCss(
             ".col-timestamp, td.timestamp, th.timestamp, " +
@@ -155,6 +160,7 @@ public final class ExtentReport {
         }
 
         ExtentSparkReporter spark = new ExtentSparkReporter(path);
+        spark.config().setEncoding("UTF-8");
         spark.config().setDocumentTitle(sm.getName()
             + (op == NONE ? "" : " — " + op.getDisplayName()));
         spark.config().setCss(

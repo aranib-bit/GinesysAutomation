@@ -44,6 +44,12 @@ import java.util.List;
  */
 public class MergedFinApVoucherDataSupplier {
 
+    // runInParallel=true is SAFE here only because of SessionPool (com.gsl.driver.SessionPool):
+    // TestNG runs each @Test method's rows on a short-lived per-method thread pool, and under the
+    // old ThreadLocal-bound session model those dying threads leaked their held users/browsers
+    // (jstack-confirmed incident, run 20260708_113201). Sessions now live in the pool — each row
+    // borrows one in WebTest.setUp and returns it in tearDown — so ephemeral row-threads hold
+    // nothing between rows, and rows from ALL methods interleave across all pooled sessions.
     @DataSupplier(name = "FinanceApVoucherData", flatMap = true, runInParallel = true)
     public StreamEx<Object[]> dataSupplier(Method method, ITestContext context) {
         String source = ConfigFactory.getConfig().testDataSource();

@@ -1,0 +1,41 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE suite SYSTEM "http://testng.org/testng-1.0.dtd">
+<!--
+    AP Voucher MANDATORY Suite — validation rules + the MANDATORY-tagged CreateApVoucher rows
+    only (apv.group=MANDATORY, ~7 scenarios per ApVoucherExecutionGroup's javadoc), standalone
+    from AR Voucher / Account Group. DB-mode only (testdata.source=DB) — ExcelApVoucherDataSource
+    has no group filtering.
+
+    SessionPool execution model (see testng-ap-smoke.xml for full detail): the 3 CreateApVoucher
+    @Test methods run in parallel and each method's rows also run in parallel
+    (runInParallel=true on MergedFinApVoucherDataSupplier); every row borrows a pooled logged-in
+    session (com.gsl.driver.SessionPool) and returns it after, so rows interleave across
+    (capacity = UI-user count) sessions with "Already Loaded" cache hits from the 2nd borrow on.
+
+    Run: mvn clean test -Pap-mandatory
+-->
+<suite name="AP Voucher — Mandatory Suite" parallel="none" data-provider-thread-count="4">
+
+    <listeners>
+        <listener class-name="com.gsl.listeners.RetryAnnotationTransformer"/>
+        <listener class-name="com.gsl.listeners.TestListener"/>
+        <listener class-name="com.gsl.listeners.SuiteDataLoader"/>
+        <listener class-name="com.gsl.listeners.AnnotationMethodInterceptor"/>
+    </listeners>
+
+    <test name="AP Voucher Validation — Mandatory">
+        <parameter name="voucherDomain" value="AP"/>
+        <parameter name="executionType" value="MANDATORY"/>
+        <classes>
+            <class name="com.tests.Validation.RuleTest"/>
+        </classes>
+    </test>
+
+    <test name="AP Voucher Create — Mandatory" parallel="methods" thread-count="4">
+        <parameter name="apv.group" value="MANDATORY"/>
+        <classes>
+            <class name="com.tests.Finance.Operations.Vouchers.CreateApVoucher"/>
+        </classes>
+    </test>
+
+</suite>

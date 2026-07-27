@@ -1,5 +1,6 @@
 package com.gsl.validation.db.finance;
 
+import com.gsl.enums.VoucherType;
 import com.gsl.model.finance.FinVchMain;
 import com.gsl.reports.ActualResultsHolder;
 import com.gsl.reports.ReportLogger;
@@ -28,7 +29,7 @@ public class FinVchMainValidator extends FinVchMainBaseValidator {
         FinVchMain h = fetchAndBlock(schemeDocno);
         ActualResultsHolder.get().setHeader(h);
 
-        String fieldSummary = validateCommonHeaderFields(h, doc, context.getSaveStartTime(), deferredSoft);
+        String fieldSummary = validateCommonHeaderFields(h, doc, context.getSaveStartTime(), VoucherType.AR, deferredSoft);
 
         // AR-specific: debit side carries the voucher total (also deferred)
         deferredSoft.assertThat(h.getDamount())

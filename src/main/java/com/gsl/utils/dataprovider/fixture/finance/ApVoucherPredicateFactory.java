@@ -4,7 +4,6 @@ import com.gsl.pages.Common.DocumentMessageBox;
 import com.gsl.pages.Finance.Operations.ApVoucherAdd;
 import com.gsl.pages.Finance.Operations.Common.DocumentPopup;
 import com.gsl.pages.Finance.Operations.Common.PaymentInfoCheckWarning;
-import com.gsl.pages.HomePage;
 import com.gsl.pages.pagecomponent.Finance.Operations.Common.SubLedgerRowLocator;
 import com.gsl.utils.Selenium.ExtJsQuickTipUtils;
 import com.gsl.reports.ReportLogger;
@@ -84,7 +83,7 @@ public final class ApVoucherPredicateFactory {
                 ReportLogger.pass("Voucher saved. Document No: " + docNoRef[0]);
                 messageBox.clickOk();
                 page.close().clickYes();
-                new HomePage().logoutFromApplication();
+                ReportLogger.session("Logout deferred — session may be reused by a later test on this thread.");
             });
 
             StepExecutor.step("Database Validation", () -> {
@@ -140,7 +139,7 @@ public final class ApVoucherPredicateFactory {
                 ReportLogger.pass("Voucher saved. Document No: " + docNoRef[0]);
                 messageBox.clickOk();
                 page.close().clickYes();
-                new HomePage().logoutFromApplication();
+                ReportLogger.session("Logout deferred — session may be reused by a later test on this thread.");
             });
 
             StepExecutor.step("Database Validation", () -> {
@@ -200,7 +199,7 @@ public final class ApVoucherPredicateFactory {
                 ReportLogger.pass("Voucher saved. Document No: " + docNoRef[0]);
                 messageBox.clickOk();
                 page.close().clickYes();
-                new HomePage().logoutFromApplication();
+                ReportLogger.session("Logout deferred — session may be reused by a later test on this thread.");
             });
 
             StepExecutor.step("Database Validation", () -> {
@@ -259,7 +258,7 @@ public final class ApVoucherPredicateFactory {
                 ReportLogger.pass("Voucher saved. Document No: " + docNoRef[0]);
                 messageBox.clickOk();
                 page.close().clickYes();
-                new HomePage().logoutFromApplication();
+                ReportLogger.session("Logout deferred — session may be reused by a later test on this thread.");
             });
 
             StepExecutor.step("Database Validation", () -> {
@@ -319,7 +318,7 @@ public final class ApVoucherPredicateFactory {
                 ReportLogger.pass("Voucher saved. Document No: " + docNoRef[0]);
                 messageBox.clickOk();
                 page.close().clickYes();
-                new HomePage().logoutFromApplication();
+                ReportLogger.session("Logout deferred — session may be reused by a later test on this thread.");
             });
 
             StepExecutor.step("Database Validation", () -> {
@@ -378,7 +377,7 @@ public final class ApVoucherPredicateFactory {
                 ReportLogger.pass("Voucher saved. Document No: " + docNoRef[0]);
                 messageBox.clickOk();
                 page.close().clickYes();
-                new HomePage().logoutFromApplication();
+                ReportLogger.session("Logout deferred — session may be reused by a later test on this thread.");
             });
 
             StepExecutor.step("Database Validation", () -> {
@@ -441,9 +440,9 @@ public final class ApVoucherPredicateFactory {
                 popup.clickOkOnErrorDialog();
             });
 
-            StepExecutor.step("Cancel and Logout", () -> {
+            StepExecutor.step("Cancel (Logout deferred)", () -> {
                 page.close().clickYes();
-                new HomePage().logoutFromApplication();
+                ReportLogger.session("Logout deferred — session may be reused by a later test on this thread.");
             });
 
             return true;    // test passes when expected error was raised
@@ -500,7 +499,7 @@ public final class ApVoucherPredicateFactory {
                 ReportLogger.pass("Voucher saved after SL error recovery. Document No: " + docNoRef[0]);
                 messageBox.clickOk();
                 page.close().clickYes();
-                new HomePage().logoutFromApplication();
+                ReportLogger.session("Logout deferred — session may be reused by a later test on this thread.");
             });
 
             return docNoRef[0] != null;
@@ -542,9 +541,9 @@ public final class ApVoucherPredicateFactory {
                 popup.clickOkOnErrorDialog();
             });
 
-            StepExecutor.step("Cancel and Logout", () -> {
+            StepExecutor.step("Cancel (Logout deferred)", () -> {
                 page.close().clickYes();
-                new HomePage().logoutFromApplication();
+                ReportLogger.session("Logout deferred — session may be reused by a later test on this thread.");
             });
 
             return true;
@@ -579,9 +578,9 @@ public final class ApVoucherPredicateFactory {
                 popup.clickOkOnErrorDialog();
             });
 
-            StepExecutor.step("Cancel and Logout", () -> {
+            StepExecutor.step("Cancel (Logout deferred)", () -> {
                 page.close().clickYes();
-                new HomePage().logoutFromApplication();
+                ReportLogger.session("Logout deferred — session may be reused by a later test on this thread.");
             });
 
             return true;
@@ -638,7 +637,7 @@ public final class ApVoucherPredicateFactory {
                 ReportLogger.pass("Voucher saved after Cash/Bank recovery. Document No: " + docNoRef[0]);
                 messageBox.clickOk();
                 page.close().clickYes();
-                new HomePage().logoutFromApplication();
+                ReportLogger.session("Logout deferred — session may be reused by a later test on this thread.");
             });
 
             return docNoRef[0] != null;
@@ -701,7 +700,7 @@ public final class ApVoucherPredicateFactory {
                 ReportLogger.pass("Voucher saved at boundary. Document No: " + docNoRef[0]);
                 messageBox.clickOk();
                 page.close().clickYes();
-                new HomePage().logoutFromApplication();
+                ReportLogger.session("Logout deferred — session may be reused by a later test on this thread.");
             });
 
             StepExecutor.step("Database Validation", () -> {
@@ -771,9 +770,9 @@ public final class ApVoucherPredicateFactory {
                 ReportLogger.pass("Tooltip OK — [" + actual + "]");
             });
 
-            StepExecutor.step("Cancel and Logout", () -> {
+            StepExecutor.step("Cancel (Logout deferred)", () -> {
                 page.close().clickYes();
-                new HomePage().logoutFromApplication();
+                ReportLogger.session("Logout deferred — session may be reused by a later test on this thread.");
             });
 
             return true;
@@ -826,9 +825,9 @@ public final class ApVoucherPredicateFactory {
                 ReportLogger.pass("Tooltip OK — [" + actual + "]");
             });
 
-            StepExecutor.step("Cancel and Logout", () -> {
+            StepExecutor.step("Cancel (Logout deferred)", () -> {
                 page.close().clickYes();
-                new HomePage().logoutFromApplication();
+                ReportLogger.session("Logout deferred — session may be reused by a later test on this thread.");
             });
 
             return true;
@@ -865,9 +864,9 @@ public final class ApVoucherPredicateFactory {
                 infoDialog.clickOkOnErrorDialog();
             });
 
-            StepExecutor.step("Cancel and Logout", () -> {
+            StepExecutor.step("Cancel (Logout deferred)", () -> {
                 page.close().clickYes();
-                new HomePage().logoutFromApplication();
+                ReportLogger.session("Logout deferred — session may be reused by a later test on this thread.");
             });
 
             return true;

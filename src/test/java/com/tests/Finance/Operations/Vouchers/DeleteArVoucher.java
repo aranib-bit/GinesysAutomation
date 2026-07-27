@@ -106,7 +106,7 @@ public class DeleteArVoucher extends WebTest {
 
         // ── Step 6: Logout ────────────────────────────────────────────────────────
         StepExecutor.step("Logout", () -> {
-            new HomePage().logoutFromApplication();
+            com.gsl.driver.SessionManager.closeSessionAndReleaseUser("Delete AR Voucher complete");
         });
 
         // ── Step 7: Database Validation ───────────────────────────────────────────

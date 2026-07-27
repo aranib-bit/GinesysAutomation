@@ -1,0 +1,34 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE suite SYSTEM "http://testng.org/testng-1.0.dtd">
+<!--
+    AP Voucher + Account Class — Mandatory Suite (Merged), mirroring testng-ar-ap-mandatory.xml's
+    merged-block pattern: SessionPool drains at every <test>-block boundary, so two classes only
+    share pooled sessions (and therefore only genuinely interleave) if they sit in ONE <test>
+    block together — this is what "run Account Class in parallel like AP Voucher" means in
+    practice, not just each class independently using runInParallel=true.
+
+    data-provider-thread-count="4" is inherited from testng-apvoucher.xml's existing sizing (4 UI
+    users in UsersList.xlsx). Since Account Class rows now compete for the same pooled sessions,
+    raise this (and the matching UsersList.xlsx user count) if UserPoolAcquisitionTimeoutException
+    appears once both classes run together.
+
+    Run: mvn clean test -DsuiteXmlFile=testng-ap-accountclass-mandatory.xml
+-->
+<suite name="AP Voucher + Account Class — Mandatory Suite (Merged)" parallel="none" data-provider-thread-count="4">
+
+    <listeners>
+        <listener class-name="com.gsl.listeners.RetryAnnotationTransformer"/>
+        <listener class-name="com.gsl.listeners.TestListener"/>
+        <listener class-name="com.gsl.listeners.SuiteDataLoader"/>
+        <listener class-name="com.gsl.listeners.AnnotationMethodInterceptor"/>
+    </listeners>
+
+    <test name="AP Voucher + Account Class Create — Mandatory" parallel="methods" thread-count="4">
+        <parameter name="apv.group" value="MANDATORY"/>
+        <classes>
+            <class name="com.tests.Finance.Operations.Vouchers.CreateApVoucher"/>
+            <class name="com.tests.Finance.Setup.AccountClassLifecycle"/>
+        </classes>
+    </test>
+
+</suite>

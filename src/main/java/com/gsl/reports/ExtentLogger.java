@@ -134,6 +134,22 @@ public final class ExtentLogger {
      */
     public static void infoCategorized(LogCategory category, ReportSeverity severity, String message) {
         if (ExtentManager.getExtentTest() == null) return;
+        String htmlStr = buildCategorizedHtml(category, severity, message);
+        ExtentManager.getExtentTest().info((Markup) () -> htmlStr);
+    }
+
+    /**
+     * Logs a message prefixed with a colored category badge, keeping Extent's native
+     * PASS status (green) on the node rather than an INFO entry — used for step-level
+     * outcome markers that should still roll the test/step up as passed.
+     */
+    public static void passCategorized(LogCategory category, String message) {
+        if (ExtentManager.getExtentTest() == null) return;
+        String htmlStr = buildCategorizedHtml(category, ReportSeverity.MEDIUM, message);
+        ExtentManager.getExtentTest().pass((Markup) () -> htmlStr);
+    }
+
+    private static String buildCategorizedHtml(LogCategory category, ReportSeverity severity, String message) {
         StringBuilder html = new StringBuilder();
         String catColor = categoryColor(category);
         html.append("<span style='background:").append(catColor)
@@ -148,8 +164,7 @@ public final class ExtentLogger {
                 .append(severity.name()).append("</span>");
         }
         html.append("<span style='vertical-align:middle;'>").append(escapeHtml(message)).append("</span>");
-        String htmlStr = html.toString();
-        ExtentManager.getExtentTest().info((Markup) () -> htmlStr);
+        return html.toString();
     }
 
     private static String categoryColor(LogCategory cat) {
@@ -163,6 +178,14 @@ public final class ExtentLogger {
             case PERF       -> "#bf360c";
             case FRAMEWORK  -> "#424242";
             case RCA        -> "#b71c1c";
+            case SESSION    -> "#00838f";
+            case NAVIGATION -> "#558b2f";
+            case RECOVERY   -> "#ad1457";
+            case MODULE           -> "#3949ab";
+            case SUB_MODULE       -> "#6d4c41";
+            case MENU             -> "#0277bd";
+            case SUB_MENU         -> "#00acc1";
+            case TEST_STEP_STATUS -> "#757575";
         };
     }
 

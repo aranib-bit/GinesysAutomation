@@ -2,9 +2,11 @@ package com.gsl.utils.Selenium;
 
 import com.gsl.config.ConfigFactory;
 import com.gsl.driver.DriverManager;
+import com.gsl.enums.LogCategory;
 import com.gsl.enums.WaitType;
 import com.gsl.popup.PopupMonitor;
 import com.gsl.reports.ExtentLogger;
+import com.gsl.reports.ReportLogger;
 import com.gsl.utils.ElementMeta;
 import com.gsl.utils.Log;
 import com.gsl.utils.SensitiveDataMasker;
@@ -22,14 +24,22 @@ public class SeleniumUtils {
     private SeleniumUtils() {}
 
     public static void click(By by, String elementName) {
+        click(by, elementName, LogCategory.UI_ACTION);
+    }
+
+    public static void click(By by, String elementName, LogCategory category) {
         WebElement element = waitUntilElementPresent(by);
         clickWithOverlayRetry(element, elementName);
-        ExtentLogger.info(elementName + " is clicked successfully");
+        ReportLogger.info(category, elementName + " is clicked successfully");
         WaitUtils.waitForExtMask(elementName);
         PopupMonitor.checkAfterAction(elementName);
     }
 
     public static void click(By by, WaitType waitType, String elementName) {
+        click(by, waitType, elementName, LogCategory.UI_ACTION);
+    }
+
+    public static void click(By by, WaitType waitType, String elementName, LogCategory category) {
         JavascriptExecutorUtils.waitForPageLoad();
         JavascriptExecutorUtils.waitForExtJS();
         WebElement element;
@@ -41,12 +51,16 @@ public class SeleniumUtils {
             element = waitUntilElementVisible(by);
         }
         clickWithOverlayRetry(element, elementName);
-        ExtentLogger.info(elementName + " is clicked successfully");
+        ReportLogger.info(category, elementName + " is clicked successfully");
         WaitUtils.waitForExtMask(elementName);
         PopupMonitor.checkAfterAction(elementName);
     }
 
     public static void click(WebElement element, WaitType waitType, String elementName) {
+        click(element, waitType, elementName, LogCategory.UI_ACTION);
+    }
+
+    public static void click(WebElement element, WaitType waitType, String elementName, LogCategory category) {
         JavascriptExecutorUtils.waitForPageLoad();
         JavascriptExecutorUtils.waitForExtJS();
         WebElement ready;
@@ -59,17 +73,21 @@ public class SeleniumUtils {
             ready = element;
         }
         clickWithOverlayRetry(ready, elementName);
-        ExtentLogger.info(elementName + " is clicked successfully");
+        ReportLogger.info(category, elementName + " is clicked successfully");
         WaitUtils.waitForExtMask(elementName);
         PopupMonitor.checkAfterAction(elementName);
     }
 
     public static void jsClick(By by, String elementName) {
+        jsClick(by, elementName, LogCategory.UI_ACTION);
+    }
+
+    public static void jsClick(By by, String elementName, LogCategory category) {
         JavascriptExecutorUtils.waitForPageLoad();
         JavascriptExecutorUtils.waitForExtJS();
         WebElement element = WaitUtils.untilClickable(by);
         JavascriptExecutorUtils.click(element);
-        ExtentLogger.info(elementName + " is clicked successfully");
+        ReportLogger.info(category, elementName + " is clicked successfully");
     }
 
     public static WebElement findChildElement(By parentLocator, By childLocator) {
@@ -178,9 +196,13 @@ public class SeleniumUtils {
     }
 
     public static String getText(By by, String elementName) {
+        return getText(by, elementName, LogCategory.UI_ACTION);
+    }
+
+    public static String getText(By by, String elementName, LogCategory category) {
         WebElement element = waitUntilElementVisible(by);
         String text = element.getAttribute("innerText");
-        ExtentLogger.info("Text from " + elementName + " is: '" + text + "'");
+        ReportLogger.info(category, "Text from " + elementName + " is: '" + text + "'");
         return text;
     }
 

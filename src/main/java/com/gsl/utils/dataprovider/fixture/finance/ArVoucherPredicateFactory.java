@@ -4,7 +4,6 @@ import com.gsl.pages.Common.DocumentMessageBox;
 import com.gsl.pages.Finance.Operations.ArVoucherAdd;
 import com.gsl.pages.Finance.Operations.Common.DocumentPopup;
 import com.gsl.pages.Finance.Operations.Common.PaymentInfoCheckWarning;
-import com.gsl.pages.HomePage;
 import com.gsl.pages.pagecomponent.Finance.Operations.Common.SubLedgerRowLocator;
 import com.gsl.utils.Selenium.ExtJsQuickTipUtils;
 import com.gsl.reports.ReportLogger;
@@ -85,7 +84,7 @@ public final class ArVoucherPredicateFactory {
                 ReportLogger.pass("Voucher saved. Document No: " + docNoRef[0]);
                 messageBox.clickOk();
                 page.close().clickYes();
-                new HomePage().logoutFromApplication();
+                ReportLogger.session("Logout deferred — session may be reused by a later test on this thread.");
             });
 
             StepExecutor.step("Database Validation", () -> {
@@ -151,7 +150,7 @@ public final class ArVoucherPredicateFactory {
                 ReportLogger.pass("Voucher saved. Document No: " + docNoRef[0]);
                 messageBox.clickOk();
                 page.close().clickYes();
-                new HomePage().logoutFromApplication();
+                ReportLogger.session("Logout deferred — session may be reused by a later test on this thread.");
             });
 
             StepExecutor.step("Database Validation", () -> {
@@ -217,7 +216,7 @@ public final class ArVoucherPredicateFactory {
                 ReportLogger.pass("Voucher saved. Document No: " + docNoRef[0]);
                 messageBox.clickOk();
                 page.close().clickYes();
-                new HomePage().logoutFromApplication();
+                ReportLogger.session("Logout deferred — session may be reused by a later test on this thread.");
             });
 
             StepExecutor.step("Database Validation", () -> {
@@ -284,7 +283,7 @@ public final class ArVoucherPredicateFactory {
                 ReportLogger.pass("Voucher saved. Document No: " + docNoRef[0]);
                 messageBox.clickOk();
                 page.close().clickYes();
-                new HomePage().logoutFromApplication();
+                ReportLogger.session("Logout deferred — session may be reused by a later test on this thread.");
             });
 
             StepExecutor.step("Database Validation", () -> {
@@ -334,9 +333,9 @@ public final class ArVoucherPredicateFactory {
                 ReportLogger.pass("Validation OK — Expected: [" + expectedMsg + "] | Received: [" + actualMsg + "]");
             });
 
-            StepExecutor.step("Cancel and Logout", () -> {
+            StepExecutor.step("Cancel (Logout deferred)", () -> {
                 page.close().clickYes();
-                new HomePage().logoutFromApplication();
+                ReportLogger.session("Logout deferred — session may be reused by a later test on this thread.");
             });
 
             return true;    // test passes when expected error was raised
@@ -391,7 +390,7 @@ public final class ArVoucherPredicateFactory {
                 ReportLogger.pass("Voucher saved at boundary. Document No: " + docNoRef[0]);
                 messageBox.clickOk();
                 page.close().clickYes();
-                new HomePage().logoutFromApplication();
+                ReportLogger.session("Logout deferred — session may be reused by a later test on this thread.");
             });
 
             StepExecutor.step("Database Validation", () -> {
@@ -455,9 +454,9 @@ public final class ArVoucherPredicateFactory {
                 ReportLogger.pass("Tooltip OK — [" + actual + "]");
             });
 
-            StepExecutor.step("Cancel and Logout", () -> {
+            StepExecutor.step("Cancel (Logout deferred)", () -> {
                 page.close().clickYes();
-                new HomePage().logoutFromApplication();
+                ReportLogger.session("Logout deferred — session may be reused by a later test on this thread.");
             });
 
             return true;

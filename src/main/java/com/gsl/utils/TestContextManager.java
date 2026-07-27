@@ -53,6 +53,11 @@ public final class TestContextManager {
         return ThreadContext.get(KEY_TEST_NAME);
     }
 
+    /** Remote WebDriver session id stamped by Driver.initDriver — null/blank for local drivers. */
+    public static String getSessionId() {
+        return ThreadContext.get(KEY_SESSION_ID);
+    }
+
     public static String getTestCaseId() {
         return ThreadContext.get(KEY_TEST_CASE_ID);
     }

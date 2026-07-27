@@ -74,8 +74,6 @@ import java.time.Instant;
 import java.util.Arrays;
 import java.util.List;
 import java.util.Optional;
-import java.util.concurrent.atomic.AtomicBoolean;
-import java.util.concurrent.atomic.AtomicInteger;
 
 public class TestListener implements ITestListener, ISuiteListener {
 
@@ -96,11 +94,6 @@ public class TestListener implements ITestListener, ISuiteListener {
     // onTestStart → onTestSuccess/onTestFailure without creating an ExtentTest node.
     private static final ThreadLocal<String> frameworkCheckLabel = new ThreadLocal<>();
 
-    // Tracks how many validation <test> blocks remain; snapshot is created when the
-    // last one finishes so it appears immediately after rule-validation in the report.
-    private final AtomicInteger pendingValidationContexts = new AtomicInteger(0);
-    private final AtomicBoolean snapshotCreated          = new AtomicBoolean(false);
-
     // ── Suite-level lifecycle — fires ONCE per <suite>, not once per <test> ──────
 
     @Override
@@ -115,13 +108,11 @@ public class TestListener implements ITestListener, ISuiteListener {
         RuntimeExecutionProfile profile = RuntimeProfileBuilder.build();
         RuntimeProfileHolder.set(profile);
 
-        // Count <test> blocks whose name contains "validation" (case-insensitive).
-        // The snapshot node is created after ALL of them finish, so it appears
-        // immediately after rule-validation in the Extent report rather than at the end.
-        int validationCount = (int) suite.getXmlSuite().getTests().stream()
-                .filter(t -> t.getName().toLowerCase().contains("validation"))
-                .count();
-        pendingValidationContexts.set(validationCount);
+        // Created here — the one suite-lifecycle point guaranteed to run before any
+        // <test> block starts — so this node is always first in the Extent report,
+        // ahead of Rule Validation and every other test.
+        ExtentReport.createTest("Execution Configuration Snapshot");
+        ReportConfigRenderer.renderAllSections(profile);
 
         ReportConfigRenderer.renderDashboard(ExtentReport.getExtentReports(), profile);
         try {
@@ -145,16 +136,7 @@ public class TestListener implements ITestListener, ISuiteListener {
 
     @Override
     public void onFinish(ISuite suite) {
-        // Fallback: if no validation <test> blocks existed in this suite file
-        // (e.g. testng-regression.xml), create the snapshot now so it is never missing.
-        if (snapshotCreated.compareAndSet(false, true)) {
-            RuntimeExecutionProfile profile = RuntimeProfileHolder.get();
-            if (profile != null) {
-                ExtentReport.createTest("Execution Configuration Snapshot");
-                ReportConfigRenderer.renderAllSections(profile);
-            }
-        }
-        SummaryReportBuilder.build();
+        SummaryReportBuilder.build(suite);
         ExtentReport.flushReports();
         copyToLatest();
         Log.logHeap("suite-finish:" + suite.getName());
@@ -173,19 +155,14 @@ public class TestListener implements ITestListener, ISuiteListener {
         Log.info("SUITE FINISHED: {}", context.getName());
         ReportLogger.framework("TEST CONTEXT FINISHED: {}", context.getName());
 
-        // When the last validation <test> block finishes, inject the snapshot node.
-        // Validation tests complete in milliseconds while Selenium tests are still
-        // launching browsers, so the node lands right after rule-validation in the report.
-        if (context.getName().toLowerCase().contains("validation")
-                && pendingValidationContexts.decrementAndGet() == 0
-                && snapshotCreated.compareAndSet(false, true)) {
-            RuntimeExecutionProfile profile = RuntimeProfileHolder.get();
-            if (profile != null) {
-                ExtentReport.createTest("Execution Configuration Snapshot");
-                ReportConfigRenderer.renderAllSections(profile);
-                ExtentReport.flushReports();
-            }
-        }
+        // End-of-block session teardown: SessionPool owns every session now, so one call logs
+        // out and closes them ALL — each idle session is bound to this thread in turn, given a
+        // REAL application logout when healthy, then quit, its user released. Nothing is
+        // thread-resident anymore, so this reaches every session regardless of which worker
+        // threads ran the rows (the ThreadLocal-registry drain this replaces could not do the
+        // logout and existed only because sessions used to live in per-thread state).
+        com.gsl.driver.SessionPool.drainAll("end of <test> block: " + context.getName());
+        com.gsl.driver.ExecutionContext.clear();
     }
 
     // ── Per-test callbacks ────────────────────────────────────────────────────────
@@ -195,6 +172,11 @@ public class TestListener implements ITestListener, ISuiteListener {
         if (SuiteCircuitBreaker.isTripped()) {
             throw new org.testng.SkipException("Suite circuit breaker tripped — skipping remaining tests.");
         }
+
+        // Captured before RetryHistoryBuffer.clear() below — RetryAnalyzer.retry() records
+        // the previous attempt's failure to this buffer before TestNG re-invokes onTestStart
+        // for the retry, so a non-empty buffer here means this invocation is a retry attempt.
+        boolean isRetry = RetryHistoryBuffer.totalAttempts() > 0;
 
         String methodName = result.getMethod().getMethodName();
         TestContextManager.setTestName(methodName);
@@ -226,6 +208,9 @@ public class TestListener implements ITestListener, ISuiteListener {
             String title = "Rule Validation [" + domain + "]"
                     + (execType.isBlank() ? "" : " — " + execType);
             ExtentReport.createTest(title);
+            if (isRetry) {
+                ExtentManager.getExtentTest().assignCategory("RETRY");
+            }
             return;
         }
 
@@ -246,6 +231,9 @@ public class TestListener implements ITestListener, ISuiteListener {
 
         Optional<DomainReporter> domainReporter = DomainReporterRegistry.resolve(params);
         Object domainData = domainReporter.map(r -> r.extractTestData(params)).orElse(null);
+
+        String richTitle; // full per-row Extent title — reused below to upgrade the SessionPool
+                           // borrower label from setUp's generic "ClassName.methodName"
 
         if (invData != null) {
 
@@ -268,6 +256,7 @@ public class TestListener implements ITestListener, ISuiteListener {
             String title = prefix + titleText
                     + " [" + invData.getInvocationIndex() + "/" + invData.getTotalInvocations() + "]";
             ExtentReport.createTest(title);
+            richTitle = title;
 
             // Description: technical parameter string (SEL_DOC | [Bank GL] | ...)
             if (richName != null) {
@@ -284,7 +273,20 @@ public class TestListener implements ITestListener, ISuiteListener {
             String desc = result.getMethod().getDescription();
             String titleText = (sentence != null && !sentence.isBlank()) ? sentence
                     : (desc != null && !desc.isBlank() ? desc : methodName);
-            ExtentReport.createTest(prefix + titleText);
+            richTitle = prefix + titleText;
+            ExtentReport.createTest(richTitle);
+        }
+
+        // Upgrade the SessionPool borrower label (generic "ClassName.methodName" from
+        // WebTest.setUp, which runs before this tcId/description is known) to the rich title, so
+        // the NEXT test to borrow this session reports a real description as "previous test on
+        // this session" instead of just the method name. Defensive try/catch: this is diagnostic
+        // metadata only — a failure here must never abort the rest of onTestStart (Extent node
+        // creation, category assignment, correlation logging all follow this line).
+        try {
+            com.gsl.driver.SessionPool.updateCurrentLabel(richTitle);
+        } catch (Exception e) {
+            Log.warn("[TestListener] SessionPool.updateCurrentLabel failed for '{}': {}", richTitle, e.getMessage());
         }
 
         FrameworkAnnotation fa = result.getMethod()
@@ -311,14 +313,33 @@ public class TestListener implements ITestListener, ISuiteListener {
             ExtentReport.createTest(currentTitle, module, subModule, operation);
         }
 
+        // Login user (abbre) — correlates this test's execution to the pooled browser/session that
+        // ran it, and to the abbre→ecode chain DB validation uses. Tag it as an Extent category
+        // too (same convention as APVoucherDbValidator/ARVoucherDbValidator's "DB Validation" tag)
+        // so the report's category filter can group/find every test a given login user ran.
+        com.gsl.testdata.UserCredential currentUser = com.gsl.driver.DriverManager.getCurrentUser();
+        String username = currentUser != null ? currentUser.username() : "unknown";
+        String sessionLabel = com.gsl.driver.SessionPool.currentSessionLabel();
+        String previousTestCase = com.gsl.driver.SessionPool.currentSessionPreviousLabel();
+        if (ExtentManager.hasTest()) {
+            ExtentManager.getExtentTest().assignCategory("User: " + username);
+            if (isRetry) {
+                ExtentManager.getExtentTest().assignCategory("RETRY");
+            }
+        }
+
         // Correlation block — visible in Extent HTML alongside test steps
         ExtentLogger.info(String.format(
-                "executionId=%s | testId=%s | browser=%s | env=%s | thread=%s",
+                "executionId=%s | testId=%s | browser=%s | env=%s | thread=%s | user=%s | "
+                        + "session=%s | previousTestCase=%s",
                 TestContextManager.getExecutionId(),
                 TestContextManager.getTestCaseId(),
                 ConfigFactory.getConfig().browser(),
                 ConfigFactory.getConfig().env(),
-                Thread.currentThread().getName()));
+                Thread.currentThread().getName(),
+                username,
+                sessionLabel != null ? sessionLabel : "n/a",
+                previousTestCase != null ? previousTestCase : "n/a"));
 
         // Inject JS logger and reset log buffers so this test sees only its own activity
         if (ConfigFactory.getNetworkConfig().browserLogsEnabled() && DriverManager.getDriver() != null) {

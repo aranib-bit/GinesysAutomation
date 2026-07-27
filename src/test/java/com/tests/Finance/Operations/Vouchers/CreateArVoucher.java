@@ -10,7 +10,6 @@ import com.gsl.enums.VoucherDomain;
 import com.gsl.pages.enums.topmenucomponent.MainModuleType;
 import com.gsl.pages.Finance.Operations.ArVoucherListPage;
 import com.gsl.pages.HomePage;
-import com.gsl.pages.LoginPage;
 import com.gsl.pages.enums.Finance.MainMenuType;
 import com.gsl.pages.enums.Finance.Operations.OperationsMenuType;
 import com.gsl.pages.Finance.Operations.ArVoucherAdd;
@@ -89,7 +88,7 @@ public class CreateArVoucher extends WebTest {
         // ── Step 1: Login ─────────────────────────────────────────────────────────
         StepExecutor.step("Login to Application", () -> {
             UserCredential u = DriverManager.getCurrentUser();
-            homeRef[0] = new LoginPage().loginToApplication(u.username(), u.password());
+            homeRef[0] = com.gsl.driver.SessionManager.ensureLoggedIn(u);
             ReportLogger.business("Logged in as: " + u.username());
         });
 
@@ -159,11 +158,10 @@ public class CreateArVoucher extends WebTest {
             ReportLogger.business("Voucher page closed, returned to list");
         });
 
-        // ── Step 7: Logout (terminal; runs once after the last entry) ─────────────
-        StepExecutor.step("Logout", () -> {
-            new HomePage().logoutFromApplication();
-            ReportLogger.business("Logged out of application");
-        });
+        // ── Step 7: Logout (deferred — session may be reused by a later test on this thread;
+        // real logout+driver-quit happens via RecoveryManager or end-of-block cleanup only) ────
+        StepExecutor.step("Logout (deferred)", () ->
+                ReportLogger.session("Logout deferred — session may be reused by a later test on this thread."));
 
         // ── Step 8: Database Validation ───────────────────────────────────────────
         StepExecutor.step("Database Validation", () -> {
@@ -222,7 +220,7 @@ public class CreateArVoucher extends WebTest {
         // ── Step 1: Login ─────────────────────────────────────────────────────────
         StepExecutor.step("Login to Application", () -> {
             UserCredential u = DriverManager.getCurrentUser();
-            homeRef[0] = new LoginPage().loginToApplication(u.username(), u.password());
+            homeRef[0] = com.gsl.driver.SessionManager.ensureLoggedIn(u);
             ReportLogger.business("Logged in as: " + u.username());
         });
 

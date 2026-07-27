@@ -291,8 +291,8 @@ public class FinVchDetApValidator {
                 .isNotNull();
         if (match != null && line.getLedgerNarration() != null
                 && !line.getLedgerNarration().isBlank())
-            soft.assertThat(match.getNarration())
-                    .as("[Level 2] finvchdet.narration mismatch")
+            soft.assertThat(match.getNartext())
+                    .as("[Level 2] finvchdet.nartext mismatch")
                     .isEqualTo(line.getLedgerNarration());
     }
 
@@ -312,7 +312,7 @@ public class FinVchDetApValidator {
                                              Map<Long, String> glNames) {
         String[] headers = {"vchcode", "slcode", "slname", "glcode", "glname",
                             "refno", "damount", "camount",
-                            "chqno", "chqdt", "payment_mode", "tds_app", "narration",
+                            "chqno", "chqdt", "payment_mode", "tds_app", "nartext",
                             "ref_admsite_name"};
         String[][] table = new String[rows.size() + 1][headers.length];
         table[0] = headers;
@@ -324,7 +324,7 @@ public class FinVchDetApValidator {
                 str(r.getGlcode()),  glNames.getOrDefault(r.getGlcode(), "—"),
                 str(r.getRefno()),   str(r.getDamount()), str(r.getCamount()),
                 str(r.getChqno()),   str(r.getChqdt()),   str(r.getPaymentMode()),
-                tdsAppLabel(r.getTdsApp()),  str(r.getNarration()),
+                tdsAppLabel(r.getTdsApp()),  str(r.getNartext()),
                 str(r.getRefAdmsiteName())
             };
         }

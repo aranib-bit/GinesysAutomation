@@ -1,0 +1,57 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE suite SYSTEM "http://testng.org/testng-1.0.dtd">
+<!--
+    Finance Smoke Suite — Account Group, AP Voucher, and AR Voucher have no functional
+    dependency on each other, but they DO compete for the same shared SET1 UserPool (4
+    configured UI users). Originally all three ran together in ONE <test> block
+    (parallel="methods" thread-count="4") on the assumption that 4 threads == 4 users would
+    keep the pool balanced — but AccountGroupLifecycle's own data/row instability (repeated
+    "duplicate name" server rejections, tree-navigation mismatches) can leave a thread
+    completely silent (no Selenium heartbeat) for the full pool.acquire.timeout.seconds
+    window. Because ExecutionContext/DriverManager are thread-local and this engagement's
+    deferred-logout + bounded-lease session reuse holds a user for many rows at a time, one
+    unstable AccountGroupLifecycle holder was enough to starve every AP/AR Voucher row queued
+    behind it (UserPoolAcquisitionTimeoutException cascade — see the incident RCA dated
+    2026-07-08).
+
+    Fix: two SEQUENTIAL <test> blocks instead of one shared block, with the suite itself
+    staying parallel="none" (already the case). TestNG runs <test> blocks one after another
+    under parallel="none", so AccountGroupLifecycle's block fully completes — and releases
+    every user it held back to the pool — before the AP/AR Voucher block ever starts. This
+    trades away the theoretical wall-clock overlap between the two blocks (which was already
+    producing zero AP Voucher throughput once AccountGroupLifecycle stalled) for a hard
+    guarantee that one class's instability can never starve the other's users again, with
+    zero UserPool code changes required.
+
+    data-provider-thread-count MUST be at suite level — TestNG ignores it on <test> — and
+    caps concurrent DataProvider-driven invocations to 4 so the pool is never oversubscribed
+    beyond the configured user count, in either block.
+
+    Run: mvn clean test -DsuiteXmlFile=testng-smoke.xml
+    Promote to regression later per the approved plan (Round 3, section 3.9).
+-->
+<suite name="Finance Smoke — Account Group + AP Voucher + AR Voucher" parallel="none" data-provider-thread-count="4">
+
+    <listeners>
+        <listener class-name="com.gsl.listeners.RetryAnnotationTransformer"/>
+        <listener class-name="com.gsl.listeners.TestListener"/>
+        <listener class-name="com.gsl.listeners.SuiteDataLoader"/>
+        <listener class-name="com.gsl.listeners.AnnotationMethodInterceptor"/>
+    </listeners>
+
+    <!-- Runs to completion first, using the full 4-user pool by itself, however long it takes. -->
+    <test name="Account Group Lifecycle" parallel="methods" thread-count="4">
+        <classes>
+            <class name="com.tests.Finance.Setup.AccountGroupLifecycle"/>
+        </classes>
+    </test>
+
+    <!-- Starts only after the block above fully finishes and releases every user it held. -->
+    <test name="AP AR Voucher" parallel="methods" thread-count="4">
+        <classes>
+            <class name="com.tests.Finance.Operations.Vouchers.CreateApVoucher"/>
+            <class name="com.tests.Finance.Operations.Vouchers.CreateArVoucher"/>
+        </classes>
+    </test>
+
+</suite>

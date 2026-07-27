@@ -28,7 +28,7 @@ public class FinVchDet {
     @ColumnName("tds_app")
     private String tdsApp;
 
-    private String narration;
+    private String nartext;
 
     @ColumnName("ref_admsite_name")
     private String refAdmsiteName;

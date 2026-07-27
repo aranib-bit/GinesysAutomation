@@ -29,6 +29,25 @@ public interface ExecutionConfig extends Config {
     @DefaultValue("600")
     int poolAcquireTimeoutSeconds();
 
+    // Lease keys are retained as session HYGIENE under the SessionPool model (bound browser
+    // memory bloat / server-side session TTL) — no longer anti-hoarding: sessions return to the
+    // pool after every row, so a thread can never hoard a permit between rows. Safe to raise.
+    @Key("session.max.lease.rows")
+    @DefaultValue("10")
+    int sessionMaxLeaseRows();
+
+    @Key("session.max.lease.seconds")
+    @DefaultValue("600")
+    int sessionMaxLeaseSeconds();
+
+    // Max time one data-provider thread may wait to borrow a logged-in session from SessionPool.
+    // Deliberately much larger than pool.acquire.timeout.seconds: with runInParallel=true there
+    // can be (methods × data-provider-thread-count) waiters sharing capacity(=UI user count)
+    // sessions, and a waiter may legitimately queue behind several multi-minute rows.
+    @Key("session.borrow.timeout.seconds")
+    @DefaultValue("1800")
+    int sessionBorrowTimeoutSeconds();
+
     @Key("suite.abort.enabled")
     @DefaultValue("false")
     boolean suiteAbortEnabled();

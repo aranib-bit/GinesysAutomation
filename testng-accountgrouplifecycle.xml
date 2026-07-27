@@ -1,0 +1,27 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE suite SYSTEM "http://testng.org/testng-1.0.dtd">
+<!--
+    Account Group Lifecycle Suite — Create (~50 categorized-name groups) → Edit (flagged
+    subset) → Delete (flagged subset), each with DB validation. Each group reports as its
+    own top-level Extent test case (AP/AR Voucher report convention).
+
+    Run: mvn clean test -DsuiteXmlFile=testng-accountgrouplifecycle.xml
+    (no dedicated Maven profile exists for this suite, matching testng-accountgroup.xml's
+    own convention — run directly via IntelliJ's TestNG runner or the -DsuiteXmlFile flag)
+-->
+<suite name="Finance Setup — Account Group Lifecycle" parallel="none">
+
+    <listeners>
+        <listener class-name="com.gsl.listeners.RetryAnnotationTransformer"/>
+        <listener class-name="com.gsl.listeners.TestListener"/>
+        <listener class-name="com.gsl.listeners.SuiteDataLoader"/>
+        <listener class-name="com.gsl.listeners.AnnotationMethodInterceptor"/>
+    </listeners>
+
+    <test name="Account Group Lifecycle">
+        <classes>
+            <class name="com.tests.Finance.Setup.AccountGroupLifecycle"/>
+        </classes>
+    </test>
+
+</suite>

@@ -6,11 +6,28 @@ import com.gsl.utils.Log;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 import org.apache.logging.log4j.ThreadContext;
-import org.slf4j.MDC;
 
 public final class ReportLogger {
 
     private static final Logger TRACE_LOG = LogManager.getLogger("MethodTrace");
+
+    // ── Direct, named audience loggers ──────────────────────────────────────────
+    // Each writes straight to its own dedicated file (see log4j2.xml) with no MDC/context-lookup
+    // indirection — replaces an earlier MDC-key + RoutingAppender design that left every audience
+    // file completely empty in practice (see log4j2.xml's comment for the incident this fixed).
+    private static final Logger BUSINESS_LOG      = LogManager.getLogger("Business");
+    private static final Logger UI_ACTIONS_LOG    = LogManager.getLogger("UIActions");
+    private static final Logger DB_VALIDATION_LOG = LogManager.getLogger("DBValidation");
+    private static final Logger DIAGNOSTICS_LOG   = LogManager.getLogger("Diagnostics");
+
+    private static Logger loggerFor(LogCategory category) {
+        return switch (category) {
+            case BUSINESS -> BUSINESS_LOG;
+            case UI_ACTION, VALIDATION, MODULE, SUB_MODULE, MENU, SUB_MENU -> UI_ACTIONS_LOG;
+            case DB -> DB_VALIDATION_LOG;
+            case JS, PERF, RCA, FRAMEWORK, NETWORK, SESSION, NAVIGATION, RECOVERY, TEST_STEP_STATUS -> DIAGNOSTICS_LOG;
+        };
+    }
 
     private static final java.time.format.DateTimeFormatter TRACE_FMT =
             java.time.format.DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss.SSS");
@@ -93,12 +110,8 @@ public final class ReportLogger {
      * Severity defaults to MEDIUM (badge suppressed).
      */
     public static void info(LogCategory category, String message) {
-        MDC.put("logCategory", category.name());
-        try {
-            Log.info("[{}] {}", category.name(), message);
-        } finally {
-            MDC.remove("logCategory");
-        }
+        Log.info("[{}] {}", category.name(), message);
+        loggerFor(category).info("[{}] {}", category.name(), message);
         ExtentLogger.infoCategorized(category, message);
     }
 
@@ -107,12 +120,8 @@ public final class ReportLogger {
      * MEDIUM severity suppresses the severity badge in Extent but still logs the level to file.
      */
     public static void info(LogCategory category, ReportSeverity severity, String message) {
-        MDC.put("logCategory", category.name());
-        try {
-            Log.info("[{}][{}] {}", category.name(), severity.name(), message);
-        } finally {
-            MDC.remove("logCategory");
-        }
+        Log.info("[{}][{}] {}", category.name(), severity.name(), message);
+        loggerFor(category).info("[{}][{}] {}", category.name(), severity.name(), message);
         ExtentLogger.infoCategorized(category, severity, message);
     }
 
@@ -121,12 +130,8 @@ public final class ReportLogger {
      * Use for blocking failures, data corruption, or unexpected app state.
      */
     public static void critical(LogCategory category, String message) {
-        MDC.put("logCategory", category.name());
-        try {
-            Log.error("[{}][CRITICAL] {}", category.name(), message);
-        } finally {
-            MDC.remove("logCategory");
-        }
+        Log.error("[{}][CRITICAL] {}", category.name(), message);
+        loggerFor(category).error("[{}][CRITICAL] {}", category.name(), message);
         ExtentLogger.infoCategorized(category, ReportSeverity.CRITICAL, message);
     }
 
@@ -134,12 +139,8 @@ public final class ReportLogger {
      * Logs a HIGH severity entry — business-rule failure, unexpected state.
      */
     public static void high(LogCategory category, String message) {
-        MDC.put("logCategory", category.name());
-        try {
-            Log.warn("[{}][HIGH] {}", category.name(), message);
-        } finally {
-            MDC.remove("logCategory");
-        }
+        Log.warn("[{}][HIGH] {}", category.name(), message);
+        loggerFor(category).warn("[{}][HIGH] {}", category.name(), message);
         ExtentLogger.infoCategorized(category, ReportSeverity.HIGH, message);
     }
 
@@ -196,6 +197,39 @@ public final class ReportLogger {
     public static void frameworkWarn(String fmt, Object... a) { high(LogCategory.FRAMEWORK, fmt(fmt, a)); }
     public static void frameworkError(String msg)          { critical(LogCategory.FRAMEWORK, msg); }
     public static void frameworkError(String fmt, Object... a) { critical(LogCategory.FRAMEWORK, fmt(fmt, a)); }
+
+    public static void session(String msg)                  { info(LogCategory.SESSION, msg); }
+    public static void session(String fmt, Object... a)      { info(LogCategory.SESSION, fmt(fmt, a)); }
+    public static void sessionWarn(String msg)                { high(LogCategory.SESSION, msg); }
+    public static void sessionWarn(String fmt, Object... a)  { high(LogCategory.SESSION, fmt(fmt, a)); }
+    public static void sessionError(String msg)               { critical(LogCategory.SESSION, msg); }
+    public static void sessionError(String fmt, Object... a) { critical(LogCategory.SESSION, fmt(fmt, a)); }
+
+    public static void navigation(String msg)                  { info(LogCategory.NAVIGATION, msg); }
+    public static void navigation(String fmt, Object... a)      { info(LogCategory.NAVIGATION, fmt(fmt, a)); }
+    public static void navigationWarn(String msg)                { high(LogCategory.NAVIGATION, msg); }
+    public static void navigationWarn(String fmt, Object... a)  { high(LogCategory.NAVIGATION, fmt(fmt, a)); }
+    public static void navigationError(String msg)               { critical(LogCategory.NAVIGATION, msg); }
+    public static void navigationError(String fmt, Object... a) { critical(LogCategory.NAVIGATION, fmt(fmt, a)); }
+
+    public static void recovery(String msg)                  { info(LogCategory.RECOVERY, msg); }
+    public static void recovery(String fmt, Object... a)      { info(LogCategory.RECOVERY, fmt(fmt, a)); }
+    public static void recoveryWarn(String msg)                { high(LogCategory.RECOVERY, msg); }
+    public static void recoveryWarn(String fmt, Object... a)  { high(LogCategory.RECOVERY, fmt(fmt, a)); }
+    public static void recoveryError(String msg)               { critical(LogCategory.RECOVERY, msg); }
+    public static void recoveryError(String fmt, Object... a) { critical(LogCategory.RECOVERY, fmt(fmt, a)); }
+
+    public static void module(String msg)                 { info(LogCategory.MODULE, msg); }
+    public static void module(String fmt, Object... a)    { info(LogCategory.MODULE, fmt(fmt, a)); }
+
+    public static void subModule(String msg)              { info(LogCategory.SUB_MODULE, msg); }
+    public static void subModule(String fmt, Object... a) { info(LogCategory.SUB_MODULE, fmt(fmt, a)); }
+
+    public static void menu(String msg)                   { info(LogCategory.MENU, msg); }
+    public static void menu(String fmt, Object... a)      { info(LogCategory.MENU, fmt(fmt, a)); }
+
+    public static void subMenu(String msg)                { info(LogCategory.SUB_MENU, msg); }
+    public static void subMenu(String fmt, Object... a)   { info(LogCategory.SUB_MENU, fmt(fmt, a)); }
 
     private static String fmt(String template, Object... args) {
         return org.slf4j.helpers.MessageFormatter.arrayFormat(template, args).getMessage();

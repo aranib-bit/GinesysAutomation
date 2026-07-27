@@ -23,6 +23,12 @@ public interface ExcelDataConfig extends Config {
     @Key("finAccGroupPath")
     String finAccGroupPath();
 
+    @Key("finAccGroupLifecyclePath")
+    String finAccGroupLifecyclePath();
+
+    @Key("finAccountClassLifecyclePath")
+    String finAccountClassLifecyclePath();
+
     @Key("userslist.path")
     @DefaultValue("UsersList.xlsx")
     String usersListPath();

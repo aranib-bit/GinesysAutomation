@@ -233,13 +233,13 @@ public class APVoucherSubLedgerInformation extends VoucherSubLedgerInformationBa
             // Create the per-row group node and register it so the later passes
             // (reference site, adjustment, payment, TDS) report under this same row.
             final String rowKey = SubLedgerRowStepRegistry.key(sl.getLineNo(), idx);
-            ExtentTest rowNode = StepExecutor.group(
-                    "SL Row " + (idx + 1) + " — " + slName
+            final String rowLabel = "SL Row " + (idx + 1) + " — " + slName
                     + " | Dr: " + sl.getAmountDr()
-                    + " | GL: " + sl.getGeneralLedger());
-            SubLedgerRowStepRegistry.put(rowKey, rowNode);
+                    + " | GL: " + sl.getGeneralLedger();
+            ExtentTest rowNode = StepExecutor.group(rowLabel);
+            SubLedgerRowStepRegistry.put(rowKey, rowNode, rowLabel);
 
-            StepExecutor.stepUnder(rowNode, "Fill — name / amount", () -> {
+            SubLedgerRowStepRegistry.stepUnderRow(rowKey, "Fill — name / amount", () -> {
                 if (idx > 0) addSubLedgerRow();
                 try {
                     setSubLedgerName(slName, slId, refSite, idx);
@@ -267,7 +267,7 @@ public class APVoucherSubLedgerInformation extends VoucherSubLedgerInformationBa
 
             if (mode == OnAccountMode.ADVANCE && sl.getDeductTds() != null && !sl.getDeductTds().trim().isEmpty()) {
                 final String deductTds = sl.getDeductTds().trim();
-                StepExecutor.stepUnder(rowNode, "Deduct TDS — " + deductTds, () -> {
+                SubLedgerRowStepRegistry.stepUnderRow(rowKey, "Deduct TDS — " + deductTds, () -> {
                     if ("NATIVE".equalsIgnoreCase(ConfigFactory.getFinanceConfig().subLedgerSelectionMode())) {
                         setDeductTdsNative(deductTds, slName, refSite, slId,
                                 sl.getDeductTdsConfirmAction(), sl.getAmountDr(), idx);
@@ -285,10 +285,9 @@ public class APVoucherSubLedgerInformation extends VoucherSubLedgerInformationBa
                 final int idx = i;
                 final SubLedgerInformation sl = sls.get(i);
                 final String refSite = sl.getReferenceSite() != null ? sl.getReferenceSite() : "";
-                ExtentTest rowNode = SubLedgerRowStepRegistry.get(
-                        SubLedgerRowStepRegistry.key(sl.getLineNo(), idx));
+                final String rowKey = SubLedgerRowStepRegistry.key(sl.getLineNo(), idx);
                 if (sl.isChangeReferenceSite()) {
-                    StepExecutor.stepUnder(rowNode,
+                    SubLedgerRowStepRegistry.stepUnderRow(rowKey,
                             "Change Reference Site — " + (refSite.isEmpty() ? "(none)" : refSite),
                             () -> setSubLedgerReferenceSite(refSite, idx));
                 } else {
@@ -300,10 +299,9 @@ public class APVoucherSubLedgerInformation extends VoucherSubLedgerInformationBa
             {
                 final SubLedgerInformation sl0 = sls.get(0);
                 final String refSite = sl0.getReferenceSite() != null ? sl0.getReferenceSite() : "";
-                ExtentTest rowNode = SubLedgerRowStepRegistry.get(
-                        SubLedgerRowStepRegistry.key(sl0.getLineNo(), 0));
+                final String rowKey = SubLedgerRowStepRegistry.key(sl0.getLineNo(), 0);
                 if (sl0.isChangeReferenceSite()) {
-                    StepExecutor.stepUnder(rowNode,
+                    SubLedgerRowStepRegistry.stepUnderRow(rowKey,
                             "Change Reference Site (row-0 retry) — " + (refSite.isEmpty() ? "(none)" : refSite),
                             () -> setSubLedgerReferenceSite(refSite, 0));
                 }
@@ -328,10 +326,9 @@ public class APVoucherSubLedgerInformation extends VoucherSubLedgerInformationBa
             final String refSite = row.getReferenceSite() != null ? row.getReferenceSite() : "";
             final String slId    = row.getId()            != null ? row.getId()            : "";
             final AdjustmentType adjType = row.getAdjustmentType();
-            ExtentTest rowNode = SubLedgerRowStepRegistry.get(
-                    SubLedgerRowStepRegistry.key(row.getLineNo(), idx));
+            final String rowKey = SubLedgerRowStepRegistry.key(row.getLineNo(), idx);
 
-            StepExecutor.stepUnder(rowNode, "Adjust — Type: " + adjType, () -> {
+            SubLedgerRowStepRegistry.stepUnderRow(rowKey, "Adjust — Type: " + adjType, () -> {
                 AdjustmentEntry adjustmentEntry = openAdjustmentEntry(row.getSubLedger(), refSite, slId);
                 boolean needsConfirmation = false; // AP voucher has no GridRelation confirmation popup
 
@@ -750,8 +747,7 @@ public class APVoucherSubLedgerInformation extends VoucherSubLedgerInformationBa
 
             final String refSite = subLedger.getReferenceSite() != null ? subLedger.getReferenceSite() : "";
             final String slid    = subLedger.getId()            != null ? subLedger.getId()            : "";
-            ExtentTest rowNode = SubLedgerRowStepRegistry.get(lineNo);
-            StepExecutor.stepUnder(rowNode, "Payment — " + effectiveType.label(), () -> {
+            SubLedgerRowStepRegistry.stepUnderRow(lineNo, "Payment — " + effectiveType.label(), () -> {
                 clickPaymentButton(subLedger.getSubLedger(), refSite, slid).fillAndSubmit(payment);
                 JavascriptExecutorUtils.waitForExtJS();
                 com.gsl.reports.ActualResultsHolder.get().getUiPaymentInfoPopupMap().put(slKey, true);

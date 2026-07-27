@@ -4,6 +4,7 @@ import com.gsl.enums.Finance.Operations.Common.DocumentMessageBoxMessage;
 import com.gsl.enums.FinanceSaveHeaderType;
 import com.gsl.enums.WaitType;
 import com.gsl.pages.Finance.Operations.ArVoucherListPage;
+import com.gsl.pages.Finance.Setup.AccountClassListPage;
 import com.gsl.pages.Inventory.Product_Definition.ItemListPage;
 import com.gsl.pages.Procurement.Operations.ReceiptsListPage;
 import com.gsl.pages.enums.CommonButton;
@@ -225,6 +226,12 @@ public class DocumentMessageBox {
         SeleniumUtils.click(CommonButton.YES.locator(), WaitType.CLICKABLE, "DISCARD_YES_BUTTON");
         JavascriptExecutorUtils.waitForPageLoad();
         return new ItemListPage();
+    }
+
+    public AccountClassListPage closeAccountClass() {
+        SeleniumUtils.click(CommonButton.YES.locator(), WaitType.CLICKABLE, "DISCARD_YES_BUTTON");
+        JavascriptExecutorUtils.waitForPageLoad();
+        return new AccountClassListPage();
     }
 
     public void handleSaveSuccess() {

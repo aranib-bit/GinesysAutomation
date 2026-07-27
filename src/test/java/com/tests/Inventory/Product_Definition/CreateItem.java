@@ -110,7 +110,6 @@ public class CreateItem extends WebTest {
                 setstoreinformation(ItemData.getStoreWiseMultiplePriceList()).
                 clickCreateItem().clickClose().closeItem();
 
-        HomePage homePage1=new HomePage();
-        homePage1.logoutFromApplication();
+        com.gsl.driver.SessionManager.closeSessionAndReleaseUser("Create Item complete");
     }
 }

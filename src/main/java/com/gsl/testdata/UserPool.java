@@ -4,6 +4,7 @@ import com.gsl.config.ConfigFactory;
 import com.gsl.config.ExecutionConfig;
 import com.gsl.exceptions.UserPoolAcquisitionTimeoutException;
 import com.gsl.reports.ExtentLogger;
+import com.gsl.reports.ReportLogger;
 import com.gsl.utils.Log;
 
 import java.util.EnumMap;
@@ -224,6 +225,8 @@ public final class UserPool {
                     LAST_ACTIVITY_MS.get(type).put(cred.username(), new AtomicLong(now));
                     Log.info("[UserPool] [T-{}] Acquired SET1 {} user '{}' for '{}'.",
                             Thread.currentThread().getId(), type, cred.username(), label);
+                    ReportLogger.session("[T-{}] Acquired {} user '{}' for '{}'.",
+                            Thread.currentThread().getId(), type, cred.username(), label);
                     return cred;
                 }
             } catch (InterruptedException e) {
@@ -257,6 +260,22 @@ public final class UserPool {
             // poolAcquireTimeoutSeconds with at least one thread queued behind it.
             if (effectiveStall >= timeoutMs) {
                 String snapshot = buildActiveUserSnapshot(type, now);
+                // Log the snapshot explicitly and separately from the exception message — TestNG's
+                // skip-handling does not reliably surface a multi-line exception message intact
+                // into the Extent report (confirmed: the rendered skip entry showed only the
+                // generic summary sentence, dropping this exact snapshot). Logging it here means
+                // "who was stuck" is visible regardless of what happens to the exception's message
+                // downstream.
+                Log.error("[UserPool] {} pool TIMEOUT — holder silent for {}s while thread '{}' queued. Active users:\n{}",
+                        type, cfg.poolAcquireTimeoutSeconds(), Thread.currentThread().getName(), snapshot);
+                ReportLogger.sessionWarn("[UserPool TIMEOUT] {} pool — holder silent for {}s while thread '{}' was queued.",
+                        type, cfg.poolAcquireTimeoutSeconds(), Thread.currentThread().getName());
+                ExtentLogger.infoHtmlOnChildNode(
+                        "Infrastructure Warnings",
+                        "<b>[UserPool TIMEOUT] " + type + " pool — holder silent "
+                        + cfg.poolAcquireTimeoutSeconds() + "s, thread '" + Thread.currentThread().getName()
+                        + "' was queued and is now being skipped.</b><br>"
+                        + snapshot.replace("\n", "<br>"));
                 throw new UserPoolAcquisitionTimeoutException(
                         "[UserPool] " + type + " pool has a holder silent for "
                         + cfg.poolAcquireTimeoutSeconds() + "s while a thread is queued "
@@ -330,12 +349,22 @@ public final class UserPool {
         if (cred == null) return;
         if (cred.executionSet() != ExecutionSet.SET1) return;
 
-        ACTIVE_USERS.get(cred.userType()).remove(cred.username());
+        ActiveUserEntry entry = ACTIVE_USERS.get(cred.userType()).remove(cred.username());
         LAST_ACTIVITY_MS.get(cred.userType()).remove(cred.username());
         SET1_QUEUES.get(cred.userType()).offer(cred);
         SET1_PERMITS.get(cred.userType()).release(); // unblocks the next waiting thread (FIFO)
-        Log.info("[UserPool] [T-{}] Released SET1 {} user '{}'.",
-                Thread.currentThread().getId(), cred.userType(), cred.username());
+
+        long heldSeconds = entry != null ? (System.currentTimeMillis() - entry.startMs()) / 1000 : -1;
+        String lastTest  = entry != null ? entry.testName() : "unknown";
+        Log.info("[UserPool] [T-{}] RELEASED SET1 {} user '{}' — held {}s (was running '{}'). Pool now has a free permit.",
+                Thread.currentThread().getId(), cred.userType(), cred.username(), heldSeconds, lastTest);
+        ReportLogger.session("[UserPool RELEASED] {} user '{}' — held {}s (was running '{}'). Pool now has a free permit.",
+                cred.userType(), cred.username(), heldSeconds, lastTest);
+        if (entry != null && heldSeconds >= 0) {
+            // lastTest is class-qualified ("ClassSimpleName.methodName" — see WebTest.setUp()),
+            // letting the suite/class-level summary attribute pool-hold time by test class.
+            com.gsl.reports.PoolAttributionStats.recordPoolHold(lastTest, heldSeconds);
+        }
     }
 
     // ─── SET-2 ────────────────────────────────────────────────────────────────

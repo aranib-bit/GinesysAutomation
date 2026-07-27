@@ -13,7 +13,6 @@ import com.gsl.testdata.dto.MergedFinanceApVoucherData;
 import com.gsl.pages.enums.Finance.Operations.Common.TdsNetPayableFieldAttribute;
 import com.gsl.reports.StepExecutor;
 import com.gsl.reports.SubLedgerRowStepRegistry;
-import com.aventstack.extentreports.ExtentTest;
 import com.gsl.utils.Log;
 import com.gsl.utils.Selenium.JavascriptExecutorUtils;
 import com.gsl.utils.Selenium.SeleniumUtils;
@@ -150,8 +149,7 @@ public class APVoucherTdsAndNetPayable implements TdsNameParent {
             // sub-ledger fill, so "Calculate TDS & Net Payable" reads as part of that row.
             // stepUnder tolerates a null node (falls back to a plain step) if the row was
             // not registered for any reason.
-            ExtentTest rowNode = SubLedgerRowStepRegistry.get(tds.getLineNo());
-            StepExecutor.stepUnder(rowNode,
+            SubLedgerRowStepRegistry.stepUnderRow(tds.getLineNo(),
                     "Calculate TDS & Net Payable — " + tds.getTdsName(), () -> {
 
                 StepExecutor.step("TDS Name and Section", () -> {

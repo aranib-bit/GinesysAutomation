@@ -1,0 +1,32 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE suite SYSTEM "http://testng.org/testng-1.0.dtd">
+<!--
+    Account Class — single-row ad hoc verification. Runs only accountClassScenario (not the other
+    3 methods in AccountClassLifecycle) against a dedicated 1-row Excel file so exactly one Account
+    Class gets created, instead of the 14 rows in the full AccountClassLifecycle.xlsx.
+
+    Run: mvn clean test -Paccountclass-single
+    (see the "accountclass-single" profile in pom.xml — plain -DsuiteXmlFile=... does NOT work in
+    this project: the default surefire config hardcodes suiteXmlFile as a literal, not a property,
+    so only suites with a matching Maven profile can actually be selected from the command line.)
+-->
+<suite name="Finance Setup — Account Class Single Run" parallel="none" data-provider-thread-count="1">
+
+    <listeners>
+        <listener class-name="com.gsl.listeners.RetryAnnotationTransformer"/>
+        <listener class-name="com.gsl.listeners.TestListener"/>
+        <listener class-name="com.gsl.listeners.SuiteDataLoader"/>
+        <listener class-name="com.gsl.listeners.AnnotationMethodInterceptor"/>
+    </listeners>
+
+    <test name="Account Class Single Create" parallel="methods" thread-count="1">
+        <classes>
+            <class name="com.tests.Finance.Setup.AccountClassLifecycle">
+                <methods>
+                    <include name="accountClassScenario"/>
+                </methods>
+            </class>
+        </classes>
+    </test>
+
+</suite>

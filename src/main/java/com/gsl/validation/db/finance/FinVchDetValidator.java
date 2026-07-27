@@ -313,8 +313,8 @@ public class FinVchDetValidator {
                 .isNotNull();
         if (match != null && line.getLedgerNarration() != null
                 && !line.getLedgerNarration().isBlank())
-            soft.assertThat(match.getNarration())
-                    .as("[Level 2] finvchdet.narration mismatch")
+            soft.assertThat(match.getNartext())
+                    .as("[Level 2] finvchdet.nartext mismatch")
                     .isEqualTo(line.getLedgerNarration());
     }
 
@@ -328,7 +328,7 @@ public class FinVchDetValidator {
                                              Map<Long, String> glNames) {
         String[] headers = {"vchcode", "slcode", "slname", "glcode", "glname",
                             "refno", "damount", "camount",
-                            "chqno", "chqdt", "payment_mode", "tds_app", "narration"};
+                            "chqno", "chqdt", "payment_mode", "tds_app", "nartext"};
         String[][] table = new String[rows.size() + 1][headers.length];
         table[0] = headers;
         for (int i = 0; i < rows.size(); i++) {
@@ -339,7 +339,7 @@ public class FinVchDetValidator {
                 str(r.getGlcode()),  glNames.getOrDefault(r.getGlcode(), "—"),
                 str(r.getRefno()),   str(r.getDamount()), str(r.getCamount()),
                 str(r.getChqno()),   str(r.getChqdt()),   str(r.getPaymentMode()),
-                str(r.getTdsApp()),  str(r.getNarration())
+                str(r.getTdsApp()),  str(r.getNartext())
             };
         }
         return table;

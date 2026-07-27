@@ -14,7 +14,6 @@ import com.gsl.pages.Finance.Operations.ApVoucherListPage;
 import com.gsl.pages.Finance.Operations.Common.DocumentPopup;
 import com.gsl.flow.Finance.Operations.Common.PostSaveDialogHandler;
 import com.gsl.pages.HomePage;
-import com.gsl.pages.LoginPage;
 import com.gsl.pages.enums.Finance.MainMenuType;
 import com.gsl.pages.enums.Finance.Operations.OperationsMenuType;
 import com.gsl.reports.ActualResultsHolder;
@@ -87,7 +86,7 @@ public class CreateApVoucher extends WebTest {
         // ── Step 1: Login ─────────────────────────────────────────────────────────
         StepExecutor.step("Login to Application", () -> {
             UserCredential u = DriverManager.getCurrentUser();
-            homeRef[0] = new LoginPage().loginToApplication(u.username(), u.password());
+            homeRef[0] = com.gsl.driver.SessionManager.ensureLoggedIn(u);
             ReportLogger.business("Logged in as: " + u.username());
         });
 
@@ -164,11 +163,10 @@ public class CreateApVoucher extends WebTest {
             ReportLogger.business("Voucher page closed, returned to list");
         });
 
-        // ── Step 7: Logout (terminal) ─────────────────────────────────────────────
-        StepExecutor.step("Logout", () -> {
-            new HomePage().logoutFromApplication();
-            ReportLogger.business("Logged out of application");
-        });
+        // ── Step 7: Logout (deferred — session may be reused by a later test on this thread;
+        // real logout+driver-quit happens via RecoveryManager or end-of-block cleanup only) ────
+        StepExecutor.step("Logout (deferred)", () ->
+                ReportLogger.session("Logout deferred — session may be reused by a later test on this thread."));
 
         // ── Step 8: Database Validation ───────────────────────────────────────────
         StepExecutor.step("Database Validation", () -> {
@@ -232,7 +230,7 @@ public class CreateApVoucher extends WebTest {
         // ── Step 1: Login ─────────────────────────────────────────────────────────
         StepExecutor.step("Login to Application", () -> {
             UserCredential u = DriverManager.getCurrentUser();
-            homeRef[0] = new LoginPage().loginToApplication(u.username(), u.password());
+            homeRef[0] = com.gsl.driver.SessionManager.ensureLoggedIn(u);
             ReportLogger.business("Logged in as: " + u.username());
         });
 
@@ -303,11 +301,10 @@ public class CreateApVoucher extends WebTest {
             ReportLogger.business("Voucher page closed, returned to list");
         });
 
-        // ── Step 7: Logout (terminal) ─────────────────────────────────────────────
-        StepExecutor.step("Logout", () -> {
-            new HomePage().logoutFromApplication();
-            ReportLogger.business("Logged out of application");
-        });
+        // ── Step 7: Logout (deferred — session may be reused by a later test on this thread;
+        // real logout+driver-quit happens via RecoveryManager or end-of-block cleanup only) ────
+        StepExecutor.step("Logout (deferred)", () ->
+                ReportLogger.session("Logout deferred — session may be reused by a later test on this thread."));
 
         // ── Step 8: Database Validation ───────────────────────────────────────────
         StepExecutor.step("Database Validation", () -> {
@@ -375,7 +372,7 @@ public class CreateApVoucher extends WebTest {
         // ── Step 1: Login ─────────────────────────────────────────────────────────
         StepExecutor.step("Login to Application", () -> {
             UserCredential u = DriverManager.getCurrentUser();
-            homeRef[0] = new LoginPage().loginToApplication(u.username(), u.password());
+            homeRef[0] = com.gsl.driver.SessionManager.ensureLoggedIn(u);
             ReportLogger.business("Logged in as: " + u.username());
         });
 

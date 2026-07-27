@@ -29,7 +29,9 @@ public class FinVchMain {
     private long glcode;
     private BigDecimal damount;
     private BigDecimal camount;
-    private long siteid;
+
+    @ColumnName("admsite_code_owner")
+    private long admsiteCodeOwner;
     private long ycode;
 
     @ColumnName("entry_source")

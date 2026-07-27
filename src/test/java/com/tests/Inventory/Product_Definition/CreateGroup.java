@@ -106,8 +106,7 @@ public class CreateGroup extends WebTest {
         int countAfter = invGrpDao.getGroupCount(newDivision, level);
         System.out.println("📊 Count after save for '" + newDivision + "': " + countAfter);
 
-        HomePage homePage1=new HomePage();
-        homePage1.logoutFromApplication();
+        com.gsl.driver.SessionManager.closeSessionAndReleaseUser("Create Group complete");
 
 
         //DriverManager.getDriver().findElement(By.xpath("//span[text()='Root']")).click();
@@ -296,8 +295,7 @@ public class CreateGroup extends WebTest {
                     "' at Depth 2, but found " + updatedCount);
         }
 
-        HomePage homePage1=new HomePage();
-        homePage1.logoutFromApplication();
+        com.gsl.driver.SessionManager.closeSessionAndReleaseUser("Create Group complete");
 
 
         //JavascriptExecutorUtils.updateFirstChildText(groupData.getGroup().getParentGroup(),2,groupData.getGroup().getGroupName());
@@ -389,8 +387,7 @@ public class CreateGroup extends WebTest {
                     "' at Depth 3, but found " + updatedCount);
         }
 
-        HomePage homePage1=new HomePage();
-        homePage1.logoutFromApplication();
+        com.gsl.driver.SessionManager.closeSessionAndReleaseUser("Create Group complete");
     }
 
 }

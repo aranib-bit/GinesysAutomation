@@ -1,6 +1,7 @@
 package com.gsl.pages.pagecomponent.Inventory;
 
 import com.gsl.constants.FrameworkConstants;
+import com.gsl.enums.LogCategory;
 import com.gsl.enums.WaitType;
 import com.gsl.pages.enums.Inventory.MainMenuType;
 import com.gsl.pages.pagecomponent.Inventory.Logistics.LogisticsHomePage;
@@ -20,7 +21,7 @@ public class InventoryTopMenuComponent {
      * @return The text of the selected menu item.
      */
     public String getSelectedMenu() {
-        return SeleniumUtils.getText(LBL_SELECTED_MENU, "Selected Menu");
+        return SeleniumUtils.getText(LBL_SELECTED_MENU, "Selected Menu", LogCategory.MENU);
     }
 
     /**
@@ -32,7 +33,7 @@ public class InventoryTopMenuComponent {
         String currentSubMenu = getSelectedMenu();
         if (!currentSubMenu.equalsIgnoreCase(requiredSubMenu.getName())) {
             String xpath = String.format(MENU_ITEM, requiredSubMenu.getName());
-            SeleniumUtils.click(By.xpath(xpath), WaitType.CLICKABLE, requiredSubMenu.getName());
+            SeleniumUtils.click(By.xpath(xpath), WaitType.CLICKABLE, requiredSubMenu.getName(), LogCategory.MENU);
             SeleniumUtils.elementDisappear(FrameworkConstants.getLoadingMask(), "Loading Mask");
         }
         try {

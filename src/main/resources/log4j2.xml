@@ -33,8 +33,13 @@
             </DefaultRolloverStrategy>
         </RollingFile>
 
-        <!-- Async wrapper: file writes are non-blocking; console stays synchronous -->
-        <Async name="AsyncRollingFile" bufferSize="512" blocking="false">
+        <!-- Async wrapper. blocking="true": under sustained load (a real suite run easily produces
+             thousands of events), a non-blocking async appender SILENTLY DISCARDS events once its
+             buffer fills rather than pausing the caller — confirmed the direct cause of
+             framework.log containing almost nothing from an actual ~15-minute run. blocking="true"
+             trades a small amount of throughput for never losing an event; bufferSize raised
+             8x (512→4096) as additional headroom before that trade-off is ever exercised. -->
+        <Async name="AsyncRollingFile" bufferSize="4096" blocking="true">
             <AppenderRef ref="RollingFileAppender"/>
         </Async>
 
@@ -115,59 +120,43 @@
             <DefaultRolloverStrategy max="10"/>
         </RollingFile>
 
-        <!--
-            Routes one log event to exactly one audience file based on the "logCategory"
-            MDC key set by ReportLogger before each categorized log call.
-            Events without logCategory in MDC match no route and are silently ignored
-            by this appender (they still write to framework.log via AsyncRollingFile).
-        -->
-        <Routing name="CategoryRoutingAppender">
-            <Routes pattern="${ctx:logCategory}">
-                <Route key="BUSINESS">
-                    <AppenderRef ref="BusinessFileAppender"/>
-                </Route>
-                <Route key="UI_ACTION">
-                    <AppenderRef ref="UIActionsFileAppender"/>
-                </Route>
-                <Route key="VALIDATION">
-                    <AppenderRef ref="UIActionsFileAppender"/>
-                </Route>
-                <Route key="DB">
-                    <AppenderRef ref="DBValidationFileAppender"/>
-                </Route>
-                <Route key="JS">
-                    <AppenderRef ref="DiagnosticsFileAppender"/>
-                </Route>
-                <Route key="PERF">
-                    <AppenderRef ref="DiagnosticsFileAppender"/>
-                </Route>
-                <Route key="RCA">
-                    <AppenderRef ref="DiagnosticsFileAppender"/>
-                </Route>
-                <Route key="FRAMEWORK">
-                    <AppenderRef ref="DiagnosticsFileAppender"/>
-                </Route>
-                <!-- NETWORK — treated as diagnostics for engineers -->
-                <Route key="NETWORK">
-                    <AppenderRef ref="DiagnosticsFileAppender"/>
-                </Route>
-            </Routes>
-        </Routing>
-
     </Appenders>
 
     <Loggers>
         <!--
-            Phase 1: "Framework" is the logger name used by Log.java (LoggerFactory.getLogger("Framework")).
-            It must be explicit here so the CategoryRoutingAppender is wired in.
-            All ReportLogger.info(LogCategory, ...) calls set MDC "logCategory" before calling Log.info(),
-            so those events are routed to the audience-specific file. Uncategorized Log.info() calls
-            write only to framework.log (no logCategory in MDC → no route match → routing appender no-ops).
+            "Framework" is the logger name used by Log.java (LoggerFactory.getLogger("Framework")).
+            Writes the full unified timeline to framework.log/console.
         -->
         <Logger name="Framework" level="DEBUG" additivity="false">
             <AppenderRef ref="ConsoleAppender"/>
             <AppenderRef ref="AsyncRollingFile"/>
-            <AppenderRef ref="CategoryRoutingAppender"/>
+        </Logger>
+
+        <!--
+            Phase 2: direct, named loggers per audience — replaces the earlier MDC-key +
+            RoutingAppender design (ReportLogger set MDC "logCategory" and a <Routing> appender
+            keyed off "${ctx:logCategory}" was supposed to dispatch to the right file). That design
+            left business.log/ui-actions.log/db-validation.log/diagnostics.log completely empty in
+            practice — every piece looked individually correct (logger name, MDC calls, the
+            log4j-slf4j2-impl bridge) but the events never arrived, most likely an MDC/ThreadContext
+            propagation issue across the async boundary. Direct named loggers below remove that
+            entire class of risk: ReportLogger now calls these loggers explicitly per LogCategory,
+            with no context-lookup indirection involved at all.
+        -->
+        <!-- No ConsoleAppender here by design — "Framework" (above) already prints the unified
+             console timeline for every categorized call via Log.info/warn/error; these loggers
+             exist purely to give each audience file its own reliable, direct write path. -->
+        <Logger name="Business" level="DEBUG" additivity="false">
+            <AppenderRef ref="BusinessFileAppender"/>
+        </Logger>
+        <Logger name="UIActions" level="DEBUG" additivity="false">
+            <AppenderRef ref="UIActionsFileAppender"/>
+        </Logger>
+        <Logger name="DBValidation" level="DEBUG" additivity="false">
+            <AppenderRef ref="DBValidationFileAppender"/>
+        </Logger>
+        <Logger name="Diagnostics" level="DEBUG" additivity="false">
+            <AppenderRef ref="DiagnosticsFileAppender"/>
         </Logger>
 
         <!-- Framework packages at DEBUG so all internal detail is captured -->

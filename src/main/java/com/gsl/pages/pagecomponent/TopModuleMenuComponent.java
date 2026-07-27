@@ -2,6 +2,7 @@ package com.gsl.pages.pagecomponent;
 
 import com.gsl.constants.FrameworkConstants;
 import com.gsl.driver.DriverManager;
+import com.gsl.enums.LogCategory;
 import com.gsl.enums.WaitType;
 import com.gsl.pages.enums.topmenucomponent.MainModuleType;
 import com.gsl.pages.pagecomponent.Admin.AdminHomePage;
@@ -37,7 +38,7 @@ public class TopModuleMenuComponent {
         String currentModule = getActiveModuleName();
         if (!currentModule.equalsIgnoreCase(requiredModule.getName())) {
             String xpath = String.format(MENU_ITEM, requiredModule.getName());
-            SeleniumUtils.jsClick(By.xpath(xpath), requiredModule.getName());
+            SeleniumUtils.jsClick(By.xpath(xpath), requiredModule.getName(), LogCategory.MODULE);
             // Wait for the loading mask to disappear after the click
             SeleniumUtils.elementDisappear(FrameworkConstants.getLoadingMask(), "Loading Mask");
         }

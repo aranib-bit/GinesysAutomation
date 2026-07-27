@@ -2,7 +2,6 @@ package com.tests;
 
 import com.gsl.annotations.FrameworkAnnotation;
 import com.gsl.enums.TestAuthor;
-import com.gsl.pages.HomePage;
 import com.gsl.pages.LoginPage;
 import com.gsl.pages.pagecomponent.Admin.AdminHomePage;
 import com.gsl.pages.pagecomponent.Inventory.InventoryHomePage;
@@ -37,8 +36,7 @@ public class LoginTest extends WebTest {
 //        }
 
 
-        HomePage homePage=new HomePage();
-        homePage.logoutFromApplication();
+        com.gsl.driver.SessionManager.closeSessionAndReleaseUser("Login/dashboard check complete");
 
     }
 }

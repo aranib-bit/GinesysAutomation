@@ -148,7 +148,7 @@ public class EditArVoucher extends WebTest {
 
         // ── Step 9: Logout (terminal) ─────────────────────────────────────────────
         StepExecutor.step("Logout", () -> {
-            new HomePage().logoutFromApplication();
+            com.gsl.driver.SessionManager.closeSessionAndReleaseUser("Edit AR Voucher complete");
             ReportLogger.business("Logged out of application");
         });
 

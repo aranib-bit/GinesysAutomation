@@ -10,7 +10,7 @@ import com.gsl.pages.HomePage;
 import com.gsl.pages.LoginPage;
 import com.gsl.pages.enums.Procurement.MainMenuType;
 import com.gsl.pages.enums.Procurement.Operations.OperationsMenuType;
-import com.gsl.reports.ExtentLogger;
+import com.gsl.reports.ReportLogger;
 import com.gsl.testdata.MasterTestData;
 import com.gsl.pages.Procurement.Operations.ReceiptsListPage;
 import com.gsl.utils.NavigationUtils;
@@ -141,7 +141,7 @@ public class Receipts extends WebTest {
         }
         if (matcher.find()) {
             System.out.println("Extracted Document No: " + matcher.group());
-            ExtentLogger.pass("Extracted Document No: " + matcher.group());
+            ReportLogger.business("Extracted Document No: " + matcher.group());
         } else {
             System.out.println("No match found.");
         }

@@ -104,17 +104,17 @@ public class FinPostValidator {
     }
 
     private static String[][] buildPostTable(List<FinPost> rows) {
-        String[] headers = {"postcode","entcode","entno","doctype","docno","glcode",
-                            "damount","camount","adjamt","narration"};
+        String[] headers = {"postcode","entcode","entno","enttype","docno","glcode",
+                            "damount","camount","adjamt","nartext"};
         String[][] table = new String[rows.size() + 1][headers.length];
         table[0] = headers;
         for (int i = 0; i < rows.size(); i++) {
             FinPost r = rows.get(i);
             table[i + 1] = new String[]{
                 str(r.getPostcode()), str(r.getEntcode()), str(r.getEntno()),
-                str(r.getDoctype()),  str(r.getDocno()),   str(r.getGlcode()),
+                str(r.getEnttype()),  str(r.getDocno()),   str(r.getGlcode()),
                 str(r.getDamount()),  str(r.getCamount()), str(r.getAdjamt()),
-                str(r.getNarration())
+                str(r.getNartext())
             };
         }
         return table;

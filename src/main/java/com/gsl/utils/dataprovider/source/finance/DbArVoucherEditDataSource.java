@@ -75,14 +75,14 @@ public class DbArVoucherEditDataSource implements TestDataSource<MergedFinanceAr
                 .orElseThrow(() -> new IllegalStateException(
                         "[DbArVoucherEditDataSource] finvchmain row not found for vchcode=" + vchcode));
 
-        // 2. Site name (admsite.name WHERE code = siteid)
+        // 2. Site name (admsite.name WHERE code = admsite_code_owner)
         String siteName = jdbi.withHandle(h ->
                 h.createQuery("SELECT name FROM admsite WHERE code = :code")
-                 .bind("code", header.getSiteid())
+                 .bind("code", header.getAdmsiteCodeOwner())
                  .mapTo(String.class)
                  .findFirst()
                  .orElseThrow(() -> new IllegalStateException(
-                         "[DbArVoucherEditDataSource] admsite not found for siteid=" + header.getSiteid()))
+                         "[DbArVoucherEditDataSource] admsite not found for admsite_code_owner=" + header.getAdmsiteCodeOwner()))
         );
 
         // 3. GL name
@@ -163,7 +163,7 @@ public class DbArVoucherEditDataSource implements TestDataSource<MergedFinanceAr
                     /* id              */ slId,
                     /* generalLedger   */ glName,
                     /* referenceSite   */ null,
-                    /* ledgerNarration */ det.getNarration(),
+                    /* ledgerNarration */ det.getNartext(),
                     /* isReversal      */ "N",
                     /* amountCr        */ det.getCamount(),
                     /* adjustmentType  */ null,

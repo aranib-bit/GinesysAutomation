@@ -37,6 +37,10 @@ import java.util.List;
  */
 public class MergedFinArVoucherDataSupplier {
 
+    // runInParallel=true is SAFE only because of SessionPool — see the note in
+    // MergedFinApVoucherDataSupplier: rows borrow a pooled logged-in session per row
+    // (WebTest.setUp) and return it (tearDown), so TestNG's short-lived per-method row threads
+    // hold nothing between rows and can never leak users/browsers by dying.
     @DataSupplier(name = "FinanceArVoucherData", flatMap = true, runInParallel = true)
     public StreamEx<Object[]> dataSupplier(Method method, ITestContext context) {
         String source = ConfigFactory.getConfig().testDataSource();
