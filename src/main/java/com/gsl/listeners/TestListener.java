@@ -558,14 +558,37 @@ public class TestListener implements ITestListener, ISuiteListener {
             java.nio.file.Path runDir    = java.nio.file.Paths.get(FrameworkConstants.getRunReportDir());
             java.nio.file.Path latestDir = java.nio.file.Paths.get(FrameworkConstants.getLatestReportDir());
             java.nio.file.Files.createDirectories(latestDir);
+            java.nio.file.Path runIndex = runDir.resolve("index.html");
+            patchDeadCdnReferences(runIndex);
             java.nio.file.Files.copy(
-                runDir.resolve("index.html"),
+                runIndex,
                 latestDir.resolve("index.html"),
                 java.nio.file.StandardCopyOption.REPLACE_EXISTING
             );
             Log.info("[Phase0] Latest report copied to {}", latestDir.resolve("index.html"));
         } catch (Exception e) {
             Log.warn("[Phase0] Could not copy report to latest/: {}", e.getMessage());
+        }
+    }
+
+    // ExtentSparkReporter's built-in HTML template hardcodes a <script> tag pointing at
+    // cdn.rawgit.com, a CDN that was permanently shut down in 2019 — the report renders
+    // blank wherever that script is required to run. jsdelivr's "gh" proxy serves the exact
+    // same file straight from the same GitHub repo (extent-framework/extent-github-cdn),
+    // which the report's own CSS <link> already relies on, so it's a safe drop-in swap.
+    private static void patchDeadCdnReferences(java.nio.file.Path indexHtml) {
+        try {
+            String html = java.nio.file.Files.readString(indexHtml, java.nio.charset.StandardCharsets.UTF_8);
+            String patched = html.replaceAll(
+                "https://cdn\\.rawgit\\.com/([^/\"']+)/([^/\"']+)/([^/\"']+)/([^\"'\\s]+)",
+                "https://cdn.jsdelivr.net/gh/$1/$2@$3/$4"
+            );
+            if (!patched.equals(html)) {
+                java.nio.file.Files.writeString(indexHtml, patched, java.nio.charset.StandardCharsets.UTF_8);
+                Log.info("[Phase0] Patched dead cdn.rawgit.com reference(s) in report HTML");
+            }
+        } catch (Exception e) {
+            Log.warn("[Phase0] Could not patch CDN references: {}", e.getMessage());
         }
     }
 }
