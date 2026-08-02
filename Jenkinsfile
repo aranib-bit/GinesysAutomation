@@ -18,6 +18,9 @@ pipeline {
         // points at the TCP daemon endpoint enabled in Docker Desktop → Settings → General.
         DOCKER_EXE = 'C:\\Users\\arani.barman\\AppData\\Local\\Programs\\DockerDesktop\\resources\\bin\\docker.exe'
         DOCKER_HOST = 'tcp://localhost:2375'
+        // LocalSystem has no .docker\cli-plugins of its own, so the "compose" plugin
+        // isn't found unless we point Docker's config dir explicitly at a real one.
+        DOCKER_CONFIG = 'C:\\Users\\arani.barman\\.docker'
     }
 
     stages {
