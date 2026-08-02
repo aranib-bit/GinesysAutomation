@@ -20,6 +20,7 @@
         -->
         <runmode>local</runmode>
         <headless>false</headless>
+        <browser>chrome</browser>
         <!--
             Host-adaptive surefire JVM args. MaxRAMPercentage scales heap to the machine
             (50% of host/container RAM) instead of a fixed -Xmx, so the same pom runs on
@@ -284,7 +285,7 @@
                     <suiteXmlFiles>
                         <suiteXmlFile>testng.xml</suiteXmlFile>
                     </suiteXmlFiles>
-                    <argLine>${test.jvm.args} --add-opens java.base/java.lang=ALL-UNNAMED -Drunmode=${runmode} -Dheadless=${headless}</argLine>
+                    <argLine>${test.jvm.args} --add-opens java.base/java.lang=ALL-UNNAMED -Drunmode=${runmode} -Dheadless=${headless} -Dbrowser=${browser}</argLine>
                 </configuration>
             </plugin>
         </plugins>
@@ -304,7 +305,7 @@
                             <suiteXmlFiles>
                                 <suiteXmlFile>testng-smoke.xml</suiteXmlFile>
                             </suiteXmlFiles>
-                            <argLine>${test.jvm.args} --add-opens java.base/java.lang=ALL-UNNAMED -Drunmode=${runmode} -Dheadless=${headless}</argLine>
+                            <argLine>${test.jvm.args} --add-opens java.base/java.lang=ALL-UNNAMED -Drunmode=${runmode} -Dheadless=${headless} -Dbrowser=${browser}</argLine>
                         </configuration>
                     </plugin>
                 </plugins>
@@ -326,7 +327,7 @@
                             <suiteXmlFiles>
                                 <suiteXmlFile>testng-ap-smoke.xml</suiteXmlFile>
                             </suiteXmlFiles>
-                            <argLine>${test.jvm.args} --add-opens java.base/java.lang=ALL-UNNAMED -Drunmode=${runmode} -Dheadless=${headless}</argLine>
+                            <argLine>${test.jvm.args} --add-opens java.base/java.lang=ALL-UNNAMED -Drunmode=${runmode} -Dheadless=${headless} -Dbrowser=${browser}</argLine>
                         </configuration>
                     </plugin>
                 </plugins>
@@ -347,7 +348,7 @@
                             <suiteXmlFiles>
                                 <suiteXmlFile>testng-ap-mandatory.xml</suiteXmlFile>
                             </suiteXmlFiles>
-                            <argLine>${test.jvm.args} --add-opens java.base/java.lang=ALL-UNNAMED -Drunmode=${runmode} -Dheadless=${headless}</argLine>
+                            <argLine>${test.jvm.args} --add-opens java.base/java.lang=ALL-UNNAMED -Drunmode=${runmode} -Dheadless=${headless} -Dbrowser=${browser}</argLine>
                             <systemPropertyVariables>
                                 <apv.group>MANDATORY</apv.group>
                             </systemPropertyVariables>
@@ -372,7 +373,7 @@
                             <suiteXmlFiles>
                                 <suiteXmlFile>testng-ar-ap-mandatory.xml</suiteXmlFile>
                             </suiteXmlFiles>
-                            <argLine>${test.jvm.args} --add-opens java.base/java.lang=ALL-UNNAMED -Drunmode=${runmode} -Dheadless=${headless}</argLine>
+                            <argLine>${test.jvm.args} --add-opens java.base/java.lang=ALL-UNNAMED -Drunmode=${runmode} -Dheadless=${headless} -Dbrowser=${browser}</argLine>
                             <systemPropertyVariables>
                                 <arv.group>MANDATORY</arv.group>
                                 <apv.group>MANDATORY</apv.group>
@@ -397,7 +398,7 @@
                             <suiteXmlFiles>
                                 <suiteXmlFile>testng-mandatory.xml</suiteXmlFile>
                             </suiteXmlFiles>
-                            <argLine>${test.jvm.args} --add-opens java.base/java.lang=ALL-UNNAMED -Drunmode=${runmode} -Dheadless=${headless}</argLine>
+                            <argLine>${test.jvm.args} --add-opens java.base/java.lang=ALL-UNNAMED -Drunmode=${runmode} -Dheadless=${headless} -Dbrowser=${browser}</argLine>
                             <systemPropertyVariables>
                                 <arv.group>MANDATORY</arv.group>
                             </systemPropertyVariables>
@@ -421,7 +422,7 @@
                             <suiteXmlFiles>
                                 <suiteXmlFile>testng-regression-phase1.xml</suiteXmlFile>
                             </suiteXmlFiles>
-                            <argLine>${test.jvm.args} --add-opens java.base/java.lang=ALL-UNNAMED -Drunmode=${runmode} -Dheadless=${headless}</argLine>
+                            <argLine>${test.jvm.args} --add-opens java.base/java.lang=ALL-UNNAMED -Drunmode=${runmode} -Dheadless=${headless} -Dbrowser=${browser}</argLine>
                             <systemPropertyVariables>
                                 <arv.group>REGRESSION_PHASE1</arv.group>
                             </systemPropertyVariables>
@@ -445,7 +446,7 @@
                             <suiteXmlFiles>
                                 <suiteXmlFile>testng-regression-phase2.xml</suiteXmlFile>
                             </suiteXmlFiles>
-                            <argLine>${test.jvm.args} --add-opens java.base/java.lang=ALL-UNNAMED -Drunmode=${runmode} -Dheadless=${headless}</argLine>
+                            <argLine>${test.jvm.args} --add-opens java.base/java.lang=ALL-UNNAMED -Drunmode=${runmode} -Dheadless=${headless} -Dbrowser=${browser}</argLine>
                             <systemPropertyVariables>
                                 <arv.group>REGRESSION_PHASE2</arv.group>
                             </systemPropertyVariables>
@@ -469,7 +470,7 @@
                             <suiteXmlFiles>
                                 <suiteXmlFile>testng-regression-phase3.xml</suiteXmlFile>
                             </suiteXmlFiles>
-                            <argLine>${test.jvm.args} --add-opens java.base/java.lang=ALL-UNNAMED -Drunmode=${runmode} -Dheadless=${headless}</argLine>
+                            <argLine>${test.jvm.args} --add-opens java.base/java.lang=ALL-UNNAMED -Drunmode=${runmode} -Dheadless=${headless} -Dbrowser=${browser}</argLine>
                             <systemPropertyVariables>
                                 <arv.group>REGRESSION_PHASE3</arv.group>
                             </systemPropertyVariables>
@@ -496,7 +497,7 @@
                             <suiteXmlFiles>
                                 <suiteXmlFile>testng-accountclass-single.xml</suiteXmlFile>
                             </suiteXmlFiles>
-                            <argLine>${test.jvm.args} --add-opens java.base/java.lang=ALL-UNNAMED -Drunmode=${runmode} -Dheadless=${headless}</argLine>
+                            <argLine>${test.jvm.args} --add-opens java.base/java.lang=ALL-UNNAMED -Drunmode=${runmode} -Dheadless=${headless} -Dbrowser=${browser}</argLine>
                             <systemPropertyVariables>
                                 <finAccountClassLifecyclePath>Finance/Setup/AccountClassLifecycle_Single.xlsx</finAccountClassLifecyclePath>
                             </systemPropertyVariables>
@@ -520,7 +521,7 @@
                             <suiteXmlFiles>
                                 <suiteXmlFile>testng-regression.xml</suiteXmlFile>
                             </suiteXmlFiles>
-                            <argLine>${test.jvm.args} --add-opens java.base/java.lang=ALL-UNNAMED -Drunmode=${runmode} -Dheadless=${headless}</argLine>
+                            <argLine>${test.jvm.args} --add-opens java.base/java.lang=ALL-UNNAMED -Drunmode=${runmode} -Dheadless=${headless} -Dbrowser=${browser}</argLine>
                             <!-- No arv.group property — DbArVoucherDataSource runs all groups -->
                         </configuration>
                     </plugin>

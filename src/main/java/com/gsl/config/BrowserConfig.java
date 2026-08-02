@@ -10,18 +10,27 @@ import org.aeonbits.owner.Config;
 public interface BrowserConfig extends Config {
 
     /** Raw string — preserved for backward compat. Prefer browserType() for typed access. */
+    @DefaultValue("chrome")
     String browser();
 
     /** Raw string — preserved for backward compat. Prefer runMode() for typed access. */
+    @DefaultValue("local")
     String runmode();
 
-    /** Typed Browser enum converted from the browser property via StringToBrowserConverter. */
+    /**
+     * Typed Browser enum converted from the browser property via StringToBrowserConverter.
+     * DefaultValue is required here: with "system:properties" as a co-source, Owner 1.0.12
+     * does not fall back to the file source when the key is absent from system properties —
+     * it resolves to null and skips the converter entirely, bypassing its own blank/null fallback.
+     */
     @Key("browser")
+    @DefaultValue("chrome")
     @Config.ConverterClass(StringToBrowserConverter.class)
     Browser browserType();
 
-    /** Typed RunMode enum converted from the runmode property via StringToRunModeConverter. */
+    /** Typed RunMode enum converted from the runmode property via StringToRunModeConverter. Same DefaultValue caveat as browserType(). */
     @Key("runmode")
+    @DefaultValue("local")
     @Config.ConverterClass(StringToRunModeConverter.class)
     RunMode runMode();
 
