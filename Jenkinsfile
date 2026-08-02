@@ -36,18 +36,18 @@ pipeline {
         stage('Start Selenium Grid') {
             steps {
                 bat "\"%DOCKER_EXE%\" compose -f %GRID_COMPOSE_FILE% up -d"
-                bat """
-                    powershell -Command ^
-                    "\$deadline = (Get-Date).AddSeconds(60); ^
-                    while ((Get-Date) -lt \$deadline) { ^
-                        try { ^
-                            \$r = Invoke-RestMethod -Uri http://localhost:4444/wd/hub/status -TimeoutSec 3; ^
-                            if (\$r.value.ready -eq \$true) { Write-Host 'Grid ready'; exit 0 } ^
-                        } catch {} ^
-                        Start-Sleep -Seconds 2 ^
-                    }; ^
-                    Write-Error 'Grid did not become ready in time'; exit 1"
-                """
+                powershell '''
+                    $deadline = (Get-Date).AddSeconds(60)
+                    while ((Get-Date) -lt $deadline) {
+                        try {
+                            $r = Invoke-RestMethod -Uri http://localhost:4444/wd/hub/status -TimeoutSec 3
+                            if ($r.value.ready -eq $true) { Write-Host "Grid ready"; exit 0 }
+                        } catch {}
+                        Start-Sleep -Seconds 2
+                    }
+                    Write-Error "Grid did not become ready in time"
+                    exit 1
+                '''
             }
         }
 
