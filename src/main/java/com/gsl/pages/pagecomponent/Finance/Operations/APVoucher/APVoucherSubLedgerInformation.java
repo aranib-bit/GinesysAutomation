@@ -377,8 +377,7 @@ public class APVoucherSubLedgerInformation extends VoucherSubLedgerInformationBa
                     for (int i = 0; i < refSites.size(); i++) {
                         com.gsl.testdata.Finance.Operations.Vouchers.APVoucher.ReferenceSitewiseFIFOsetoff rs = refSites.get(i);
                         if (i > 0) fifoPopup.addRow();
-                        fifoPopup.selectReferenceSiteInCombo(rs.getReferenceSiteName())
-                                 .selectSubSiteRow(rs.getSiteName());
+                        fifoPopup.selectReferenceSiteInCombo(rs.getReferenceSiteName());
                     }
                     fifoPopup.clickAutoAdjust();
                     com.gsl.pages.Finance.Operations.Common.AdjustmentAmountSnapshot snapshot =

@@ -2,9 +2,13 @@ package com.gsl.utils.dataprovider.source.finance;
 
 import com.gsl.config.ConfigFactory;
 import com.gsl.config.WaitConfig;
+import com.gsl.database.BackfillStrategy;
+import com.gsl.database.DataAvailabilityGuard;
 import com.gsl.database.DatabaseManager;
 import com.gsl.database.DocumentReservationRegistry;
 import com.gsl.database.DocumentSelectionResult;
+import com.gsl.database.finance.ArVoucherApBackfillStrategy;
+import com.gsl.database.finance.PendingApDocumentBackfillStrategy;
 import com.gsl.database.dao.HrEmpDao;
 import com.gsl.database.dao.HrEmpOuDao;
 import com.gsl.database.dao.finance.FinGlDao;
@@ -26,6 +30,7 @@ import com.gsl.model.finance.FinSl;
 import com.gsl.model.finance.PendingSlDocument;
 import com.gsl.model.finance.SlNameWithId;
 import com.gsl.model.finance.TdsResolution;
+import com.gsl.reports.ReportLogger;
 import com.gsl.testdata.MasterTestData;
 import com.gsl.testdata.dto.MergedFinanceApVoucherData;
 import com.gsl.utils.Faker.FakerUtils;
@@ -412,8 +417,53 @@ public class DbApVoucherDataSource implements TestDataSource<MergedFinanceApVouc
 
         } else {
             // ── Document Payment: fetch pending AP docs (debit_credit='C') ────
-            DocumentSelectionResult selection = selectApDocumentsAtomic(
-                    jdbi, d, ouCodes, ownerSiteCodes, opts);
+            // Shortfall here does NOT reuse DocumentSelector — selectApDocumentsAtomic is AP's
+            // own private inline reimplementation (debit_credit='C' vs AR's 'D'). DataAvailabilityGuard
+            // takes a Supplier so it wraps this without changing its retry/reservation logic at all.
+            int neededQty = Math.max(1, opts.getSubLedgerCount()) * Math.max(1, opts.getDocumentCount());
+
+            // clsCode's clstype decides which document type can actually backfill it: Service
+            // Invoice Adhoc's vendor picker (GetVendors) only ever returns Supplier-classified
+            // SLs, so a Customer/Jobber/Others/etc. requirement can never be satisfied that way
+            // (confirmed live: it silently fell back to an unrelated Supplier vendor and the
+            // shortfall never resolved). AR Voucher can be raised against any classification, so
+            // it's used instead whenever the required clstype isn't Supplier.
+            long slClsCode = opts.getSlClsCode();
+            String clstype = slClsCode > 0
+                    ? AdmClsQuery.findByClsCode(jdbi, slClsCode).map(AdmCls::getClstype).orElse(null)
+                    : null;
+            boolean useArVoucherBackfill = slClsCode > 0 && !"S".equalsIgnoreCase(clstype);
+
+            BackfillStrategy backfillStrategy;
+            if (useArVoucherBackfill) {
+                // No distinct "OU code" source exists in this framework — assumed 1:1 with
+                // ownerSiteCode, same convention already established in
+                // ServiceInvoiceAdhocApiClient.createServiceInvoiceAdhocWithDefaults. (An earlier
+                // version of this line looked up "some" OU code the employee is assigned to via
+                // hrdemp_ou — for this employee that's ~920 unrelated OU codes with no ORDER BY —
+                // which produced an incoherent connectedOUCode/connectedSite pairing and an HTTP
+                // 500 from Finance/api/sites.)
+                int ouCode = (int) ownerSite.code;
+                ReportLogger.dataBackfill(
+                        "[DB] AP backfill combination if shortfall: neededQty={} (subLedgerCount={} x documentCount={}), " +
+                                "clsCode={} (clstype={}, not Supplier → AR Voucher backfill), ownerSite={} (code={}), ouCode={}, empCode={}",
+                        neededQty, opts.getSubLedgerCount(), opts.getDocumentCount(), slClsCode, clstype,
+                        ownerSiteName, ownerSite.code, ouCode, ecode);
+                backfillStrategy = new ArVoucherApBackfillStrategy(slClsCode, (int) ownerSite.code, ouCode, ecode);
+            } else {
+                String vendorSlForBackfill = findFirstUsableVendorSl(jdbi, d, slClsCode);
+                ReportLogger.dataBackfill(
+                        "[DB] AP backfill combination if shortfall: neededQty={} (subLedgerCount={} x documentCount={}), " +
+                                "clsCode={}, ownerSite={} (code={}), vendorSlForBackfill={}",
+                        neededQty, opts.getSubLedgerCount(), opts.getDocumentCount(), slClsCode,
+                        ownerSiteName, ownerSite.code, vendorSlForBackfill);
+                backfillStrategy = new PendingApDocumentBackfillStrategy(vendorSlForBackfill, (int) ownerSite.code);
+            }
+
+            DocumentSelectionResult selection = DataAvailabilityGuard.selectOrBackfill(
+                    () -> selectApDocumentsAtomic(jdbi, d, ouCodes, ownerSiteCodes, opts),
+                    neededQty,
+                    backfillStrategy);
             pendingSlNames      = selection.getSelectedSls();
             pendingDocsBySlName = selection.getDocsBySlKey();
 
@@ -1011,6 +1061,37 @@ public class DbApVoucherDataSource implements TestDataSource<MergedFinanceApVouc
                         rs.getString("slid")))
                 .list()
         );
+    }
+
+    /**
+     * Finds the first active vendor SL in {@code finsl} usable as the Service Invoice Adhoc
+     * target when backfilling AP Voucher's document-payment shortfall — replaces the
+     * {@code datafallback.ap.defaultVendorSlCode} config placeholder with a genuine live value,
+     * the same way {@link #findFirstUsableOwnerSite} already resolves the owner site live.
+     *
+     * <p>Filters on {@code fs.clscode = clsCode} when {@code clsCode > 0} so the backfilled
+     * Service Invoice Adhoc lands under the same SL classification the shortfall check is
+     * actually querying for (see {@link #findApSlCandidates}) — otherwise the created document
+     * can land under the wrong classification and the post-backfill retry still finds nothing.
+     */
+    private static String findFirstUsableVendorSl(Jdbi jdbi, DbDialect d, long clsCode) {
+        String clsFilter = clsCode > 0 ? "  AND fs.clscode = :clsCode " : "";
+        String sql =
+            "SELECT fs.slid " +
+            "FROM finsl fs " +
+            "WHERE fs.ext = 'N' " +
+            clsFilter +
+            "ORDER BY fs.slname " +
+            d.limit1();
+
+        return jdbi.withHandle(handle -> {
+            var query = handle.createQuery(sql);
+            if (clsCode > 0) query.bind("clsCode", clsCode);
+            return query.mapTo(String.class).findFirst();
+        }).orElseThrow(() -> new IllegalStateException(
+                "No active vendor SL found in finsl (ext='N'"
+                        + (clsCode > 0 ? ", clscode=" + clsCode : "")
+                        + ") — cannot backfill AP document via Service Invoice Adhoc."));
     }
 
     // ─── Document Payment — AP-specific atomic document selection ─────────────

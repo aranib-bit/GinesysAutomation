@@ -18,6 +18,7 @@ import com.gsl.utils.Selenium.JavascriptExecutorUtils;
 import com.gsl.utils.Selenium.SeleniumUtils;
 import com.gsl.popup.PopupMonitor;
 import com.gsl.utils.Selenium.WaitUtils;
+import com.gsl.enums.VoucherDomain;
 import com.gsl.enums.WaitType;
 
 import java.time.Duration;
@@ -25,9 +26,11 @@ import java.time.Duration;
 public class AdjustmentEntry {
 
     private final AdjustmentEntryParent parent;
+    private final VoucherDomain voucherDomain;
 
     public AdjustmentEntry(AdjustmentEntryParent parent) {
         this.parent = parent;
+        this.voucherDomain = parent.voucherDomain();
     }
 
     // ===========================
@@ -134,8 +137,8 @@ public class AdjustmentEntry {
         JavascriptExecutorUtils.waitForExtJS();
         WaitUtils.webDriverWait(ConfigFactory.getFinanceConfig().extjsTimeout())
                 .until(ExpectedConditions.visibilityOfElementLocated(
-                        AdjustmentPopups.REFERENCE_SITEWISE_FIFO_SETOFF.popupWindowLocator()));
-        return new ReferenceSiteWiseFIFOPopup();
+                        AdjustmentPopups.REFERENCE_SITEWISE_FIFO_SETOFF.popupWindowLocator(voucherDomain)));
+        return new ReferenceSiteWiseFIFOPopup(voucherDomain);
     }
 
     /** Captures Transaction Amount, Adjusted Amount, Pending to Adjust from the Adjustment Entry footer. */

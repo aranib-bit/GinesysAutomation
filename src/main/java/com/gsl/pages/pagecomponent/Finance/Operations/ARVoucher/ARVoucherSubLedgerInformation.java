@@ -217,8 +217,7 @@ public class ARVoucherSubLedgerInformation extends VoucherSubLedgerInformationBa
                         ExtentLogger.info("[FIFO] Reference Site: " + rs.getReferenceSiteName()
                                 + " | Site: " + rs.getSiteName());
                         if (i > 0) fifoPopup.addRow();
-                        fifoPopup.selectReferenceSiteInCombo(rs.getReferenceSiteName())
-                                 .selectSubSiteRow(rs.getSiteName());
+                        fifoPopup.selectReferenceSiteInCombo(rs.getReferenceSiteName());
                     }
                     fifoPopup.clickAutoAdjust();
 

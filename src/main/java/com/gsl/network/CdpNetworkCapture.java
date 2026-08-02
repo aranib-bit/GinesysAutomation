@@ -8,9 +8,9 @@ import org.apache.logging.log4j.Logger;
 import org.openqa.selenium.WebDriver;
 import org.openqa.selenium.devtools.DevTools;
 import org.openqa.selenium.devtools.HasDevTools;
-import org.openqa.selenium.devtools.v147.network.Network;
-import org.openqa.selenium.devtools.v147.network.model.RequestId;
-import org.openqa.selenium.devtools.v147.page.Page;
+import org.openqa.selenium.devtools.v150.network.Network;
+import org.openqa.selenium.devtools.v150.network.model.RequestId;
+import org.openqa.selenium.devtools.v150.page.Page;
 
 import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;

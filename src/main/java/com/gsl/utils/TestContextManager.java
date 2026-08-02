@@ -15,6 +15,7 @@ public final class TestContextManager {
     public static final String KEY_EXECUTION_ID  = "executionId";
     public static final String KEY_BROWSER       = "browser";
     public static final String KEY_ENV           = "env";
+    public static final String KEY_ACTIVE_SURFACE = "activeSurface";
 
     private TestContextManager() {
         throw new UnsupportedOperationException("Utility class");
@@ -49,6 +50,9 @@ public final class TestContextManager {
     public static void setApiUser(String username) { ThreadContext.put(KEY_API_USER,   nvl(username, "")); }
     public static void setSessionId(String id)     { ThreadContext.put(KEY_SESSION_ID, nvl(id, "")); }
 
+    /** Multi-context test's currently active surface (WEB/MOBILE/API sub-choice) — set by ContextOrchestrator. */
+    public static void setActiveSurface(String surface) { ThreadContext.put(KEY_ACTIVE_SURFACE, nvl(surface, "")); }
+
     public static String getTestName() {
         return ThreadContext.get(KEY_TEST_NAME);
     }
@@ -72,6 +76,7 @@ public final class TestContextManager {
         ThreadContext.remove(KEY_EXECUTION_ID);
         ThreadContext.remove(KEY_BROWSER);
         ThreadContext.remove(KEY_ENV);
+        ThreadContext.remove(KEY_ACTIVE_SURFACE);
     }
 
     private static String nvl(String value, String fallback) {

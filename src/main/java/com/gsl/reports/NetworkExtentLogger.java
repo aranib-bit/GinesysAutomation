@@ -169,7 +169,7 @@ public final class NetworkExtentLogger {
         return "#006600";
     }
 
-    private static String collapsible(String label, String content, String labelColor) {
+    static String collapsible(String label, String content, String labelColor) {
         return "<details style='margin:2px 0;'><summary style='cursor:pointer;font-size:10px;color:"
                 + labelColor + ";'>" + label + "</summary>" + content + "</details>";
     }
@@ -181,7 +181,7 @@ public final class NetworkExtentLogger {
         return sb.append("</pre>").toString();
     }
 
-    private static String jsonBlock(String content) {
+    static String jsonBlock(String content) {
         try {
             Object parsed = MAPPER.readValue(content, Object.class);
             String pretty = MAPPER.writerWithDefaultPrettyPrinter().writeValueAsString(parsed);
@@ -191,7 +191,7 @@ public final class NetworkExtentLogger {
         }
     }
 
-    private static String preBlock(String content) {
+    static String preBlock(String content) {
         return "<pre style='font-size:10px;margin:2px 0;padding:4px;background:#f8f8f8;"
                 + "border-left:2px solid #ddd;white-space:pre-wrap;"
                 + "max-height:400px;overflow-y:auto;'>"

@@ -1,6 +1,7 @@
 package com.gsl.model.finance;
 
 import lombok.Data;
+import org.jdbi.v3.core.mapper.reflect.ColumnName;
 
 import java.math.BigDecimal;
 
@@ -34,4 +35,9 @@ public class FinPost {
     private BigDecimal adjamt;
 
     private String nartext;
+
+    /** 'N'=never posted, 'U'=unposted (draft), 'P'=posted — see main.v_pending_adj, which
+     *  only surfaces release_status='P' rows. */
+    @ColumnName("release_status")
+    private String releaseStatus;
 }

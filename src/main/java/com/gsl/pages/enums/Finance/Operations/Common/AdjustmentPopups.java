@@ -1,5 +1,6 @@
 package com.gsl.pages.enums.Finance.Operations.Common;
 
+import com.gsl.enums.VoucherDomain;
 import org.openqa.selenium.By;
 
 /**
@@ -13,34 +14,41 @@ import org.openqa.selenium.By;
  *                         WaitType.CLICKABLE, "Select Document Option");
  *
  *     WaitUtils.webDriverWait(...).until(ExpectedConditions.visibilityOfElementLocated(
- *             AdjustmentPopups.REFERENCE_SITEWISE_FIFO_SETOFF.popupWindowLocator()));
+ *             AdjustmentPopups.REFERENCE_SITEWISE_FIFO_SETOFF.popupWindowLocator(VoucherDomain.AP)));
  * </pre>
  *
  * Notes:
  * - {@code FIFO_SETOFF} applies its action inline within the existing Adjustment Entry,
- *   so it has no popup window — its {@code popupTitle} is {@code null} and
- *   {@link #popupWindowLocator()} / {@link #windowScopeXpath()} will throw if called.
+ *   so it has no popup window — its popup titles are {@code null} and
+ *   {@link #popupWindowLocator(VoucherDomain)} / {@link #windowScopeXpath(VoucherDomain)}
+ *   will throw if called.
  * - {@code SELECT_DOCUMENT} does open a popup, but no code currently scopes it by
- *   {@code winTitleType2}. Its {@code popupTitle} stays {@code null} until verified
- *   against the live UI.
+ *   {@code winTitleType2}. Its popup titles stay {@code null} until verified against the
+ *   live UI.
+ * - {@code REFERENCE_SITEWISE_FIFO_SETOFF} renders different {@code winTitleType2} text
+ *   depending on voucher domain — AR Voucher shows "Reference Site wise FIFO set-off",
+ *   AP Voucher shows the abbreviated "Ref. Site-wise FIFO Set-Off" — so its window-scope
+ *   xpath is resolved per {@link VoucherDomain}.
  */
 public enum AdjustmentPopups {
 
-    SELECT_DOCUMENT                 ("Select Document",                    null),
-    FIFO_SETOFF                     ("FIFO Set-Off",                       null),
+    SELECT_DOCUMENT                 ("Select Document",                    null, null),
+    FIFO_SETOFF                     ("FIFO Set-Off",                       null, null),
     REFERENCE_SITEWISE_FIFO_SETOFF  ("Reference Site wise FIFO set-off",
-                                     "Reference Site wise FIFO set-off");
+                                     "Reference Site wise FIFO set-off",   // AR Voucher title
+                                     "Ref. Site-wise FIFO Set-Off");        // AP Voucher title
 
     private final String menuOption;
-    private final String popupTitle;
+    private final String popupTitleAr;
+    private final String popupTitleAp;
 
-    AdjustmentPopups(String menuOption, String popupTitle) {
+    AdjustmentPopups(String menuOption, String popupTitleAr, String popupTitleAp) {
         this.menuOption = menuOption;
-        this.popupTitle = popupTitle;
+        this.popupTitleAr = popupTitleAr;
+        this.popupTitleAp = popupTitleAp;
     }
 
     public String menuOption() { return menuOption; }
-    public String popupTitle() { return popupTitle; }
 
     /** Toolbar button inside the Adjusted Document dropdown. */
     public By menuOptionLocator() {
@@ -50,21 +58,23 @@ public enum AdjustmentPopups {
 
     /**
      * Window-scope xpath for the ExtJS dialog opened by this option, scoped by the
-     * {@code winTitleType2} header text. Only valid for constants that own a
-     * {@code popupTitle}; throws otherwise so the caller learns at the call site.
+     * {@code winTitleType2} header text for the given voucher domain. Only valid for
+     * constants that own a popup title for that domain; throws otherwise so the caller
+     * learns at the call site.
      */
-    public String windowScopeXpath() {
+    public String windowScopeXpath(VoucherDomain domain) {
+        String popupTitle = domain == VoucherDomain.AP ? popupTitleAp : popupTitleAr;
         if (popupTitle == null) {
             throw new IllegalStateException(
-                    "AdjustmentPopups." + name() + " has no popupTitle configured");
+                    "AdjustmentPopups." + name() + " has no popupTitle configured for " + domain);
         }
         return "//div[contains(@class,'x-window') and @role='dialog' and "
              + ".//div[contains(@class,'winTitleType2') and normalize-space()='"
              + popupTitle + "']]";
     }
 
-    /** {@link By} form of {@link #windowScopeXpath()} for use with explicit waits. */
-    public By popupWindowLocator() {
-        return By.xpath(windowScopeXpath());
+    /** {@link By} form of {@link #windowScopeXpath(VoucherDomain)} for use with explicit waits. */
+    public By popupWindowLocator(VoucherDomain domain) {
+        return By.xpath(windowScopeXpath(domain));
     }
 }

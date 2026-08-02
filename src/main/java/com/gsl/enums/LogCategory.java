@@ -23,5 +23,7 @@ public enum LogCategory {
     SUB_MODULE,  // Collapsible sidebar group (e.g. Vouchers/Journals/Retail Journals/TDS)
     MENU,        // Top menu tab click/readback (e.g. Operations/Setup)
     SUB_MENU,    // Leaf side-menu item click (e.g. AP Voucher, AR Voucher)
-    TEST_STEP_STATUS // Step-level pass/fail outcome marker (StepExecutor)
+    TEST_STEP_STATUS, // Step-level pass/fail outcome marker (StepExecutor)
+    CONTEXT_SWITCH, // Multi-context test surface switches (WEB/ANDROID/IOS/WEBAPI/PUBLICAPI) — ContextOrchestrator
+    DATA_BACKFILL   // WEBAPI/PUBLICAPI/k6 data-shortfall backfill — DataAvailabilityGuard
 }

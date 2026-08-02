@@ -25,13 +25,13 @@
         <dependency>
             <groupId>org.seleniumhq.selenium</groupId>
             <artifactId>selenium-java</artifactId>
-            <version>4.44.0</version>
+            <version>4.46.0</version>
         </dependency>
-        <!-- CDP devtools v147 — highest artifact bundled with Selenium 4.43.0; compatible with Chrome 147/148 -->
+        <!-- CDP devtools v150 — bundled with Selenium 4.46.0; compatible with Chrome 148/149/150 -->
         <dependency>
             <groupId>org.seleniumhq.selenium</groupId>
-            <artifactId>selenium-devtools-v147</artifactId>
-            <version>4.45.0</version>
+            <artifactId>selenium-devtools-v150</artifactId>
+            <version>4.46.0</version>
         </dependency>
         <!-- https://mvnrepository.com/artifact/io.github.bonigarcia/webdrivermanager -->
         <dependency>

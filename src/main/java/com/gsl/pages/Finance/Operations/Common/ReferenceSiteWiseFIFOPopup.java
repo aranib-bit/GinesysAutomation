@@ -1,6 +1,7 @@
 package com.gsl.pages.Finance.Operations.Common;
 
 import com.gsl.config.ConfigFactory;
+import com.gsl.enums.VoucherDomain;
 import com.gsl.enums.WaitType;
 import com.gsl.pages.enums.Finance.Operations.Common.AdjustmentPopups;
 import com.gsl.reports.ExtentLogger;
@@ -19,8 +20,9 @@ import org.openqa.selenium.support.ui.ExpectedConditions;
  *   <li>Double-click row 0's <em>Reference Site Name</em> cell to activate the inline editor.</li>
  *   <li>Type the reference site name into the active editor input; the application
  *       filters the boundlist via its own combo handlers.</li>
- *   <li>Click the matching boundlist row by {@code data-qtip} (highlight-proof).</li>
- *   <li>Click a row in the sub-grid by site name.</li>
+ *   <li>Click the matching boundlist row by {@code data-qtip} (highlight-proof) —
+ *       this auto-populates Site Type/OU Name/Pending Amount directly into the row;
+ *       there is no separate sub-grid to pick a site from.</li>
  *   <li>Click "Auto Adjust" — popup closes, Adjustment Entry footer shows updated amounts.</li>
  * </ol>
  *
@@ -31,35 +33,19 @@ import org.openqa.selenium.support.ui.ExpectedConditions;
  *   <li>{@code x-column-header} and {@code x-grid-view} are siblings in ExtJS DOM —
  *       ancestor-navigation from column-header → grid-view fails; use {@code [1]}/{@code [last()]}.</li>
  *   <li>The inline editor is rendered as a floating {@code x-editor} overlay at document
- *       level (outside {@code WIN_SCOPE}) — same pattern as {@code DEDUCT_TDS_TRIGGER}.</li>
+ *       level (outside the window scope) — same pattern as {@code DEDUCT_TDS_TRIGGER}.</li>
  * </ul>
+ *
+ * <p>The popup's {@code winTitleType2} title text differs between AP and AR Voucher
+ * (see {@link AdjustmentPopups#windowScopeXpath(VoucherDomain)}), so every locator
+ * scoped by the window is resolved per-instance from the {@link VoucherDomain} passed
+ * to the constructor, rather than being a shared {@code static final} constant.
  */
 public class ReferenceSiteWiseFIFOPopup {
 
-    // ── Popup title + window scope are owned by AdjustmentPopups so the same
-    //    string drives both the visibility wait in AdjustmentEntry and all the
-    //    locators inside this popup. Change the title once, in the enum.
-    private static final String WIN_SCOPE =
-            AdjustmentPopups.REFERENCE_SITEWISE_FIFO_SETOFF.windowScopeXpath();
-
-    // ── Last-row cell resolved by column header text ─────────────────────────
-    // Last data row in the popup grid (so newly added rows are targeted), td at
-    // the position of the named column (counted by preceding x-column-header
-    // siblings inside WIN_SCOPE). Same header-position pattern as
-    // ADJUSTED_AMOUNT_CELL_BASE_XPATH in AdjustmentEntry. The popup opens with
-    // 1 row, so last() == [1] for the first fill.
-    private static final String LAST_ROW_CELL_BY_HEADER_XPATH =
-            WIN_SCOPE + "//tr[contains(@class,'x-grid-row')][last()]" +
-            "/td[count(" + WIN_SCOPE +
-            "//div[contains(@class,'x-column-header')]" +
-            "[.//span[normalize-space()='%s']]" +
-            "/preceding-sibling::div[contains(@class,'x-column-header')]) + 1]";
-
-    private static final By REF_SITE_NAME_CELL_LAST_ROW =
-            By.xpath(String.format(LAST_ROW_CELL_BY_HEADER_XPATH, "Reference Site Name"));
-
     // ── Active inline editor input — floating x-editor overlay at document level,
-    //    NOT inside WIN_SCOPE (ExtJS renders editors outside the host window DOM).
+    //    NOT inside the window scope (ExtJS renders editors outside the host window DOM).
+    //    Domain-independent, so this stays a shared constant.
     private static final By ACTIVE_EDITOR_INPUT = By.xpath(
             "//div[contains(@class,'x-editor') and not(contains(@class,'x-hide-display'))]" +
             "//input[contains(@class,'x-form-field')]");
@@ -67,36 +53,56 @@ public class ReferenceSiteWiseFIFOPopup {
     // ── Combo option in the boundlist dropdown ────────────────────────────────
     // Boundlist is grid-style (Site Name | Site Short Name | Site Type | OU Name | Pending Amount).
     // Match the first td by data-qtip — highlight-proof; same pattern as subLedgerPickerRow.
+    // Domain-independent, so this stays a shared constant.
     private static final String COMBO_OPTION_XPATH =
             "//div[contains(@class,'x-boundlist-floating') and not(contains(@class,'x-hide-display'))]" +
             "//div[contains(@class,'x-boundlist-item') and .//td[@data-qtip=\"%s\"]]";
 
-    // ── Sub-grid row by site name ─────────────────────────────────────────────
-    // [last()] = second x-grid-view in the popup = site sub-grid
-    private static final String SUB_GRID_ROW_BY_SITE_XPATH =
-            "(" + WIN_SCOPE + "//div[contains(@class,'x-grid-view')])[last()]" +
-            "//div[contains(@class,'x-grid-item-container')]" +
-            "//div[normalize-space()='%s']";
-
-    // ── Auto Adjust button ────────────────────────────────────────────────────
-    private static final By AUTO_ADJUST_BUTTON =
-            By.xpath(WIN_SCOPE + "//a[.//span[normalize-space()='Auto Adjust']]");
-
-    // ── Add Row button — mdi-playlist-plus icon inside the popup grid's
-    //    vertical-docked left toolbar (id="toolbar-XXXX" with class
-    //    "x-toolbar-vertical x-docked-left" — observed in the FIFO popup DOM).
-    //    Scoping to WIN_SCOPE + the vertical toolbar prevents collision with:
-    //      (a) the underlying voucher's sub-ledger Add Row (outside WIN_SCOPE),
-    //      (b) any per-row mdi-playlist-plus that might appear in an action
-    //          column — the grid-level Add Row lives only on this toolbar.
-    private static final By ADD_ROW_BUTTON = By.xpath(
-            WIN_SCOPE + "//div[contains(@class,'x-toolbar-vertical')]" +
-            "//i[contains(@class,'mdi-playlist-plus')]" +
-            "/parent::span[contains(@class,'x-btn-inner-IconButton-small')]");
+    // ── Window-scope-derived locators — resolved per-domain in the constructor ──────
+    private final By refSiteNameCellLastRow;
+    private final By autoAdjustButton;
+    private final By addRowButton;
 
     // ── Used for visibility/invisibility waits before driving and after Auto Adjust ─
-    static final By POPUP_WINDOW =
-            AdjustmentPopups.REFERENCE_SITEWISE_FIFO_SETOFF.popupWindowLocator();
+    private final By popupWindow;
+
+    ReferenceSiteWiseFIFOPopup(VoucherDomain domain) {
+        // ── Popup title + window scope are owned by AdjustmentPopups so the same
+        //    strings drive both the visibility wait in AdjustmentEntry and all the
+        //    locators inside this popup. Change a title once, in the enum.
+        String winScope = AdjustmentPopups.REFERENCE_SITEWISE_FIFO_SETOFF.windowScopeXpath(domain);
+
+        // Last data row in the popup grid (so newly added rows are targeted), td at
+        // the position of the named column (counted by preceding x-column-header
+        // siblings inside winScope). Same header-position pattern as
+        // ADJUSTED_AMOUNT_CELL_BASE_XPATH in AdjustmentEntry. The popup opens with
+        // 1 row, so last() == [1] for the first fill.
+        String lastRowCellByHeaderXpath =
+                winScope + "//tr[contains(@class,'x-grid-row')][last()]" +
+                "/td[count(" + winScope +
+                "//div[contains(@class,'x-column-header')]" +
+                "[.//span[normalize-space()='%s']]" +
+                "/preceding-sibling::div[contains(@class,'x-column-header')]) + 1]";
+        this.refSiteNameCellLastRow =
+                By.xpath(String.format(lastRowCellByHeaderXpath, "Reference Site Name"));
+
+        this.autoAdjustButton =
+                By.xpath(winScope + "//a[.//span[normalize-space()='Auto Adjust']]");
+
+        // Add Row button — mdi-playlist-plus icon inside the popup grid's
+        // vertical-docked left toolbar (id="toolbar-XXXX" with class
+        // "x-toolbar-vertical x-docked-left" — observed in the FIFO popup DOM).
+        // Scoping to winScope + the vertical toolbar prevents collision with:
+        //   (a) the underlying voucher's sub-ledger Add Row (outside winScope),
+        //   (b) any per-row mdi-playlist-plus that might appear in an action
+        //       column — the grid-level Add Row lives only on this toolbar.
+        this.addRowButton = By.xpath(
+                winScope + "//div[contains(@class,'x-toolbar-vertical')]" +
+                "//i[contains(@class,'mdi-playlist-plus')]" +
+                "/parent::span[contains(@class,'x-btn-inner-IconButton-small')]");
+
+        this.popupWindow = AdjustmentPopups.REFERENCE_SITEWISE_FIFO_SETOFF.popupWindowLocator(domain);
+    }
 
     // =========================================================================
     // Actions
@@ -108,7 +114,7 @@ public class ReferenceSiteWiseFIFOPopup {
      * calls then target the newly added row (the locator uses {@code last()}).
      */
     public ReferenceSiteWiseFIFOPopup addRow() {
-        SeleniumUtils.click(ADD_ROW_BUTTON, WaitType.CLICKABLE, "RefSiteFIFO_AddRow");
+        SeleniumUtils.click(addRowButton, WaitType.CLICKABLE, "RefSiteFIFO_AddRow");
         JavascriptExecutorUtils.waitForExtJS();
         return this;
     }
@@ -124,7 +130,7 @@ public class ReferenceSiteWiseFIFOPopup {
     public ReferenceSiteWiseFIFOPopup selectReferenceSiteInCombo(String referenceSiteName) {
         // Step 1 — Real browser double-click on the last row's Reference Site Name cell.
         WaitUtils.fluentWaitBuilder().until(driver -> {
-            new Actions(driver).doubleClick(driver.findElement(REF_SITE_NAME_CELL_LAST_ROW)).perform();
+            new Actions(driver).doubleClick(driver.findElement(refSiteNameCellLastRow)).perform();
             return true;
         });
         ExtentLogger.info("[RefSiteFIFO] Last row Reference Site Name cell double-clicked");
@@ -158,24 +164,17 @@ public class ReferenceSiteWiseFIFOPopup {
         return this;
     }
 
-    /** Single-clicks a row in the sub-grid to select it by exact site name. */
-    public ReferenceSiteWiseFIFOPopup selectSubSiteRow(String siteName) {
-        By locator = By.xpath(String.format(SUB_GRID_ROW_BY_SITE_XPATH, siteName));
-        SeleniumUtils.click(locator, WaitType.CLICKABLE, "RefSiteFIFO_SubSiteRow_" + siteName);
-        return this;
-    }
-
     /**
      * Clicks Auto Adjust and waits for the popup to disappear.
      * If the "pending amount" warning appears (grid total > adjusted total),
      * automatically clicks "Proceed Anyway" before waiting for popup close.
      */
     public void clickAutoAdjust() {
-        SeleniumUtils.click(AUTO_ADJUST_BUTTON, WaitType.CLICKABLE, "RefSiteFIFO_AutoAdjust");
+        SeleniumUtils.click(autoAdjustButton, WaitType.CLICKABLE, "RefSiteFIFO_AutoAdjust");
         JavascriptExecutorUtils.waitForExtJS();
         handlePendingWarningIfPresent();
         WaitUtils.webDriverWait(ConfigFactory.getFinanceConfig().extjsTimeout())
-                .until(ExpectedConditions.invisibilityOfElementLocated(POPUP_WINDOW));
+                .until(ExpectedConditions.invisibilityOfElementLocated(popupWindow));
     }
 
     /**

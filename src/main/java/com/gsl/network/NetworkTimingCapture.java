@@ -11,9 +11,9 @@ import com.gsl.reports.ReportLogger;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 import org.openqa.selenium.devtools.DevTools;
-import org.openqa.selenium.devtools.v147.network.Network;
-import org.openqa.selenium.devtools.v147.network.model.Cookie;
-import org.openqa.selenium.devtools.v147.network.model.Headers;
+import org.openqa.selenium.devtools.v150.network.Network;
+import org.openqa.selenium.devtools.v150.network.model.Cookie;
+import org.openqa.selenium.devtools.v150.network.model.Headers;
 
 import java.time.Instant;
 import java.time.ZoneId;
@@ -235,7 +235,7 @@ public final class NetworkTimingCapture {
     // ── Private helpers ───────────────────────────────────────────────────────
 
     private static void extractCookieHeader(
-            org.openqa.selenium.devtools.v147.network.model.Request request,
+            org.openqa.selenium.devtools.v150.network.model.Request request,
             List<RequestCookieEntry> out, Map<String, Cookie> cache) {
         if (request == null) return;
         request.getHeaders().toJson().entrySet().stream()

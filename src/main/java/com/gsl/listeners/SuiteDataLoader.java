@@ -203,6 +203,38 @@ public class SuiteDataLoader implements ISuiteListener {
                         xmlTest.getName(), testThreadCount, uiCount);
             }
 
+            // ── Backfill headroom check ───────────────────────────────────────
+            // SessionPool holds one UI user per thread for the ENTIRE WEB test lifetime
+            // (parked on the list page between rows). A DataAvailabilityGuard backfill fires
+            // on that SAME thread and asks the SAME UI pool for one more credential. If every
+            // seat is already held 1:1 (thread-count == UI user count, previously considered
+            // "OK — full parallelism achievable" above), the backfill's acquire deadlocks
+            // waiting for a spare that will never free up. This check is separate from — and
+            // stricter than — the plain thread-count-vs-UI-count check above.
+            if (uiCount > 0) {
+                int backfillHeadroom = ConfigFactory.getApiConfig().backfillUiPoolHeadroom();
+                if (testThreadCount + backfillHeadroom > uiCount) {
+                    String msg = String.format(
+                            "[UserPool] BACKFILL DEADLOCK RISK — <test name=\"%s\">: thread-count=%d + " +
+                            "backfill headroom=%d exceeds UI user count=%d. A WEB test's data-shortfall " +
+                            "backfill (DataAvailabilityGuard) acquires an EXTRA UI-pool credential on the SAME " +
+                            "thread that already holds one for its browser session — if every UI user is " +
+                            "already checked out 1:1 by concurrent threads, a backfill attempt deadlocks " +
+                            "waiting for a spare that never frees up. Add %d more UI user row(s) to " +
+                            "UsersList.xlsx, or reduce thread-count, or lower datafallback.userPool.backfillHeadroom.",
+                            xmlTest.getName(), testThreadCount, backfillHeadroom, uiCount,
+                            (testThreadCount + backfillHeadroom - uiCount));
+                    if ("FAIL".equalsIgnoreCase(ConfigFactory.getApiConfig().backfillHeadroomValidationMode())) {
+                        throw new IllegalStateException(msg);
+                    }
+                    Log.error(msg);
+                } else {
+                    Log.info("[UserPool] Validation OK — <test name=\"{}\">: thread-count={} + backfill headroom={} <= UI users={}. " +
+                             "Backfill has spare pool capacity, no deadlock risk.",
+                            xmlTest.getName(), testThreadCount, backfillHeadroom, uiCount);
+                }
+            }
+
             if (apiCount > 0 && testThreadCount > apiCount) {
                 Log.warn("[UserPool] VALIDATION WARN — <test name=\"{}\">: " +
                          "thread-count={} exceeds API user count={}. " +

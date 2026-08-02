@@ -186,6 +186,8 @@ public final class ExtentLogger {
             case MENU             -> "#0277bd";
             case SUB_MENU         -> "#00acc1";
             case TEST_STEP_STATUS -> "#757575";
+            case CONTEXT_SWITCH   -> "#5e35b1";
+            case DATA_BACKFILL    -> "#d84315";
         };
     }
 

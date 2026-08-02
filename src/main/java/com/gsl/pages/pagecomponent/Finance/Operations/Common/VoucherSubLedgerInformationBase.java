@@ -23,6 +23,7 @@ public abstract class VoucherSubLedgerInformationBase implements AdjustmentEntry
 
     // ── Per-domain fields — resolved once in constructor ──────────────────────
 
+    private final VoucherDomain domain;
     private final String colSubLedger;
     private final String colRefSite;
     private final String colSlId;
@@ -35,6 +36,7 @@ public abstract class VoucherSubLedgerInformationBase implements AdjustmentEntry
     private final String PAYMENT_BUTTON_TEMPLATE_WITH_SLID;
 
     protected VoucherSubLedgerInformationBase(VoucherDomain domain) {
+        this.domain = domain;
         this.colSubLedger = domain.getSubLedgerColumnHeader().columnIdXPath();
         this.colRefSite   = CommonVoucherGridColumnHeader.REFERENCE_SITE.resolveFor(domain).columnIdXPath();
         this.colSlId      = CommonVoucherGridColumnHeader.SUB_LEDGER_ID.resolveFor(domain).columnIdXPath();
@@ -67,6 +69,11 @@ public abstract class VoucherSubLedgerInformationBase implements AdjustmentEntry
     }
 
     // ── Protected methods — inherited by AR and AP subclasses ─────────────────
+
+    @Override
+    public VoucherDomain voucherDomain() {
+        return domain;
+    }
 
     protected void clickAdjust(String subLedgerName, String referenceSite, String slid) {
         String xpath = (slid != null && !slid.isBlank())

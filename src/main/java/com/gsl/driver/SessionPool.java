@@ -256,8 +256,20 @@ public final class SessionPool {
     private static int capacity() {
         int cap = cachedCapacity;
         if (cap <= 0) {
-            cap = UserPool.initialCountOf(UserType.UI);
+            int totalUiUsers = UserPool.initialCountOf(UserType.UI);
+            int backfillHeadroom = ConfigFactory.getApiConfig().backfillUiPoolHeadroom();
+            // Reserve backfillHeadroom UI users EXCLUSIVELY for DataAvailabilityGuard's transient
+            // WEBAPI logins (a WEB test's thread may need one MORE UI credential mid-test — see
+            // ApiSessionFactory.createForWebApi()) — never hand them to SessionPool for browser
+            // concurrency. Without this, padding UsersList.xlsx with spare users for backfill
+            // headroom silently inflates SessionPool's capacity (and therefore how many concurrent
+            // browser sessions actually open) beyond what <test thread-count> intends — confirmed:
+            // adding 2 spare UI users for backfill made 6 browsers open instead of the intended 4,
+            // because capacity() derived straight from the raw UserPool UI-user count.
+            cap = Math.max(1, totalUiUsers - backfillHeadroom);
             cachedCapacity = cap;
+            Log.info("[SessionPool] capacity={} (UI users={} - backfill headroom={})",
+                    cap, totalUiUsers, backfillHeadroom);
         }
         return cap;
     }

@@ -25,7 +25,8 @@ public final class ReportLogger {
             case BUSINESS -> BUSINESS_LOG;
             case UI_ACTION, VALIDATION, MODULE, SUB_MODULE, MENU, SUB_MENU -> UI_ACTIONS_LOG;
             case DB -> DB_VALIDATION_LOG;
-            case JS, PERF, RCA, FRAMEWORK, NETWORK, SESSION, NAVIGATION, RECOVERY, TEST_STEP_STATUS -> DIAGNOSTICS_LOG;
+            case JS, PERF, RCA, FRAMEWORK, NETWORK, SESSION, NAVIGATION, RECOVERY, TEST_STEP_STATUS,
+                 CONTEXT_SWITCH, DATA_BACKFILL -> DIAGNOSTICS_LOG;
         };
     }
 
@@ -230,6 +231,20 @@ public final class ReportLogger {
 
     public static void subMenu(String msg)                { info(LogCategory.SUB_MENU, msg); }
     public static void subMenu(String fmt, Object... a)   { info(LogCategory.SUB_MENU, fmt(fmt, a)); }
+
+    public static void contextSwitch(String msg)                  { info(LogCategory.CONTEXT_SWITCH, msg); }
+    public static void contextSwitch(String fmt, Object... a)      { info(LogCategory.CONTEXT_SWITCH, fmt(fmt, a)); }
+    public static void contextSwitchWarn(String msg)                { high(LogCategory.CONTEXT_SWITCH, msg); }
+    public static void contextSwitchWarn(String fmt, Object... a)  { high(LogCategory.CONTEXT_SWITCH, fmt(fmt, a)); }
+    public static void contextSwitchError(String msg)               { critical(LogCategory.CONTEXT_SWITCH, msg); }
+    public static void contextSwitchError(String fmt, Object... a) { critical(LogCategory.CONTEXT_SWITCH, fmt(fmt, a)); }
+
+    public static void dataBackfill(String msg)                  { info(LogCategory.DATA_BACKFILL, msg); }
+    public static void dataBackfill(String fmt, Object... a)      { info(LogCategory.DATA_BACKFILL, fmt(fmt, a)); }
+    public static void dataBackfillWarn(String msg)                { high(LogCategory.DATA_BACKFILL, msg); }
+    public static void dataBackfillWarn(String fmt, Object... a)  { high(LogCategory.DATA_BACKFILL, fmt(fmt, a)); }
+    public static void dataBackfillError(String msg)               { critical(LogCategory.DATA_BACKFILL, msg); }
+    public static void dataBackfillError(String fmt, Object... a) { critical(LogCategory.DATA_BACKFILL, fmt(fmt, a)); }
 
     private static String fmt(String template, Object... args) {
         return org.slf4j.helpers.MessageFormatter.arrayFormat(template, args).getMessage();

@@ -29,9 +29,11 @@ import com.gsl.utils.dataprovider.fixture.finance.ArVoucherScenarioType;
 import com.gsl.utils.dataprovider.fixture.finance.ArVoucherTemplateLoader;
 import com.gsl.utils.dataprovider.fixture.finance.SelectDocumentCombinations;
 import com.gsl.utils.dataprovider.fixture.finance.SelectDocumentVariant;
+import com.gsl.database.DataAvailabilityGuard;
 import com.gsl.database.DocumentSelectionResult;
 import com.gsl.database.DocumentSelector;
 import com.gsl.database.SelectorRequest;
+import com.gsl.database.finance.PendingArDocumentBackfillStrategy;
 import com.gsl.enums.DocumentSelectionMode;
 import com.gsl.config.WaitConfig;
 import com.gsl.utils.dataprovider.source.TestDataSource;
@@ -434,7 +436,11 @@ public class DbArVoucherDataSource implements TestDataSource<MergedFinanceArVouc
                 .mode(DocumentSelectionMode.fromString(fcfg.docSelectorMode()))
                 .build();
 
-        DocumentSelectionResult selection = DocumentSelector.selectAtomic(selReq);
+        DocumentSelectionResult selection = DataAvailabilityGuard.selectOrBackfill(
+                () -> DocumentSelector.selectAtomic(selReq),
+                selReq.getSubLedgerCount() * selReq.getDocumentCount(),
+                new PendingArDocumentBackfillStrategy((int) ownerSite.code, ouCodes.isEmpty() ? 0 : ouCodes.get(0).intValue(),
+                        ConfigFactory.getApiConfig().defaultInventoryGroupCode()));
         List<SlNameWithId> pendingSlNames = selection.getSelectedSls();
         Map<String, List<PendingSlDocument>> pendingDocsBySlName = selection.getDocsBySlKey();
 

@@ -52,4 +52,8 @@ public final class ConfigFactory {
     public static RemoteLogConfig getRemoteLogConfig() {
         return ConfigCache.getOrCreate(RemoteLogConfig.class);
     }
+
+    public static ApiConfig getApiConfig() {
+        return ConfigCache.getOrCreate(ApiConfig.class);
+    }
 }

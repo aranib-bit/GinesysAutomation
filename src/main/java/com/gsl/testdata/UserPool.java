@@ -191,6 +191,10 @@ public final class UserPool {
      *                   snapshot.
      */
     public static UserCredential acquireSet1User(UserType type, String testLabel) {
+        return acquireSet1UserInternal(type, testLabel, ConfigFactory.getExecutionConfig().poolAcquireTimeoutSeconds());
+    }
+
+    private static UserCredential acquireSet1UserInternal(UserType type, String testLabel, long timeoutSeconds) {
         int configured = INITIAL_COUNTS.getOrDefault(type, 0);
 
         // Immediate fast-fail — no users of this type were ever loaded
@@ -201,8 +205,8 @@ public final class UserPool {
         }
 
         ExecutionConfig cfg  = ConfigFactory.getExecutionConfig();
-        long warnAtMs        = cfg.poolWarnAtSeconds()         * 1000L;
-        long timeoutMs       = cfg.poolAcquireTimeoutSeconds() * 1000L;
+        long warnAtMs        = cfg.poolWarnAtSeconds() * 1000L;
+        long timeoutMs       = timeoutSeconds          * 1000L;
         long startMs         = System.currentTimeMillis();
         boolean warnSent     = false;
         Semaphore sem        = SET1_PERMITS.get(type);
@@ -267,18 +271,18 @@ public final class UserPool {
                 // "who was stuck" is visible regardless of what happens to the exception's message
                 // downstream.
                 Log.error("[UserPool] {} pool TIMEOUT — holder silent for {}s while thread '{}' queued. Active users:\n{}",
-                        type, cfg.poolAcquireTimeoutSeconds(), Thread.currentThread().getName(), snapshot);
+                        type, timeoutSeconds, Thread.currentThread().getName(), snapshot);
                 ReportLogger.sessionWarn("[UserPool TIMEOUT] {} pool — holder silent for {}s while thread '{}' was queued.",
-                        type, cfg.poolAcquireTimeoutSeconds(), Thread.currentThread().getName());
+                        type, timeoutSeconds, Thread.currentThread().getName());
                 ExtentLogger.infoHtmlOnChildNode(
                         "Infrastructure Warnings",
                         "<b>[UserPool TIMEOUT] " + type + " pool — holder silent "
-                        + cfg.poolAcquireTimeoutSeconds() + "s, thread '" + Thread.currentThread().getName()
+                        + timeoutSeconds + "s, thread '" + Thread.currentThread().getName()
                         + "' was queued and is now being skipped.</b><br>"
                         + snapshot.replace("\n", "<br>"));
                 throw new UserPoolAcquisitionTimeoutException(
                         "[UserPool] " + type + " pool has a holder silent for "
-                        + cfg.poolAcquireTimeoutSeconds() + "s while a thread is queued "
+                        + timeoutSeconds + "s while a thread is queued "
                         + "(a holder is likely stuck/hung).\n"
                         + "Active users at timeout:\n" + snapshot);
             }
