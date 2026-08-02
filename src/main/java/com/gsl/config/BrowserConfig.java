@@ -6,7 +6,7 @@ import com.gsl.enums.Browser;
 import com.gsl.enums.RunMode;
 import org.aeonbits.owner.Config;
 
-@Config.Sources("file:${user.dir}/src/test/resources/config/browser.properties")
+@Config.Sources({"system:properties", "file:${user.dir}/src/test/resources/config/browser.properties"})
 public interface BrowserConfig extends Config {
 
     /** Raw string — preserved for backward compat. Prefer browserType() for typed access. */
