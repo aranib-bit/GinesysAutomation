@@ -20,7 +20,10 @@ pipeline {
         DOCKER_HOST = 'tcp://localhost:2375'
         // LocalSystem has no .docker\cli-plugins of its own, so the "compose" plugin
         // isn't found unless we point Docker's config dir explicitly at a real one.
-        DOCKER_CONFIG = 'C:\\Users\\arani.barman\\.docker'
+        // Uses a dedicated CI config (not the personal one) — the personal config's
+        // credsStore=desktop tries to exec docker-credential-desktop.exe, which isn't
+        // on LocalSystem's PATH either; these images are public and need no auth anyway.
+        DOCKER_CONFIG = 'C:\\ProgramData\\Jenkins\\.docker'
     }
 
     stages {
