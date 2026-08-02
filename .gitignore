@@ -43,7 +43,6 @@ build/
 **/*.html
 
 # Ignore reports folder and all contents
-reports/
 /reports/
 reports/**/*
 
