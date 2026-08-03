@@ -22,8 +22,10 @@ public class FinanceTopMenuComponent {
         if (!currentSubMenu.equalsIgnoreCase(requiredSubMenu.getName())) {
             String xpath = String.format(MENU_ITEM, requiredSubMenu.getName());
             SeleniumUtils.click(By.xpath(xpath), WaitType.CLICKABLE, requiredSubMenu.getName(), LogCategory.MENU);
-            SeleniumUtils.elementDisappear(FrameworkConstants.getLoadingMask(), "Loading Mask");
         }
+        // Always wait for the loading mask to disappear — see TopModuleMenuComponent.navigateToModule
+        // for why this can't stay inside the "already there" branch above.
+        SeleniumUtils.elementDisappear(FrameworkConstants.getLoadingMask(), "Loading Mask");
 
         try {
             return expectedPage.getDeclaredConstructor().newInstance();

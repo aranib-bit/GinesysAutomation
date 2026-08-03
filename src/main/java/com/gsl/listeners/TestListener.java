@@ -578,13 +578,19 @@ public class TestListener implements ITestListener, ISuiteListener {
     // which the report's own CSS <link> already relies on, so it's a safe drop-in swap.
     private static void patchDeadCdnReferences(java.nio.file.Path indexHtml) {
         try {
-            String html = java.nio.file.Files.readString(indexHtml, java.nio.charset.StandardCharsets.UTF_8);
+            // ISO-8859-1 maps every byte 0-255 to exactly one char with no decode failures —
+            // unlike Files.readString(UTF_8), which throws MalformedInputException the moment the
+            // report contains any byte sequence that isn't valid UTF-8 (this report's generation
+            // pipeline is not guaranteed to write pure UTF-8 throughout). Writing back with the
+            // same charset round-trips every byte unchanged except inside our own replacement.
+            byte[] bytes = java.nio.file.Files.readAllBytes(indexHtml);
+            String html = new String(bytes, java.nio.charset.StandardCharsets.ISO_8859_1);
             String patched = html.replaceAll(
                 "https://cdn\\.rawgit\\.com/([^/\"']+)/([^/\"']+)/([^/\"']+)/([^\"'\\s]+)",
                 "https://cdn.jsdelivr.net/gh/$1/$2@$3/$4"
             );
             if (!patched.equals(html)) {
-                java.nio.file.Files.writeString(indexHtml, patched, java.nio.charset.StandardCharsets.UTF_8);
+                java.nio.file.Files.write(indexHtml, patched.getBytes(java.nio.charset.StandardCharsets.ISO_8859_1));
                 Log.info("[Phase0] Patched dead cdn.rawgit.com reference(s) in report HTML");
             }
         } catch (Exception e) {

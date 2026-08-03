@@ -39,9 +39,12 @@ public class TopModuleMenuComponent {
         if (!currentModule.equalsIgnoreCase(requiredModule.getName())) {
             String xpath = String.format(MENU_ITEM, requiredModule.getName());
             SeleniumUtils.jsClick(By.xpath(xpath), requiredModule.getName(), LogCategory.MODULE);
-            // Wait for the loading mask to disappear after the click
-            SeleniumUtils.elementDisappear(FrameworkConstants.getLoadingMask(), "Loading Mask");
         }
+        // Always wait for the loading mask to disappear, even when the click above was skipped
+        // because a reused session was already on this module — a mask left over from the prior
+        // test's last action can still be up, and the caller's next click has no other guaranteed
+        // clearance point before it fires.
+        SeleniumUtils.elementDisappear(FrameworkConstants.getLoadingMask(), "Loading Mask");
         return getPageObjectForModule(requiredModule);
     }
 

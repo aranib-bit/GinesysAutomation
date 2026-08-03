@@ -43,9 +43,14 @@ public class AdjustmentEntry {
         static final By ADJUSTED_DOCUMENT_MENU =
                 By.xpath("//div[text()='Adjusted Document']//following::*[contains(@class,'mdi mdi-20px mdi-dots-horizontal')]");
 
-        // Scoped OK — positioned relative to Show Reference Site Summary; NOT the generic OK button
+        // Scoped OK — the app's own shell is always `x-window-maximized`; any floating dialog
+        // (the Adjustment Entry window itself for a plain FIFO Set-Off inline confirmation, or a
+        // nested popup such as Reference Site wise FIFO set-off) renders as a non-maximized
+        // x-window. Scoping to that window avoids depending on how many "Show Reference Site
+        // Summary" spans happen to exist elsewhere in the DOM — that count is 0 for plain
+        // FIFO_SETOFF, which has no popup window at all (see AdjustmentPopups.FIFO_SETOFF).
         static final By OK_BUTTON =
-                By.xpath("(//span[normalize-space()='Show Reference Site Summary'])[3]/following::a[contains(normalize-space(),'OK')][1]");
+                By.xpath("//div[contains(@class,'x-window') and not(contains(@class,'x-window-maximized'))]//a[contains(normalize-space(),'OK')]");
 
         static final By SHOW_REF_SITE_SUMMARY =
                 By.xpath("//span[normalize-space()='Show Reference Site Summary' and @class='x-btn-inner x-btn-inner-default-toolbar-small']");

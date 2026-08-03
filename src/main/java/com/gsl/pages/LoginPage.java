@@ -8,6 +8,7 @@ import com.gsl.pages.enums.CommonButton;
 import com.gsl.reports.ReportLogger;
 import com.gsl.reports.StepExecutor;
 import org.openqa.selenium.By;
+import org.openqa.selenium.ElementClickInterceptedException;
 import org.openqa.selenium.NoSuchElementException;
 import org.openqa.selenium.WebDriver;
 import org.openqa.selenium.WebElement;
@@ -49,7 +50,14 @@ public class LoginPage {
     }
 
     private LoginPage setLogin() {
-        click(Loc.BTN_LOGIN, WaitType.CLICKABLE, "Login Button");
+        try {
+            click(Loc.BTN_LOGIN, WaitType.CLICKABLE, "Login Button");
+        } catch (ElementClickInterceptedException e) {
+            // The intercepting overlay may be the "already logged in elsewhere" confirm dialog
+            // rather than a transient ExtJS mask — dismiss it and retry once before giving up.
+            handleConcurrentSessionPopup();
+            click(Loc.BTN_LOGIN, WaitType.CLICKABLE, "Login Button");
+        }
         return this;
     }
 
