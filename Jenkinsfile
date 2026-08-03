@@ -71,6 +71,11 @@ pipeline {
                 reportFiles: 'index.html',
                 reportName: 'Extent Report'
             ])
+            // Jenkins clones into its own workspace (no customWorkspace configured), so
+            // reports/ never reaches the dev folder on its own — sync a copy back after
+            // every run. /XO = only copy files newer than what's already there;
+            // "& exit 0" because robocopy's own success exit codes are non-zero.
+            bat 'robocopy "%WORKSPACE%\\reports" "D:\\SeleniumAutomationTesting\\IdeaProjects\\SeleniumFramework3.141_NEW\\reports" /E /XO /R:2 /W:2 & exit 0'
         }
     }
 }

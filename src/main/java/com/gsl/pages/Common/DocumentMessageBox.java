@@ -219,6 +219,7 @@ public class DocumentMessageBox {
     public ArVoucherListPage clickYes() {
         SeleniumUtils.click(CommonButton.YES.locator(), WaitType.CLICKABLE, "DISCARD_YES_BUTTON");
         JavascriptExecutorUtils.waitForPageLoad();
+        com.gsl.utils.Selenium.WaitUtils.waitForExtMaskBestEffort("post-yes-close");
         return new ArVoucherListPage();
     }
 

@@ -38,7 +38,8 @@ public final class BrowserOptions {
                 "--disable-notifications",
                 "--disable-infobars",
                 "--no-sandbox",
-                "--disable-dev-shm-usage"
+                "--disable-dev-shm-usage",
+                "--window-size=1920,1080"
         );
         if (cfg.headless())           opts.addArguments("--headless=new");
         if (cfg.incognito())          opts.addArguments("--incognito");

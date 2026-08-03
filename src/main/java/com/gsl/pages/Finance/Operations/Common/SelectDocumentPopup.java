@@ -5,6 +5,7 @@ import com.gsl.config.ConfigFactory;
 import com.gsl.constants.FrameworkConstants;
 import com.gsl.driver.DriverManager;
 import com.gsl.enums.WaitType;
+import com.gsl.pages.enums.CommonButton;
 import com.gsl.utils.Selenium.ActionUtils;
 import com.gsl.utils.Selenium.JavascriptExecutorUtils;
 import com.gsl.utils.Selenium.SeleniumUtils;
@@ -29,14 +30,6 @@ public class SelectDocumentPopup {
     private static final class Loc {
         static final String CHECKBOX_EXTJS_XPATH =
                 "//div[normalize-space()='%s']/ancestor::tr//td[contains(@class,'x-grid-cell-first')]//div[contains(@class,'x-grid-checkcolumn')]";
-
-        // Scoped to the same non-maximized x-window this popup already renders in (matching
-        // FrameworkConstants.getSelectDocGridLoader()'s scoping) — this popup is a genuinely
-        // floating window, unlike CommonButton.SELECT's previous page-wide, unscoped locator
-        // which could resolve to an unrelated "Select" element elsewhere in the DOM.
-        static final By SELECT_BUTTON = By.xpath(
-                "//div[contains(@class,'x-window') and not(contains(@class,'x-window-maximized'))]" +
-                "//span[normalize-space()='Select']");
     }
 
     public SelectDocumentPopup selectDocument(String documentNumber) {
@@ -208,7 +201,7 @@ public class SelectDocumentPopup {
         // re-trigger this loader (to recompute the selected total / validate before enabling
         // "Select"), so wait for it to clear before clicking, not just for isMasked=true to drop.
         waitForSelectDocGridLoaderToClear();
-        SeleniumUtils.click(Loc.SELECT_BUTTON, WaitType.CLICKABLE, "SELECT_BUTTON");
+        SeleniumUtils.click(CommonButton.SELECT.locator(), WaitType.CLICKABLE, "SELECT_BUTTON");
         JavascriptExecutorUtils.waitForExtJS();
     }
 

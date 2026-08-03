@@ -27,7 +27,7 @@
             laptops and Jenkins agents of widely different sizes.
             Override per-run with -Dtest.jvm.args="-Xmx512m …" for tight environments.
         -->
-        <test.jvm.args>-javaagent:${settings.localRepository}/org/aspectj/aspectjweaver/1.9.21/aspectjweaver-1.9.21.jar -XX:MaxRAMPercentage=60.0 -XX:MinRAMPercentage=30.0 -XX:InitialRAMPercentage=25.0 -XX:+UseG1GC -XX:MaxGCPauseMillis=200 -XX:+HeapDumpOnOutOfMemoryError "-XX:HeapDumpPath=${project.build.directory}/heapdumps" "-Xlog:gc*:file=${project.build.directory}/gc.log:time,uptime,level,tags:filecount=5,filesize=10M"</test.jvm.args>
+        <test.jvm.args>-javaagent:${project.build.directory}/aspectjweaver.jar -XX:MaxRAMPercentage=60.0 -XX:MinRAMPercentage=30.0 -XX:InitialRAMPercentage=25.0 -XX:+UseG1GC -XX:MaxGCPauseMillis=200 -XX:+HeapDumpOnOutOfMemoryError "-XX:HeapDumpPath=${project.build.directory}/heapdumps" "-Xlog:gc*:file=${project.build.directory}/gc.log:time,uptime,level,tags:filecount=5,filesize=10M"</test.jvm.args>
     </properties>
     <dependencies>
         <!-- https://mvnrepository.com/artifact/org.seleniumhq.selenium/selenium-java -->
