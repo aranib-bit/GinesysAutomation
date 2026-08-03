@@ -3,7 +3,7 @@ package com.gsl.config;
 import com.gsl.enums.ApiPlatform;
 import org.aeonbits.owner.Config;
 
-@Config.Sources("file:${user.dir}/src/test/resources/config/api.properties")
+@Config.Sources({"system:properties", "file:${user.dir}/src/test/resources/config/api.properties"})
 public interface ApiConfig extends Config {
 
     // ── WEBAPI ────────────────────────────────────────────────────────────────

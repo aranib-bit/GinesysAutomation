@@ -10,7 +10,12 @@
     @Test methods run in parallel and each method's rows also run in parallel
     (runInParallel=true on MergedFinApVoucherDataSupplier); every row borrows a pooled logged-in
     session (com.gsl.driver.SessionPool) and returns it after, so rows interleave across
-    (capacity = UI-user count) sessions with "Already Loaded" cache hits from the 2nd borrow on.
+    (capacity = UI-user count - backfill headroom) sessions with "Already Loaded" cache hits from
+    the 2nd borrow on. thread-count=2 here is deliberately below the 3-method count — the
+    ap-mandatory Maven profile raises datafallback.userPool.backfillHeadroom (via a
+    system-property override, ApiConfig.java) to cap SessionPool at 2 concurrent browsers, since
+    this suite's single-node Selenium Grid container has no memory limit and was seeing 4-5
+    concurrent Chrome instances contend for RAM. Extra demand beyond 2 just queues.
 
     Run: mvn clean test -Pap-mandatory
 -->
@@ -31,7 +36,7 @@
         </classes>
     </test>
 
-    <test name="AP Voucher Create — Mandatory" parallel="methods" thread-count="4">
+    <test name="AP Voucher Create — Mandatory" parallel="methods" thread-count="2">
         <parameter name="apv.group" value="MANDATORY"/>
         <classes>
             <class name="com.tests.Finance.Operations.Vouchers.CreateApVoucher"/>

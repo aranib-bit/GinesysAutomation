@@ -351,6 +351,11 @@
                             <argLine>${test.jvm.args} --add-opens java.base/java.lang=ALL-UNNAMED -Drunmode=${runmode} -Dheadless=${headless} -Dbrowser=${browser}</argLine>
                             <systemPropertyVariables>
                                 <apv.group>MANDATORY</apv.group>
+                                <!-- RAM-constrained single-node grid: raise headroom from the
+                                     shared default (2) to 5, dropping SessionPool.capacity() from
+                                     5 (7 UI users - 2 headroom) to 2 concurrent browsers, scoped to
+                                     this profile only via ApiConfig's new system-property source. -->
+                                <datafallback.userPool.backfillHeadroom>5</datafallback.userPool.backfillHeadroom>
                             </systemPropertyVariables>
                         </configuration>
                     </plugin>
