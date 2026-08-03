@@ -5,6 +5,7 @@ import com.gsl.driver.BrowserOptions;
 import com.gsl.enums.Browser;
 import org.openqa.selenium.WebDriver;
 import org.openqa.selenium.remote.AbstractDriverOptions;
+import org.openqa.selenium.remote.Augmenter;
 import org.openqa.selenium.remote.RemoteWebDriver;
 
 import java.net.MalformedURLException;
@@ -22,7 +23,15 @@ public class SeleniumGridProvider implements ExecutionProvider {
     public WebDriver createDriver(Browser browser) {
         try {
             AbstractDriverOptions<?> opts = buildOptions(browser);
-            return new RemoteWebDriver(new URL(getGridUrl()), opts);
+            RemoteWebDriver raw = new RemoteWebDriver(new URL(getGridUrl()), opts);
+            // Plain RemoteWebDriver does NOT implement HasDevTools — only local driver classes
+            // (ChromeDriver, EdgeDriver) do that directly. Augmenter inspects the session's
+            // returned capabilities (the grid advertises "se:cdp": "ws://...") and wraps the
+            // driver in a dynamic subclass that adds HasDevTools support wired to that endpoint.
+            // Without this, every CDP-dependent feature against a remote/grid session — this
+            // includes ViewportEnforcer's device-metrics override AND CdpNetworkCapture's request
+            // logging — silently no-ops via its own `driver instanceof HasDevTools` check.
+            return new Augmenter().augment(raw);
         } catch (MalformedURLException e) {
             throw new RuntimeException("[SeleniumGridProvider] Invalid grid URL: " + getGridUrl(), e);
         }

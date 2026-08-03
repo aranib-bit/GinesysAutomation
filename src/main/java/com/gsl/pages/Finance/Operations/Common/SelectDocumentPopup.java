@@ -182,7 +182,7 @@ public class SelectDocumentPopup {
 
         Log.debug("SelectDocumentPopup: Attempting click on checkbox for document [{}]", documentNumber);
         try {
-            checkbox.click();
+            SeleniumUtils.clickWithOverlayRetry(checkbox, "SELECT_DOC_CHECKBOX_" + documentNumber);
             Log.debug("SelectDocumentPopup: Mouse click succeeded for document [{}]", documentNumber);
         } catch (Exception e) {
             Log.warn("SelectDocumentPopup: Mouse click failed for [{}] - {}, retrying with JS click", documentNumber, e.getMessage());

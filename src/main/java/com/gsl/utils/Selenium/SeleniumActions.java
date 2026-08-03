@@ -38,7 +38,12 @@ public class SeleniumActions {
 
     public static void moveToElementAndClick(By by) {
         WebDriver driver = DriverManager.getDriver();
-        WebElement element = driver.findElement(by);
+        // untilClickable rather than a bare findElement: the caller frequently needs to click
+        // something that only appears after a prior action renders it (e.g. a dropdown item that
+        // shows up after clicking its trigger). A local Windows Chrome session is fast enough that
+        // the element is usually already there; a loaded Docker/grid session is not, and a bare
+        // findElement() throws NoSuchElementException on that timing gap.
+        WebElement element = WaitUtils.untilClickable(by);
         Actions actions = new Actions(driver);
         actions.moveToElement(element).click().build().perform();
     }

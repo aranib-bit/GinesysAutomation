@@ -2,7 +2,6 @@ package com.gsl.utils.Selenium;
 
 import com.gsl.constants.FrameworkConstants;
 import com.gsl.driver.DriverManager;
-import org.openqa.selenium.Dimension;
 import org.openqa.selenium.JavascriptExecutor;
 import org.openqa.selenium.OutputType;
 import org.openqa.selenium.TakesScreenshot;
@@ -65,10 +64,19 @@ public final class ScreenshotUtils {
         try {
             org.openqa.selenium.WebDriver driver = DriverManager.getDriver();
             pageUrl = driver.getCurrentUrl();
-            Object rawScroll = ((JavascriptExecutor) driver).executeScript("return window.pageYOffset;");
-            if (rawScroll instanceof Number n) scrollY = n.longValue();
-            Dimension dim = driver.manage().window().getSize();
-            viewport = dim.getWidth() + "x" + dim.getHeight();
+            // window.innerWidth/innerHeight — the actual CSS-pixel viewport the page renders into —
+            // not manage().window().getSize(), which is the OUTER window and includes browser chrome
+            // (tab strip, omnibox) that isn't part of what ExtJS lays out against. The two can differ
+            // by 80-100+ px; conflating them is what let an 800x513 Docker viewport get reported as
+            // "800x600" for a full day of runs before anyone noticed the real problem.
+            Object dims = ((JavascriptExecutor) driver)
+                    .executeScript("return [window.innerWidth, window.innerHeight, window.pageYOffset];");
+            if (dims instanceof java.util.List<?> list && list.size() == 3) {
+                if (list.get(0) instanceof Number w && list.get(1) instanceof Number h) {
+                    viewport = w.longValue() + "x" + h.longValue();
+                }
+                if (list.get(2) instanceof Number y) scrollY = y.longValue();
+            }
         } catch (Exception ignored) {}
         String locator = CurrentLocatorHolder.get();
         CurrentLocatorHolder.clear();

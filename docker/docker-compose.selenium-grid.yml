@@ -1,24 +1,37 @@
 services:
-  selenium-hub:
-    image: selenium/hub:latest
-    container_name: selenium-hub
+  # Standalone (hub+node in one process) instead of a separate hub + chrome-node pair.
+  # A distributed hub/node topology has a real addressing conflict for CDP: the node must
+  # register with the hub using an address reachable ON THE DOCKER NETWORK (its own bridge IP or
+  # service name), but the se:cdp/se:vnc URLs it returns for each session must be reachable BY THE
+  # CLIENT (this project's mvn process runs on the Windows host, not inside the compose network).
+  # SE_NODE_HOST controls both, so no single value satisfies both audiences — set it to the
+  # client-reachable "localhost" and node registration with the hub breaks outright (confirmed:
+  # the node then reports itself as http://localhost:5555, which from the hub container's own
+  # perspective is the hub itself, so registration retries forever and /status never goes ready).
+  # Standalone removes the second hop entirely — there is no separate hub to register with. But
+  # even standalone still defaults SE_NODE_HOST to its own auto-detected internal Docker IP for
+  # the se:cdp/se:vnc URLs (confirmed: still 172.18.0.x without this override) — with no second
+  # hop to break, setting it to "localhost" here is safe and makes those URLs resolve to exactly
+  # what the client already used to reach this container.
+  selenium-chrome:
+    image: selenium/standalone-chrome:4.46.0-20260707
+    container_name: selenium-chrome-node
+    shm_size: "2gb"
+    environment:
+      - SE_NODE_HOST=localhost
+      - SE_NODE_MAX_SESSIONS=5
+      - SE_NODE_OVERRIDE_MAX_SESSIONS=true
+      - SE_NODE_SESSION_TIMEOUT=900
+      # Xvfb virtual display size — must exceed the 1366x768 browser window/viewport the
+      # framework requests, not equal it, or a headed-in-Xvfb Chrome window has zero margin to
+      # be placed inside. This env var does NOT itself set Chrome's window or CSS viewport size;
+      # that's ViewportEnforcer's job (see src/main/java/com/gsl/driver/ViewportEnforcer.java).
+      - SE_SCREEN_WIDTH=1920
+      - SE_SCREEN_HEIGHT=1080
+      - SE_SCREEN_DEPTH=24
+      - SE_START_XVFB=true
     ports:
       - "4442:4442"
       - "4443:4443"
       - "4444:4444"
-
-  chrome:
-    image: selenium/node-chrome:latest
-    container_name: selenium-chrome-node
-    shm_size: "2gb"
-    depends_on:
-      - selenium-hub
-    environment:
-      - SE_EVENT_BUS_HOST=selenium-hub
-      - SE_EVENT_BUS_PUBLISH_PORT=4442
-      - SE_EVENT_BUS_SUBSCRIBE_PORT=4443
-      - SE_NODE_MAX_SESSIONS=5
-      - SE_NODE_OVERRIDE_MAX_SESSIONS=true
-      - SE_NODE_SESSION_TIMEOUT=900
-    ports:
       - "7900:7900"

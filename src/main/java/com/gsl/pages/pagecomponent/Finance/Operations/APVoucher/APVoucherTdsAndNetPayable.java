@@ -1,5 +1,6 @@
 package com.gsl.pages.pagecomponent.Finance.Operations.APVoucher;
 
+import com.gsl.config.ConfigFactory;
 import com.gsl.enums.VoucherDomain;
 import com.gsl.enums.WaitType;
 import com.gsl.flow.Finance.Operations.APVoucher.TdsApplicableAmountFlow;
@@ -16,6 +17,7 @@ import com.gsl.reports.SubLedgerRowStepRegistry;
 import com.gsl.utils.Log;
 import com.gsl.utils.Selenium.JavascriptExecutorUtils;
 import com.gsl.utils.Selenium.SeleniumUtils;
+import com.gsl.utils.Selenium.WaitUtils;
 import com.gsl.driver.DriverManager;
 import org.openqa.selenium.By;
 import org.openqa.selenium.Keys;
@@ -70,6 +72,10 @@ public class APVoucherTdsAndNetPayable implements TdsNameParent {
                 "/following-sibling::div" +
                 "//div[contains(@id,'gslpicklistfieldextended-') and contains(@id,'-trigger-picker')]");
 
+        tdsSourceDisplay = By.xpath(
+                "//span[normalize-space()='" + domain.getLabelTdsSource() + "']/ancestor::label" +
+                "/following-sibling::div//input[@data-ref='inputEl']");
+
         grossPayable = By.xpath(
                 "//span[normalize-space()='" + domain.getLabelGrossPayable() + "']/ancestor::label" +
                 "/following-sibling::div//input[@data-ref='inputEl']");
@@ -101,6 +107,9 @@ public class APVoucherTdsAndNetPayable implements TdsNameParent {
 
     // TDS Name search icon — opens the TDS Name grid popup
     private final By tdsNameSearchTrigger;
+
+    // Read-only, app-populated as soon as the popup opens (vendor's default TDS source)
+    private final By tdsSourceDisplay;
 
     // Numeric inputs (spinner inputs — clear and type)
     private final By grossPayable;
@@ -206,6 +215,27 @@ public class APVoucherTdsAndNetPayable implements TdsNameParent {
                                 referenceSite != null ? referenceSite : "");
         SeleniumUtils.click(By.xpath(xpath), WaitType.CLICKABLE, "TDS_BUTTON_" + subLedger);
         JavascriptExecutorUtils.waitForExtJS();
+        waitForTdsSourceAutoPopulation();
+    }
+
+    /**
+     * Waits for the popup's own async call (vendor default TDS Source) to actually land.
+     * waitForExtJS() only confirms no ExtJS component is masked / Ajax is idle — it does not
+     * guarantee this specific field has received its value yet, so acting immediately after
+     * can hit a popup whose fields are still blank (same class of race as
+     * {@link APVoucherSubLedgerInformation#waitForReferenceSiteAutoPopulation}). Best-effort:
+     * logs and proceeds on timeout rather than failing the whole flow over a report/log field.
+     */
+    private void waitForTdsSourceAutoPopulation() {
+        long timeoutSeconds = ConfigFactory.getWaitConfig().shortWaitSeconds();
+        try {
+            WaitUtils.webDriverWait(timeoutSeconds).until(driver -> {
+                String val = SeleniumUtils.getDomProperty(tdsSourceDisplay, "value", "TDS_SOURCE");
+                return val != null && !val.trim().isEmpty();
+            });
+        } catch (org.openqa.selenium.TimeoutException e) {
+            Log.warn("[TDS] TDS Source did not auto-populate within {}s — proceeding anyway", timeoutSeconds);
+        }
     }
 
     private void setTdsName(String tdsName) {

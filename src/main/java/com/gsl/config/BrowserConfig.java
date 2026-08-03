@@ -48,6 +48,15 @@ public interface BrowserConfig extends Config {
     @DefaultValue("false")
     boolean acceptInsecureCerts();
 
+    /** Standardized window width used across all environments/browsers — see {@link #windowHeight()}. */
+    @Key("browser.window.width")
+    @DefaultValue("1366")
+    int windowWidth();
+
+    @Key("browser.window.height")
+    @DefaultValue("768")
+    int windowHeight();
+
     @Key("network.mode")
     @DefaultValue("CDP")
     String networkMode();

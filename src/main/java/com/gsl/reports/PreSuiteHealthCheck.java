@@ -3,10 +3,15 @@ package com.gsl.reports;
 import com.aventstack.extentreports.ExtentReports;
 import com.aventstack.extentreports.ExtentTest;
 import com.aventstack.extentreports.MediaEntityBuilder;
+import com.gsl.config.BrowserConfig;
 import com.gsl.config.ConfigFactory;
 import com.gsl.config.DataBaseConfig;
 import com.gsl.config.ExcelDataConfig;
 import com.gsl.database.DatabaseManager;
+import com.gsl.driver.MasterDriverFactory;
+import com.gsl.driver.ViewportEnforcer;
+import com.gsl.enums.Browser;
+import com.gsl.enums.RunMode;
 import com.gsl.utils.Log;
 import io.github.bonigarcia.wdm.WebDriverManager;
 import org.openqa.selenium.OutputType;
@@ -46,10 +51,12 @@ public final class PreSuiteHealthCheck {
     public static boolean run(ExtentReports extent) {
         if (!checkUrl(extent)) return false;
 
+        boolean viewportHealthy = checkViewport(extent);
+
         String source = ConfigFactory.getConfig().testDataSource();
         Log.info("[HealthCheck] testdata.source={}", source);
 
-        boolean healthy = checkDatabase(extent);
+        boolean healthy = checkDatabase(extent) && viewportHealthy;
 
         if (!"DB".equalsIgnoreCase(source)) {
             boolean excelHealthy = checkExcelFiles(extent);
@@ -132,12 +139,13 @@ public final class PreSuiteHealthCheck {
         try {
             WebDriverManager.chromedriver().setup();
             ChromeOptions opts = new ChromeOptions();
+            com.gsl.config.BrowserConfig browserCfg = ConfigFactory.getBrowserConfig();
             opts.addArguments(
                     "--headless=new",
                     "--no-sandbox",
                     "--disable-dev-shm-usage",
                     "--ignore-certificate-errors",
-                    "--window-size=1366,768"
+                    "--window-size=" + browserCfg.windowWidth() + "," + browserCfg.windowHeight()
             );
             driver = new ChromeDriver(opts);
             driver.get(url);
@@ -146,6 +154,40 @@ public final class PreSuiteHealthCheck {
         } catch (Exception e) {
             Log.warn("[HealthCheck] Could not capture URL screenshot: {}", e.getMessage());
             return null;
+        } finally {
+            if (driver != null) {
+                try { driver.quit(); } catch (Exception ignored) {}
+            }
+        }
+    }
+
+    /**
+     * Launches one throwaway session through the exact same driver-creation path the suite uses
+     * (MasterDriverFactory + ViewportEnforcer) and confirms it lands at the configured viewport
+     * BEFORE any real test starts. Catches a mis-sized grid/Docker node in seconds instead of
+     * after several tests fail with dialog-clipping symptoms far removed from the actual cause.
+     * Costs one extra browser session on the grid; worth it against burning several test slots
+     * on a doomed run.
+     */
+    private static boolean checkViewport(ExtentReports extent) {
+        BrowserConfig browserCfg = ConfigFactory.getBrowserConfig();
+        RunMode mode = browserCfg.runMode();
+        Browser browser = browserCfg.browserType();
+        int expectedWidth = browserCfg.windowWidth();
+        int expectedHeight = browserCfg.windowHeight();
+
+        WebDriver driver = null;
+        try {
+            driver = MasterDriverFactory.create(mode, browser);
+            ViewportEnforcer.enforce(driver);
+            String label = expectedWidth + "x" + expectedHeight + " confirmed on " + mode + "/" + browser;
+            extent.setSystemInfo("Health Check: Viewport", "PASSED — " + label);
+            Log.info("[HealthCheck] Viewport: PASSED — {}", label);
+            return true;
+        } catch (Exception e) {
+            extent.setSystemInfo("Health Check: Viewport", "FAILED — " + e.getMessage());
+            Log.error("[HealthCheck] Viewport: FAILED — {}", e.getMessage());
+            return false;
         } finally {
             if (driver != null) {
                 try { driver.quit(); } catch (Exception ignored) {}

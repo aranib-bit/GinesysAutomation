@@ -1,6 +1,7 @@
 package com.gsl.driver;
 
 import com.gsl.browser.AdvancedJsLogger;
+import com.gsl.config.BrowserConfig;
 import com.gsl.config.ConfigFactory;
 import com.gsl.driver.provider.ExecutionProviderRegistry;
 import com.gsl.enums.Browser;
@@ -31,15 +32,27 @@ public final class Driver {
                 sessionId = rwd.getSessionId().toString();
                 TestContextManager.setSessionId(sessionId);
             }
-            Log.info("Driver init — thread={}, provider={}, browser={}, sessionId={}",
+            BrowserConfig browserCfg = ConfigFactory.getBrowserConfig();
+            Log.info("Driver init — thread={}, provider={}, browser={}, sessionId={}, "
+                            + "runmode={}, headless={}, requestedViewport={}x{}",
                     Thread.currentThread().getId(),
                     ExecutionProviderRegistry.get(mode).getProviderName(),
                     browser,
-                    sessionId);
+                    sessionId,
+                    mode,
+                    browserCfg.headless(),
+                    browserCfg.windowWidth(),
+                    browserCfg.windowHeight());
         }
 
+        // Enforced (setSize + CDP device-metrics override + fail-fast assert) BEFORE navigation:
+        // --window-size and manage().window().setSize() are both silently ignored on a Docker
+        // node with no window manager (observed: browser stays at its 800x600/800x513 default
+        // regardless of what's requested), and ExtJS makes layout decisions at boot that a later
+        // resize does not fully undo. See ViewportEnforcer for the full mechanism.
+        ViewportEnforcer.enforce(DriverManager.getDriver());
+
         DriverManager.getDriver().get(ConfigFactory.getConfig().url());
-        DriverManager.getDriver().manage().window().maximize();
 
         if (ConfigFactory.getNetworkConfig().browserLogsEnabled()) {
             AdvancedJsLogger.inject();

@@ -46,11 +46,23 @@ public class AdjustmentEntry {
         // Scoped OK — the app's own shell is always `x-window-maximized`; any floating dialog
         // (the Adjustment Entry window itself for a plain FIFO Set-Off inline confirmation, or a
         // nested popup such as Reference Site wise FIFO set-off) renders as a non-maximized
-        // x-window. Scoping to that window avoids depending on how many "Show Reference Site
-        // Summary" spans happen to exist elsewhere in the DOM — that count is 0 for plain
-        // FIFO_SETOFF, which has no popup window at all (see AdjustmentPopups.FIFO_SETOFF).
-        static final By OK_BUTTON =
-                By.xpath("//div[contains(@class,'x-window') and not(contains(@class,'x-window-maximized'))]//a[contains(normalize-space(),'OK')]");
+        // x-window.
+        //
+        // @aria-hidden='false' is the load-bearing condition: Ext.Msg is a singleton ExtJS hides
+        // (never destroys) between uses, so once any message box has appeared anywhere in the
+        // session, its own "OK" button lingers in the DOM as a permanently-hidden match for this
+        // xpath — with aria-hidden="true", vs. "false" on the real, currently-shown button.
+        // (An earlier version of this locator tried excluding by ancestor CLASS instead —
+        // `//div[contains(@class,'x-window') and not(contains(@class,'x-hidden-offsets'))]//a[...]`
+        // — but contains(@class,'x-window') substring-matches inner structural wrapper divs like
+        // `x-window-body` that don't carry x-hidden-offsets themselves even though their own outer
+        // ancestor does, so the exclusion never actually reached the div that mattered. aria-hidden
+        // is checked directly on the candidate <a>, so it isn't vulnerable to that same loophole.
+        // ancestor:: (not the earlier //div[...]//a[...] structure) is used for the same reason —
+        // it walks every real ancestor rather than whichever div an outer predicate binds to first.
+        static final By OK_BUTTON = By.xpath(
+                "//a[@aria-hidden='false' and contains(normalize-space(),'OK')" +
+                " and not(ancestor::div[contains(@class,'x-window-maximized')])]");
 
         static final By SHOW_REF_SITE_SUMMARY =
                 By.xpath("//span[normalize-space()='Show Reference Site Summary' and @class='x-btn-inner x-btn-inner-default-toolbar-small']");

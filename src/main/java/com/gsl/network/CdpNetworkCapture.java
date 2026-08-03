@@ -49,7 +49,12 @@ public final class CdpNetworkCapture implements NetworkCapture {
     @Override
     public void start() {
         try {
-            devTools.createSession();
+            // createSessionIfThereIsNotOne() rather than createSession(): ViewportEnforcer may
+            // already have attached a CDP session on this driver (to apply the device-metrics
+            // override before navigation) — reattaching here would discard that session instead
+            // of reusing it. Behaviour is identical to createSession() when this is the first
+            // CDP use on the driver, since cdpSession is null at that point either way.
+            devTools.createSessionIfThereIsNotOne();
             devTools.send(Network.enable(
                     Optional.empty(), Optional.empty(),
                     Optional.empty(), Optional.empty(), Optional.empty()));

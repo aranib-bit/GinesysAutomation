@@ -12,6 +12,7 @@ import com.gsl.utils.Log;
 import com.gsl.utils.SensitiveDataMasker;
 import org.openqa.selenium.By;
 import org.openqa.selenium.ElementClickInterceptedException;
+import org.openqa.selenium.ElementNotInteractableException;
 import org.openqa.selenium.Keys;
 import org.openqa.selenium.WebElement;
 import org.openqa.selenium.support.ui.ExpectedConditions;
@@ -305,25 +306,26 @@ public class SeleniumUtils {
      * <p><b>Note:</b> The {@code info("… is clicked successfully")} log is written by the
      * caller, not here, so it only appears once on actual success.
      */
-    private static void clickWithOverlayRetry(WebElement element, String elementName) {
+    public static void clickWithOverlayRetry(WebElement element, String elementName) {
         int maxRetries = ConfigFactory.getWaitConfig().clickOverlayRetryMax();
 
         for (int attempt = 1; attempt <= maxRetries + 1; attempt++) {
             try {
                 element.click();
                 return; // clicked successfully
-            } catch (ElementClickInterceptedException e) {
+            } catch (ElementNotInteractableException e) {
                 if (attempt > maxRetries) {
                     Log.error("[OVERLAY-RETRY] '{}' still intercepted after {} retr{}. Giving up.",
                             elementName, maxRetries, maxRetries == 1 ? "y" : "ies");
                     throw e;
                 }
                 String overlayTag = detectInterceptingOverlay(e.getMessage());
-                Log.warn("[OVERLAY-RETRY] Click on '{}' intercepted{} — attempt {}/{}. Waiting for overlay to clear…",
+                Log.warn("[OVERLAY-RETRY] Click on '{}' intercepted{} — attempt {}/{}. Scrolling into view and waiting for overlay to clear…",
                         elementName, overlayTag, attempt, maxRetries);
                 ExtentLogger.warning(String.format(
-                        "[Overlay Retry %d/%d] Click on '%s' was intercepted%s — waiting for overlay to clear",
+                        "[Overlay Retry %d/%d] Click on '%s' was intercepted%s — scrolling into view and waiting for overlay to clear",
                         attempt, maxRetries, elementName, overlayTag));
+                JavascriptExecutorUtils.scrollToElement(element);
                 WaitUtils.waitForClickOverlay();
             }
         }

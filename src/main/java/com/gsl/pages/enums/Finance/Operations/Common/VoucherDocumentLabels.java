@@ -16,6 +16,7 @@ public interface VoucherDocumentLabels {
     default String getLabelRemarks()    { return "Remarks:"; }
 
     // ── Calculate TDS & Net Payable popup ─────────────────────────────────────
+    default String getLabelTdsSource()            { return "TDS Source:"; }
     default String getLabelTdsName()              { return "TDS Name:"; }
     default String getLabelGrossPayable()         { return "Gross Payable:"; }
     default String getLabelTdsApplicableAmount()  { return "TDS Applicable Amount:"; }

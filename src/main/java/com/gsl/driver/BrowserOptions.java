@@ -39,7 +39,7 @@ public final class BrowserOptions {
                 "--disable-infobars",
                 "--no-sandbox",
                 "--disable-dev-shm-usage",
-                "--window-size=1920,1080"
+                "--window-size=" + cfg.windowWidth() + "," + cfg.windowHeight()
         );
         if (cfg.headless())           opts.addArguments("--headless=new");
         if (cfg.incognito())          opts.addArguments("--incognito");
@@ -56,6 +56,7 @@ public final class BrowserOptions {
         if (cfg.acceptInsecureCerts()) opts.setAcceptInsecureCerts(true);
         opts.addPreference("dom.webnotifications.enabled", false);
         opts.setCapability("webSocketUrl", true);
+        opts.addArguments("-width", String.valueOf(cfg.windowWidth()), "-height", String.valueOf(cfg.windowHeight()));
 
         // Firefox has no Chromium-style "prefs" map — each key is set individually, and unlike
         // Chrome it shows an Open/Save picker for unrecognised MIME types unless the type is
@@ -75,6 +76,7 @@ public final class BrowserOptions {
         BrowserConfig cfg = ConfigFactory.getBrowserConfig();
         EdgeOptions opts = new EdgeOptions();
         opts.addArguments("--disable-notifications");
+        opts.addArguments("--window-size=" + cfg.windowWidth() + "," + cfg.windowHeight());
         if (cfg.headless())           opts.addArguments("--headless=new");
         if (cfg.incognito())          opts.addArguments("--inprivate");
         if (cfg.acceptInsecureCerts()) opts.setAcceptInsecureCerts(true);
