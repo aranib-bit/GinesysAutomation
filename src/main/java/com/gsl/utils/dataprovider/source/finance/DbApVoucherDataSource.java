@@ -461,7 +461,8 @@ public class DbApVoucherDataSource implements TestDataSource<MergedFinanceApVouc
             }
 
             DocumentSelectionResult selection = DataAvailabilityGuard.selectOrBackfill(
-                    () -> selectApDocumentsAtomic(jdbi, d, ouCodes, ownerSiteCodes, opts),
+                    () -> selectApDocumentsAtomic(jdbi, d, ouCodes, ownerSiteCodes, opts,
+                            scenarioType == ApVoucherScenarioType.DOC_FIFO),
                     neededQty,
                     backfillStrategy);
             pendingSlNames      = selection.getSelectedSls();
@@ -1113,7 +1114,7 @@ public class DbApVoucherDataSource implements TestDataSource<MergedFinanceApVouc
     private static DocumentSelectionResult selectApDocumentsAtomic(
             Jdbi jdbi, DbDialect d,
             List<Long> ouCodes, List<Long> ownerSiteCodes,
-            ApVoucherFixtureOptions opts) {
+            ApVoucherFixtureOptions opts, boolean requireSingleReferenceSite) {
 
         int  subLedgerCount = Math.max(1, opts.getSubLedgerCount());
         int  documentCount  = Math.max(1, opts.getDocumentCount());
@@ -1173,6 +1174,21 @@ public class DbApVoucherDataSource implements TestDataSource<MergedFinanceApVouc
                 String key  = PendingAdjQuery.compositeKey(sl.getSlName(), sl.getSlId());
                 List<PendingSlDocument> docs = moded.get(key);
                 if (docs == null || docs.isEmpty()) continue;
+
+                // Plain "FIFO Set-Off" is disabled by the app whenever the SL's pending documents
+                // span more than one reference site — only "Reference Site wise FIFO set-off"
+                // handles that case. Confirmed live via a Jenkins failure screenshot: the Adjusted
+                // Document menu's "FIFO Set-Off" option was greyed out for exactly this reason,
+                // so the click did nothing and the OK-button wait afterward never had a chance to
+                // succeed. Skip such SLs up front for DOC_FIFO so the picked candidate always has
+                // the menu option enabled; DOC_REFERENCE_SITEWISE_FIFO doesn't set this flag.
+                if (requireSingleReferenceSite && docs.stream()
+                        .map(PendingSlDocument::getReferenceSite)
+                        .distinct()
+                        .count() > 1) {
+                    docs.forEach(doc -> { if (doc.getDocumentNo() != null) surplus.add(doc.getDocumentNo()); });
+                    continue;
+                }
 
                 if (kept.size() < subLedgerCount) {
                     kept.add(sl);

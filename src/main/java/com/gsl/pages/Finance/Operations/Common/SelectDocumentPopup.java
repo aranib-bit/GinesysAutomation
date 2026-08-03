@@ -2,15 +2,16 @@ package com.gsl.pages.Finance.Operations.Common;
 
 import com.google.common.util.concurrent.Uninterruptibles;
 import com.gsl.config.ConfigFactory;
+import com.gsl.constants.FrameworkConstants;
 import com.gsl.driver.DriverManager;
 import com.gsl.enums.WaitType;
-import com.gsl.pages.enums.CommonButton;
 import com.gsl.utils.Selenium.ActionUtils;
 import com.gsl.utils.Selenium.JavascriptExecutorUtils;
 import com.gsl.utils.Selenium.SeleniumUtils;
 import com.gsl.utils.Selenium.WaitUtils;
 import org.openqa.selenium.By;
 import org.openqa.selenium.NoSuchElementException;
+import org.openqa.selenium.TimeoutException;
 import org.openqa.selenium.WebDriver;
 import org.openqa.selenium.WebElement;
 import org.openqa.selenium.support.ui.ExpectedConditions;
@@ -25,10 +26,17 @@ import com.gsl.utils.Log;
 
 public class SelectDocumentPopup {
 
-    // SELECT_BUTTON → CommonButton.SELECT.locator()
     private static final class Loc {
         static final String CHECKBOX_EXTJS_XPATH =
                 "//div[normalize-space()='%s']/ancestor::tr//td[contains(@class,'x-grid-cell-first')]//div[contains(@class,'x-grid-checkcolumn')]";
+
+        // Scoped to the same non-maximized x-window this popup already renders in (matching
+        // FrameworkConstants.getSelectDocGridLoader()'s scoping) — this popup is a genuinely
+        // floating window, unlike CommonButton.SELECT's previous page-wide, unscoped locator
+        // which could resolve to an unrelated "Select" element elsewhere in the DOM.
+        static final By SELECT_BUTTON = By.xpath(
+                "//div[contains(@class,'x-window') and not(contains(@class,'x-window-maximized'))]" +
+                "//span[normalize-space()='Select']");
     }
 
     public SelectDocumentPopup selectDocument(String documentNumber) {
@@ -194,8 +202,29 @@ public class SelectDocumentPopup {
     }
 
     public void clickSelect() {
-        SeleniumUtils.click(CommonButton.SELECT.locator(), WaitType.CLICKABLE, "SELECT_BUTTON");
+        // waitForExtJS() alone isn't sufficient here — this window's loading indicator isn't an
+        // ExtJS cmp.mask()-tracked component (same gap AdjustmentEntry.selectDocument() already
+        // had to work around for this same popup when it first opens). Checking documents can
+        // re-trigger this loader (to recompute the selected total / validate before enabling
+        // "Select"), so wait for it to clear before clicking, not just for isMasked=true to drop.
+        waitForSelectDocGridLoaderToClear();
+        SeleniumUtils.click(Loc.SELECT_BUTTON, WaitType.CLICKABLE, "SELECT_BUTTON");
         JavascriptExecutorUtils.waitForExtJS();
+    }
+
+    private void waitForSelectDocGridLoaderToClear() {
+        int maxRetries = ConfigFactory.getWaitConfig().selectDocLoaderMaxRetries();
+        for (int attempt = 1; attempt <= maxRetries; attempt++) {
+            try {
+                WaitUtils.webDriverWait(ConfigFactory.getFinanceConfig().extjsTimeout())
+                        .until(ExpectedConditions.invisibilityOfElementLocated(
+                                FrameworkConstants.getSelectDocGridLoader()));
+                return;
+            } catch (TimeoutException te) {
+                if (attempt == maxRetries) throw te;
+                Log.warn("SelectDocumentPopup: loader still visible before Select click, attempt [{}], retrying...", attempt);
+            }
+        }
     }
 
     // Tiny readers that coerce values out of the JS-returned progress Map.

@@ -67,37 +67,55 @@ public final class RemoteLogCollector {
         warnIfHostUnreachable(appHost, ServerRole.APP);
         warnIfHostUnreachable(dbHost,  ServerRole.DB);
 
+        // Fire-and-forget: kick off collection in the background and return immediately — never
+        // block the calling test thread on slow WinRM/SSH I/O. This used to block here for up to
+        // 120s via .get(), which held the caller's Grid session hostage well past when
+        // SessionPool.giveBack() should run (ITestListener callbacks fire before @AfterMethod),
+        // starving the session pool and contributing to Grid's idle-session timeout being
+        // exceeded on other threads. The DiagnosticReport this test attaches to Extent simply
+        // won't include remote-log content for this run (the same as any other skip/failure case,
+        // already handled downstream via a null map value) — whatever the background fetch
+        // eventually finds is instead written to a plain text file under the report run
+        // directory for later inspection.
+        if (appHost != null && !appHost.isBlank()) {
+            CompletableFuture.supplyAsync(() -> collectOne(ServerRole.APP, appHost, start, end), EXECUTOR)
+                    .whenComplete((resp, ex) -> persistAsyncResult(ServerRole.APP, start, resp, ex));
+        }
+        if (dbHost != null && !dbHost.isBlank()) {
+            CompletableFuture.supplyAsync(() -> collectOne(ServerRole.DB, dbHost, start, end), EXECUTOR)
+                    .whenComplete((resp, ex) -> persistAsyncResult(ServerRole.DB, start, resp, ex));
+        }
+
         Map<ServerRole, LogFetchResponse> result = new EnumMap<>(ServerRole.class);
         result.put(ServerRole.APP, null);
         result.put(ServerRole.DB,  null);
-
-        List<CompletableFuture<Void>> futures = new ArrayList<>();
-
-        if (appHost != null && !appHost.isBlank()) {
-            futures.add(CompletableFuture.runAsync(
-                    () -> result.put(ServerRole.APP, collectOne(ServerRole.APP, appHost, start, end)),
-                    EXECUTOR));
-        }
-        if (dbHost != null && !dbHost.isBlank()) {
-            futures.add(CompletableFuture.runAsync(
-                    () -> result.put(ServerRole.DB, collectOne(ServerRole.DB, dbHost, start, end)),
-                    EXECUTOR));
-        }
-
-        if (!futures.isEmpty()) {
-            try {
-                CompletableFuture.allOf(futures.toArray(new CompletableFuture[0]))
-                        .get(120, TimeUnit.SECONDS);
-            } catch (TimeoutException e) {
-                Log.warn("[RemoteLogCollector] Timed out waiting for remote log collection (120s cap)");
-                ReportLogger.frameworkWarn("[RemoteLogCollector] Timed out waiting for remote log collection (120s cap)");
-            } catch (Exception e) {
-                Log.warn("[RemoteLogCollector] Error during concurrent log collection: {}", e.getMessage());
-                ReportLogger.frameworkWarn("[RemoteLogCollector] Error during concurrent log collection: {}", e.getMessage());
-            }
-        }
-
         return Collections.unmodifiableMap(result);
+    }
+
+    /** Writes a background-completed remote-log fetch to disk once it arrives, since by then the
+     *  synchronous DiagnosticReport/ExtentTest node for this test has already been built and
+     *  attached and can no longer be updated in place. */
+    private void persistAsyncResult(ServerRole role, Instant testStart, LogFetchResponse resp, Throwable ex) {
+        try {
+            java.nio.file.Path dir = java.nio.file.Paths.get(
+                    com.gsl.constants.FrameworkConstants.getReportDir(), "remote-logs-async");
+            java.nio.file.Files.createDirectories(dir);
+            java.nio.file.Path file = dir.resolve(role.label + "_" + testStart.toEpochMilli() + ".log");
+
+            if (ex != null) {
+                java.nio.file.Files.writeString(file, "Async remote-log collection failed: " + ex.getMessage());
+            } else if (resp != null && resp.getEntries() != null && !resp.getEntries().isEmpty()) {
+                List<String> lines = resp.getEntries().stream()
+                        .map(com.gsl.remote.model.LogEntry::getRawLine)
+                        .collect(Collectors.toList());
+                java.nio.file.Files.write(file, lines);
+            } else {
+                return; // nothing to write — skipped or empty, no need for a placeholder file
+            }
+            Log.info("[RemoteLogCollector] Background collection for {} finished — written to {}", role.label, file);
+        } catch (Exception e) {
+            Log.warn("[RemoteLogCollector] Could not persist async remote-log result for {}: {}", role.label, e.getMessage());
+        }
     }
 
     // ── private ───────────────────────────────────────────────────────────────

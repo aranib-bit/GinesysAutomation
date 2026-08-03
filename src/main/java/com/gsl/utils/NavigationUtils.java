@@ -72,6 +72,10 @@ public final class NavigationUtils {
             ctx.setSubModuleCheckpoint(subMenu.name(), productDefinitionHomePage);
         }
 
+        // Always clear a leftover mask before the next click, even on the cache-hit path above —
+        // otherwise session reuse has no clearance point between "already loaded" and this click.
+        SeleniumUtils.elementDisappear(FrameworkConstants.getLoadingMask(), "Loading Mask");
+
         // 4. Click the final side menu item (e.g., Group)
         T page = productDefinitionHomePage.getProductDefinitionSideMenuComponent()
                 .clickMenuItem(sideMenu, expectedPage);
@@ -123,6 +127,10 @@ public final class NavigationUtils {
             ctx.setSubModuleCheckpoint(subMenu.name(), operationsHomePage);
         }
 
+        // Always clear a leftover mask before the next click, even on the cache-hit path above —
+        // otherwise session reuse has no clearance point between "already loaded" and this click.
+        SeleniumUtils.elementDisappear(FrameworkConstants.getLoadingMask(), "Loading Mask");
+
         // 4. Click the final side menu item — scoped to Procurement container
         T page = operationsHomePage.getOperationsSideMenuComponent()
                 .clickMenuItem(sideMenu, expectedPage);
@@ -171,6 +179,10 @@ public final class NavigationUtils {
             ctx.setSubModuleCheckpoint(subMenu.name(), operationsHomePage);
         }
 
+        // Always clear a leftover mask before the next click, even on the cache-hit path above —
+        // otherwise session reuse has no clearance point between "already loaded" and this click.
+        SeleniumUtils.elementDisappear(FrameworkConstants.getLoadingMask(), "Loading Mask");
+
         // 5. Click the final side menu item — scoped to Finance container only
         T page = operationsHomePage.getOperationsSideMenuComponent()
                 .clickMenuItem(sideMenu, expectedPage);
@@ -217,6 +229,10 @@ public final class NavigationUtils {
             NavigationLogger.navigated(subMenu.name(), System.currentTimeMillis() - subMenuStart);
             ctx.setSubModuleCheckpoint(subMenu.name(), setupHomePage);
         }
+
+        // Always clear a leftover mask before the next click, even on the cache-hit path above —
+        // otherwise session reuse has no clearance point between "already loaded" and this click.
+        SeleniumUtils.elementDisappear(FrameworkConstants.getLoadingMask(), "Loading Mask");
 
         T page = setupHomePage.getSetupSideMenuComponent()
                 .clickMenuItem(sideMenu, expectedPage);
