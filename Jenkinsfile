@@ -11,6 +11,10 @@ pipeline {
 
     environment {
         GRID_COMPOSE_FILE = 'docker/docker-compose.selenium-grid.yml'
+        // Single source of truth for the grid hub URL — same key BrowserConfig.dockerGridUrl()
+        // reads at test-runtime (via DockerGridProvider), so the health-check below can never
+        // drift from what the framework itself actually connects to.
+        BROWSER_CONFIG_FILE = 'src/test/resources/config/browser.properties'
         // Jenkins service runs as LocalSystem, a different Windows identity than the
         // interactive user session Docker Desktop (per-user install) runs under — so
         // neither the docker CLI's location nor its default named-pipe daemon connection
@@ -56,10 +60,19 @@ pipeline {
                     }
                 '''
                 powershell '''
+                    $line = Get-Content $env:BROWSER_CONFIG_FILE | Where-Object { $_ -match "^\\s*docker\\.grid\\.url\\s*=" } | Select-Object -First 1
+                    if (-not $line) {
+                        Write-Error "docker.grid.url not found in $env:BROWSER_CONFIG_FILE"
+                        exit 1
+                    }
+                    $gridUrl = ($line -split "=", 2)[1].Trim()
+                    $statusUrl = "$gridUrl/status"
+                    Write-Host "Polling grid status at $statusUrl"
+
                     $deadline = (Get-Date).AddSeconds(60)
                     while ((Get-Date) -lt $deadline) {
                         try {
-                            $r = Invoke-RestMethod -Uri http://localhost:4444/wd/hub/status -TimeoutSec 3
+                            $r = Invoke-RestMethod -Uri $statusUrl -TimeoutSec 3
                             if ($r.value.ready -eq $true) { Write-Host "Grid ready"; exit 0 }
                         } catch {}
                         Start-Sleep -Seconds 2
