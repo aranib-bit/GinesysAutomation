@@ -4,6 +4,7 @@ import com.gsl.api.core.ApiClient;
 import com.gsl.api.model.dc.DcCreateRequest;
 import com.gsl.api.model.dc.DcCreateResponse;
 import com.gsl.api.model.dc.DcLineItem;
+import com.gsl.reports.ApiCallReportLogger;
 import io.restassured.response.Response;
 import io.restassured.specification.RequestSpecification;
 
@@ -34,6 +35,7 @@ public class DcApiClient extends ApiClient {
 
     /** Builds and saves a single-line DC for the given item, matching k6's runCreateDcFlow(). */
     public DcCreateResponse createDc(String itemCode, int quantity, int rate) {
+        ApiCallReportLogger.setSection("Get Packet Barcode for DC");
         String barcode = fetchPacketBarcode();
 
         DcLineItem line = DcLineItem.builder()
@@ -48,6 +50,7 @@ public class DcApiClient extends ApiClient {
                 .item(line)
                 .build();
 
+        ApiCallReportLogger.setSection("Create DC via API");
         return createDc(request);
     }
 }

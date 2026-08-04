@@ -52,7 +52,9 @@ public final class ArVoucherApBackfillStrategy implements BackfillStrategy {
     @Override
     public void backfill(ApiPlatform platform, int neededQuantity) {
         ApiSessionBundle session = ApiSessionFactory.create(platform);
-        ApiCallReportLogger.setSection("PreRequisites — Data Creation");
+        // No blanket section label here — ArVoucherApiClient.createArVoucherWithDefaults sets a
+        // meaningful, specific section (e.g. "Get Doc Scheme Nos for AR Voucher") before each of
+        // its own internal calls.
         try {
             for (int i = 0; i < neededQuantity; i++) {
                 final int idx = i;

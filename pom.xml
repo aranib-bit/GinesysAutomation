@@ -27,7 +27,16 @@
             laptops and Jenkins agents of widely different sizes.
             Override per-run with -Dtest.jvm.args="-Xmx512m …" for tight environments.
         -->
-        <test.jvm.args>-javaagent:${project.build.directory}/aspectjweaver.jar -XX:MaxRAMPercentage=60.0 -XX:MinRAMPercentage=30.0 -XX:InitialRAMPercentage=25.0 -XX:+UseG1GC -XX:MaxGCPauseMillis=200 -XX:+HeapDumpOnOutOfMemoryError "-XX:HeapDumpPath=${project.build.directory}/heapdumps" "-Xlog:gc*:file=${project.build.directory}/gc.log:time,uptime,level,tags:filecount=5,filesize=10M"</test.jvm.args>
+        <!--
+            -Dfile.encoding=UTF-8: JDK 17 (< JEP 400's JDK 18 default) inherits the OS's default
+            charset for any implicit-charset I/O — Windows-1252 on this Windows grid, not UTF-8.
+            ExtentSparkReporter's config().setEncoding("UTF-8") only controls the <meta charset>
+            text it writes into the HTML; the actual file bytes are still written using this JVM
+            default, so — and → came out as single Cp1252 bytes (e.g. 0x97) instead of proper
+            UTF-8 sequences, which a UTF-8-declaring browser then renders as U+FFFD ("�"). Forcing
+            file.encoding here makes the JVM's default charset match what the report declares.
+        -->
+        <test.jvm.args>-Dfile.encoding=UTF-8 -javaagent:${project.build.directory}/aspectjweaver.jar -XX:MaxRAMPercentage=60.0 -XX:MinRAMPercentage=30.0 -XX:InitialRAMPercentage=25.0 -XX:+UseG1GC -XX:MaxGCPauseMillis=200 -XX:+HeapDumpOnOutOfMemoryError "-XX:HeapDumpPath=${project.build.directory}/heapdumps" "-Xlog:gc*:file=${project.build.directory}/gc.log:time,uptime,level,tags:filecount=5,filesize=10M"</test.jvm.args>
     </properties>
     <dependencies>
         <!-- https://mvnrepository.com/artifact/org.seleniumhq.selenium/selenium-java -->

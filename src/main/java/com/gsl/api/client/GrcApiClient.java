@@ -6,6 +6,7 @@ import com.gsl.api.model.grc.GrcCreateRequest;
 import com.gsl.api.model.grc.GrcCreateResponse;
 import com.gsl.api.model.grc.GrcLineItem;
 import com.gsl.api.model.grc.VendorTaxRegion;
+import com.gsl.reports.ApiCallReportLogger;
 import io.restassured.response.Response;
 import io.restassured.specification.RequestSpecification;
 
@@ -40,6 +41,7 @@ public class GrcApiClient extends ApiClient {
     /** Builds and saves a single-line GRC for the given item, matching k6's runCreateGrcFlow(). */
     public GrcCreateResponse createGrc(String itemCode, int vendorCode, int siteCode, int ouCode,
                                         int quantity, int rate) {
+        ApiCallReportLogger.setSection("Get Vendor Tax Region for GRC");
         fetchVendorTaxRegion(vendorCode); // resolved for correctness/logging parity with k6; not yet consumed in the payload below
 
         GrcLineItem line = GrcLineItem.builder()
@@ -60,6 +62,7 @@ public class GrcApiClient extends ApiClient {
                 .grsamt(quantity * rate)
                 .build();
 
+        ApiCallReportLogger.setSection("Create GRC via API");
         return createGrc(request);
     }
 }

@@ -8,6 +8,7 @@ import com.gsl.enums.ApiPlatform;
 import com.gsl.reports.ExtentManager;
 import com.gsl.reports.ExtentReport;
 import com.gsl.reports.ReportLogger;
+import com.gsl.reports.StepExecutor;
 import org.testng.SkipException;
 
 import java.util.function.Supplier;
@@ -34,14 +35,24 @@ public final class DataAvailabilityGuard {
         try {
             return selectionAttempt.get();
         } catch (SkipException shortfall) {
-            // DataProvider resolution runs before TestListener.onTestStart creates the real
-            // test's ExtentTest node, so backfill can't reliably nest under "whichever test is
-            // running" — it gets its own dedicated top-level report entry instead, restored to
-            // whatever was current (typically null here) once backfill completes.
+            // Most callers reach here from a "lazy DB load" at the very top of the @Test method
+            // body (see e.g. CreateApVoucher.java/CreateArVoucher.java), which runs AFTER
+            // TestListener.onTestStart already created that test's ExtentTest node — so backfill
+            // nests as a step group under the real, already-active test (appearing as its first
+            // few steps, exactly where the lazy load happens in the method body), keeping it part
+            // of that one test instead of spawning a separate entry in the report's Tests list.
+            // Only if no test is active yet (a shortfall discovered during eager @DataProvider
+            // resolution, before any test's node exists) does backfill fall back to its own
+            // dedicated top-level entry, since there's nowhere else to attach it.
             ExtentTest previousTest = ExtentManager.getExtentTest();
             String recordWord = neededQuantity == 1 ? "record" : "records";
-            ExtentReport.createTest("Data BackFill — " + strategy.getClass().getSimpleName()
-                    + " (" + neededQuantity + " " + recordWord + ")");
+            String label = "Data BackFill — " + strategy.getClass().getSimpleName()
+                    + " (" + neededQuantity + " " + recordWord + ")";
+            if (previousTest != null) {
+                ExtentManager.setExtentTest(StepExecutor.group(label));
+            } else {
+                ExtentReport.createTest(label);
+            }
             ExtentManager.getExtentTest().assignCategory("DATA_BACKFILL");
             try {
                 ReportLogger.dataBackfillWarn("[DataAvailabilityGuard] Shortfall — {} record(s) needed, none found in DB", neededQuantity);

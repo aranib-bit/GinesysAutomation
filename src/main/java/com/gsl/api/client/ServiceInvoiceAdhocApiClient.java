@@ -18,6 +18,7 @@ import com.gsl.api.model.serviceinvoiceadhoc.SimpleServiceCharge;
 import com.gsl.api.model.serviceinvoiceadhoc.TagSite;
 import com.gsl.api.model.serviceinvoiceadhoc.TdsRateAndAmount;
 import com.gsl.api.model.serviceinvoiceadhoc.VendorLookupResult;
+import com.gsl.reports.ApiCallReportLogger;
 import com.gsl.reports.ReportLogger;
 import io.restassured.response.Response;
 import io.restassured.specification.RequestSpecification;
@@ -291,35 +292,45 @@ public class ServiceInvoiceAdhocApiClient extends ApiClient {
         int ouCode = ownerSiteCode;
         String workDate = LocalDate.now() + "T00:00:00";
 
+        ApiCallReportLogger.setSection("Get Owner Site Details for Service Invoice Adhoc");
         OwnerSiteDetail ownerSite = fetchOwnerSiteDetail(ownerSiteCode);
 
+        ApiCallReportLogger.setSection("Get Services for Service Invoice Adhoc");
         List<ServiceLookupResult> services = fetchServices(ownerSiteCode, ouCode);
         ServiceLookupResult service = services.isEmpty()
                 ? ServiceLookupResult.builder().serviceCode(1).serviceName("Adhoc Service").build()
                 : services.get(0);
 
+        ApiCallReportLogger.setSection("Get Doc Scheme Nos for Service Invoice Adhoc");
         List<AdmSchemeDocEntry> schemeDocs = fetchSchemeDocList(ownerSiteCode);
         AdmSchemeDocEntry selectedScheme = schemeDocs.isEmpty() ? null : schemeDocs.get(0);
         int docSchemeCode = selectedScheme != null ? selectedScheme.getDocSchemeCode() : 0;
         String gstAppl = selectedScheme != null ? selectedScheme.getGstAppl() : "N";
 
+        ApiCallReportLogger.setSection("Get Vendor Details for Service Invoice Adhoc");
         VendorLookupResult vendor = resolveVendor(vendorSlCode, ownerSiteCode, ouCode);
 
+        ApiCallReportLogger.setSection("Get Other Details for Service Invoice Adhoc");
         GetOtherDetailsResult otherDetails = fetchOtherDetails(ownerSiteCode, ouCode, vendor.getCode(), workDate);
         int tradeGroupCode = otherDetails.getTradeGroup() != null ? otherDetails.getTradeGroup().getCode() : 0;
         int termCode = otherDetails.getTerm() != null ? otherDetails.getTerm().getCode() : 0;
         int tdsSourceCode = otherDetails.getTdsSource() != null ? otherDetails.getTdsSource().getCode() : 0;
 
         String referenceNo = generateReferenceNo();
+        ApiCallReportLogger.setSection("Validate Reference No for Service Invoice Adhoc");
         validateReferenceNo(ownerSiteCode, vendor.getCode(), workDate, referenceNo);
 
-        if (service.getGlCode() != null && !checkLedgerTagged(service.getGlCode(), ownerSiteCode)) {
-            ReportLogger.networkError(
-                    "[ServiceInvoiceAdhocApiClient] glCode={} is not tagged in FINGL_SITE for ownerSiteCode={} "
-                            + "— proceeding to Save anyway; the server's own validation is the final word.",
-                    service.getGlCode(), ownerSiteCode);
+        if (service.getGlCode() != null) {
+            ApiCallReportLogger.setSection("Check Ledger Tagged for Service Invoice Adhoc");
+            if (!checkLedgerTagged(service.getGlCode(), ownerSiteCode)) {
+                ReportLogger.networkError(
+                        "[ServiceInvoiceAdhocApiClient] glCode={} is not tagged in FINGL_SITE for ownerSiteCode={} "
+                                + "— proceeding to Save anyway; the server's own validation is the final word.",
+                        service.getGlCode(), ownerSiteCode);
+            }
         }
 
+        ApiCallReportLogger.setSection("Calculate Service Charges for Service Invoice Adhoc");
         CalculateServiceChargesResult charges = calculateServiceCharges(
                 service, quantity, rate, docSchemeCode, vendor.getCode(), ownerSiteCode, workDate,
                 tradeGroupCode, termCode, otherDetails.getExchangeRate());
@@ -347,6 +358,7 @@ public class ServiceInvoiceAdhocApiClient extends ApiClient {
                 .build();
         List<TagSite> tagSites = List.of(tagSite);
 
+        ApiCallReportLogger.setSection("Calculate TDS Rate And Amount for Service Invoice Adhoc");
         List<TdsRateAndAmount> tdsResults = calculateTdsRateAndAmount(
                 service, quantity, rate, lineCharges, tagSites, tdsSourceCode, vendor.getCode(), workDate, ouCode);
         TdsRateAndAmount tds = tdsResults.isEmpty() ? null : tdsResults.get(0);
@@ -412,6 +424,7 @@ public class ServiceInvoiceAdhocApiClient extends ApiClient {
                 .headerCharges(headerCharges)
                 .build();
 
+        ApiCallReportLogger.setSection("Create Service Invoice Adhoc via API");
         return createServiceInvoiceAdhoc(request);
     }
 

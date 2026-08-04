@@ -42,7 +42,8 @@ public final class PendingArDocumentBackfillStrategy implements BackfillStrategy
     @Override
     public void backfill(ApiPlatform platform, int neededQuantity) {
         ApiSessionBundle session = ApiSessionFactory.create(platform);
-        ApiCallReportLogger.setSection("PreRequisites — Data Creation");
+        // No blanket section label here — ItemApiClient/GrcApiClient/DcApiClient each set a
+        // meaningful, specific section (e.g. "Create Item via API") before their own internal calls.
         try {
             for (int i = 0; i < neededQuantity; i++) {
                 final int idx = i;

@@ -49,7 +49,9 @@ public final class PendingApDocumentBackfillStrategy implements BackfillStrategy
     @Override
     public void backfill(ApiPlatform platform, int neededQuantity) {
         ApiSessionBundle session = ApiSessionFactory.create(platform);
-        ApiCallReportLogger.setSection("PreRequisites — Data Creation");
+        // No blanket section label here — ServiceInvoiceAdhocApiClient.createServiceInvoiceAdhocWithDefaults
+        // sets a meaningful, specific section (e.g. "Get Vendor Details for Service Invoice Adhoc")
+        // before each of its own internal calls.
         try {
             for (int i = 0; i < neededQuantity; i++) {
                 final int idx = i;

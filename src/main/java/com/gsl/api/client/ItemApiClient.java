@@ -7,6 +7,7 @@ import com.gsl.api.model.item.ItemCreateRequest;
 import com.gsl.api.model.item.ItemCreateResponse;
 import com.gsl.api.model.item.ItemLookupData;
 import com.gsl.enums.ItemManagementMode;
+import com.gsl.reports.ApiCallReportLogger;
 import io.restassured.response.Response;
 import io.restassured.specification.RequestSpecification;
 
@@ -59,8 +60,11 @@ public class ItemApiClient extends ApiClient {
 
     /** Aggregates the lookups actually needed to build a valid ItemCreateRequest. */
     public ItemLookupData fetchAllLookups(int inventoryGroupCode) {
+        ApiCallReportLogger.setSection("Get Inventory Group Defaults for Item");
         ItemLookupData groupDefaults = fetchGroupDefaults(inventoryGroupCode);
+        ApiCallReportLogger.setSection("Get Default HSN Code for Item");
         int hsnCode = fetchDefaultHsnCode();
+        ApiCallReportLogger.setSection("Get Default Unit Name for Item");
         String unitName = fetchDefaultUnitName();
         return ItemLookupData.builder()
                 .inventoryGroupCode(inventoryGroupCode)
@@ -94,6 +98,7 @@ public class ItemApiClient extends ApiClient {
                 .hsnSacMain(LookupValue.ofCode(lookups.getHsnSacCode()))
                 .build();
 
+        ApiCallReportLogger.setSection("Create Item via API");
         return createItem(request);
     }
 }
