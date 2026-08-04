@@ -35,7 +35,26 @@ pipeline {
 
         stage('Start Selenium Grid') {
             steps {
-                bat "\"%DOCKER_EXE%\" compose -f %GRID_COMPOSE_FILE% up -d"
+                powershell '''
+                    & $env:DOCKER_EXE version --format "{{.Server.Version}}" *>$null
+                    if ($LASTEXITCODE -ne 0) {
+                        Write-Error "Docker Desktop is not running (or its daemon is unreachable at $env:DOCKER_HOST). Start Docker Desktop on the host and re-run this job."
+                        exit 1
+                    }
+                    Write-Host "Docker daemon is reachable."
+
+                    $running = & $env:DOCKER_EXE ps --filter "name=selenium-chrome-node" --filter "status=running" --format "{{.Names}}"
+                    if ($running -contains "selenium-chrome-node") {
+                        Write-Host "selenium-chrome-node is already running - skipping deploy."
+                    } else {
+                        Write-Host "selenium-chrome-node is not running - deploying via compose."
+                        & $env:DOCKER_EXE compose -f $env:GRID_COMPOSE_FILE up -d
+                        if ($LASTEXITCODE -ne 0) {
+                            Write-Error "docker compose up failed."
+                            exit 1
+                        }
+                    }
+                '''
                 powershell '''
                     $deadline = (Get-Date).AddSeconds(60)
                     while ((Get-Date) -lt $deadline) {

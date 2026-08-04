@@ -6,6 +6,7 @@ import com.gsl.enums.Browser;
 import com.gsl.enums.RunMode;
 import org.aeonbits.owner.Config;
 
+@Config.LoadPolicy(Config.LoadType.MERGE)
 @Config.Sources({"system:properties", "file:${user.dir}/src/test/resources/config/browser.properties"})
 public interface BrowserConfig extends Config {
 
