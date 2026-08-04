@@ -1,5 +1,6 @@
 package com.gsl.database.finance;
 
+import com.aventstack.extentreports.ExtentTest;
 import com.gsl.api.core.ApiSessionBundle;
 import com.gsl.api.core.ApiSessionFactory;
 import com.gsl.api.integration.ArVoucherDataSetup;
@@ -10,7 +11,9 @@ import com.gsl.database.dao.finance.FinPostDao;
 import com.gsl.enums.ApiPlatform;
 import com.gsl.model.finance.FinPost;
 import com.gsl.reports.ApiCallReportLogger;
+import com.gsl.reports.BackfillStepLabel;
 import com.gsl.reports.ReportLogger;
+import com.gsl.reports.StepExecutor;
 import org.jdbi.v3.core.Jdbi;
 
 import java.time.LocalDate;
@@ -52,21 +55,27 @@ public final class ArVoucherApBackfillStrategy implements BackfillStrategy {
         ApiCallReportLogger.setSection("PreRequisites — Data Creation");
         try {
             for (int i = 0; i < neededQuantity; i++) {
+                final int idx = i;
+                ExtentTest recordNode = StepExecutor.group("Record " + (idx + 1) + "/" + neededQuantity);
                 String documentDate = LocalDate.now().toString();
                 ReportLogger.dataBackfill(
                         "[ArVoucherApBackfillStrategy] Creating record {}/{} — requiredClsCode={}, ownerSiteCode={}, " +
                                 "ouCode={}, empCode={}, quantity={}, rate={}, documentDate={}",
-                        i + 1, neededQuantity, requiredClsCode, ownerSiteCode, ouCode, empCode,
+                        idx + 1, neededQuantity, requiredClsCode, ownerSiteCode, ouCode, empCode,
                         DEFAULT_QTY, DEFAULT_RATE, documentDate);
 
-                ArVoucherCreateResponse voucher = ArVoucherDataSetup.setupArVoucherForTest(
-                        session.getArVoucherApiClient(), requiredClsCode, ownerSiteCode, ouCode, empCode,
-                        DEFAULT_QTY, DEFAULT_RATE);
+                ArVoucherCreateResponse[] voucherHolder = new ArVoucherCreateResponse[1];
+                StepExecutor.stepUnder(recordNode, BackfillStepLabel.CREATE_AR_VOUCHER.label(), () ->
+                        voucherHolder[0] = ArVoucherDataSetup.setupArVoucherForTest(
+                                session.getArVoucherApiClient(), requiredClsCode, ownerSiteCode, ouCode, empCode,
+                                DEFAULT_QTY, DEFAULT_RATE));
+                ArVoucherCreateResponse voucher = voucherHolder[0];
 
                 ReportLogger.dataBackfill("[ArVoucherApBackfillStrategy] Backfilled record {}/{} — voucherCode={}, docScheme={}",
-                        i + 1, neededQuantity, voucher.getVoucherCode(), voucher.getDocScheme());
+                        idx + 1, neededQuantity, voucher.getVoucherCode(), voucher.getDocScheme());
 
-                logReleaseStatus(voucher.getVoucherCode());
+                StepExecutor.stepUnder(recordNode, BackfillStepLabel.VERIFY_POSTED.label(), () ->
+                        logReleaseStatus(voucher.getVoucherCode()));
             }
         } finally {
             ApiCallReportLogger.clearSection();

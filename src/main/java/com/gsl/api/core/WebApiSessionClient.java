@@ -5,7 +5,10 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.gsl.config.ApiConfig;
 import com.gsl.config.ConfigFactory;
 import com.gsl.config.TenantUtils;
+import com.gsl.reports.BackfillStepLabel;
+import com.gsl.reports.ExtentManager;
 import com.gsl.reports.ReportLogger;
+import com.gsl.reports.StepExecutor;
 import com.gsl.testdata.UserCredential;
 import io.restassured.RestAssured;
 import io.restassured.response.Response;
@@ -38,6 +41,18 @@ public final class WebApiSessionClient {
     private WebApiSessionClient() {}
 
     public static WebApiLoginResult login(UserCredential credential) {
+        // Nest as a "Create Token" step whenever an ExtentTest is active (e.g. inside DataBackFill's
+        // own report entry) — falls back to the plain flat-logging path otherwise, since
+        // StepExecutor.step() requires a non-null current test (no null-check inside it).
+        if (!ExtentManager.hasTest()) {
+            return loginInternal(credential);
+        }
+        WebApiLoginResult[] resultHolder = new WebApiLoginResult[1];
+        StepExecutor.step(BackfillStepLabel.CREATE_TOKEN.label(), () -> resultHolder[0] = loginInternal(credential));
+        return resultHolder[0];
+    }
+
+    private static WebApiLoginResult loginInternal(UserCredential credential) {
         ApiConfig cfg = ConfigFactory.getApiConfig();
         String loginUrl = cfg.webApiBaseUri() + cfg.webApiLoginPath();
         long start = System.currentTimeMillis();
@@ -60,7 +75,11 @@ public final class WebApiSessionClient {
                 ReportLogger.sessionWarn("[WebApiSessionClient] Login for '{}' hit code 012 (already logged in "
                         + "elsewhere, userId={}) — killing that session and retrying once.",
                         credential.username(), parsedError.tag);
-                killSession(parsedError.tag);
+                if (ExtentManager.hasTest()) {
+                    StepExecutor.step(BackfillStepLabel.KILL_TOKEN.label(), () -> killSession(parsedError.tag));
+                } else {
+                    killSession(parsedError.tag);
+                }
                 long retryStart = System.currentTimeMillis();
                 response = performLogin(credential);
                 logRedactedCall("POST", loginUrl, "(omitted — contains password)", response, System.currentTimeMillis() - retryStart);

@@ -32,6 +32,11 @@ public class DeltaRecoveryRunner {
         var outputPath   = deltaPath.getParent().getParent().resolve("recovered_report.html").toString();
         var recovery     = new ExtentReports();
         var sparkReporter = new ExtentSparkReporter(outputPath);
+        // Without this, the HTML is written using the JVM's platform-default charset (not UTF-8
+        // on this Windows/JDK17 setup), so non-ASCII characters used in step names/table cells
+        // (→, —, •, etc.) get replaced with U+FFFD when the browser renders the file as UTF-8
+        // per its own <meta charset> tag — same fix already applied in ExtentReport.java.
+        sparkReporter.config().setEncoding("UTF-8");
         sparkReporter.config().setDocumentTitle("Recovered Test Report");
         recovery.attachReporter(sparkReporter);
 

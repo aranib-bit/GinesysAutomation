@@ -90,6 +90,6 @@ public interface WaitConfig extends Config {
     long docSelectorRetryBackoffMs();
 
     @Key("doc.selector.documentcount.default")
-    @DefaultValue("3")
+    @DefaultValue("1")
     int docSelectorDocumentCountDefault();
 }

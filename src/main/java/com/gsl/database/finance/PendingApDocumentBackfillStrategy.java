@@ -1,5 +1,6 @@
 package com.gsl.database.finance;
 
+import com.aventstack.extentreports.ExtentTest;
 import com.gsl.api.core.ApiSessionBundle;
 import com.gsl.api.core.ApiSessionFactory;
 import com.gsl.api.integration.ServiceInvoiceAdhocDataSetup;
@@ -10,7 +11,9 @@ import com.gsl.database.dao.finance.FinPostDao;
 import com.gsl.enums.ApiPlatform;
 import com.gsl.model.finance.FinPost;
 import com.gsl.reports.ApiCallReportLogger;
+import com.gsl.reports.BackfillStepLabel;
 import com.gsl.reports.ReportLogger;
+import com.gsl.reports.StepExecutor;
 import org.jdbi.v3.core.Jdbi;
 
 import java.time.LocalDate;
@@ -49,19 +52,25 @@ public final class PendingApDocumentBackfillStrategy implements BackfillStrategy
         ApiCallReportLogger.setSection("PreRequisites — Data Creation");
         try {
             for (int i = 0; i < neededQuantity; i++) {
+                final int idx = i;
+                ExtentTest recordNode = StepExecutor.group("Record " + (idx + 1) + "/" + neededQuantity);
                 String documentDate = LocalDate.now().toString();
                 ReportLogger.dataBackfill(
                         "[PendingApDocumentBackfillStrategy] Creating record {}/{} — vendorSlCode={}, ownerSiteCode={}, " +
                                 "quantity={}, rate={}, documentDate={}",
-                        i + 1, neededQuantity, vendorSlCode, ownerSiteCode, DEFAULT_QTY, DEFAULT_RATE, documentDate);
+                        idx + 1, neededQuantity, vendorSlCode, ownerSiteCode, DEFAULT_QTY, DEFAULT_RATE, documentDate);
 
-                ServiceInvoiceAdhocCreateResponse invoice = ServiceInvoiceAdhocDataSetup.setupServiceInvoiceAdhocForTest(
-                        session.getServiceInvoiceAdhocApiClient(), vendorSlCode, ownerSiteCode, DEFAULT_QTY, DEFAULT_RATE);
+                ServiceInvoiceAdhocCreateResponse[] invoiceHolder = new ServiceInvoiceAdhocCreateResponse[1];
+                StepExecutor.stepUnder(recordNode, BackfillStepLabel.CREATE_SERVICE_INVOICE_ADHOC.label(), () ->
+                        invoiceHolder[0] = ServiceInvoiceAdhocDataSetup.setupServiceInvoiceAdhocForTest(
+                                session.getServiceInvoiceAdhocApiClient(), vendorSlCode, ownerSiteCode, DEFAULT_QTY, DEFAULT_RATE));
+                ServiceInvoiceAdhocCreateResponse invoice = invoiceHolder[0];
 
                 ReportLogger.dataBackfill("[PendingApDocumentBackfillStrategy] Backfilled record {}/{} — invoiceCode={}, schemeDocno={}",
-                        i + 1, neededQuantity, invoice.getInvoiceCode(), invoice.getSchemeDocno());
+                        idx + 1, neededQuantity, invoice.getInvoiceCode(), invoice.getSchemeDocno());
 
-                logReleaseStatus(invoice.getInvoiceCode());
+                StepExecutor.stepUnder(recordNode, BackfillStepLabel.VERIFY_POSTED.label(), () ->
+                        logReleaseStatus(invoice.getInvoiceCode()));
             }
         } finally {
             ApiCallReportLogger.clearSection();

@@ -1,9 +1,12 @@
 package com.gsl.database;
 
+import com.aventstack.extentreports.ExtentTest;
 import com.gsl.api.bulk.K6ProcessBulkDataProvisioner;
 import com.gsl.api.core.PublicApiAvailabilityChecker;
 import com.gsl.config.ConfigFactory;
 import com.gsl.enums.ApiPlatform;
+import com.gsl.reports.ExtentManager;
+import com.gsl.reports.ExtentReport;
 import com.gsl.reports.ReportLogger;
 import org.testng.SkipException;
 
@@ -31,27 +34,40 @@ public final class DataAvailabilityGuard {
         try {
             return selectionAttempt.get();
         } catch (SkipException shortfall) {
-            ReportLogger.dataBackfillWarn("[DataAvailabilityGuard] Shortfall — {} record(s) needed, none found in DB", neededQuantity);
+            // DataProvider resolution runs before TestListener.onTestStart creates the real
+            // test's ExtentTest node, so backfill can't reliably nest under "whichever test is
+            // running" — it gets its own dedicated top-level report entry instead, restored to
+            // whatever was current (typically null here) once backfill completes.
+            ExtentTest previousTest = ExtentManager.getExtentTest();
+            String recordWord = neededQuantity == 1 ? "record" : "records";
+            ExtentReport.createTest("Data BackFill — " + strategy.getClass().getSimpleName()
+                    + " (" + neededQuantity + " " + recordWord + ")");
+            ExtentManager.getExtentTest().assignCategory("DATA_BACKFILL");
+            try {
+                ReportLogger.dataBackfillWarn("[DataAvailabilityGuard] Shortfall — {} record(s) needed, none found in DB", neededQuantity);
 
-            ApiPlatform choice = DataSourceRouter.decide(neededQuantity);
-            ReportLogger.dataBackfill("[DataAvailabilityGuard] Source chosen: {} (order={}, publicApiAvailable={})",
-                    choice, java.util.Arrays.toString(ConfigFactory.getApiConfig().smallQtyPreferredOrder()),
-                    PublicApiAvailabilityChecker.isAvailable());
+                ApiPlatform choice = DataSourceRouter.decide(neededQuantity);
+                ReportLogger.dataBackfill("[DataAvailabilityGuard] Source chosen: {} (order={}, publicApiAvailable={})",
+                        choice, java.util.Arrays.toString(ConfigFactory.getApiConfig().smallQtyPreferredOrder()),
+                        PublicApiAvailabilityChecker.isAvailable());
 
-            ReportLogger.dataBackfill("[DataAvailabilityGuard] Creating {} record(s) via {} using {}",
-                    neededQuantity, choice, strategy.getClass().getSimpleName());
+                ReportLogger.dataBackfill("[DataAvailabilityGuard] Creating {} record(s) via {} using {}",
+                        neededQuantity, choice, strategy.getClass().getSimpleName());
 
-            if (choice == ApiPlatform.K6BULK) {
-                new K6ProcessBulkDataProvisioner().provisionAndWait(strategy.k6ScriptKey(), neededQuantity);
-            } else {
-                strategy.backfill(choice, neededQuantity);
+                if (choice == ApiPlatform.K6BULK) {
+                    new K6ProcessBulkDataProvisioner().provisionAndWait(strategy.k6ScriptKey(), neededQuantity);
+                } else {
+                    strategy.backfill(choice, neededQuantity);
+                }
+
+                // One retry after backfill. If STILL short, the shortfall is real — let it skip.
+                DocumentSelectionResult retryResult = selectionAttempt.get();
+                ReportLogger.dataBackfill("[DataAvailabilityGuard] Retry after backfill — resolved, {} SL(s) found",
+                        retryResult.getSelectedSls().size());
+                return retryResult;
+            } finally {
+                ExtentManager.setExtentTest(previousTest);
             }
-
-            // One retry after backfill. If STILL short, the shortfall is real — let it skip.
-            DocumentSelectionResult retryResult = selectionAttempt.get();
-            ReportLogger.dataBackfill("[DataAvailabilityGuard] Retry after backfill — resolved, {} SL(s) found",
-                    retryResult.getSelectedSls().size());
-            return retryResult;
         }
     }
 }
