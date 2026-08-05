@@ -1,0 +1,42 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE suite SYSTEM "http://testng.org/testng-1.0.dtd">
+<!--
+    AR Voucher MANDATORY Suite — validation rules + the MANDATORY-tagged CreateArVoucher rows
+    only (arv.group=MANDATORY, 2 scenarios per ArVoucherExecutionGroup), standalone from
+    AP Voucher / Account Group. This is the AR-only counterpart to testng-ap-mandatory.xml —
+    unlike testng-mandatory.xml / testng-ar-ap-mandatory.xml, which both run AR AND AP together,
+    this suite runs AR alone. DB-mode only (testdata.source=DB) — ExcelArVoucherDataSource has
+    no group filtering.
+
+    CreateArVoucher has 2 @Test methods (FIN-AR-ADD-DOC, FIN-AR-ADD-NEG); thread-count=2 matches
+    that method count exactly, so no queuing (contrast with ap-mandatory's thread-count=2 against
+    3 AP methods, which deliberately under-provisions to cap SessionPool concurrency on the
+    RAM-constrained single-node grid — not needed here since 2 methods already equal the cap).
+
+    Run: mvn clean test -Par-mandatory
+-->
+<suite name="AR Voucher — Mandatory Suite" parallel="none" data-provider-thread-count="4">
+
+    <listeners>
+        <listener class-name="com.gsl.listeners.RetryAnnotationTransformer"/>
+        <listener class-name="com.gsl.listeners.TestListener"/>
+        <listener class-name="com.gsl.listeners.SuiteDataLoader"/>
+        <listener class-name="com.gsl.listeners.AnnotationMethodInterceptor"/>
+    </listeners>
+
+    <test name="AR Voucher Validation — Mandatory">
+        <parameter name="voucherDomain" value="AR"/>
+        <parameter name="executionType" value="MANDATORY"/>
+        <classes>
+            <class name="com.tests.Validation.RuleTest"/>
+        </classes>
+    </test>
+
+    <test name="AR Voucher Create — Mandatory" parallel="methods" thread-count="2">
+        <parameter name="arv.group" value="MANDATORY"/>
+        <classes>
+            <class name="com.tests.Finance.Operations.Vouchers.CreateArVoucher"/>
+        </classes>
+    </test>
+
+</suite>
