@@ -372,6 +372,30 @@
             </build>
         </profile>
 
+        <!-- AR Voucher — Mandatory (standalone) — AR-only counterpart to ap-mandatory above -->
+        <profile>
+            <id>ar-mandatory</id>
+            <build>
+                <plugins>
+                    <plugin>
+                        <groupId>org.apache.maven.plugins</groupId>
+                        <artifactId>maven-surefire-plugin</artifactId>
+                        <version>3.2.5</version>
+                        <configuration>
+                            <testFailureIgnore>true</testFailureIgnore>
+                            <suiteXmlFiles>
+                                <suiteXmlFile>testng-ar-mandatory.xml</suiteXmlFile>
+                            </suiteXmlFiles>
+                            <argLine>${test.jvm.args} --add-opens java.base/java.lang=ALL-UNNAMED -Drunmode=${runmode} -Dheadless=${headless} -Dbrowser=${browser}</argLine>
+                            <systemPropertyVariables>
+                                <arv.group>MANDATORY</arv.group>
+                            </systemPropertyVariables>
+                        </configuration>
+                    </plugin>
+                </plugins>
+            </build>
+        </profile>
+
         <!-- AR + AP Voucher — Mandatory, MERGED into one <test> block so a SessionPool session
              can carry over between voucher domains (see testng-ar-ap-mandatory.xml header) -->
         <profile>
