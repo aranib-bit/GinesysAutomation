@@ -1,6 +1,16 @@
 pipeline {
     agent any
 
+    options {
+        // Only one staging build (any feature: AP, AR, or future ones) may run at a time —
+        // two builds racing here would both try to stand up the Selenium Grid via the same
+        // docker-compose file, colliding on container names/ports. A second build queues
+        // ("Waiting for lock") until the first finishes instead of colliding.
+        // Any future staging Jenkinsfile must reuse this exact resource name to stay in
+        // the same mutual-exclusion group.
+        lock(resource: 'staging-slot')
+    }
+
     tools {
         jdk 'jdk17'
     }
