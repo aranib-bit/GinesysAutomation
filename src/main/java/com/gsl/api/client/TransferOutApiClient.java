@@ -5,6 +5,7 @@ import com.gsl.api.model.transferout.DcSearchResult;
 import com.gsl.api.model.transferout.TransferOutCreateRequest;
 import com.gsl.api.model.transferout.TransferOutCreateResponse;
 import com.gsl.api.model.transferout.TransferOutLineItem;
+import com.gsl.reports.StepExecutor;
 import io.restassured.response.Response;
 import io.restassured.specification.RequestSpecification;
 
@@ -33,8 +34,20 @@ public class TransferOutApiClient extends ApiClient {
         return post("/SI/Save", request, TransferOutCreateResponse.class);
     }
 
+    /**
+     * Negative-scenario counterpart to {@link #createTransferOut(TransferOutCreateRequest)} —
+     * for a deliberately incomplete/invalid {@code request}, returns the raw {@link Response}
+     * instead of throwing.
+     */
+    public Response createTransferOutExpectFailure(TransferOutCreateRequest request) {
+        return postRawExpectFailure("/SI/Save", request);
+    }
+
     /** Builds and saves a single-line Transfer Out against the given DC, matching k6's flow. */
     public TransferOutCreateResponse createTransferOut(String dcCode, String itemCode, int quantity, int rate) {
+        // NOTE: this overload does not call searchChallan() — dcCode is threaded straight into
+        // the line item as supplied by the caller. Only the actual Save call below gets its own
+        // sub-section; a "search" node here would misrepresent a call that isn't made.
         TransferOutLineItem line = TransferOutLineItem.builder()
                 .dcCode(dcCode)
                 .itemCode(itemCode)
@@ -47,6 +60,6 @@ public class TransferOutApiClient extends ApiClient {
                 .item(line)
                 .build();
 
-        return createTransferOut(request);
+        return StepExecutor.call("Create Transfer Out via API", () -> createTransferOut(request));
     }
 }

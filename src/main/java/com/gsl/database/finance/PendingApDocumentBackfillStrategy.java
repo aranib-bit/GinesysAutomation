@@ -10,7 +10,6 @@ import com.gsl.database.DatabaseManager;
 import com.gsl.database.dao.finance.FinPostDao;
 import com.gsl.enums.ApiPlatform;
 import com.gsl.model.finance.FinPost;
-import com.gsl.reports.ApiCallReportLogger;
 import com.gsl.reports.BackfillStepLabel;
 import com.gsl.reports.ReportLogger;
 import com.gsl.reports.StepExecutor;
@@ -50,32 +49,28 @@ public final class PendingApDocumentBackfillStrategy implements BackfillStrategy
     public void backfill(ApiPlatform platform, int neededQuantity) {
         ApiSessionBundle session = ApiSessionFactory.create(platform);
         // No blanket section label here — ServiceInvoiceAdhocApiClient.createServiceInvoiceAdhocWithDefaults
-        // sets a meaningful, specific section (e.g. "Get Vendor Details for Service Invoice Adhoc")
-        // before each of its own internal calls.
-        try {
-            for (int i = 0; i < neededQuantity; i++) {
-                final int idx = i;
-                ExtentTest recordNode = StepExecutor.group("Record " + (idx + 1) + "/" + neededQuantity);
-                String documentDate = LocalDate.now().toString();
-                ReportLogger.dataBackfill(
-                        "[PendingApDocumentBackfillStrategy] Creating record {}/{} — vendorSlCode={}, ownerSiteCode={}, " +
-                                "quantity={}, rate={}, documentDate={}",
-                        idx + 1, neededQuantity, vendorSlCode, ownerSiteCode, DEFAULT_QTY, DEFAULT_RATE, documentDate);
+        // wraps each of its own internal calls in its own meaningful, specific StepExecutor.call
+        // node (e.g. "Get Vendor Details for Service Invoice Adhoc").
+        for (int i = 0; i < neededQuantity; i++) {
+            final int idx = i;
+            ExtentTest recordNode = StepExecutor.group("Record " + (idx + 1) + "/" + neededQuantity);
+            String documentDate = LocalDate.now().toString();
+            ReportLogger.dataBackfill(
+                    "[PendingApDocumentBackfillStrategy] Creating record {}/{} — vendorSlCode={}, ownerSiteCode={}, " +
+                            "quantity={}, rate={}, documentDate={}",
+                    idx + 1, neededQuantity, vendorSlCode, ownerSiteCode, DEFAULT_QTY, DEFAULT_RATE, documentDate);
 
-                ServiceInvoiceAdhocCreateResponse[] invoiceHolder = new ServiceInvoiceAdhocCreateResponse[1];
-                StepExecutor.stepUnder(recordNode, BackfillStepLabel.CREATE_SERVICE_INVOICE_ADHOC.label(), () ->
-                        invoiceHolder[0] = ServiceInvoiceAdhocDataSetup.setupServiceInvoiceAdhocForTest(
-                                session.getServiceInvoiceAdhocApiClient(), vendorSlCode, ownerSiteCode, DEFAULT_QTY, DEFAULT_RATE));
-                ServiceInvoiceAdhocCreateResponse invoice = invoiceHolder[0];
+            ServiceInvoiceAdhocCreateResponse[] invoiceHolder = new ServiceInvoiceAdhocCreateResponse[1];
+            StepExecutor.stepUnder(recordNode, BackfillStepLabel.CREATE_SERVICE_INVOICE_ADHOC.label(), () ->
+                    invoiceHolder[0] = ServiceInvoiceAdhocDataSetup.setupServiceInvoiceAdhocForTest(
+                            session.getServiceInvoiceAdhocApiClient(), vendorSlCode, ownerSiteCode, DEFAULT_QTY, DEFAULT_RATE));
+            ServiceInvoiceAdhocCreateResponse invoice = invoiceHolder[0];
 
-                ReportLogger.dataBackfill("[PendingApDocumentBackfillStrategy] Backfilled record {}/{} — invoiceCode={}, schemeDocno={}",
-                        idx + 1, neededQuantity, invoice.getInvoiceCode(), invoice.getSchemeDocno());
+            ReportLogger.dataBackfill("[PendingApDocumentBackfillStrategy] Backfilled record {}/{} — invoiceCode={}, schemeDocno={}",
+                    idx + 1, neededQuantity, invoice.getInvoiceCode(), invoice.getSchemeDocno());
 
-                StepExecutor.stepUnder(recordNode, BackfillStepLabel.VERIFY_POSTED.label(), () ->
-                        logReleaseStatus(invoice.getInvoiceCode()));
-            }
-        } finally {
-            ApiCallReportLogger.clearSection();
+            StepExecutor.stepUnder(recordNode, BackfillStepLabel.VERIFY_POSTED.label(), () ->
+                    logReleaseStatus(invoice.getInvoiceCode()));
         }
     }
 

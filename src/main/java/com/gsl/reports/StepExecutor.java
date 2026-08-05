@@ -24,6 +24,11 @@ public final class StepExecutor {
         void run() throws Exception;
     }
 
+    @FunctionalInterface
+    public interface StepSupplier<T> {
+        T get() throws Exception;
+    }
+
     /**
      * Creates a collapsible Extent child node under the CURRENT test node and returns it
      * WITHOUT running any action. Use it as a per-row (or per-section) grouping container
@@ -128,6 +133,35 @@ public final class StepExecutor {
         } finally {
             ExtentManager.setExtentTest(parent);
         }
+    }
+
+    /**
+     * Same nested-node/pass/fail/duration semantics as {@link #step(String, StepAction)}, but for
+     * an action that returns a value — e.g. an individual API call inside a larger orchestration
+     * method, so each call gets its own collapsible report node (per-call sub-section) instead of
+     * every call logging flat into the enclosing step. Reuses {@code step(...)} itself via a
+     * one-element result holder rather than duplicating its create-node/pass/fail logic.
+     *
+     * <p>Falls back to running {@code action} directly (no node) when there is no active
+     * {@link ExtentTest} to attach to — mirrors the {@link ExtentManager#hasTest()} guard already
+     * used by {@code WebApiSessionClient} for the same reason: some callers (e.g. session bootstrap
+     * outside a TestNG test) run before any test node exists.
+     */
+    public static <T> T call(String stepName, StepSupplier<T> action) {
+        if (!ExtentManager.hasTest()) {
+            try {
+                return action.get();
+            } catch (RuntimeException e) {
+                throw e;
+            } catch (Exception e) {
+                throw new RuntimeException(stepName + " failed", e);
+            }
+        }
+        Object[] holder = new Object[1];
+        step(stepName, () -> holder[0] = action.get());
+        @SuppressWarnings("unchecked")
+        T result = (T) holder[0];
+        return result;
     }
 
     static String formatDuration(long ms) {

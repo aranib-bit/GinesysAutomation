@@ -17,8 +17,8 @@ import com.gsl.api.model.udf.UdfValueEntry;
 import com.gsl.config.ConfigFactory;
 import com.gsl.database.DatabaseManager;
 import com.gsl.database.query.UdfValueQuery;
-import com.gsl.reports.ApiCallReportLogger;
 import com.gsl.reports.ReportLogger;
+import com.gsl.reports.StepExecutor;
 import io.restassured.response.Response;
 import io.restassured.specification.RequestSpecification;
 import org.jdbi.v3.core.Jdbi;
@@ -188,6 +188,15 @@ public class ArVoucherApiClient extends ApiClient {
     }
 
     /**
+     * Negative-scenario counterpart to {@link #createArVoucher(ArVoucherCreateRequest)} — for a
+     * deliberately incomplete/invalid {@code request}, returns the raw {@link Response} instead
+     * of throwing.
+     */
+    public Response createArVoucherExpectFailure(ArVoucherCreateRequest request) {
+        return postRawExpectFailure(url("/vouchers/ar"), request);
+    }
+
+    /**
      * GET /udf/GetUDFMetaData — lives under the original WebAPI base (same as
      * {@code ServiceInvoiceAdhocApiClient}'s own relative endpoints), NOT {@code financeApiBaseUri}
      * — confirmed via the HAR path {@code /WebAPI/api/udf/GetUDFMetaData}. Passed as a relative
@@ -310,27 +319,27 @@ public class ArVoucherApiClient extends ApiClient {
 
         String workDate = LocalDate.now() + "T00:00:00";
 
-        ApiCallReportLogger.setSection("Get Doc Scheme Nos for AR Voucher");
-        List<DocNumberSchemeEntry> schemes = fetchDocNumberSchemes(ownerSiteCode, workDate);
+        List<DocNumberSchemeEntry> schemes = StepExecutor.call("Get Doc Scheme Nos for AR Voucher",
+                () -> fetchDocNumberSchemes(ownerSiteCode, workDate));
         DocNumberSchemeEntry scheme = schemes.stream()
                 .filter(s -> PREFERRED_DOC_SCHEME_NAME.equalsIgnoreCase(s.getName()))
                 .findFirst()
                 .orElseGet(() -> schemes.isEmpty() ? null : schemes.get(0));
         long docSchemeCode = scheme != null ? scheme.getCode() : 0;
 
-        ApiCallReportLogger.setSection("Get Cash/Bank Details for AR Voucher");
-        List<CashBankLedgerLookupResult> cashBankLedgers = fetchCashBankLedgers(ownerSiteCode, (int) empCode, ouCode, workDate);
+        List<CashBankLedgerLookupResult> cashBankLedgers = StepExecutor.call("Get Cash/Bank Details for AR Voucher",
+                () -> fetchCashBankLedgers(ownerSiteCode, (int) empCode, ouCode, workDate));
         if (cashBankLedgers.isEmpty()) {
             throw new ApiException(
                     "GetCashBankLedgers returned no ledgers for ownerSiteCode=" + ownerSiteCode + " — cannot raise an AR Voucher.", 0);
         }
         CashBankLedgerLookupResult cashBankLedger = cashBankLedgers.get(0);
 
-        ApiCallReportLogger.setSection("Get Sub Ledger Details for AR Voucher");
-        SubLedgerLookupResult subLedger = resolveSubLedger(ownerSiteCode, ouCode, (int) empCode, workDate, requiredClsCode);
+        SubLedgerLookupResult subLedger = StepExecutor.call("Get Sub Ledger Details for AR Voucher",
+                () -> resolveSubLedger(ownerSiteCode, ouCode, (int) empCode, workDate, requiredClsCode));
 
-        ApiCallReportLogger.setSection("Get Reference Sites for AR Voucher");
-        List<ReferenceSiteLookupResult> refSites = fetchReferenceSites(ouCode, subLedger.getSlCode(), ownerSiteCode, workDate);
+        List<ReferenceSiteLookupResult> refSites = StepExecutor.call("Get Reference Sites for AR Voucher",
+                () -> fetchReferenceSites(ouCode, subLedger.getSlCode(), ownerSiteCode, workDate));
         ReferenceSiteLookupResult refSite = refSites.stream()
                 .filter(s -> s.getCode() == ownerSiteCode)
                 .findFirst()
@@ -338,12 +347,14 @@ public class ArVoucherApiClient extends ApiClient {
         long referenceSiteCode = refSite != null ? refSite.getCode() : ownerSiteCode;
         String referenceSiteName = refSite != null ? refSite.getName() : null;
 
-        ApiCallReportLogger.setSection("Validate Voucher Date for AR Voucher");
-        validateVoucherDate(empCode, workDate, ouCode);
+        StepExecutor.call("Validate Voucher Date for AR Voucher", () -> {
+            validateVoucherDate(empCode, workDate, ouCode);
+            return null;
+        });
 
-        ApiCallReportLogger.setSection("Get UDF Metadata for AR Voucher");
-        List<UdfFieldMetadata> udfMetadata = fetchUdfMetadata("FINVCHMAIN");
-        List<UdfValueEntry> udfValues = buildUdfValues(udfMetadata);
+        List<UdfFieldMetadata> udfMetadata = StepExecutor.call("Get UDF Metadata for AR Voucher",
+                () -> fetchUdfMetadata("FINVCHMAIN"));
+        List<UdfValueEntry> udfValues = StepExecutor.call("UDF Post-Processing", () -> buildUdfValues(udfMetadata));
 
         double amount = quantity * rate;
         ArVoucherDetailLine line = ArVoucherDetailLine.builder()
@@ -380,7 +391,6 @@ public class ArVoucherApiClient extends ApiClient {
                 "[ArVoucherApiClient] Creating AR Voucher — requiredClsCode={}, subLedger='{}' (classCode={}), ownerSiteCode={}, cashBankGLCode={}, amount={}",
                 requiredClsCode, subLedger.getSlName(), subLedger.getClassCode(), ownerSiteCode, cashBankLedger.getGlCode(), amount);
 
-        ApiCallReportLogger.setSection("Create AR Voucher via API");
-        return createArVoucher(request);
+        return StepExecutor.call("Create AR Voucher via API", () -> createArVoucher(request));
     }
 }

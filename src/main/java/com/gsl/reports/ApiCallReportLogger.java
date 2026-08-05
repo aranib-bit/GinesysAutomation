@@ -9,34 +9,20 @@ import io.restassured.response.Response;
  * Results" already uses) — Method/URL/Payload/Response, with a "(NNNms)" duration suffix on the
  * label, same style as the existing "Actual Results (360ms)" business-data blocks.
  *
- * <p>Calls made during backfill (see {@code PendingArDocumentBackfillStrategy} /
- * {@code PendingApDocumentBackfillStrategy}) additionally get a bold "PreRequisites — Data
- * Creation" header immediately above their table — set via {@link #setSection(String)} around
- * the backfill loop, so a WEB test's own direct API-assisted setup or a plain {@code APITest}
- * call (no section set) is unaffected and just gets the plain per-call table.
+ * <p>Calls made during backfill (see {@code ArVoucherApiClient}, {@code ItemApiClient},
+ * {@code GrcApiClient}, {@code DcApiClient}, {@code ServiceInvoiceAdhocApiClient}) each wrap their
+ * call to this logger in a {@link StepExecutor#call(String, StepExecutor.StepSupplier)} node named
+ * for that specific call (e.g. "Get Sub Ledger Details for AR Voucher") — the node itself is the
+ * per-call sub-section, so this class only renders the Method/URL table and Payload/Response
+ * collapsibles, with no heading of its own.
  */
 public final class ApiCallReportLogger {
 
     private static final ObjectMapper MAPPER = new ObjectMapper();
-    private static final ThreadLocal<String> section = new ThreadLocal<>();
 
     private ApiCallReportLogger() {}
 
-    /** Sets the section header every subsequent logCall() on this thread renders under, until cleared. */
-    public static void setSection(String label) {
-        section.set(label);
-    }
-
-    public static void clearSection() {
-        section.remove();
-    }
-
     public static void logCall(String method, String url, Object requestBody, Response response, long durationMs) {
-        String current = section.get();
-        if (current != null) {
-            ReportLogger.infoHtml("<b>" + current + "</b>");
-        }
-
         String[][] table = {
             {"Field", "Value"},
             {"Method", method},

@@ -10,7 +10,6 @@ import com.gsl.database.DatabaseManager;
 import com.gsl.database.dao.finance.FinPostDao;
 import com.gsl.enums.ApiPlatform;
 import com.gsl.model.finance.FinPost;
-import com.gsl.reports.ApiCallReportLogger;
 import com.gsl.reports.BackfillStepLabel;
 import com.gsl.reports.ReportLogger;
 import com.gsl.reports.StepExecutor;
@@ -52,35 +51,31 @@ public final class ArVoucherApBackfillStrategy implements BackfillStrategy {
     @Override
     public void backfill(ApiPlatform platform, int neededQuantity) {
         ApiSessionBundle session = ApiSessionFactory.create(platform);
-        // No blanket section label here — ArVoucherApiClient.createArVoucherWithDefaults sets a
-        // meaningful, specific section (e.g. "Get Doc Scheme Nos for AR Voucher") before each of
-        // its own internal calls.
-        try {
-            for (int i = 0; i < neededQuantity; i++) {
-                final int idx = i;
-                ExtentTest recordNode = StepExecutor.group("Record " + (idx + 1) + "/" + neededQuantity);
-                String documentDate = LocalDate.now().toString();
-                ReportLogger.dataBackfill(
-                        "[ArVoucherApBackfillStrategy] Creating record {}/{} — requiredClsCode={}, ownerSiteCode={}, " +
-                                "ouCode={}, empCode={}, quantity={}, rate={}, documentDate={}",
-                        idx + 1, neededQuantity, requiredClsCode, ownerSiteCode, ouCode, empCode,
-                        DEFAULT_QTY, DEFAULT_RATE, documentDate);
+        // No blanket section label here — ArVoucherApiClient.createArVoucherWithDefaults wraps
+        // each of its own internal calls in its own meaningful, specific StepExecutor.call node
+        // (e.g. "Get Doc Scheme Nos for AR Voucher").
+        for (int i = 0; i < neededQuantity; i++) {
+            final int idx = i;
+            ExtentTest recordNode = StepExecutor.group("Record " + (idx + 1) + "/" + neededQuantity);
+            String documentDate = LocalDate.now().toString();
+            ReportLogger.dataBackfill(
+                    "[ArVoucherApBackfillStrategy] Creating record {}/{} — requiredClsCode={}, ownerSiteCode={}, " +
+                            "ouCode={}, empCode={}, quantity={}, rate={}, documentDate={}",
+                    idx + 1, neededQuantity, requiredClsCode, ownerSiteCode, ouCode, empCode,
+                    DEFAULT_QTY, DEFAULT_RATE, documentDate);
 
-                ArVoucherCreateResponse[] voucherHolder = new ArVoucherCreateResponse[1];
-                StepExecutor.stepUnder(recordNode, BackfillStepLabel.CREATE_AR_VOUCHER.label(), () ->
-                        voucherHolder[0] = ArVoucherDataSetup.setupArVoucherForTest(
-                                session.getArVoucherApiClient(), requiredClsCode, ownerSiteCode, ouCode, empCode,
-                                DEFAULT_QTY, DEFAULT_RATE));
-                ArVoucherCreateResponse voucher = voucherHolder[0];
+            ArVoucherCreateResponse[] voucherHolder = new ArVoucherCreateResponse[1];
+            StepExecutor.stepUnder(recordNode, BackfillStepLabel.CREATE_AR_VOUCHER.label(), () ->
+                    voucherHolder[0] = ArVoucherDataSetup.setupArVoucherForTest(
+                            session.getArVoucherApiClient(), requiredClsCode, ownerSiteCode, ouCode, empCode,
+                            DEFAULT_QTY, DEFAULT_RATE));
+            ArVoucherCreateResponse voucher = voucherHolder[0];
 
-                ReportLogger.dataBackfill("[ArVoucherApBackfillStrategy] Backfilled record {}/{} — voucherCode={}, docScheme={}",
-                        idx + 1, neededQuantity, voucher.getVoucherCode(), voucher.getDocScheme());
+            ReportLogger.dataBackfill("[ArVoucherApBackfillStrategy] Backfilled record {}/{} — voucherCode={}, docScheme={}",
+                    idx + 1, neededQuantity, voucher.getVoucherCode(), voucher.getDocScheme());
 
-                StepExecutor.stepUnder(recordNode, BackfillStepLabel.VERIFY_POSTED.label(), () ->
-                        logReleaseStatus(voucher.getVoucherCode()));
-            }
-        } finally {
-            ApiCallReportLogger.clearSection();
+            StepExecutor.stepUnder(recordNode, BackfillStepLabel.VERIFY_POSTED.label(), () ->
+                    logReleaseStatus(voucher.getVoucherCode()));
         }
     }
 

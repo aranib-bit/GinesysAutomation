@@ -186,6 +186,49 @@ public interface ApiConfig extends Config {
     @DefaultValue("qafeature,qahbros")
     String[] multiTenantNames();
 
+    // ── Fixture-driven API endpoint testing (com.gsl.api.fixture) ───────────────
+    // Real, valid live reference ids each flow's positive scenarios exercise against.
+
+    @Key("fixture.serviceinvoiceadhoc.ownerSiteCode")
+    String fixtureServiceInvoiceAdhocOwnerSiteCode();
+
+    @Key("fixture.serviceinvoiceadhoc.vendorSlCode")
+    String fixtureServiceInvoiceAdhocVendorSlCode();
+
+    @Key("fixture.item.inventoryGroupCode")
+    @DefaultValue("28")
+    int fixtureItemInventoryGroupCode();
+
+    @Key("fixture.grc.vendorCode")
+    int fixtureGrcVendorCode();
+
+    @Key("fixture.grc.siteCode")
+    int fixtureGrcSiteCode();
+
+    @Key("fixture.grc.ouCode")
+    int fixtureGrcOuCode();
+
+    @Key("fixture.grc.itemCode")
+    String fixtureGrcItemCode();
+
+    @Key("fixture.dc.itemCode")
+    String fixtureDcItemCode();
+
+    @Key("fixture.transferout.dcCode")
+    String fixtureTransferOutDcCode();
+
+    @Key("fixture.transferout.itemCode")
+    String fixtureTransferOutItemCode();
+
+    @Key("fixture.arvoucher.ownerSiteCode")
+    int fixtureArVoucherOwnerSiteCode();
+
+    @Key("fixture.arvoucher.ouCode")
+    int fixtureArVoucherOuCode();
+
+    @Key("fixture.arvoucher.empCode")
+    long fixtureArVoucherEmpCode();
+
     // NOTE: deliberately NOT a `default` method here. Owner's dynamic proxy for @Config
     // interfaces does not correctly dispatch Java default methods — it routes the call through
     // its property-lookup InvocationHandler like any other interface method, gets null back

@@ -6,7 +6,7 @@ import com.gsl.api.model.grc.GrcCreateRequest;
 import com.gsl.api.model.grc.GrcCreateResponse;
 import com.gsl.api.model.grc.GrcLineItem;
 import com.gsl.api.model.grc.VendorTaxRegion;
-import com.gsl.reports.ApiCallReportLogger;
+import com.gsl.reports.StepExecutor;
 import io.restassured.response.Response;
 import io.restassured.specification.RequestSpecification;
 
@@ -26,10 +26,15 @@ public class GrcApiClient extends ApiClient {
         super(spec);
     }
 
-    /** GET /GRC/GetGRCVendorTaxRegion */
+    /**
+     * GET /GRC/GetGRCVendorTaxRegion — routed through {@code getRaw()} (i.e. a fresh,
+     * throwaway request derived from the shared spec), NOT {@code spec.queryParam(...).get(...)}
+     * directly: the latter mutates the session-lifetime {@code spec} instance itself, exactly the
+     * bug class {@link com.gsl.api.core.ApiClient#fresh()}'s javadoc documents (a stale query
+     * param from one call leaking into a later, unrelated call on the same shared spec).
+     */
     public VendorTaxRegion fetchVendorTaxRegion(int vendorCode) {
-        Response response = spec.queryParam("vendorCode", vendorCode).get("/GRC/GetGRCVendorTaxRegion");
-        validateResponse(response, "/GRC/GetGRCVendorTaxRegion");
+        Response response = getRaw("/GRC/GetGRCVendorTaxRegion", Map.of("vendorCode", vendorCode));
         return response.jsonPath().getObject("result", VendorTaxRegion.class);
     }
 
@@ -38,11 +43,19 @@ public class GrcApiClient extends ApiClient {
         return post("/GRC/Save", request, GrcCreateResponse.class);
     }
 
+    /**
+     * Negative-scenario counterpart to {@link #createGrc(GrcCreateRequest)} — for a deliberately
+     * incomplete/invalid {@code request}, returns the raw {@link Response} instead of throwing.
+     */
+    public Response createGrcExpectFailure(GrcCreateRequest request) {
+        return postRawExpectFailure("/GRC/Save", request);
+    }
+
     /** Builds and saves a single-line GRC for the given item, matching k6's runCreateGrcFlow(). */
     public GrcCreateResponse createGrc(String itemCode, int vendorCode, int siteCode, int ouCode,
                                         int quantity, int rate) {
-        ApiCallReportLogger.setSection("Get Vendor Tax Region for GRC");
-        fetchVendorTaxRegion(vendorCode); // resolved for correctness/logging parity with k6; not yet consumed in the payload below
+        // resolved for correctness/logging parity with k6; not yet consumed in the payload below
+        StepExecutor.call("Get Vendor Tax Region for GRC", () -> fetchVendorTaxRegion(vendorCode));
 
         GrcLineItem line = GrcLineItem.builder()
                 .itemId(itemCode)
@@ -62,7 +75,6 @@ public class GrcApiClient extends ApiClient {
                 .grsamt(quantity * rate)
                 .build();
 
-        ApiCallReportLogger.setSection("Create GRC via API");
-        return createGrc(request);
+        return StepExecutor.call("Create GRC via API", () -> createGrc(request));
     }
 }

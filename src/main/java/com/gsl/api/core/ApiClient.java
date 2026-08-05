@@ -92,6 +92,46 @@ public abstract class ApiClient {
         return response;
     }
 
+    /**
+     * Negative-scenario counterpart to {@link #getRaw(String)} — same {@code fresh()}-derived
+     * request and {@link ApiCallReportLogger} instrumentation, but deliberately skips
+     * {@link #validateResponse(Response, String)}'s throw so a call expected to fail (bad
+     * input, missing auth, invalid id, …) returns its raw {@link Response} for the caller to
+     * assert on (status code, {@code success} flag, error message) instead of blowing up the
+     * test. Never use this for calls expected to succeed — a genuine unexpected failure here
+     * is silently swallowed rather than surfaced as a thrown {@link ApiException}.
+     */
+    protected Response getRawExpectFailure(String endpoint) {
+        long start = System.currentTimeMillis();
+        Response response = fresh().get(endpoint);
+        ApiCallReportLogger.logCall("GET", endpoint, null, response, System.currentTimeMillis() - start);
+        return response;
+    }
+
+    /** {@link #getRawExpectFailure(String)} with query params — see that method's javadoc. */
+    protected Response getRawExpectFailure(String endpoint, Map<String, Object> queryParams) {
+        long start = System.currentTimeMillis();
+        Response response = fresh().queryParams(queryParams).get(endpoint);
+        ApiCallReportLogger.logCall("GET", endpoint, queryParams, response, System.currentTimeMillis() - start);
+        return response;
+    }
+
+    /** {@link #getRawExpectFailure(String)} counterpart for POST — see that method's javadoc. */
+    protected Response postRawExpectFailure(String endpoint, Object body) {
+        long start = System.currentTimeMillis();
+        Response response = fresh().body(body).post(endpoint);
+        ApiCallReportLogger.logCall("POST", endpoint, body, response, System.currentTimeMillis() - start);
+        return response;
+    }
+
+    /** {@link #getRawExpectFailure(String)} counterpart for POST with query params. */
+    protected Response postRawExpectFailure(String endpoint, Object body, Map<String, Object> queryParams) {
+        long start = System.currentTimeMillis();
+        Response response = fresh().queryParams(queryParams).body(body).post(endpoint);
+        ApiCallReportLogger.logCall("POST", endpoint, body, response, System.currentTimeMillis() - start);
+        return response;
+    }
+
     protected void validateResponse(Response response, String endpoint) {
         int status = response.getStatusCode();
         if (status >= 400) {

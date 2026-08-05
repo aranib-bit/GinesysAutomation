@@ -7,7 +7,7 @@ import com.gsl.api.model.item.ItemCreateRequest;
 import com.gsl.api.model.item.ItemCreateResponse;
 import com.gsl.api.model.item.ItemLookupData;
 import com.gsl.enums.ItemManagementMode;
-import com.gsl.reports.ApiCallReportLogger;
+import com.gsl.reports.StepExecutor;
 import io.restassured.response.Response;
 import io.restassured.specification.RequestSpecification;
 
@@ -60,12 +60,10 @@ public class ItemApiClient extends ApiClient {
 
     /** Aggregates the lookups actually needed to build a valid ItemCreateRequest. */
     public ItemLookupData fetchAllLookups(int inventoryGroupCode) {
-        ApiCallReportLogger.setSection("Get Inventory Group Defaults for Item");
-        ItemLookupData groupDefaults = fetchGroupDefaults(inventoryGroupCode);
-        ApiCallReportLogger.setSection("Get Default HSN Code for Item");
-        int hsnCode = fetchDefaultHsnCode();
-        ApiCallReportLogger.setSection("Get Default Unit Name for Item");
-        String unitName = fetchDefaultUnitName();
+        ItemLookupData groupDefaults = StepExecutor.call("Get Inventory Group Defaults for Item",
+                () -> fetchGroupDefaults(inventoryGroupCode));
+        int hsnCode = StepExecutor.call("Get Default HSN Code for Item", this::fetchDefaultHsnCode);
+        String unitName = StepExecutor.call("Get Default Unit Name for Item", this::fetchDefaultUnitName);
         return ItemLookupData.builder()
                 .inventoryGroupCode(inventoryGroupCode)
                 .inventoryCategoryCode(groupDefaults.getInventoryCategoryCode())
@@ -77,6 +75,16 @@ public class ItemApiClient extends ApiClient {
     /** POST /ItemMaster/Create — the final save call. */
     public ItemCreateResponse createItem(ItemCreateRequest request) {
         return post("/ItemMaster/Create", request, ItemCreateResponse.class);
+    }
+
+    /**
+     * Negative-scenario counterpart to {@link #createItem(ItemCreateRequest)} — for a
+     * deliberately incomplete/invalid {@code request}, returns the raw {@link Response} instead
+     * of throwing. See {@code ApiClient.getRawExpectFailure}'s javadoc — never use for a request
+     * expected to succeed.
+     */
+    public Response createItemExpectFailure(ItemCreateRequest request) {
+        return postRawExpectFailure("/ItemMaster/Create", request);
     }
 
     /** Orchestrates lookups + create, matching k6's runCreateItemFlow() end-to-end sequence. */
@@ -98,7 +106,6 @@ public class ItemApiClient extends ApiClient {
                 .hsnSacMain(LookupValue.ofCode(lookups.getHsnSacCode()))
                 .build();
 
-        ApiCallReportLogger.setSection("Create Item via API");
-        return createItem(request);
+        return StepExecutor.call("Create Item via API", () -> createItem(request));
     }
 }
