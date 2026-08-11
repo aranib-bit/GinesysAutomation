@@ -43,7 +43,17 @@ pipeline {
     stages {
         stage('Checkout') {
             steps {
-                checkout scm
+                script {
+                    // The job's git SCM remote is configured as the dev folder's local path
+                    // itself (see Jenkins job config) — capturing GIT_URL here derives that
+                    // path at runtime instead of hardcoding it, so the post-build robocopy
+                    // step below never needs a literal absolute path.
+                    def scmVars = checkout scm
+                    if (!scmVars.GIT_URL) {
+                        error "GIT_URL was not returned by checkout scm — cannot derive PROJECT_ROOT."
+                    }
+                    env.PROJECT_ROOT = scmVars.GIT_URL
+                }
             }
         }
 
@@ -117,7 +127,10 @@ pipeline {
             // reports/ never reaches the dev folder on its own — sync a copy back after
             // every run. /XO = only copy files newer than what's already there;
             // "& exit 0" because robocopy's own success exit codes are non-zero.
-            bat 'robocopy "%WORKSPACE%\\reports" "D:\\SeleniumAutomationTesting\\IdeaProjects\\SeleniumFramework3.141_NEW\\reports\\%MAVEN_PROFILE%" /E /XO /R:2 /W:2 & exit 0'
+            // Destination is PROJECT_ROOT (derived at Checkout time from checkout scm's
+            // GIT_URL) + \reports — no profile-specific subfolder, so every profile's run
+            // lands at reports\runs\<runId>\... the same way a local (non-Jenkins) run does.
+            bat 'robocopy "%WORKSPACE%\\reports" "%PROJECT_ROOT%\\reports" /E /XO /R:2 /W:2 & exit 0'
         }
     }
 }
