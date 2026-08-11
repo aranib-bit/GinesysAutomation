@@ -5,7 +5,6 @@ import com.gsl.pages.Finance.Operations.ApVoucherAdd;
 import com.gsl.pages.Finance.Operations.Common.DocumentPopup;
 import com.gsl.pages.Finance.Operations.Common.PaymentInfoCheckWarning;
 import com.gsl.pages.pagecomponent.Finance.Operations.Common.SubLedgerRowLocator;
-import com.gsl.utils.Selenium.ExtJsQuickTipUtils;
 import com.gsl.reports.ReportLogger;
 import com.gsl.reports.StepExecutor;
 import com.gsl.testdata.Finance.Operations.Vouchers.APVoucher.SelectDocument;
@@ -747,10 +746,7 @@ public final class ApVoucherPredicateFactory {
 
             StepExecutor.step("Click Save — expect detail-section error dialog", () -> {
                 DocumentPopup popup = page.clickSave();
-                String expectedDialog = NegativeValidation.ZERO_AMOUNT_DIALOG.expectedMessage();
-                String actualDialog = popup.verifyErrorMessage(expectedDialog);
-                ReportLogger.pass("Dialog OK — Expected: [" + expectedDialog + "] | Received: [" + actualDialog + "]");
-                popup.clickOkOnErrorDialog();
+                NegativeValidationSteps.assertDetailSectionDialog(popup, PaymentInfoCheckWarning.AP_VOUCHER);
             });
 
             StepExecutor.step("Hover row indicator — verify inline tooltip", () -> {
@@ -761,13 +757,9 @@ public final class ApVoucherPredicateFactory {
                 if (slName == null || slName.isBlank()) {
                     throw new IllegalStateException("INLINE_VALIDATION_BEHAVIOR requires at least one sub-ledger row with a name");
                 }
-                String actual = ExtJsQuickTipUtils.hoverAndVerify(
-                        SubLedgerRowLocator.dotsButton(slName),
-                        NegativeValidation.ZERO_AMOUNT_TOOLTIP_STOP.expectedMessage(),
+                NegativeValidationSteps.assertRowTooltip(
+                        SubLedgerRowLocator.dotsButton(slName), PaymentInfoCheckWarning.AP_VOUCHER,
                         NegativeValidation.ZERO_AMOUNT_TOOLTIP_AMOUNT.expectedMessage());
-                ExtJsQuickTipUtils.verifyVisibleHtml(
-                        NegativeValidation.ZERO_AMOUNT_TOOLTIP_STOP_BOLD.expectedMessage());
-                ReportLogger.pass("Tooltip OK — [" + actual + "]");
             });
 
             StepExecutor.step("Cancel (Logout deferred)", () -> {
@@ -801,10 +793,7 @@ public final class ApVoucherPredicateFactory {
 
             StepExecutor.step("Click Save — expect detail-section error dialog", () -> {
                 DocumentPopup popup = page.clickSave();
-                String expectedDialog = NegativeValidation.ZERO_AMOUNT_DIALOG.expectedMessage();
-                String actualDialog = popup.verifyErrorMessage(expectedDialog);
-                ReportLogger.pass("Dialog OK — Expected: [" + expectedDialog + "] | Received: [" + actualDialog + "]");
-                popup.clickOkOnErrorDialog();
+                NegativeValidationSteps.assertDetailSectionDialog(popup, PaymentInfoCheckWarning.AP_VOUCHER);
             });
 
             StepExecutor.step("Hover row indicator — verify inline tooltip", () -> {
@@ -816,13 +805,9 @@ public final class ApVoucherPredicateFactory {
                     throw new IllegalStateException(
                             "DOC_INLINE_VALIDATION_BEHAVIOR requires at least one sub-ledger row with a name");
                 }
-                String actual = ExtJsQuickTipUtils.hoverAndVerify(
-                        SubLedgerRowLocator.dotsButton(slName),
-                        NegativeValidation.ZERO_AMOUNT_TOOLTIP_STOP.expectedMessage(),
+                NegativeValidationSteps.assertRowTooltip(
+                        SubLedgerRowLocator.dotsButton(slName), PaymentInfoCheckWarning.AP_VOUCHER,
                         NegativeValidation.DOC_NOT_ADJUSTED_TOOLTIP_AMOUNT.expectedMessage());
-                ExtJsQuickTipUtils.verifyVisibleHtml(
-                        NegativeValidation.ZERO_AMOUNT_TOOLTIP_STOP_BOLD.expectedMessage());
-                ReportLogger.pass("Tooltip OK — [" + actual + "]");
             });
 
             StepExecutor.step("Cancel (Logout deferred)", () -> {

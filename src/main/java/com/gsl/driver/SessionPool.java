@@ -13,6 +13,8 @@ import com.gsl.testdata.UserPool;
 import com.gsl.testdata.UserType;
 import com.gsl.utils.Log;
 import com.gsl.utils.TestContextManager;
+import org.openqa.selenium.Keys;
+import org.openqa.selenium.interactions.Actions;
 
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
@@ -176,6 +178,11 @@ public final class SessionPool {
      */
     public static void giveBack() {
         PooledSession s = BORROWED.remove(Thread.currentThread().getId());
+        // Dirty-state check runs BEFORE unbind — unbindFromCurrentThread() calls
+        // DriverManager.unloadDriver(), after which the probe has no driver to look at.
+        if (s != null && !s.isClosed()) {
+            resetOrFlagDirtyUi(s);
+        }
         unbindFromCurrentThread();
         if (s == null || s.isClosed()) {
             return; // nothing borrowed, or destroyed mid-row — TOTAL already reconciled
@@ -275,8 +282,71 @@ public final class SessionPool {
     }
 
     /** Validation runs AFTER bind — HealthChecker reads the calling thread's driver binding. */
+    /**
+     * Last line of defence against handing a dirty page to the next test.
+     *
+     * <p>{@code WebTest.tearDown}'s Level-4 recovery only fires for NAVIGATION/SESSION/BROWSER
+     * failures — a plain assertion failure is classified {@code TEST_FAILURE} and deliberately
+     * never touches the session, yet it can just as easily leave an Add/Modify form open. Run
+     * 20260807_095328 is the worked example: one test timed out with {@code Add: General Voucher}
+     * on screen, and the next three failed clicking the side menu <i>through</i> that form
+     * ("not clickable at point (82, 173). Other element would receive the click:
+     * {@code combo-1216-labelTextEl}") — a form field label.
+     *
+     * <p>Two steps, cheapest first:
+     * <ol>
+     *   <li><b>ESC.</b> A closable ExtJS window dismisses on ESC, returning the app to the list
+     *       page underneath — which is the page the navigation cache already believes we are on,
+     *       so the cache stays truthful. Non-destructive: it cannot misclick, and if the form is
+     *       dirty enough to raise a "discard changes?" confirm, step 2 catches that.</li>
+     *   <li><b>Flag for recovery.</b> Still dirty → {@code setNeedsRecovery(true)}, which
+     *       {@link #isReusable} already honours, so the next borrower destroys this session and
+     *       creates a clean one. No new UI-driving code, no risk of clicking through an unknown
+     *       dialog, and no chance of a stale navigation cache surviving.</li>
+     * </ol>
+     *
+     * <p>Best-effort throughout — this runs inside teardown and must never throw into it.
+     */
+    private static void resetOrFlagDirtyUi(PooledSession s) {
+        try {
+            if (!HealthChecker.isBrowserAlive() || !HealthChecker.isModalWindowOpen()) {
+                return;
+            }
+            ReportLogger.sessionWarn("[{}] Returned with a modal window still open — the previous test "
+                    + "did not close its form. Attempting ESC before reuse.", s.label());
+            try {
+                new Actions(s.driver()).sendKeys(Keys.ESCAPE).perform();
+            } catch (RuntimeException e) {
+                Log.warn("[SessionPool] [{}] ESC dismiss threw: {}", s.label(), e.getMessage());
+            }
+
+            if (!HealthChecker.isModalWindowOpen()) {
+                ReportLogger.session("[{}] Modal dismissed — session is clean and reusable.", s.label());
+                return;
+            }
+            s.ctx().setNeedsRecovery(true);
+            ReportLogger.sessionWarn("[{}] Modal still open after ESC — flagged for recovery; the next "
+                    + "borrower will destroy this session and create a fresh one.", s.label());
+        } catch (RuntimeException e) {
+            // A probe that itself failed says nothing good about the session — flag rather than
+            // gamble, but never let teardown fail because of it.
+            Log.warn("[SessionPool] [{}] Dirty-UI check threw ({}) — flagging for recovery.",
+                    s.label(), e.getMessage());
+            try {
+                s.ctx().setNeedsRecovery(true);
+            } catch (RuntimeException ignored) { /* nothing further we can do */ }
+        }
+    }
+
     private static boolean isReusable(PooledSession s) {
         if (s.isClosed()) {
+            return false;
+        }
+        // Cheap re-check on the borrow side too: giveBack's probe runs on the returning thread and
+        // can be skipped entirely (destroy mid-row, an exception before it), so this is the one
+        // place guaranteed to run immediately before a session is used again.
+        if (HealthChecker.isModalWindowOpen()) {
+            Log.warn("[SessionPool] [{}] Refusing reuse — a modal window is open on this session.", s.label());
             return false;
         }
         if (!s.ctx().isLoggedIn()) {

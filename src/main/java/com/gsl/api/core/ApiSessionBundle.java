@@ -4,7 +4,9 @@ import com.gsl.api.client.ArVoucherApiClient;
 import com.gsl.api.client.DcApiClient;
 import com.gsl.api.client.GrcApiClient;
 import com.gsl.api.client.ItemApiClient;
+import com.gsl.api.client.LedgerApiClient;
 import com.gsl.api.client.ServiceInvoiceAdhocApiClient;
+import com.gsl.api.client.SubLedgerOthersApiClient;
 import com.gsl.api.client.TransferOutApiClient;
 import com.gsl.enums.ApiPlatform;
 import com.gsl.testdata.UserCredential;
@@ -43,6 +45,8 @@ public final class ApiSessionBundle {
     private final TransferOutApiClient transferOutApiClient;
     private final ServiceInvoiceAdhocApiClient serviceInvoiceAdhocApiClient;
     private final ArVoucherApiClient arVoucherApiClient;
+    private final LedgerApiClient ledgerApiClient;
+    private final SubLedgerOthersApiClient subLedgerOthersApiClient;
 
     /**
      * Terminates the server-side session (WEBAPI only — PUBLICAPI's OAuth2 client-credentials

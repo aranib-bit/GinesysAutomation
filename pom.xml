@@ -372,6 +372,144 @@
             </build>
         </profile>
 
+        <!-- General Voucher — standalone (positive + negative/boundary), full 144-combination matrix -->
+        <profile>
+            <id>general-voucher</id>
+            <build>
+                <plugins>
+                    <plugin>
+                        <groupId>org.apache.maven.plugins</groupId>
+                        <artifactId>maven-surefire-plugin</artifactId>
+                        <version>3.2.5</version>
+                        <configuration>
+                            <testFailureIgnore>true</testFailureIgnore>
+                            <suiteXmlFiles>
+                                <suiteXmlFile>testng-generalvoucher.xml</suiteXmlFile>
+                            </suiteXmlFiles>
+                            <argLine>${test.jvm.args} --add-opens java.base/java.lang=ALL-UNNAMED -Drunmode=${runmode} -Dheadless=${headless} -Dbrowser=${browser}</argLine>
+                        </configuration>
+                    </plugin>
+                </plugins>
+            </build>
+        </profile>
+
+        <!-- General Voucher — Mandatory (standalone) -->
+        <profile>
+            <id>gv-mandatory</id>
+            <build>
+                <plugins>
+                    <plugin>
+                        <groupId>org.apache.maven.plugins</groupId>
+                        <artifactId>maven-surefire-plugin</artifactId>
+                        <version>3.2.5</version>
+                        <configuration>
+                            <testFailureIgnore>true</testFailureIgnore>
+                            <suiteXmlFiles>
+                                <suiteXmlFile>testng-gv-mandatory.xml</suiteXmlFile>
+                            </suiteXmlFiles>
+                            <argLine>${test.jvm.args} --add-opens java.base/java.lang=ALL-UNNAMED -Drunmode=${runmode} -Dheadless=${headless} -Dbrowser=${browser}</argLine>
+                            <systemPropertyVariables>
+                                <gv.group>MANDATORY</gv.group>
+                            </systemPropertyVariables>
+                        </configuration>
+                    </plugin>
+                </plugins>
+            </build>
+        </profile>
+
+        <!-- TEMPORARY — verifies the DB-based assigned-site-codes fix; remove after use. -->
+        <profile>
+            <id>verify-site-fix</id>
+            <build>
+                <plugins>
+                    <plugin>
+                        <groupId>org.apache.maven.plugins</groupId>
+                        <artifactId>maven-surefire-plugin</artifactId>
+                        <version>3.2.5</version>
+                        <configuration>
+                            <testFailureIgnore>true</testFailureIgnore>
+                            <suiteXmlFiles>
+                                <suiteXmlFile>testng-verify-site-fix.xml</suiteXmlFile>
+                            </suiteXmlFiles>
+                            <argLine>${test.jvm.args} --add-opens java.base/java.lang=ALL-UNNAMED -Drunmode=${runmode} -Dheadless=${headless} -Dbrowser=${browser}</argLine>
+                        </configuration>
+                    </plugin>
+                </plugins>
+            </build>
+        </profile>
+
+        <!-- General Voucher — Regression Phase 1 (standalone) -->
+        <profile>
+            <id>regression-generalvoucher-phase1</id>
+            <build>
+                <plugins>
+                    <plugin>
+                        <groupId>org.apache.maven.plugins</groupId>
+                        <artifactId>maven-surefire-plugin</artifactId>
+                        <version>3.2.5</version>
+                        <configuration>
+                            <testFailureIgnore>true</testFailureIgnore>
+                            <suiteXmlFiles>
+                                <suiteXmlFile>testng-regression-generalvoucher-phase1.xml</suiteXmlFile>
+                            </suiteXmlFiles>
+                            <argLine>${test.jvm.args} --add-opens java.base/java.lang=ALL-UNNAMED -Drunmode=${runmode} -Dheadless=${headless} -Dbrowser=${browser}</argLine>
+                            <systemPropertyVariables>
+                                <gv.group>REGRESSION_PHASE1</gv.group>
+                            </systemPropertyVariables>
+                        </configuration>
+                    </plugin>
+                </plugins>
+            </build>
+        </profile>
+
+        <!-- General Voucher — Regression Phase 2 (standalone) -->
+        <profile>
+            <id>regression-generalvoucher-phase2</id>
+            <build>
+                <plugins>
+                    <plugin>
+                        <groupId>org.apache.maven.plugins</groupId>
+                        <artifactId>maven-surefire-plugin</artifactId>
+                        <version>3.2.5</version>
+                        <configuration>
+                            <testFailureIgnore>true</testFailureIgnore>
+                            <suiteXmlFiles>
+                                <suiteXmlFile>testng-regression-generalvoucher-phase2.xml</suiteXmlFile>
+                            </suiteXmlFiles>
+                            <argLine>${test.jvm.args} --add-opens java.base/java.lang=ALL-UNNAMED -Drunmode=${runmode} -Dheadless=${headless} -Dbrowser=${browser}</argLine>
+                            <systemPropertyVariables>
+                                <gv.group>REGRESSION_PHASE2</gv.group>
+                            </systemPropertyVariables>
+                        </configuration>
+                    </plugin>
+                </plugins>
+            </build>
+        </profile>
+
+        <!-- General Voucher — Regression Phase 3 (standalone) -->
+        <profile>
+            <id>regression-generalvoucher-phase3</id>
+            <build>
+                <plugins>
+                    <plugin>
+                        <groupId>org.apache.maven.plugins</groupId>
+                        <artifactId>maven-surefire-plugin</artifactId>
+                        <version>3.2.5</version>
+                        <configuration>
+                            <testFailureIgnore>true</testFailureIgnore>
+                            <suiteXmlFiles>
+                                <suiteXmlFile>testng-regression-generalvoucher-phase3.xml</suiteXmlFile>
+                            </suiteXmlFiles>
+                            <argLine>${test.jvm.args} --add-opens java.base/java.lang=ALL-UNNAMED -Drunmode=${runmode} -Dheadless=${headless} -Dbrowser=${browser}</argLine>
+                            <systemPropertyVariables>
+                                <gv.group>REGRESSION_PHASE3</gv.group>
+                            </systemPropertyVariables>
+                        </configuration>
+                    </plugin>
+                </plugins>
+            </build>
+        </profile>
+
         <!-- AR Voucher — Mandatory (standalone) — AR-only counterpart to ap-mandatory above -->
         <profile>
             <id>ar-mandatory</id>

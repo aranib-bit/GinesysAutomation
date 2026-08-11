@@ -11,6 +11,7 @@ import com.gsl.testdata.UserType;
 import com.gsl.utils.Log;
 import com.gsl.utils.TestContextManager;
 import org.testng.Assert;
+import org.testng.ITestResult;
 import org.testng.annotations.AfterClass;
 import org.testng.annotations.AfterMethod;
 import org.testng.annotations.BeforeMethod;
@@ -101,9 +102,15 @@ public abstract class BaseSetTwoTest extends WebTest {
         ConcurrentSyncManager.await(AFTER_SAVE_BARRIERS.get(groupId), groupId + ".afterSave");
     }
 
+    /**
+     * @param result unused here — SET-2 owns its driver per method rather than borrowing from
+     *               SessionPool, so there is no session to classify a failure against. The
+     *               parameter exists only to keep this an override of {@link WebTest#tearDown};
+     *               drop it and TestNG would run <i>both</i> methods as separate @AfterMethods.
+     */
     @Override
     @AfterMethod(alwaysRun = true)
-    public void tearDown() {
+    public void tearDown(ITestResult result) {
         // Release reserved documents BEFORE quitting the driver so the log line correlates
         // with the still-active thread context. Without this, SET-2 leaks reservations across
         // group runs (the parent WebTest.tearDown is bypassed by this override).

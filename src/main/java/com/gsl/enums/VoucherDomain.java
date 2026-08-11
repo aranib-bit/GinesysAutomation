@@ -5,6 +5,7 @@ import com.gsl.pages.enums.Finance.Operations.ARVoucher.ARVoucherGridColumnHeade
 import com.gsl.pages.enums.Finance.Operations.Common.CommonVoucherGridColumnHeader;
 import com.gsl.pages.enums.Finance.Operations.Common.IVoucherGridColumnHeader;
 import com.gsl.pages.enums.Finance.Operations.Common.VoucherDocumentLabels;
+import com.gsl.pages.enums.Finance.Operations.GeneralVoucher.GeneralVoucherGridColumnHeader;
 
 import java.util.Optional;
 
@@ -23,8 +24,9 @@ public enum VoucherDomain implements VoucherDocumentLabels {
         @Override public IVoucherGridColumnHeader getSubLedgerColumnHeader() { throw new UnsupportedOperationException("CONTRA has no sub-ledger column header"); }
     },
     GV {
-        @Override public String getDateFieldId() { return "transactionDate"; }
-        @Override public IVoucherGridColumnHeader getSubLedgerColumnHeader() { throw new UnsupportedOperationException("GV has no sub-ledger column header"); }
+        @Override public String getDateFieldId() { return "transanctionDate"; }
+        @Override public IVoucherGridColumnHeader getSubLedgerColumnHeader() { return GeneralVoucherGridColumnHeader.SUB_LEDGER; }
+        @Override public String getVoucherLabel() { return "General Voucher"; }
     },
     COMMON {
         @Override public String getDateFieldId() { return null; }

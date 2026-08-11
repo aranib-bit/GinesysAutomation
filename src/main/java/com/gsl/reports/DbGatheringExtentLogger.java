@@ -2,6 +2,7 @@ package com.gsl.reports;
 
 import com.gsl.testdata.dto.MergedFinanceApVoucherData;
 import com.gsl.testdata.dto.MergedFinanceArVoucherData;
+import com.gsl.testdata.dto.MergedFinanceGeneralVoucherData;
 
 import java.util.List;
 
@@ -41,6 +42,18 @@ public final class DbGatheringExtentLogger {
      * or when no ExtentTest is active.
      */
     public static void log(MergedFinanceApVoucherData data) {
+        if (data == null) return;
+        render(data.getDbGatheringLog());
+    }
+
+    /**
+     * General Voucher overload — renders the gathering node as a step-timeline child node.
+     * No-op when {@code data} is null, in Excel mode (dbGatheringLog is empty),
+     * or when no ExtentTest is active. Content is populated by
+     * {@code DbGeneralVoucherDataSource.load()} into {@code dbGatheringLog} — previously
+     * collected but never rendered, since no overload existed for this type.
+     */
+    public static void log(MergedFinanceGeneralVoucherData data) {
         if (data == null) return;
         render(data.getDbGatheringLog());
     }

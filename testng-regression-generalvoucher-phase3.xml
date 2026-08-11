@@ -1,0 +1,28 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE suite SYSTEM "http://testng.org/testng-1.0.dtd">
+<!--
+    General Voucher REGRESSION_PHASE3 Suite — the Reversal=Yes mirror of the entire combination
+    matrix, minus the 1 case already covered by Mandatory (71 combinations per
+    GeneralVoucherExecutionGroup's javadoc). Note: roughly half of these are Cheque/NEFT-RTGS
+    Leg+Payment variants, currently blocked pending the UI-discovery spike (see
+    GeneralVoucherPaymentVariant) — they will report as SKIPPED, not FAILED, until that's done.
+
+    Run: mvn clean test -Pregression-generalvoucher-phase3
+-->
+<suite name="General Voucher — Regression Phase 3 Suite" parallel="none" data-provider-thread-count="4">
+
+    <listeners>
+        <listener class-name="com.gsl.listeners.RetryAnnotationTransformer"/>
+        <listener class-name="com.gsl.listeners.TestListener"/>
+        <listener class-name="com.gsl.listeners.SuiteDataLoader"/>
+        <listener class-name="com.gsl.listeners.AnnotationMethodInterceptor"/>
+    </listeners>
+
+    <test name="General Voucher Create — Regression Phase 3" parallel="methods" thread-count="2">
+        <parameter name="gv.group" value="REGRESSION_PHASE3"/>
+        <classes>
+            <class name="com.tests.Finance.Operations.Vouchers.CreateGeneralVoucher"/>
+        </classes>
+    </test>
+
+</suite>

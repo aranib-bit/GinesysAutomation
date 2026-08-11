@@ -1,0 +1,26 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE suite SYSTEM "http://testng.org/testng-1.0.dtd">
+<!--
+    General Voucher REGRESSION_PHASE2 Suite — Phase1's tuples swept across the remaining 3
+    Leg+Payment values, plus Asset/Liability's first exposure at Type1 across all 4 Leg+Payment
+    values, Reversal=No (52 combinations per GeneralVoucherExecutionGroup's javadoc).
+
+    Run: mvn clean test -Pregression-generalvoucher-phase2
+-->
+<suite name="General Voucher — Regression Phase 2 Suite" parallel="none" data-provider-thread-count="4">
+
+    <listeners>
+        <listener class-name="com.gsl.listeners.RetryAnnotationTransformer"/>
+        <listener class-name="com.gsl.listeners.TestListener"/>
+        <listener class-name="com.gsl.listeners.SuiteDataLoader"/>
+        <listener class-name="com.gsl.listeners.AnnotationMethodInterceptor"/>
+    </listeners>
+
+    <test name="General Voucher Create — Regression Phase 2" parallel="methods" thread-count="2">
+        <parameter name="gv.group" value="REGRESSION_PHASE2"/>
+        <classes>
+            <class name="com.tests.Finance.Operations.Vouchers.CreateGeneralVoucher"/>
+        </classes>
+    </test>
+
+</suite>

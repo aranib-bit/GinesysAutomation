@@ -1,0 +1,26 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE suite SYSTEM "http://testng.org/testng-1.0.dtd">
+<!--
+    General Voucher REGRESSION_PHASE1 Suite — Site/SubLedger shape dimension across all 4 GL
+    account types, Leg+Payment fixed to Bank+Cheque, Reversal=No (12 combinations per
+    GeneralVoucherExecutionGroup's javadoc).
+
+    Run: mvn clean test -Pregression-generalvoucher-phase1
+-->
+<suite name="General Voucher — Regression Phase 1 Suite" parallel="none" data-provider-thread-count="4">
+
+    <listeners>
+        <listener class-name="com.gsl.listeners.RetryAnnotationTransformer"/>
+        <listener class-name="com.gsl.listeners.TestListener"/>
+        <listener class-name="com.gsl.listeners.SuiteDataLoader"/>
+        <listener class-name="com.gsl.listeners.AnnotationMethodInterceptor"/>
+    </listeners>
+
+    <test name="General Voucher Create — Regression Phase 1" parallel="methods" thread-count="2">
+        <parameter name="gv.group" value="REGRESSION_PHASE1"/>
+        <classes>
+            <class name="com.tests.Finance.Operations.Vouchers.CreateGeneralVoucher"/>
+        </classes>
+    </test>
+
+</suite>

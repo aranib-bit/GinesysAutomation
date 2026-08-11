@@ -1,8 +1,6 @@
 package com.gsl.pages.pagecomponent.Finance.Common;
 
-import com.google.common.util.concurrent.Uninterruptibles;
 import com.gsl.config.ConfigFactory;
-import com.gsl.driver.DriverManager;
 import com.gsl.enums.WaitType;
 import com.gsl.utils.Selenium.JavascriptExecutorUtils;
 import com.gsl.utils.Selenium.WaitUtils;
@@ -11,13 +9,8 @@ import com.gsl.pages.pagecomponent.Procurement.Operations.GoodsReceiveChallan.Go
 import com.gsl.reports.ExtentLogger;
 import com.gsl.utils.Selenium.SeleniumUtils;
 import org.openqa.selenium.By;
-import org.openqa.selenium.StaleElementReferenceException;
-import org.openqa.selenium.WebDriver;
 import org.openqa.selenium.support.ui.ExpectedConditions;
 import org.openqa.selenium.support.ui.WebDriverWait;
-
-import java.time.Duration;
-import java.util.concurrent.TimeUnit;
 
 public class CashBankPopup {
 
@@ -47,7 +40,6 @@ public class CashBankPopup {
     }
 
     public CashBankParent selectCashBank(String cashbankname) {
-        WebDriver driver = DriverManager.getDriver();
         SeleniumUtils.sendKeys(Loc.CASHBANKSEARCHBOX, cashbankname, "CASHBANKSEARCHBOX");
 
         By selectionBy = getCashBankSelection(cashbankname);
@@ -57,26 +49,13 @@ public class CashBankPopup {
         // Wait for the grid row to appear and be visible after ExtJS search reload
         wait.until(ExpectedConditions.visibilityOfElementLocated(selectionBy));
 
-        // Retry click in case ExtJS re-renders the grid between find and click
-        for (int attempt = 0; attempt < 3; attempt++) {
-            try {
-                driver.findElement(selectionBy).click();
-                if (attempt > 0) {
-                    ExtentLogger.info("[CASHBANK SELECT] Retry succeeded on attempt " + (attempt + 1) + " | CashBank=" + cashbankname);
-                } else {
-                    ExtentLogger.info("[CASHBANK SELECT] Selected on first attempt | CashBank=" + cashbankname);
-                }
-                break;
-            } catch (StaleElementReferenceException e) {
-                ExtentLogger.info("[CASHBANK SELECT] StaleElementReferenceException on attempt " + (attempt + 1) + " | CashBank=" + cashbankname + " | Retrying...");
-                System.out.println("StaleElementReferenceException on cashbank click, attempt " + (attempt + 1));
-                if (attempt == 2) {
-                    ExtentLogger.info("[CASHBANK SELECT] All 3 attempts failed with StaleElementReferenceException | CashBank=" + cashbankname);
-                    throw e;
-                }
-                Uninterruptibles.sleepUninterruptibly(500, TimeUnit.MILLISECONDS);
-            }
-        }
+        // clickWithStaleRetry composes stale-element retry with clickWithOverlayRetry's
+        // mask/backdrop-aware retry — covers both the grid re-rendering between find and click
+        // (StaleElementReferenceException) AND the ExtJS loadmask still covering the row when the
+        // click fires (ElementClickInterceptedException), which the previous hand-rolled loop
+        // (stale-only catch, raw driver.findElement(...).click()) did not guard against.
+        SeleniumUtils.clickWithStaleRetry(selectionBy, WaitType.CLICKABLE, "CASHBANK_ROW_" + cashbankname);
+        ExtentLogger.info("[CASHBANK SELECT] Selected | CashBank=" + cashbankname);
 
         SeleniumUtils.click(Loc.CASHBANKPOPUPOKBUTTON, WaitType.CLICKABLE, "OK");
         return parentPage;

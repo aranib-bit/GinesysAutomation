@@ -17,7 +17,6 @@ import com.gsl.testdata.UserType;
 import com.gsl.utils.Log;
 import com.gsl.utils.TestContextManager;
 import org.testng.ITestResult;
-import org.testng.Reporter;
 import org.testng.annotations.AfterMethod;
 import org.testng.annotations.BeforeMethod;
 
@@ -151,8 +150,19 @@ public abstract class WebTest extends BaseTest {
         }
     }
 
+    /**
+     * @param result the just-finished <b>test method's</b> result, injected by TestNG.
+     *               <p>It must be a parameter, never {@code Reporter.getCurrentTestResult()}: inside an
+     *               {@code @AfterMethod}, TestNG has already swapped the thread-local to the
+     *               <i>configuration</i> method's own {@code ITestResult}, whose status is
+     *               {@code STARTED} — so a {@code getStatus() == FAILURE} check on it is dead code and
+     *               the recovery below silently never fires. Confirmed in run 20260807_095328: a
+     *               General Voucher test timed out with its modal still open, {@code classify()} was
+     *               never called, the dirty session was returned to the pool, and the next three tests
+     *               all failed clicking the side menu through the leftover form.
+     */
     @AfterMethod(alwaysRun = true)
-    public void tearDown() {
+    public void tearDown(ITestResult result) {
         long tid = Thread.currentThread().getId();
         ExecutionManager.logState("tearDown:start");
 
@@ -173,7 +183,6 @@ public abstract class WebTest extends BaseTest {
                 ReportLogger.session("[T-{}] tearDown: returning session to pool — user='{}', module='{}', subModule='{}'.",
                         tid, ctx.getUser() != null ? ctx.getUser().username() : "unknown",
                         ctx.getCurrentModule(), ctx.getCurrentSubModule());
-                ITestResult result = Reporter.getCurrentTestResult();
                 if (result != null && result.getStatus() == ITestResult.FAILURE) {
                     FailureCategory category = FailureClassifier.classify(result.getThrowable());
                     if (category == FailureCategory.NAVIGATION_FAILURE

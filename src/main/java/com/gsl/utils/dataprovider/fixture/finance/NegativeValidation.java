@@ -102,6 +102,34 @@ public enum NegativeValidation {
     /** Reference text longer than the {@code finvchmain.refno} column / form max length. */
     REFERENCE_TOO_LONG("Reference No. exceeds the maximum allowed length"),
 
+    // ─── General Voucher — Allocate Sites / Sub Ledger boundary cases ─────────
+    // ⚠️ UNVERIFIED text (confirmed assertion POINT, not yet confirmed literal): Save's own dialog
+    // for a detail-section row error is confirmed generic — see ZERO_AMOUNT_DIALOG's reuse note
+    // below — so GV_SITE_ALLOCATION_PENDING/GV_SITE_NOT_ALLOCATED are read from the row's hover
+    // tooltip (GeneralVoucherExpenseIncomeDetail.rowIndicatorButton +
+    // GeneralVoucherPredicateFactory.NEGATIVE_FORM_VALIDATION_BEHAVIOR's "Hover row indicator" step,
+    // the same mdi-dots-horizontal/ExtJsQuickTipUtils mechanism AP/AR use for
+    // ZERO_AMOUNT_TOOLTIP_STOP/AMOUNT below), never verifyErrorMessage against the dialog itself —
+    // confirmed live, run 20260807_171711, that the dialog text alone was never these scenarios'
+    // real message. The literal tooltip text below is still only a best-effort guess.
+
+    /** Row's hover-tooltip text when a Type 2/Type 3 row's Allocate Sites Tagging Summary has
+     *  Pending Amount != 0 at Save. Read via the row indicator, not the Save dialog — see above. */
+    GV_SITE_ALLOCATION_PENDING("Site allocation is required as ledger is site applicable."),
+
+    /** Clicking a Type 3 row's (Site AND Sub Ledger applicable) "Site" button while Sub Ledger is
+     *  blank — the app blocks the button itself with its own dialog (header "No sub-ledger
+     *  selected") instead of ever opening Allocate Sites, well before Save is reached. Text
+     *  CONFIRMED live, run 20260807_171711 (unlike the guessed literals elsewhere in this block).
+     *  UNLIKE the other two constants here, this is asserted by its own dedicated
+     *  {@code GeneralVoucherPredicateFactory.NEG_SUBLEDGER_REQUIRED_BEHAVIOR} — not
+     *  NEGATIVE_FORM_VALIDATION_BEHAVIOR's Save+hover flow, which this scenario never reaches. */
+    GV_SUBLEDGER_REQUIRED("Please select sub-ledger."),
+
+    /** Row's hover-tooltip text when a Type 2/Type 3 row's Site button was never clicked (no
+     *  allocation attempted at all). Read via the row indicator, not the Save dialog — see above. */
+    GV_SITE_NOT_ALLOCATED("Site allocation is required as ledger is site applicable."),
+
     ;
 
     // ─────────────────────────────────────────────────────────────────────────

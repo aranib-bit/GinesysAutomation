@@ -32,4 +32,16 @@ public class FinVchDet {
 
     @ColumnName("ref_admsite_name")
     private String refAdmsiteName;
+
+    /**
+     * Site-applicability flag denormalized straight onto the detail row —
+     * confirmed live (cross-tenant, see FinCostTagValidator) to mirror
+     * fingl.costapp for this line at posting time. 'Y' for Type2/Type3
+     * General Voucher rows, 'N' for Type1.
+     */
+    @ColumnName("gl_cc_appl")
+    private String glCcAppl;
+
+    @ColumnName("isreversal")
+    private String isReversal;
 }

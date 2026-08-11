@@ -9,11 +9,15 @@ import com.gsl.testdata.UserCredentialLoader;
 import com.gsl.testdata.UserPool;
 import com.gsl.testdata.UserType;
 import com.gsl.utils.Log;
+import io.github.sskorol.core.DataSupplier;
 import org.testng.ISuite;
 import org.testng.ISuiteListener;
+import org.testng.annotations.Test;
+import org.testng.xml.XmlClass;
 import org.testng.xml.XmlSuite;
 import org.testng.xml.XmlTest;
 
+import java.lang.reflect.Method;
 import java.util.List;
 
 /**
@@ -182,6 +186,7 @@ public class SuiteDataLoader implements ISuiteListener {
         // ── Per-test thread-count check ───────────────────────────────────────
         XmlSuite xmlSuite = suite.getXmlSuite();
         int suiteThreadCount = xmlSuite.getThreadCount();
+        int dataProviderThreadCount = xmlSuite.getDataProviderThreadCount();
 
         for (XmlTest xmlTest : xmlSuite.getTests()) {
             // XmlTest.getThreadCount() returns the suite default when not overridden
@@ -189,58 +194,125 @@ public class SuiteDataLoader implements ISuiteListener {
                     ? xmlTest.getThreadCount()
                     : suiteThreadCount;
 
-            if (uiCount > 0 && testThreadCount > uiCount) {
+            // Real concurrent pressure on SessionPool/ApiSessionFactory comes from whichever
+            // mechanism actually drives it: plain <test> thread-count, OR — for suites like
+            // General Voucher/AP/AR Voucher that route rows through a
+            // @DataSupplier(runInParallel=true) — TestNG's OWN data-provider thread pool, sized
+            // by suite-level data-provider-thread-count (TestNG only reads that attribute at
+            // <suite> scope, never <test>). Only apply it when this test's data provider is
+            // actually annotated runInParallel=true; otherwise a merely-present
+            // data-provider-thread-count on the suite (inherited/unused) would inflate the check
+            // for tests that never spin up that pool.
+            boolean usesParallelDataSupplier = usesRunInParallelDataSupplier(xmlTest);
+            int testConcurrency = usesParallelDataSupplier
+                    ? Math.max(testThreadCount, dataProviderThreadCount)
+                    : testThreadCount;
+            if (usesParallelDataSupplier && testConcurrency > testThreadCount) {
+                Log.info("[UserPool] <test name=\"{}\">: uses a runInParallel=true @DataSupplier — "
+                        + "effective concurrency={} (data-provider-thread-count) overrides plain "
+                        + "thread-count={} for pool/headroom validation.",
+                        xmlTest.getName(), testConcurrency, testThreadCount);
+            }
+
+            if (uiCount > 0 && testConcurrency > uiCount) {
                 Log.warn("[UserPool] VALIDATION WARN — <test name=\"{}\">: " +
-                         "thread-count={} exceeds UI user count={}. " +
+                         "effective concurrency={} exceeds UI user count={}. " +
                          "Effective parallelism = {}. " +
-                         "Extra {} thread(s) will queue at acquireSet1User() until a user is released. " +
+                         "Extra {} thread(s)/row(s) will queue at acquireSet1User() until a user is released. " +
                          "Increase UsersList.xlsx UI users to {} if full parallelism is required.",
-                        xmlTest.getName(), testThreadCount, uiCount,
-                        uiCount, (testThreadCount - uiCount), testThreadCount);
+                        xmlTest.getName(), testConcurrency, uiCount,
+                        uiCount, (testConcurrency - uiCount), testConcurrency);
             } else if (uiCount > 0) {
                 Log.info("[UserPool] Validation OK — <test name=\"{}\">: " +
-                         "thread-count={} <= UI users={}. Full parallelism achievable.",
-                        xmlTest.getName(), testThreadCount, uiCount);
+                         "effective concurrency={} <= UI users={}. Full parallelism achievable.",
+                        xmlTest.getName(), testConcurrency, uiCount);
             }
 
             // ── Backfill headroom check ───────────────────────────────────────
-            // SessionPool holds one UI user per thread for the ENTIRE WEB test lifetime
+            // SessionPool holds one UI user per thread/row for the ENTIRE WEB test lifetime
             // (parked on the list page between rows). A DataAvailabilityGuard backfill fires
             // on that SAME thread and asks the SAME UI pool for one more credential. If every
-            // seat is already held 1:1 (thread-count == UI user count, previously considered
-            // "OK — full parallelism achievable" above), the backfill's acquire deadlocks
-            // waiting for a spare that will never free up. This check is separate from — and
-            // stricter than — the plain thread-count-vs-UI-count check above.
+            // seat is already held 1:1 (effective concurrency == UI user count, previously
+            // considered "OK — full parallelism achievable" above), the backfill's acquire
+            // deadlocks waiting for a spare that will never free up. This check is separate
+            // from — and stricter than — the plain concurrency-vs-UI-count check above.
             if (uiCount > 0) {
                 int backfillHeadroom = ConfigFactory.getApiConfig().backfillUiPoolHeadroom();
-                if (testThreadCount + backfillHeadroom > uiCount) {
+                if (testConcurrency + backfillHeadroom > uiCount) {
                     String msg = String.format(
-                            "[UserPool] BACKFILL DEADLOCK RISK — <test name=\"%s\">: thread-count=%d + " +
+                            "[UserPool] BACKFILL DEADLOCK RISK — <test name=\"%s\">: effective concurrency=%d + " +
                             "backfill headroom=%d exceeds UI user count=%d. A WEB test's data-shortfall " +
                             "backfill (DataAvailabilityGuard) acquires an EXTRA UI-pool credential on the SAME " +
                             "thread that already holds one for its browser session — if every UI user is " +
-                            "already checked out 1:1 by concurrent threads, a backfill attempt deadlocks " +
+                            "already checked out 1:1 by concurrent threads/rows, a backfill attempt deadlocks " +
                             "waiting for a spare that never frees up. Add %d more UI user row(s) to " +
-                            "UsersList.xlsx, or reduce thread-count, or lower datafallback.userPool.backfillHeadroom.",
-                            xmlTest.getName(), testThreadCount, backfillHeadroom, uiCount,
-                            (testThreadCount + backfillHeadroom - uiCount));
+                            "UsersList.xlsx, or reduce thread-count/data-provider-thread-count, or lower " +
+                            "datafallback.userPool.backfillHeadroom.",
+                            xmlTest.getName(), testConcurrency, backfillHeadroom, uiCount,
+                            (testConcurrency + backfillHeadroom - uiCount));
                     if ("FAIL".equalsIgnoreCase(ConfigFactory.getApiConfig().backfillHeadroomValidationMode())) {
                         throw new IllegalStateException(msg);
                     }
                     Log.error(msg);
                 } else {
-                    Log.info("[UserPool] Validation OK — <test name=\"{}\">: thread-count={} + backfill headroom={} <= UI users={}. " +
+                    Log.info("[UserPool] Validation OK — <test name=\"{}\">: effective concurrency={} + backfill headroom={} <= UI users={}. " +
                              "Backfill has spare pool capacity, no deadlock risk.",
-                            xmlTest.getName(), testThreadCount, backfillHeadroom, uiCount);
+                            xmlTest.getName(), testConcurrency, backfillHeadroom, uiCount);
                 }
             }
 
-            if (apiCount > 0 && testThreadCount > apiCount) {
+            if (apiCount > 0 && testConcurrency > apiCount) {
                 Log.warn("[UserPool] VALIDATION WARN — <test name=\"{}\">: " +
-                         "thread-count={} exceeds API user count={}. " +
+                         "effective concurrency={} exceeds API user count={}. " +
                          "API user acquire may block if all API users are busy.",
-                        xmlTest.getName(), testThreadCount, apiCount);
+                        xmlTest.getName(), testConcurrency, apiCount);
             }
         }
+    }
+
+    /**
+     * Reflectively checks whether any {@code @Test} method declared on this {@link XmlTest}'s
+     * classes sources its data from a {@code @DataSupplier(runInParallel = true)} — the case
+     * where TestNG's OWN data-provider thread pool (sized by suite-level
+     * {@code data-provider-thread-count}) drives real concurrent {@code SessionPool.borrow()}/
+     * {@code ApiSessionFactory.createForWebApi()} calls, independent of {@code <test>
+     * thread-count}. Best-effort: any reflection failure (missing class, security manager, etc.)
+     * is logged and treated as "no" rather than failing suite startup over a diagnostic check.
+     */
+    private static boolean usesRunInParallelDataSupplier(XmlTest xmlTest) {
+        for (XmlClass xmlClass : xmlTest.getXmlClasses()) {
+            try {
+                Class<?> testClass = xmlClass.getSupportClass();
+                for (Method testMethod : testClass.getDeclaredMethods()) {
+                    Test testAnnotation = testMethod.getAnnotation(Test.class);
+                    if (testAnnotation == null || testAnnotation.dataProvider().isBlank()) {
+                        continue;
+                    }
+                    Class<?> providerClass = (testAnnotation.dataProviderClass() != Object.class)
+                            ? testAnnotation.dataProviderClass()
+                            : testClass;
+                    if (providerHasRunInParallelSupplier(providerClass, testAnnotation.dataProvider())) {
+                        return true;
+                    }
+                }
+            } catch (Exception e) {
+                Log.warn("[UserPool] Could not reflectively inspect class '{}' for a runInParallel "
+                        + "@DataSupplier — treating as not-parallel for this check: {}",
+                        xmlClass.getName(), e.getMessage());
+            }
+        }
+        return false;
+    }
+
+    private static boolean providerHasRunInParallelSupplier(Class<?> providerClass, String dataProviderName) {
+        for (Method supplierMethod : providerClass.getDeclaredMethods()) {
+            DataSupplier supplierAnnotation = supplierMethod.getAnnotation(DataSupplier.class);
+            if (supplierAnnotation != null
+                    && dataProviderName.equals(supplierAnnotation.name())
+                    && supplierAnnotation.runInParallel()) {
+                return true;
+            }
+        }
+        return false;
     }
 }

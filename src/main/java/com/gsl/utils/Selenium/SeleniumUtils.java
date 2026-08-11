@@ -14,6 +14,7 @@ import org.openqa.selenium.By;
 import org.openqa.selenium.ElementClickInterceptedException;
 import org.openqa.selenium.ElementNotInteractableException;
 import org.openqa.selenium.Keys;
+import org.openqa.selenium.StaleElementReferenceException;
 import org.openqa.selenium.WebElement;
 import org.openqa.selenium.support.ui.ExpectedConditions;
 import org.openqa.selenium.support.ui.WebDriverWait;
@@ -77,6 +78,61 @@ public class SeleniumUtils {
         ReportLogger.info(category, elementName + " is clicked successfully");
         WaitUtils.waitForExtMask(elementName);
         PopupMonitor.checkAfterAction(elementName);
+    }
+
+    // ── Stale-element retry (By-based only) ───────────────────────────────────
+    //
+    // click(By, ...)/sendKeys(By, ...) resolve their WebElement once, then act on that single
+    // reference — clickWithOverlayRetry only retries ElementClickInterceptedException/
+    // ElementNotInteractableException (transient overlay blocks), never StaleElementReferenceException.
+    // If the target re-renders between "element resolved" and "element acted on" (an ExtJS grid
+    // reload is the common trigger — see AllocateSitesPopup's own Javadoc), the resolved reference
+    // goes stale and the action throws uncaught. These wrappers exist for call sites exposed to
+    // that race; they re-invoke the same By-based method (which re-resolves fresh from the locator
+    // every call) on StaleElementReferenceException, bounded to a small retry count — purely
+    // additive, no existing click(...)/sendKeys(...) call site elsewhere is touched.
+    private static final int STALE_RETRY_MAX_ATTEMPTS = 2;
+
+    /** {@link #click(By, WaitType, String)}, retrying up to {@value #STALE_RETRY_MAX_ATTEMPTS} times on {@link StaleElementReferenceException}. */
+    public static void clickWithStaleRetry(By by, WaitType waitType, String elementName) {
+        for (int attempt = 1; attempt <= STALE_RETRY_MAX_ATTEMPTS; attempt++) {
+            try {
+                click(by, waitType, elementName);
+                return;
+            } catch (StaleElementReferenceException e) {
+                if (attempt >= STALE_RETRY_MAX_ATTEMPTS) {
+                    Log.error("[STALE-RETRY] '{}' still stale after {} attempts. Giving up.", elementName, attempt);
+                    throw e;
+                }
+                Log.warn("[STALE-RETRY] Click on '{}' hit a stale element — attempt {}/{}. Re-resolving and retrying…",
+                        elementName, attempt, STALE_RETRY_MAX_ATTEMPTS);
+                ExtentLogger.warning(String.format(
+                        "[Stale-Element Retry %d/%d] Click on '%s' hit a stale element (likely an ExtJS re-render) — re-resolving",
+                        attempt, STALE_RETRY_MAX_ATTEMPTS, elementName));
+                JavascriptExecutorUtils.waitForExtJS();
+            }
+        }
+    }
+
+    /** {@link #sendKeys(By, WaitType, String, String)}, retrying up to {@value #STALE_RETRY_MAX_ATTEMPTS} times on {@link StaleElementReferenceException}. */
+    public static void sendKeysWithStaleRetry(By by, WaitType waitType, String value, String elementName) {
+        for (int attempt = 1; attempt <= STALE_RETRY_MAX_ATTEMPTS; attempt++) {
+            try {
+                sendKeys(by, waitType, value, elementName);
+                return;
+            } catch (StaleElementReferenceException e) {
+                if (attempt >= STALE_RETRY_MAX_ATTEMPTS) {
+                    Log.error("[STALE-RETRY] '{}' still stale after {} attempts. Giving up.", elementName, attempt);
+                    throw e;
+                }
+                Log.warn("[STALE-RETRY] SendKeys on '{}' hit a stale element — attempt {}/{}. Re-resolving and retrying…",
+                        elementName, attempt, STALE_RETRY_MAX_ATTEMPTS);
+                ExtentLogger.warning(String.format(
+                        "[Stale-Element Retry %d/%d] SendKeys on '%s' hit a stale element (likely an ExtJS re-render) — re-resolving",
+                        attempt, STALE_RETRY_MAX_ATTEMPTS, elementName));
+                JavascriptExecutorUtils.waitForExtJS();
+            }
+        }
     }
 
     public static void jsClick(By by, String elementName) {
@@ -320,6 +376,25 @@ public class SeleniumUtils {
                     throw e;
                 }
                 String overlayTag = detectInterceptingOverlay(e.getMessage());
+
+                // Retrying only pays off when the blocker is something that goes away on its own.
+                // A stable layout element (a form label, a panel, a grid cell) never will, and each
+                // retry costs two full componentready timeouts inside waitForClickOverlay(). Run
+                // 20260807_095328 burned ~123s per test that way: a leftover Add-form label
+                // (#combo-1216-labelTextEl) sat over the side menu, and all 3 retries were futile
+                // by construction. Fail immediately instead, naming the blocker.
+                if (!isTransientOverlayBlock(e.getMessage())) {
+                    String blocker = describeBlocker(e.getMessage());
+                    Log.error("[OVERLAY-RETRY] Click on '{}' is blocked by {} — a stable layout element, "
+                            + "not a transient overlay. Skipping {} retr{} that cannot succeed.",
+                            elementName, blocker, maxRetries, maxRetries == 1 ? "y" : "ies");
+                    ExtentLogger.fail(String.format(
+                            "Click on '%s' is blocked by %s. That is part of the page layout, not a "
+                            + "loading mask — retrying cannot clear it. Most likely a previous step left "
+                            + "a form or dialog open over this element.", elementName, blocker));
+                    throw e;
+                }
+
                 Log.warn("[OVERLAY-RETRY] Click on '{}' intercepted{} — attempt {}/{}. Scrolling into view and waiting for overlay to clear…",
                         elementName, overlayTag, attempt, maxRetries);
                 ExtentLogger.warning(String.format(
@@ -351,5 +426,60 @@ public class SeleniumUtils {
         if (msg.contains("x-mask-msg"))    return " (by .x-mask-msg)";
         if (msg.contains("modal"))         return " (by modal overlay)";
         return "";
+    }
+
+    /** The ChromeDriver fragment that names what actually swallowed the click. */
+    private static final String INTERCEPTOR_FRAGMENT = "other element would receive the click";
+
+    /**
+     * Whether the thing blocking a click is expected to disappear by itself, and so is worth
+     * waiting and retrying for.
+     *
+     * <p>Three cases, and the distinction matters because each retry costs two
+     * {@code componentready.timeout.seconds} windows inside {@link WaitUtils#waitForClickOverlay()}:
+     * <ul>
+     *   <li>No interceptor named at all (a plain "element not interactable" — mid-animation, not yet
+     *       scrolled into view): <b>transient</b>, retry. This is the case the retry loop was built for.</li>
+     *   <li>An interceptor named, and it is a loading mask or ExtJS backdrop
+     *       ({@code ext-element-*}, {@code .x-mask}, {@code .x-mask-msg}, a modal overlay):
+     *       <b>transient</b>, retry.</li>
+     *   <li>An interceptor named, and it is anything else — a form label, panel, grid cell:
+     *       <b>not transient</b>. It is where the layout put it and no amount of mask-waiting moves
+     *       it. Fail fast so the report names the real problem instead of a timeout.</li>
+     * </ul>
+     *
+     * <p>Classifies the <b>interceptor's</b> markup only, never the whole message. The driver
+     * message names two elements — the click target and the thing that swallowed it — and ExtJS
+     * hands out {@code id="ext-element-NN"} freely to ordinary nodes (the captured DOM has one on a
+     * boundlist {@code <td>}). Scanning the full message would let an {@code ext-element} id on the
+     * <i>target</i> mark a genuine layout obstruction as a transient backdrop, restoring exactly the
+     * futile retry loop this guard exists to prevent.
+     */
+    private static boolean isTransientOverlayBlock(String msg) {
+        if (msg == null || msg.isBlank()) return true;
+        int idx = msg.toLowerCase().indexOf(INTERCEPTOR_FRAGMENT);
+        if (idx < 0) {
+            return true; // nothing named as the interceptor — not a layout obstruction
+        }
+        String interceptor = msg.substring(idx + INTERCEPTOR_FRAGMENT.length());
+        return !detectInterceptingOverlay(interceptor).isEmpty();
+    }
+
+    /**
+     * Human-readable description of the intercepting element, pulled from the driver message's
+     * "Other element would receive the click: &lt;…&gt;" fragment — e.g.
+     * {@code <span id="combo-1216-labelTextEl" class="x-form-item-label-text">}. Falls back to a
+     * generic label if the message is shaped unexpectedly.
+     */
+    private static String describeBlocker(String msg) {
+        if (msg == null || msg.isBlank()) return "another element";
+        int idx = msg.toLowerCase().indexOf(INTERCEPTOR_FRAGMENT);
+        if (idx < 0) return "another element";
+        String tail = msg.substring(idx + INTERCEPTOR_FRAGMENT.length()).trim();
+        if (tail.startsWith(":")) tail = tail.substring(1).trim();
+        // Keep it to the opening tag — the message can carry a long trailing stack/context.
+        int end = tail.indexOf('>');
+        String blocker = (end > 0 ? tail.substring(0, end + 1) : tail).trim();
+        return blocker.isEmpty() ? "another element" : blocker;
     }
 }

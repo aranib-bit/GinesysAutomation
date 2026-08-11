@@ -119,6 +119,59 @@ public class DocumentPopup {
      * @param expectedMessage the substring expected to appear in the validation error popup
      * @return {@code this} for fluent chaining
      */
+    /**
+     * Clears the payment-info-check warning if — and only if — that is the dialog currently
+     * showing, then leaves the next dialog in place for the caller to assert on. A no-op when the
+     * dialog on screen is something else (including the validation error the caller wants).
+     *
+     * <p><b>Why negative flows need this.</b> A General Voucher with a Cash/Bank but no instrument
+     * number makes the app raise "This is a payment voucher and you have not specified the
+     * instrument number..." <i>before</i> any field validation. Both that warning and the
+     * validation error render into the same {@code messagebox-1001}, so
+     * {@link #verifyErrorMessage(String)} read the warning and failed the assertion against it —
+     * run 20260807_124406: <em>Expected [Sub Ledger: This field is required.] but got [This is a
+     * payment voucher and you have not specified the instrument number...]</em>. That run also
+     * confirmed the GV wording, which {@link PaymentInfoCheckWarning#GV_VOUCHER} had only guessed
+     * at: it is AP's text and AP's Yes/No shape.
+     *
+     * <p>Gated on the message text containing "instrument number" rather than on the presence of a
+     * Yes button — {@code proceedLocator()} is a bare {@code //span[.='Yes']} and
+     * {@code GV_VOUCHER}'s substring is just "voucher", either of which could match an unrelated
+     * confirm dialog and silently dismiss it.
+     *
+     * <p>Waits for the message text to actually <i>change</i> afterwards, because the same
+     * {@code messagebox-1001} element is reused for the next dialog — waiting on visibility alone
+     * would return instantly against the warning's own stale text.
+     */
+    public DocumentPopup proceedPastPaymentInfoWarningIfPresent(PaymentInfoCheckWarning warning) {
+        WebDriver driver = DriverManager.getDriver();
+        int shortWait = (int) ConfigFactory.getWaitConfig().shortWaitSeconds();
+
+        if (!SeleniumUtils.isElementPresent(Loc.MESSAGE_TEXT, shortWait)) {
+            return this;   // nothing on screen yet — let the caller's own wait handle it
+        }
+        String current = driver.findElement(Loc.MESSAGE_TEXT).getText();
+        if (current == null || !current.toLowerCase().contains("instrument number")) {
+            return this;   // a different dialog — leave it for the caller to assert on
+        }
+
+        ReportLogger.business("Payment-info warning shown ahead of validation — proceeding past it ("
+                + warning + "): " + current);
+        com.gsl.reports.ActualResultsHolder.get().setUiPaymentInfoWarningAppeared(true);
+
+        final String warningText = current;
+        SeleniumUtils.click(warning.proceedLocator(), WaitType.CLICKABLE, "PAYMENT_WARN_PROCEED");
+        WaitUtils.fluentWaitBuilder()
+                .withMessage("the message box to change from the payment-info warning to the next dialog")
+                .until(d -> {
+                    List<WebElement> els = d.findElements(Loc.MESSAGE_TEXT);
+                    if (els.isEmpty() || !els.get(0).isDisplayed()) return false;
+                    String now = els.get(0).getText();
+                    return now != null && !now.isBlank() && !now.equals(warningText);
+                });
+        return this;
+    }
+
     public String verifyErrorMessage(String expectedMessage) {
         WebDriver driver = DriverManager.getDriver();
         WebDriverWait wait = WaitUtils.webDriverWait();

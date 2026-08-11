@@ -1,0 +1,27 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE suite SYSTEM "http://testng.org/testng-1.0.dtd">
+<!--
+    General Voucher MANDATORY Suite — the MANDATORY-tagged CreateGeneralVoucher rows only
+    (gv.group=MANDATORY, 9 combinations per GeneralVoucherExecutionGroup's javadoc), standalone
+    from the negative/boundary suite. DB-mode only (testdata.source=DB) — ExcelGeneralVoucherDataSource
+    has no group filtering.
+
+    Run: mvn clean test -Pgv-mandatory
+-->
+<suite name="General Voucher — Mandatory Suite" parallel="none" data-provider-thread-count="4">
+
+    <listeners>
+        <listener class-name="com.gsl.listeners.RetryAnnotationTransformer"/>
+        <listener class-name="com.gsl.listeners.TestListener"/>
+        <listener class-name="com.gsl.listeners.SuiteDataLoader"/>
+        <listener class-name="com.gsl.listeners.AnnotationMethodInterceptor"/>
+    </listeners>
+
+    <test name="General Voucher Create — Mandatory" parallel="methods" thread-count="2">
+        <parameter name="gv.group" value="MANDATORY"/>
+        <classes>
+            <class name="com.tests.Finance.Operations.Vouchers.CreateGeneralVoucher"/>
+        </classes>
+    </test>
+
+</suite>

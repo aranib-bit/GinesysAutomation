@@ -2,6 +2,7 @@ package com.gsl.driver;
 
 import com.gsl.utils.Selenium.WaitUtils;
 import org.openqa.selenium.By;
+import org.openqa.selenium.JavascriptExecutor;
 import org.openqa.selenium.WebDriver;
 import org.openqa.selenium.WebDriverException;
 
@@ -65,6 +66,51 @@ public final class HealthChecker {
             return !driver.findElements(By.xpath(
                     "//div[contains(@class,'x-window') or contains(@class,'x-message-box')]" +
                     "[not(contains(@class,'x-hide-display'))]")).isEmpty();
+        } catch (WebDriverException e) {
+            return false;
+        }
+    }
+
+    /**
+     * True if a <b>top-level modal window layer</b> — an Add/Modify form, a picker, a message box —
+     * is currently rendered and visible. This is the "is the page dirty" probe used before a session
+     * is handed to the next test; {@link #isPopupPresent()} is deliberately not reused for that
+     * purpose because its {@code contains(@class,'x-window')} substring match also hits
+     * {@code x-window-body}, {@code x-window-bodyWrap}, {@code x-window-item} and
+     * {@code x-window-text}, all of which exist on a perfectly clean page.
+     *
+     * <p>Three conditions, all required:
+     * <ul>
+     *   <li>{@code x-window} as a whole class <i>token</i>, not a substring — hence a CSS class
+     *       selector ({@code div.x-window}), which is token-exact by definition, rather than the
+     *       XPath {@code contains()} the probe above uses.</li>
+     *   <li>{@code aria-hidden} is not {@code "true"} — ExtJS keeps closed windows in the DOM.</li>
+     *   <li>A non-zero rendered box ({@code offsetParent}/{@code getClientRects}) — the same
+     *       "actually visible, not a zero-size leftover" test {@code WaitUtils.waitForClickOverlay}
+     *       and {@code waitForExtMaskBestEffort} already apply to masks.</li>
+     * </ul>
+     *
+     * <p>Confirmed against the DOM captured in run 20260807_095328, where the leftover
+     * {@code Add: General Voucher} form rendered as
+     * {@code <div class="x-window x-layer x-window-gsl_Type1 …" role="dialog" aria-hidden="false">}.
+     *
+     * <p>Never throws — a dead driver reports "no modal" and lets the browser/session probes above
+     * classify the real problem.
+     */
+    public static boolean isModalWindowOpen() {
+        WebDriver driver = DriverManager.getDriver();
+        if (driver == null) return false;
+        try {
+            Object result = ((JavascriptExecutor) driver).executeScript(
+                    "var ws = document.querySelectorAll('div.x-window');" +
+                    "for (var i = 0; i < ws.length; i++) {" +
+                    "  var w = ws[i];" +
+                    "  if (w.getAttribute('aria-hidden') === 'true') continue;" +
+                    "  if (w.offsetParent === null && w.getClientRects().length === 0) continue;" +
+                    "  var r = w.getBoundingClientRect();" +
+                    "  if (r.width > 0 && r.height > 0) return true;" +
+                    "} return false;");
+            return Boolean.TRUE.equals(result);
         } catch (WebDriverException e) {
             return false;
         }

@@ -1,5 +1,6 @@
 package com.gsl.api.client;
 
+import com.gsl.api.client.udf.UdfValueBuilder;
 import com.gsl.api.core.ApiClient;
 import com.gsl.api.core.ApiException;
 import com.gsl.api.model.arvoucher.ArVoucherCreateRequest;
@@ -11,21 +12,14 @@ import com.gsl.api.model.arvoucher.ReferenceSiteLookupResult;
 import com.gsl.api.model.arvoucher.SubLedgerLookupResult;
 import com.gsl.api.model.arvoucher.VoucherDateValidationRequest;
 import com.gsl.api.model.udf.UdfFieldMetadata;
-import com.gsl.api.model.udf.UdfLookupValue;
-import com.gsl.api.model.udf.UdfMetadataResponse;
 import com.gsl.api.model.udf.UdfValueEntry;
 import com.gsl.config.ConfigFactory;
-import com.gsl.database.DatabaseManager;
-import com.gsl.database.query.UdfValueQuery;
 import com.gsl.reports.ReportLogger;
 import com.gsl.reports.StepExecutor;
 import io.restassured.response.Response;
 import io.restassured.specification.RequestSpecification;
-import org.jdbi.v3.core.Jdbi;
 
 import java.time.LocalDate;
-import java.util.ArrayList;
-import java.util.Arrays;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -199,110 +193,18 @@ public class ArVoucherApiClient extends ApiClient {
     /**
      * GET /udf/GetUDFMetaData — lives under the original WebAPI base (same as
      * {@code ServiceInvoiceAdhocApiClient}'s own relative endpoints), NOT {@code financeApiBaseUri}
-     * — confirmed via the HAR path {@code /WebAPI/api/udf/GetUDFMetaData}. Passed as a relative
-     * path (not wrapped in {@link #url}) so it resolves against the shared spec's own base URI.
+     * — confirmed via the HAR path {@code /WebAPI/api/udf/GetUDFMetaData}. Delegates to the shared
+     * {@link UdfValueBuilder} (extracted so {@code SubLedgerOthersApiClient} can reuse the exact
+     * same fetch/build/mandatory-value logic for {@code FINSL}). Kept public — used directly by
+     * {@code ArVoucherApiScenarioType}'s own UDF metadata scenarios.
      */
     public List<UdfFieldMetadata> fetchUdfMetadata(String tableName) {
-        Map<String, Object> params = new LinkedHashMap<>();
-        params.put("_dc", System.currentTimeMillis());
-        params.put("tableName", tableName);
-        params.put("lookupData", true);
-        Response response = getRaw("/udf/GetUDFMetaData", params);
-        return response.as(UdfMetadataResponse.class).getMetaData();
+        return UdfValueBuilder.fetchUdfMetadata(this, tableName);
     }
 
-    private static final int UNIQUE_UDF_VALUE_MAX_ATTEMPTS = 5;
-
-    /**
-     * Builds {@code udfValues} from live metadata — one {@link UdfValueEntry} per field, matching
-     * the exact shape confirmed via HAR: {@code ""} for String/Memo, {@code null} otherwise, UNLESS
-     * a field is mandatory, in which case a real, datatype-correct value is required instead (and
-     * DB-validated against {@code finvchmain} first when the field is also {@code isUnique}).
-     */
-    private List<UdfValueEntry> buildUdfValues(List<UdfFieldMetadata> metadata) {
-        List<UdfValueEntry> entries = new ArrayList<>();
-        for (UdfFieldMetadata field : metadata) {
-            String fieldName = field.getColumnName().toLowerCase();
-            String datatype = field.getDatatype().toLowerCase();
-            Object value = field.isMandatory() ? resolveMandatoryUdfValue(field, datatype) : defaultUdfValue(datatype);
-            entries.add(UdfValueEntry.builder().fieldName(fieldName).value(value).datatype(datatype).build());
-            ReportLogger.dataBackfill(
-                    "[ArVoucherApiClient] UDF field '{}' (datatype={}, mandatory={}, unique={}) -> value={}",
-                    fieldName, datatype, field.isMandatory(), field.isUnique(), value);
-        }
-        return entries;
-    }
-
-    /** Non-mandatory default — matches the real captured request's own pattern exactly. */
-    private static Object defaultUdfValue(String datatypeLower) {
-        return ("string".equals(datatypeLower) || "memo".equals(datatypeLower)) ? "" : null;
-    }
-
-    /**
-     * Generates a real value for a mandatory field, re-generating up to
-     * {@value #UNIQUE_UDF_VALUE_MAX_ATTEMPTS} times if the field is also {@code isUnique} and a
-     * candidate collides with an existing {@code finvchmain} row — never sends a known-duplicate
-     * value and lets the server reject it opaquely.
-     */
-    private Object resolveMandatoryUdfValue(UdfFieldMetadata field, String datatypeLower) {
-        Jdbi jdbi = field.isUnique() ? DatabaseManager.getJdbi() : null;
-
-        for (int attempt = 0; attempt < UNIQUE_UDF_VALUE_MAX_ATTEMPTS; attempt++) {
-            Object candidate = generateUdfCandidate(field, datatypeLower, attempt);
-            if (jdbi == null || !UdfValueQuery.existsInFinVchMain(jdbi, field.getColumnName(), candidate)) {
-                return candidate;
-            }
-            ReportLogger.dataBackfillWarn(
-                    "[ArVoucherApiClient] UDF value collision for '{}' — candidate {} already exists, retrying ({}/{})",
-                    field.getColumnName(), candidate, attempt + 1, UNIQUE_UDF_VALUE_MAX_ATTEMPTS);
-        }
-        throw new ApiException("Could not generate a unique value for mandatory UDF field '"
-                + field.getColumnName() + "' after " + UNIQUE_UDF_VALUE_MAX_ATTEMPTS + " attempts.", 0);
-    }
-
-    /** Datatype-correct Java-typed candidate — see class-level datatype table in the plan. */
-    private Object generateUdfCandidate(UdfFieldMetadata field, String datatypeLower, int attempt) {
-        return switch (datatypeLower) {
-            case "fixedlist" -> pickFixedListCandidate(field, attempt);
-            case "editablelist", "string", "memo" -> "AUTO_" + System.nanoTime() + (attempt > 0 ? "_" + attempt : "");
-            case "numeric" -> (System.currentTimeMillis() % 1_000_000) + attempt;
-            case "date" -> LocalDate.now().plusDays(attempt) + "T00:00:00";
-            default -> throw new ApiException("Unrecognized UDF datatype '" + field.getDatatype()
-                    + "' for mandatory field '" + field.getColumnName() + "'.", 0);
-        };
-    }
-
-    /**
-     * Picks a valid FixedList choice — prefers {@code lookupData.data} (populated for the
-     * "Comma Separated" sub-mode, and would cover "Select Query" too if it ever comes back
-     * populated), falling back to {@code listValues.split(",")}. A mandatory, Select-Query-sourced
-     * field with no pre-resolved candidates has no verified, safe way to derive a value — throws
-     * rather than attempting untested {@code lookupQuery} placeholder substitution.
-     */
-    private Object pickFixedListCandidate(UdfFieldMetadata field, int attempt) {
-        List<String> candidates = new ArrayList<>();
-        if (field.getLookupData() != null && field.getLookupData().getData() != null) {
-            for (UdfLookupValue v : field.getLookupData().getData()) {
-                if (v.getValue() != null) candidates.add(v.getValue());
-            }
-        }
-        if (candidates.isEmpty() && field.getListValues() != null && !field.getListValues().isBlank()) {
-            candidates.addAll(Arrays.asList(field.getListValues().split(",")));
-        }
-        if (candidates.isEmpty()) {
-            if (field.isSqlData() || "S".equalsIgnoreCase(field.getQueryType())) {
-                throw new ApiException("Mandatory Select-Query FixedList field '" + field.getColumnName()
-                        + "' has no pre-resolved lookup data — lookupQuery execution with "
-                        + "<Connected Site>/<WorkDate> substitution isn't implemented; needs a live captured example first.", 0);
-            }
-            throw new ApiException("Mandatory FixedList field '" + field.getColumnName()
-                    + "' has no listValues/lookupData to choose from.", 0);
-        }
-        if (attempt >= candidates.size()) {
-            throw new ApiException("Exhausted all " + candidates.size() + " candidate value(s) for mandatory+unique "
-                    + "FixedList field '" + field.getColumnName() + "' — every value already in use.", 0);
-        }
-        return candidates.get(attempt).trim();
+    /** Fetches metadata then builds {@code udfValues} in one call — see {@link UdfValueBuilder#fetchAndBuild}. */
+    public List<UdfValueEntry> fetchAndBuildUdfValues(String tableName) {
+        return UdfValueBuilder.fetchAndBuild(this, tableName);
     }
 
     /**
@@ -352,9 +254,8 @@ public class ArVoucherApiClient extends ApiClient {
             return null;
         });
 
-        List<UdfFieldMetadata> udfMetadata = StepExecutor.call("Get UDF Metadata for AR Voucher",
-                () -> fetchUdfMetadata("FINVCHMAIN"));
-        List<UdfValueEntry> udfValues = StepExecutor.call("UDF Post-Processing", () -> buildUdfValues(udfMetadata));
+        List<UdfValueEntry> udfValues = StepExecutor.call("Get UDF Metadata for AR Voucher",
+                () -> fetchAndBuildUdfValues("FINVCHMAIN"));
 
         double amount = quantity * rate;
         ArVoucherDetailLine line = ArVoucherDetailLine.builder()

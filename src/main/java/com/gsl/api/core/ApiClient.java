@@ -84,7 +84,12 @@ public abstract class ApiClient {
         return response;
     }
 
-    protected Response getRaw(String endpoint, Map<String, Object> queryParams) {
+    /**
+     * Public (widened from {@code protected}) so {@code UdfValueBuilder} — a standalone helper in
+     * a different package, not an {@code ApiClient} subclass — can drive the shared
+     * {@code GET /udf/GetUDFMetaData} call on behalf of any flow client that owns a session spec.
+     */
+    public Response getRaw(String endpoint, Map<String, Object> queryParams) {
         long start = System.currentTimeMillis();
         Response response = fresh().queryParams(queryParams).get(endpoint);
         ApiCallReportLogger.logCall("GET", endpoint, queryParams, response, System.currentTimeMillis() - start);

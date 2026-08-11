@@ -28,8 +28,10 @@ import java.util.function.UnaryOperator;
 public enum PostSaveDialogHandler {
 
     AR(PaymentInfoCheckWarning.AR_VOUCHER, TdsAutoReleaseFlow::execute),
-    AP(PaymentInfoCheckWarning.AP_VOUCHER, UnaryOperator.identity());
-    // GV / CONTRA added here later — see class Javadoc.
+    AP(PaymentInfoCheckWarning.AP_VOUCHER, UnaryOperator.identity()),
+    /** General Voucher has no TDS concept — isTdsProvided() is always false, so tdsFlow never runs. */
+    GV(PaymentInfoCheckWarning.GV_VOUCHER, UnaryOperator.identity());
+    // CONTRA added here later — see class Javadoc.
 
     private final PaymentInfoCheckWarning warning;
     /** Post-message-box TDS decision step; identity when the domain has no post-save auto-journal. */
@@ -44,6 +46,7 @@ public enum PostSaveDialogHandler {
         switch (domain) {
             case AR: return AR;
             case AP: return AP;
+            case GV: return GV;
             default:
                 throw new UnsupportedOperationException(
                         "No PostSaveDialogHandler configured for voucher domain " + domain);

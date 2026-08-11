@@ -5,6 +5,7 @@ import com.gsl.reports.contract.TestResultsAccumulator;
 import com.gsl.reports.contract.TestResultsRenderer;
 import com.gsl.testdata.dto.MergedFinanceApVoucherData;
 import com.gsl.testdata.dto.MergedFinanceArVoucherData;
+import com.gsl.testdata.dto.MergedFinanceGeneralVoucherData;
 
 import java.util.Arrays;
 
@@ -12,7 +13,7 @@ import java.util.Arrays;
  * Finance domain plug-in for the universal reporting registry.
  *
  * <p>Registered once in {@link com.gsl.listeners.TestListener#onStart(org.testng.ISuite)}.
- * Handles both AP and AR Voucher tests; the Finance-specific DTO imports live here,
+ * Handles AP, AR, and General Voucher tests; the Finance-specific DTO imports live here,
  * keeping {@link com.gsl.listeners.TestListener} domain-agnostic.
  *
  * <p>Adding a new Finance test type (e.g. Journal Voucher) extends this class or
@@ -28,14 +29,16 @@ public final class FinanceDomainReporter implements DomainReporter {
     public boolean supports(Object[] params) {
         return Arrays.stream(params).anyMatch(
                 p -> p instanceof MergedFinanceApVoucherData
-                  || p instanceof MergedFinanceArVoucherData);
+                  || p instanceof MergedFinanceArVoucherData
+                  || p instanceof MergedFinanceGeneralVoucherData);
     }
 
     @Override
     public Object extractTestData(Object[] params) {
         return Arrays.stream(params)
                 .filter(p -> p instanceof MergedFinanceApVoucherData
-                          || p instanceof MergedFinanceArVoucherData)
+                          || p instanceof MergedFinanceArVoucherData
+                          || p instanceof MergedFinanceGeneralVoucherData)
                 .findFirst().orElse(null);
     }
 
@@ -45,6 +48,8 @@ public final class FinanceDomainReporter implements DomainReporter {
             return ArVoucherDescriptionBuilder.build((MergedFinanceArVoucherData) testData);
         if (testData instanceof MergedFinanceApVoucherData)
             return ApVoucherDescriptionBuilder.build((MergedFinanceApVoucherData) testData);
+        if (testData instanceof MergedFinanceGeneralVoucherData)
+            return GeneralVoucherDescriptionBuilder.build((MergedFinanceGeneralVoucherData) testData);
         return null;
     }
 
@@ -70,6 +75,13 @@ public final class FinanceDomainReporter implements DomainReporter {
             if (tcName != null && !tcName.isBlank()
                     && !tcName.equalsIgnoreCase("createApVoucherAdvancePayment")
                     && !tcName.equalsIgnoreCase("createApVoucherDocumentPayment"))
+                return tcName;
+        } else if (testData instanceof MergedFinanceGeneralVoucherData) {
+            MergedFinanceGeneralVoucherData gv = (MergedFinanceGeneralVoucherData) testData;
+            if (gv.getMasterTestData() == null) return null;
+            String tcName = gv.getMasterTestData().getTestcasename();
+            if (tcName != null && !tcName.isBlank()
+                    && !tcName.equalsIgnoreCase("createGeneralVoucher"))
                 return tcName;
         }
         return null;

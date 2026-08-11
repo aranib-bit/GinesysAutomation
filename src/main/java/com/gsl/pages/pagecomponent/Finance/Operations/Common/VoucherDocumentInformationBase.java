@@ -105,6 +105,13 @@ public abstract class VoucherDocumentInformationBase {
     // ── Protected setters — available to subclasses for custom ordering ───────
 
     protected void setDocScheme(String docscheme) {
+        // No override supplied (null/blank) — leave whatever scheme the app defaulted to.
+        // Mirrors fillCommonFields' Cash/Bank blank-guard: positive scenarios normally
+        // don't pass a Voucher No./scheme override, so this is a no-op for them.
+        if (docscheme == null || docscheme.isBlank()) {
+            Log.info("DOC_SCHEME override not supplied — leaving default value in place");
+            return;
+        }
         String current = SeleniumUtils.getAttribute(docScheme, "value", "DOC_SCHEME");
         if (current != null && current.equalsIgnoreCase(docscheme)) {
             Log.info("DOC_SCHEME is already '{}' — skipping update", docscheme);

@@ -20,16 +20,19 @@ import java.util.function.Supplier;
  * quantity) or k6 (bulk quantity), then retries once. If still short after backfill, the
  * shortfall is real and the original SkipException propagates.
  *
- * <p>Takes a {@code Supplier<DocumentSelectionResult>} rather than a {@code SelectorRequest} so
- * this same guard wraps both AR's and AP's shortfall methods without either one changing its
- * own retry/reservation logic at all.
+ * <p>Takes a {@code Supplier<T>} rather than a {@code SelectorRequest} so this same guard wraps
+ * any shortfall-throwing lookup without the caller changing its own retry/reservation logic at
+ * all — originally AR's/AP's own {@code Supplier<DocumentSelectionResult>} document selectors,
+ * now generalized so General Voucher's master-data lookups (a missing {@code fingl}/{@code
+ * finsl_gl} row, {@code Supplier<List<FinGl>>}/similar) reuse the exact same retry/report
+ * wrapping instead of a second parallel mechanism.
  */
 public final class DataAvailabilityGuard {
 
     private DataAvailabilityGuard() {}
 
-    public static DocumentSelectionResult selectOrBackfill(
-            Supplier<DocumentSelectionResult> selectionAttempt,
+    public static <T> T selectOrBackfill(
+            Supplier<T> selectionAttempt,
             int neededQuantity,
             BackfillStrategy strategy) {
         try {
@@ -72,9 +75,8 @@ public final class DataAvailabilityGuard {
                 }
 
                 // One retry after backfill. If STILL short, the shortfall is real — let it skip.
-                DocumentSelectionResult retryResult = selectionAttempt.get();
-                ReportLogger.dataBackfill("[DataAvailabilityGuard] Retry after backfill — resolved, {} SL(s) found",
-                        retryResult.getSelectedSls().size());
+                T retryResult = selectionAttempt.get();
+                ReportLogger.dataBackfill("[DataAvailabilityGuard] Retry after backfill — resolved");
                 return retryResult;
             } finally {
                 ExtentManager.setExtentTest(previousTest);

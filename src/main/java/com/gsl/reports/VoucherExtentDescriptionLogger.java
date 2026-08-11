@@ -40,7 +40,7 @@ public abstract class VoucherExtentDescriptionLogger<T extends VoucherReportData
         printToConsole(data);
         logHeaderTable(data);
         logExpectedResultsSection(data);
-        logSubLedgersTable(data);
+        if (hasGenericSubLedgers()) logSubLedgersTable(data);
         logSelectDocsTable(data);
         logMiddleSections(data);
         logPaymentsTable(data);
@@ -71,8 +71,26 @@ public abstract class VoucherExtentDescriptionLogger<T extends VoucherReportData
     /** Appends extra console sections after Select Docs (AP overrides to add TDS block). */
     protected void appendExtraConsoleSections(T data, StringBuilder sb) {}
 
-    /** Logs sections between Select Docs and Payments (AP overrides: FIFO + TDS tables). */
+    /** Logs sections between Select Docs and Payments (AP overrides: FIFO + TDS tables;
+     *  GV overrides to render its own "Income/Expense Detail" table here instead of the
+     *  generic sub-ledger one — see {@link #hasGenericSubLedgers()}). */
     protected void logMiddleSections(T data) {}
+
+    /**
+     * Override to {@code false} when this voucher type has no generic sub-ledger concept at
+     * all — a structural absence, not just an empty list for one scenario. Gates whether
+     * {@link #logSubLedgersTable} runs. Default {@code true} (AP/AR unaffected).
+     */
+    protected boolean hasGenericSubLedgers() { return true; }
+
+    /**
+     * Override to {@code false} when this voucher type has no per-line payment-mode concept at
+     * all. Gates {@link #logPaymentsTable} — when {@code false}, skips the title and the
+     * "(intentionally blank for this scenario)" placeholder entirely, since that message is
+     * written for a real per-scenario absence, not a structural one. Default {@code true}
+     * (AP/AR unaffected).
+     */
+    protected boolean supportsPaymentInformation() { return true; }
 
     // ── Console ────────────────────────────────────────────────────────────────
 
@@ -86,8 +104,8 @@ public abstract class VoucherExtentDescriptionLogger<T extends VoucherReportData
         sb.append("[").append(loggerLabel()).append("] Test Data Summary\n");
         sb.append("------------------------------------------------------------\n");
         sb.append(String.format("  Scenario        = %s%n", nullSafe(data.getScenarioTypeLabel())));
-        sb.append(String.format("  TestCase ID     = %s%n", nullSafe(master.getTestcaseid())));
-        sb.append(String.format("  TestCase Name   = %s%n", nullSafe(master.getTestcasename())));
+        sb.append(String.format("  TestCase ID     = %s%n", nullSafe(master != null ? master.getTestcaseid() : null)));
+        sb.append(String.format("  TestCase Name   = %s%n", nullSafe(master != null ? master.getTestcasename() : null)));
         sb.append(String.format("  Owner Site      = %s%n", nullSafe(doc.getOwnersite())));
         sb.append(String.format("  Cash/Bank GL    = %s%n", nullSafe(doc.getCashbank())));
         sb.append(String.format("  Doc Scheme      = %s%n", nullSafe(doc.getVoucherno())));
@@ -172,8 +190,8 @@ public abstract class VoucherExtentDescriptionLogger<T extends VoucherReportData
         List<String[]> rows = new ArrayList<>();
         rows.add(new String[]{ "Field",            "Value" });
         rows.add(new String[]{ "Scenario",          nullSafe(data.getScenarioTypeLabel()) });
-        rows.add(new String[]{ "TestCase ID",       nullSafe(master.getTestcaseid()) });
-        rows.add(new String[]{ "TestCase Name",     nullSafe(master.getTestcasename()) });
+        rows.add(new String[]{ "TestCase ID",       nullSafe(master != null ? master.getTestcaseid() : null) });
+        rows.add(new String[]{ "TestCase Name",     nullSafe(master != null ? master.getTestcasename() : null) });
         rows.add(new String[]{ "Owner Site",        nullSafe(doc.getOwnersite()) });
         rows.add(new String[]{ "Cash/Bank GL",      nullSafe(doc.getCashbank()) + resolveCashBankType(doc.getCashbank()) });
         rows.add(new String[]{ "Doc Scheme",        nullSafe(doc.getVoucherno()) });
@@ -263,6 +281,7 @@ public abstract class VoucherExtentDescriptionLogger<T extends VoucherReportData
     // ── Section: Payment Information ───────────────────────────────────────────
 
     protected final void logPaymentsTable(T data) {
+        if (!supportsPaymentInformation()) return;
         List<? extends VoucherPaymentInfo> payments = data.getPaymentInformationList();
         if (payments == null || payments.isEmpty()) {
             ExtentLogger.info("<b>Payment Information</b>");

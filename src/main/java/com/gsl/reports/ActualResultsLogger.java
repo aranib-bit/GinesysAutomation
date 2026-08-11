@@ -12,8 +12,11 @@ import com.gsl.model.finance.FinGl;
 import com.gsl.model.finance.FinPost;
 import com.gsl.model.finance.FinVchMain;
 import com.gsl.testdata.Finance.Operations.Vouchers.APVoucher.SubLedgerInformation;
+import com.gsl.testdata.Finance.Operations.Vouchers.GeneralVoucher.ExpenseIncomeDetail;
+import com.gsl.testdata.Finance.Operations.Vouchers.GeneralVoucher.SiteAllocation;
 import com.gsl.testdata.dto.MergedFinanceApVoucherData;
 import com.gsl.testdata.dto.MergedFinanceArVoucherData;
+import com.gsl.testdata.dto.MergedFinanceGeneralVoucherData;
 import com.gsl.utils.Log;
 
 import java.math.BigDecimal;
@@ -97,12 +100,16 @@ public final class ActualResultsLogger {
                 ? h.getDetRowCount() + " row(s) found" : NOT_REACHED;
         String postActual    = h.getPostEntryCount() >= 0
                 ? h.getPostEntryCount() + " entries, balanced" : NOT_REACHED;
-        String tagActual;
-        if      (h.getTagCount() == -2) tagActual = NOT_REACHED;
-        else if (h.getTagCount() == -1) tagActual = "skipped (ADVANCE_PAYMENT — no SelectDocument)";
-        else                            tagActual = h.getTagCount() + " entries";
 
         boolean isAp = "AP".equals(h.getVoucherType());
+        boolean isGv = "GV".equals(h.getVoucherType());
+
+        String tagActual;
+        if      (h.getTagCount() == -2) tagActual = NOT_REACHED;
+        else if (h.getTagCount() == -1) tagActual = isGv
+                ? "skipped (no site-applicable rows)"
+                : "skipped (ADVANCE_PAYMENT — no SelectDocument)";
+        else                            tagActual = h.getTagCount() + " entries";
 
         StringBuilder sb = new StringBuilder();
         sb.append(CSS);
@@ -150,6 +157,12 @@ public final class ActualResultsLogger {
 
         // Sub Ledger Information sub-section
         sb.append(buildSubLedgerSection(h));
+
+        // Site Allocation Information sub-section — GV only, no AP/AR precedent
+        // (Type2/Type3 rows' Allocate Sites tagging; unrelated to AP/AR's sub-ledger concept).
+        if (isGv) {
+            sb.append(buildSiteAllocationSection(h));
+        }
 
         sb.append("</details>"); // end UI Validation
 
@@ -223,9 +236,13 @@ public final class ActualResultsLogger {
         }
         sb.append("</details>");
 
-        // fintag
+        // fintag (AP/AR: adjustment tagging) / fincosttag (GV: site allocation tagging) —
+        // a structurally different table/concept per voucher type, not a renamed one; see
+        // GeneralVoucherDbValidator/FinCostTagValidator vs FinTagValidator/FinTagApValidator.
+        String tagSectionLabel = isGv ? "fincosttag (Site Allocation)" : "fintag";
+        String tagRowLabel     = isGv ? "Site allocation tag check" : "Tag check";
         sb.append("<details open><summary class='rs-sub'>");
-        sb.append("<span style='display:inline-flex;align-items:center;gap:6px'>" + ICO_TABLE + " fintag</span>");
+        sb.append("<span style='display:inline-flex;align-items:center;gap:6px'>" + ICO_TABLE + " " + tagSectionLabel + "</span>");
         sb.append("<span class='rs-chev'>&#9650;</span></summary>");
         sb.append(tableOpen());
         sb.append(headerRow("Column", "Expected", "Actual", "Status"));
@@ -233,7 +250,7 @@ public final class ActualResultsLogger {
         if (h.getTagCount() == -2) tagStatus = Status.SKIP;
         else if (h.getTagCount() == -1) tagStatus = Status.SKIP;
         else tagStatus = Status.PASS;
-        sb.append(row("Tag check", expSelectDocEntry, tagActual, tagStatus));
+        sb.append(row(tagRowLabel, expSelectDocEntry, tagActual, tagStatus));
         sb.append("</tbody>").append(TABLE_CLOSE).append("</details>");
 
         sb.append("</details>"); // end DB Validation
@@ -336,6 +353,16 @@ public final class ActualResultsLogger {
 
     private static String buildSubLedgerSection(ActualResultsHolder h) {
         Object td = h.getTestData();
+
+        // GV's Expense/Income Detail rows have no sub-ledger-class/adjustment-type/payment-mode
+        // concept (see GeneralVoucherIncomeExpenseRowView's javadoc) — rendered by its own
+        // dedicated builder rather than shoehorned into the AP/AR loop below, which would
+        // otherwise risk a ClassCastException in buildPaymentWarningFooter (that method assumes
+        // AP or AR).
+        if (td instanceof MergedFinanceGeneralVoucherData) {
+            return buildGvExpenseIncomeSection((MergedFinanceGeneralVoucherData) td);
+        }
+
         List<?> slList = null;
         boolean isAp = false;
 
@@ -408,6 +435,81 @@ public final class ActualResultsLogger {
         sb.append(buildPaymentWarningFooter(td, isAp, h.getUiPaymentInfoWarningAppeared()));
 
         sb.append("</details>");
+        return sb.toString();
+    }
+
+    /**
+     * Renders GV's Expense/Income Detail rows — GL, Sub Ledger (Type3 rows only), a single
+     * Dr/Cr amount column (a GV row posts to either {@code Expense(Dr)} or {@code Income(Cr)},
+     * never both — see {@code ExpenseIncomeDetail.isDebit()}), and Is Reversal. No adjustment
+     * type, payment mode, or TDS columns — GV rows have none of those concepts, and no payment
+     * warning footer (GV's payment-info-check is document-level, not per-row; see
+     * {@code MergedFinanceGeneralVoucherData}'s Javadoc).
+     */
+    private static String buildGvExpenseIncomeSection(MergedFinanceGeneralVoucherData gv) {
+        List<ExpenseIncomeDetail> lines = gv.getExpenseIncomeDetailList();
+        if (lines == null || lines.isEmpty()) return "";
+
+        StringBuilder sb = new StringBuilder();
+        sb.append("<details open><summary class='rs-sub'>");
+        sb.append("<span style='display:inline-flex;align-items:center;gap:6px'>"
+                + ICO_SUBLEDGER + " Expense/Income Detail</span>");
+        sb.append("<span class='rs-chev'>&#9650;</span></summary>");
+        sb.append("<div style='overflow-x:auto;width:100%'><table class='rs-tbl'>");
+        sb.append(headerRow("#", "GL", "Sub Ledger", "Amount (Dr/Cr)", "Is Reversal"));
+
+        int idx = 1;
+        for (ExpenseIncomeDetail row : lines) {
+            String amount = row.isDebit()
+                    ? (row.getExpenseDr() != null ? String.format("%,.2f Dr", row.getExpenseDr()) : "—")
+                    : (row.getIncomeCr()  != null ? String.format("%,.2f Cr", row.getIncomeCr())  : "—");
+            sb.append(slRowGv(idx++, ns(row.getGeneralLedger()), ns(row.getSubLedger()),
+                    amount, row.isReversalYes() ? "YES" : "NO"));
+        }
+        sb.append("</tbody></table></div></details>");
+        return sb.toString();
+    }
+
+    private static String slRowGv(int idx, String gl, String subLedger, String amount, String isReversal) {
+        StringBuilder sb = new StringBuilder("<tr>");
+        sb.append(td("<span style='font-size:10px;color:#64748B;background:#F8FAFC;"
+                + "border:0.5px solid #E2E8F0;padding:2px 5px;border-radius:99px'>" + idx + "</span>"));
+        sb.append(td(esc(gl)));
+        sb.append(td(esc(subLedger)));
+        sb.append(td(esc(amount)));
+        sb.append(td(esc(isReversal)));
+        sb.append("</tr>");
+        return sb.toString();
+    }
+
+    /**
+     * New sub-section, no AP/AR precedent — renders GV's Site Allocation rows (Type2/Type3 GL
+     * lines' "Allocate Sites" popup entries) grouped by the line they belong to.
+     */
+    private static String buildSiteAllocationSection(ActualResultsHolder h) {
+        Object td = h.getTestData();
+        if (!(td instanceof MergedFinanceGeneralVoucherData)) return "";
+        MergedFinanceGeneralVoucherData gv = (MergedFinanceGeneralVoucherData) td;
+        List<SiteAllocation> allocations = gv.getSiteAllocationList();
+        if (allocations == null || allocations.isEmpty()) return "";
+
+        StringBuilder sb = new StringBuilder();
+        sb.append("<details open><summary class='rs-sub'>");
+        sb.append("<span style='display:inline-flex;align-items:center;gap:6px'>"
+                + ICO_SUBLEDGER + " Site Allocation Information</span>");
+        sb.append("<span class='rs-chev'>&#9650;</span></summary>");
+        sb.append("<div style='overflow-x:auto;width:100%'><table class='rs-tbl'>");
+        sb.append(headerRow("Line#", "Site Name", "Amount"));
+
+        for (SiteAllocation sa : allocations) {
+            StringBuilder row = new StringBuilder("<tr>");
+            row.append(td(esc(ns(sa.getLineNo()))));
+            row.append(td(esc(ns(sa.getSiteName()))));
+            row.append(td(esc(sa.getAmount() != null ? String.format("%,.2f", sa.getAmount()) : "—")));
+            row.append("</tr>");
+            sb.append(row);
+        }
+        sb.append("</tbody></table></div></details>");
         return sb.toString();
     }
 
@@ -506,20 +608,27 @@ public final class ActualResultsLogger {
     private static String[][] buildNegativeTable(ActualResultsHolder h) {
         String expMsg = "(unknown)";
         Object td = h.getTestData();
+        boolean isGv = false;
         if (td instanceof MergedFinanceArVoucherData) {
             MergedFinanceArVoucherData ar = (MergedFinanceArVoucherData) td;
             if (ar.getExpectedValidation() != null) expMsg = ar.getExpectedValidation().expectedMessage();
         } else if (td instanceof MergedFinanceApVoucherData) {
             MergedFinanceApVoucherData ap = (MergedFinanceApVoucherData) td;
             if (ap.getExpectedValidation() != null) expMsg = ap.getExpectedValidation().expectedMessage();
+        } else if (td instanceof MergedFinanceGeneralVoucherData) {
+            MergedFinanceGeneralVoucherData gv = (MergedFinanceGeneralVoucherData) td;
+            if (gv.getExpectedValidation() != null) expMsg = gv.getExpectedValidation().expectedMessage();
+            isGv = true;
         }
+        // fintag (AP/AR) vs fincosttag (GV) — same reasoning as buildPositiveHtml's tag section.
+        String lastRowLabel = isGv ? "DB — fincosttag" : "DB — fintag";
         return new String[][]{
             {"Field",           "Expected",                                          "Actual"},
             {"UI — Validation", expMsg,                                              "Asserted by scenario behavior"},
             {"DB — finvchmain", "No record created (save blocked by UI validation)", "0 records (not queried)"},
             {"DB — finvchdet",  "No record created",                                 "0 records (not queried)"},
             {"DB — finpost",    "No posting created",                                "0 entries (not queried)"},
-            {"DB — fintag",     "No entries created",                                "0 entries (not queried)"},
+            {lastRowLabel,      "No entries created",                                "0 entries (not queried)"},
         };
     }
 
@@ -713,6 +822,26 @@ public final class ActualResultsLogger {
                 String.valueOf(slCount),
                 tagExp
             };
+        } else if (td instanceof MergedFinanceGeneralVoucherData) {
+            MergedFinanceGeneralVoucherData gv = (MergedFinanceGeneralVoucherData) td;
+            var doc = gv.getDocumentInformation();
+            int lineCount = gv.getExpenseIncomeDetailList() != null
+                    ? gv.getExpenseIncomeDetailList().size() : 0;
+            boolean hasSiteAllocation = gv.getSiteAllocationList() != null
+                    && !gv.getSiteAllocationList().isEmpty();
+            String tagExp = hasSiteAllocation
+                    ? gv.getSiteAllocationList().size() + " entries"
+                    : "skipped (no site-applicable rows)";
+            return new String[]{
+                doc != null ? ns(doc.getOwnersite()) : "—",
+                doc != null ? ns(doc.getCashbank())  : "—",
+                doc != null && doc.getDocumentdate() != null
+                        ? doc.getDocumentdate().format(DATE_FMT) : "—",
+                doc != null ? ns(doc.getReference()) : "—",
+                doc != null ? ns(doc.getRemarks())   : "—",
+                String.valueOf(lineCount),
+                tagExp
+            };
         }
         return new String[]{"—", "—", "—", "—", "—", "—", "—"};
     }
@@ -721,7 +850,15 @@ public final class ActualResultsLogger {
 
     private static final String NOT_REACHED = "— (not reached)";
 
-    private static String ns(Object v)  { return v != null ? v.toString() : "—"; }
+    /** Normalizes {@code null} AND blank/empty strings to "—" — both mean "no value," and
+     *  {@code matchExact}/{@code matchContains} compare this rendered form directly, so leaving
+     *  blank strings un-normalized caused a cosmetic false FAIL (e.g. Expected="" vs Actual="—"
+     *  for an intentionally-blank reference field) even when both sides meant the same thing. */
+    private static String ns(Object v) {
+        if (v == null) return "—";
+        String s = v.toString();
+        return s.isBlank() ? "—" : s;
+    }
     private static String esc(String s) {
         if (s == null) return "—";
         return s.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;");

@@ -4,7 +4,9 @@ import com.gsl.api.client.ArVoucherApiClient;
 import com.gsl.api.client.DcApiClient;
 import com.gsl.api.client.GrcApiClient;
 import com.gsl.api.client.ItemApiClient;
+import com.gsl.api.client.LedgerApiClient;
 import com.gsl.api.client.ServiceInvoiceAdhocApiClient;
+import com.gsl.api.client.SubLedgerOthersApiClient;
 import com.gsl.api.client.TransferOutApiClient;
 import com.gsl.config.ConfigFactory;
 import com.gsl.enums.ApiPlatform;
@@ -93,6 +95,8 @@ public final class ApiSessionFactory {
                 .transferOutApiClient(new TransferOutApiClient(spec))
                 .serviceInvoiceAdhocApiClient(new ServiceInvoiceAdhocApiClient(spec))
                 .arVoucherApiClient(new ArVoucherApiClient(spec))
+                .ledgerApiClient(new LedgerApiClient(spec))
+                .subLedgerOthersApiClient(new SubLedgerOthersApiClient(spec))
                 .build();
     }
 }

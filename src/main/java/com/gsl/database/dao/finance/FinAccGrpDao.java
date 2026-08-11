@@ -20,6 +20,14 @@ public interface FinAccGrpDao {
     @SqlQuery("SELECT COUNT(*) FROM fingrp WHERE grpname = :name")
     int countByName(@Bind("name") String name);
 
+    // Leaf-node check for Ledger creation: a group with any child (a row whose parcode points at
+    // it) is restricted and must never be used as a ledger's grpcode — sample confirmed by the
+    // user: "fingrp is 10, under fingrp 10 there are 2 leaf nodes then ledger creation fingrp is
+    // restricted" i.e. `SELECT * FROM fingrp WHERE parcode = 10`. Zero rows = genuine leaf, safe
+    // to attach a ledger to.
+    @SqlQuery("SELECT COUNT(*) FROM fingrp WHERE parcode = :grpcode")
+    int countChildren(@Bind("grpcode") long grpcode);
+
     // Detects a stray/garbled leftover from a failed rename — e.g. "New Group" itself, or a
     // botched replace like "New GroupaZZZ Test Verify Group" (confirmed to actually occur:
     // a broken Ctrl+A selection left the placeholder prefix intact and appended the real

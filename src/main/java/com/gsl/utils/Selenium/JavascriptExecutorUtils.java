@@ -4248,5 +4248,11 @@ public final class JavascriptExecutorUtils {
                 "di==='referenceSiteCode' || di==='referenceSiteName'", idScript, 2, "[SL_REFSITE_NATIVE]");
     }
 
+    // General Voucher's Expense/Income Detail grid cell editors were removed from here —
+    // GeneralVoucherExpenseIncomeDetail now opens its cells via real Selenium clicks
+    // (see its openCellForEdit/ACTIVE_EDITOR_INPUT), the same JS-free pattern AR/AP already
+    // use for clickAdjust/clickPaymentButton/setDeductTdsNative, so no Ext.ComponentQuery
+    // grid itemId or column dataIndex guessing is needed for GV at all.
+
 }
 

@@ -79,10 +79,13 @@ public final class NavigationUtils {
         // 4. Click the final side menu item (e.g., Group)
         T page = productDefinitionHomePage.getProductDefinitionSideMenuComponent()
                 .clickMenuItem(sideMenu, expectedPage);
-        verifyAndRecordPage(ctx, page, sideMenu.name());
 
-        // 5. Wait for the page loader to disappear
+        // 5. Wait for the page loader to disappear BEFORE verifying the new page — ExtJS is still
+        // rendering the side-menu transition immediately after the click; verifying too early is
+        // what causes a page-header visibility timeout (the header wait itself has no ExtJS-settle
+        // gate of its own).
         SeleniumUtils.elementDisappear(FrameworkConstants.getLoadingMask(), "Loading Mask");
+        verifyAndRecordPage(ctx, page, sideMenu.name());
         ExecutionManager.logState("navigation:Inventory/" + subMenu.name() + "/" + sideMenu.name());
         finishColdStartIfInProgress(ctx, navStart);
         return page;
@@ -134,10 +137,13 @@ public final class NavigationUtils {
         // 4. Click the final side menu item — scoped to Procurement container
         T page = operationsHomePage.getOperationsSideMenuComponent()
                 .clickMenuItem(sideMenu, expectedPage);
-        verifyAndRecordPage(ctx, page, sideMenu.getName());
 
-        // 5. Wait for the page loader to disappear
+        // 5. Wait for the page loader to disappear BEFORE verifying the new page — ExtJS is still
+        // rendering the side-menu transition immediately after the click; verifying too early is
+        // what causes a page-header visibility timeout (the header wait itself has no ExtJS-settle
+        // gate of its own).
         SeleniumUtils.elementDisappear(FrameworkConstants.getLoadingMask(), "Loading Mask");
+        verifyAndRecordPage(ctx, page, sideMenu.getName());
         ExecutionManager.logState("navigation:Procurement/" + subMenu.name() + "/" + sideMenu.getName());
         finishColdStartIfInProgress(ctx, navStart);
         return page;
@@ -186,10 +192,13 @@ public final class NavigationUtils {
         // 5. Click the final side menu item — scoped to Finance container only
         T page = operationsHomePage.getOperationsSideMenuComponent()
                 .clickMenuItem(sideMenu, expectedPage);
-        verifyAndRecordPage(ctx, page, sideMenu.getName());
 
-        // 6. Wait for the page loader to disappear after navigation
+        // 6. Wait for the page loader to disappear BEFORE verifying the new page — ExtJS is still
+        // rendering the side-menu transition immediately after the click; verifying too early is
+        // exactly what caused the 30s pageheader-toolbar visibility timeout seen on
+        // GeneralVoucherListPage (the header wait itself has no ExtJS-settle gate of its own).
         SeleniumUtils.elementDisappear(FrameworkConstants.getLoadingMask(), "Loading Mask");
+        verifyAndRecordPage(ctx, page, sideMenu.getName());
         ExecutionManager.logState("navigation:Finance/" + subMenu.name() + "/" + sideMenu.getName());
         finishColdStartIfInProgress(ctx, navStart);
         return page;
@@ -236,9 +245,13 @@ public final class NavigationUtils {
 
         T page = setupHomePage.getSetupSideMenuComponent()
                 .clickMenuItem(sideMenu, expectedPage);
-        verifyAndRecordPage(ctx, page, sideMenu.getName());
 
+        // Wait for the page loader to disappear BEFORE verifying the new page — ExtJS is still
+        // rendering the side-menu transition immediately after the click; verifying too early is
+        // what causes a page-header visibility timeout (the header wait itself has no ExtJS-settle
+        // gate of its own).
         SeleniumUtils.elementDisappear(FrameworkConstants.getLoadingMask(), "Loading Mask");
+        verifyAndRecordPage(ctx, page, sideMenu.getName());
         ExecutionManager.logState("navigation:FinanceSetup/" + subMenu.name() + "/" + sideMenu.getName());
         finishColdStartIfInProgress(ctx, navStart);
         return page;
