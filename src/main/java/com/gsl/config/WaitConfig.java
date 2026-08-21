@@ -49,6 +49,28 @@ public interface WaitConfig extends Config {
     @DefaultValue("400")
     int selectDocScrollStepWaitMs();
 
+    /**
+     * Extra confirmation wait applied ONLY to a tick that already looks like end-of-list
+     * (atBottom + !storeLoading + no progress vs. the previous read) — gives a slow
+     * BufferedStore async page-fetch on a live/staging server real time to land and
+     * re-render before a "no progress" reading is trusted. Independent of
+     * {@link #selectDocScrollStepWaitMs()}, which stays fast for the common still-scrolling
+     * path — this wait is only ever paid on a genuine end-of-list candidate tick.
+     */
+    @Key("selectdoc.scroll.noprogress.confirm.wait.ms")
+    @DefaultValue("1200")
+    int selectDocScrollNoProgressConfirmWaitMs();
+
+    /**
+     * Number of INDEPENDENTLY re-confirmed no-progress ticks required before declaring
+     * genuine end-of-list (each counted tick already carries its own
+     * {@link #selectDocScrollNoProgressConfirmWaitMs()} confirmation wait — this is not a
+     * blind multiplier on the old "2 quick back-to-back reads" behavior).
+     */
+    @Key("selectdoc.scroll.noprogress.streak.required")
+    @DefaultValue("3")
+    int selectDocScrollNoProgressStreakRequired();
+
     @Key("selectdoc.focusrow.render.ms")
     @DefaultValue("1500")
     int selectDocFocusRowRenderMs();

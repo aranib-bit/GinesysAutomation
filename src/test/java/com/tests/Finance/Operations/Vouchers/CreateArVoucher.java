@@ -154,7 +154,7 @@ public class CreateArVoucher extends WebTest {
             if (msgBoxRef[0] != null) {
                 msgBoxRef[0].clickOk();
             }
-            listRef[0] = addRef[0].close().clickYes();   // returns ArVoucherListPage — keep the handle
+            listRef[0] = addRef[0].close().clickYes(ArVoucherListPage::new);   // keep the handle
             ReportLogger.business("Voucher page closed, returned to list");
         });
 

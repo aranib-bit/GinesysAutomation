@@ -19,6 +19,10 @@ public class GeneralVoucherFixtureFactory {
             (scenario, methodName) -> switch (methodName) {
                 case "createGeneralVoucher" -> scenario == GeneralVoucherScenarioType.POSITIVE_COMBINATION;
                 case "createGeneralVoucherMixedTypes" -> scenario == GeneralVoucherScenarioType.MIXED_TYPES;
+                // Revert has no MIXED_TYPES analogue — it reuses the same combination-matrix scenario
+                // type as Create, but DbGeneralVoucherRevertDataSource resolves each combination to an
+                // existing Posted voucher of the matching account type instead of building new data.
+                case "revertGeneralVoucher" -> scenario == GeneralVoucherScenarioType.POSITIVE_COMBINATION;
                 default -> false;
             };
 
@@ -32,4 +36,9 @@ public class GeneralVoucherFixtureFactory {
                 .filter(scenario -> SHOULD_RUN.test(scenario, testMethodName))
                 .collect(Collectors.toList());
     }
+
+    // Entry-method alternation (plan §9.5) previously lived here as entryMethodFor(int) but
+    // was moved to the domain-agnostic com.gsl.utils.dataprovider.fixture.finance.VoucherEditEntryMethod#forIndex(int)
+    // — AR/AP Voucher's own future Edit-combination classes need the identical alternation
+    // rule, which doesn't belong on a GV-only factory.
 }

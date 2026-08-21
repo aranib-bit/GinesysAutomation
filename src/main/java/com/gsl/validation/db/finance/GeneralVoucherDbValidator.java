@@ -3,11 +3,13 @@ package com.gsl.validation.db.finance;
 import com.aventstack.extentreports.ExtentTest;
 import com.gsl.database.DatabaseManager;
 import com.gsl.database.dao.finance.FinGlDao;
+import com.gsl.database.dao.finance.FinSlDao;
 import com.gsl.database.dao.finance.FinVchDetDao;
 import com.gsl.enums.VoucherType;
 import com.gsl.model.finance.FinCostTag;
 import com.gsl.model.finance.FinGl;
 import com.gsl.model.finance.FinPost;
+import com.gsl.model.finance.FinSl;
 import com.gsl.model.finance.FinVchDet;
 import com.gsl.model.finance.FinVchMain;
 import com.gsl.reports.ActualResultsHolder;
@@ -43,10 +45,11 @@ import java.util.List;
  *         via a minimal {@link VoucherDbContext} shim (same trick {@code APVoucherDbValidator}
  *         uses) — plus a GV-only VMG/VDG {@code enttype} cardinality check on the same
  *         {@code List<FinPost>} it returns (no second DB fetch).</li>
- *     <li><b>Level 2</b> finvchdet per-line checks — GV-specific: {@code (vchcode, glcode)}
- *         matching (GV's Type1 rows have no sub-ledger, unlike AP/AR's
- *         {@code (vchcode, slcode, glcode)}), amount (Dr or Cr per {@code isDebit()}), and
- *         {@code isreversal}.</li>
+ *     <li><b>Level 2</b> finvchdet per-line checks — {@code (vchcode, glcode, slcode)} matching
+ *         (same shape as AP/AR's own matching; {@code slcode} resolves to {@code 0} for GV's
+ *         Type1 rows with no sub-ledger — {@code glcode} alone previously matched the wrong row
+ *         when two lines shared a GL account with different sub-ledgers, confirmed live), amount
+ *         (Dr or Cr per {@code isDebit()}), {@code isreversal}, and narration.</li>
  *     <li><b>Level 4</b> {@link FinCostTagValidator} — GV-specific: {@code fincosttag}
  *         site-allocation tagging for Type2/Type3 rows. A structurally different table from
  *         AP/AR's {@code fintag} (adjustment tagging), not a renamed one — kept as its own
@@ -64,6 +67,7 @@ public class GeneralVoucherDbValidator {
     private final FinCostTagValidator   finCostTagValidator;
     private final FinVchDetDao          finVchDetDao;
     private final FinGlDao              finGlDao;
+    private final FinSlDao              finSlDao;
 
     public GeneralVoucherDbValidator() {
         Jdbi jdbi = DatabaseManager.getJdbi();
@@ -72,6 +76,7 @@ public class GeneralVoucherDbValidator {
         this.finCostTagValidator   = new FinCostTagValidator();
         this.finVchDetDao          = jdbi.onDemand(FinVchDetDao.class);
         this.finGlDao              = jdbi.onDemand(FinGlDao.class);
+        this.finSlDao              = jdbi.onDemand(FinSlDao.class);
     }
 
     /** Backward-compatible entry point — {@code saveStartTime} unknown, creation_dt tolerance
@@ -190,12 +195,20 @@ public class GeneralVoucherDbValidator {
                 .isNotNull();
         if (gl == null) return null;
 
+        // glcode alone doesn't disambiguate two lines sharing a GL account with different
+        // sub-ledgers — confirmed live (same collision class VoucherEditChangeSets.
+        // findFinvchdetRow/findFinpostRowByGlcode already guard against). slcode resolves to 0
+        // for a Type1 row with no sub-ledger (blank Sub Ledger), matching FinVchDet.slcode's
+        // (primitive long) representation of a NULL DB column.
+        long slcode = resolveSlcode(row);
+
         FinVchDet detailRow = detailRows.stream()
-                .filter(d -> d.getGlcode() == gl.getGlcode())
+                .filter(d -> d.getGlcode() == gl.getGlcode() && d.getSlcode() == slcode)
                 .findFirst().orElse(null);
         soft.assertThat(detailRow)
                 .as("[Level 2] finvchdet row not found for entcode [" + entcode
-                        + "] glcode [" + gl.getGlcode() + "] (LineNo [" + row.getLineNo() + "])")
+                        + "] glcode [" + gl.getGlcode() + "] slcode [" + slcode
+                        + "] (LineNo [" + row.getLineNo() + "])")
                 .isNotNull();
         if (detailRow == null) return null;
 
@@ -203,19 +216,48 @@ public class GeneralVoucherDbValidator {
         BigDecimal actualAmount   = row.isDebit() ? detailRow.getDamount() : detailRow.getCamount();
         soft.assertThat(actualAmount)
                 .as("[Level 2] finvchdet amount mismatch for entcode [" + entcode
-                        + "] glcode [" + gl.getGlcode() + "]: expected=" + expectedAmount + " actual=" + actualAmount)
+                        + "] glcode [" + gl.getGlcode() + "] slcode [" + slcode
+                        + "]: expected=" + expectedAmount + " actual=" + actualAmount)
                 .isEqualByComparingTo(expectedAmount);
 
         soft.assertThat(detailRow.getIsReversal())
                 .as("[Level 2] finvchdet.isreversal mismatch for entcode [" + entcode
-                        + "] glcode [" + gl.getGlcode() + "]")
+                        + "] glcode [" + gl.getGlcode() + "] slcode [" + slcode + "]")
                 .isEqualToIgnoringCase(row.isReversalYes() ? "Y" : "N");
+
+        // Mirrors AR/AP's FinVchDetValidator/FinVchDetApValidator nartext assertion — only
+        // checked when test data actually supplies a per-line narration.
+        if (row.getLedgerNarration() != null && !row.getLedgerNarration().isBlank()) {
+            soft.assertThat(detailRow.getNartext())
+                    .as("[Level 2] finvchdet.nartext mismatch for entcode [" + entcode
+                            + "] glcode [" + gl.getGlcode() + "] slcode [" + slcode + "]")
+                    .isEqualTo(row.getLedgerNarration());
+        }
 
         if (row.getResolvedGlType() != null && row.getResolvedGlType().isSiteApplicable()) {
             List<SiteAllocation> expectedAllocations = data.getSiteAllocationsForLine(row.getLineNo());
             return finCostTagValidator.validate(soft, entcode, gl, detailRow, row, expectedAllocations);
         }
         return null;
+    }
+
+    /** Resolves the line's {@code finsl.slcode} — {@code 0} for a blank Sub Ledger (Type1, no
+     *  sub-ledger) and as a safe fallback if the name can't be resolved (logged via the soft
+     *  assertion trail elsewhere, not thrown — mirrors
+     *  {@code GeneralVoucherEditChangeSets.resolveSlcode}'s same fallback). */
+    private long resolveSlcode(ExpenseIncomeDetail row) {
+        String subLedgerName = row.getSubLedger();
+        if (subLedgerName == null || subLedgerName.isBlank()) return 0L;
+
+        String subLedgerId = row.getSubLedgerId();
+        FinSl sl = (subLedgerId != null && !subLedgerId.isBlank())
+                ? finSlDao.findBySlnameAndSlid(subLedgerName, subLedgerId)
+                : firstOrNull(finSlDao.findBySlname(subLedgerName));
+        return sl == null ? 0L : sl.getSlcode();
+    }
+
+    private static FinSl firstOrNull(List<FinSl> rows) {
+        return (rows == null || rows.isEmpty()) ? null : rows.get(0);
     }
 
     /**

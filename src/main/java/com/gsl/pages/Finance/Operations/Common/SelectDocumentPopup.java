@@ -90,9 +90,11 @@ public class SelectDocumentPopup {
                 // One viewport per tick. Smaller than scrollHeight/15 so the
                 // BufferedRenderer's leading buffer zone overlaps consecutive
                 // ticks — every row is rendered into the DOM at least once.
-                int deltaY      = (int) Math.max(200L, clientHeight);
-                int safetyCap   = ConfigFactory.getWaitConfig().selectDocScrollSafetyCap();
-                long stepWaitMs = ConfigFactory.getWaitConfig().selectDocScrollStepWaitMs();
+                int deltaY         = (int) Math.max(200L, clientHeight);
+                int safetyCap      = ConfigFactory.getWaitConfig().selectDocScrollSafetyCap();
+                long stepWaitMs    = ConfigFactory.getWaitConfig().selectDocScrollStepWaitMs();
+                long confirmWaitMs = ConfigFactory.getWaitConfig().selectDocScrollNoProgressConfirmWaitMs();
+                int requiredStreak = ConfigFactory.getWaitConfig().selectDocScrollNoProgressStreakRequired();
                 int noProgressStreak = 0;
 
                 Log.warn("SelectDocumentPopup: Starting mouse-wheel scroll loop for [{}] — clientHeight=[{}] scrollHeight=[{}] deltaY=[{}] diagnostics: {}",
@@ -131,14 +133,61 @@ public class SelectDocumentPopup {
                             currStoreCount > prevStoreCount ||
                             !Objects.equals(currTopDoc, prevTopDoc) ||
                             !Objects.equals(currBottomDoc, prevBottomDoc);
+
                     if (atBottom && !storeLoading && !progressed) {
-                        noProgressStreak++;
+                        // Candidate end-of-list tick — don't trust a single quick read taken only
+                        // stepWaitMs after the last one; an async BufferedStore page-fetch may
+                        // still be landing (confirmed root cause of a live pagination-search
+                        // false-negative — see WaitConfig#selectDocScrollNoProgressConfirmWaitMs()).
+                        // Wait the longer, independent confirmation window, re-attempt the direct
+                        // find, then re-read fresh scroll state before counting this as one
+                        // genuinely confirmed no-progress signal.
+                        Uninterruptibles.sleepUninterruptibly(confirmWaitMs, TimeUnit.MILLISECONDS);
+                        try {
+                            checkbox = driver.findElement(checkboxBy);
+                            Log.warn("SelectDocumentPopup: Checkbox found during no-progress confirmation wait for [{}]", documentNumber);
+                        } catch (NoSuchElementException ex2) {
+                            // still not present after the confirmation wait
+                        }
+
+                        if (checkbox == null) {
+                            Map<String, Object> confirm = JavascriptExecutorUtils.getGridScrollProgress();
+                            long confirmScrollTop    = readLong(confirm, "scrollTop", currScrollTop);
+                            long confirmStoreCount   = readLong(confirm, "storeCount", currStoreCount);
+                            String confirmTopDoc     = readString(confirm, "topDocNumber");
+                            String confirmBottomDoc  = readString(confirm, "bottomDocNumber");
+                            boolean confirmAtBottom  = readBool(confirm, "atBottom", atBottom);
+                            boolean confirmLoading   = readBool(confirm, "storeLoading", storeLoading);
+
+                            boolean stillNoProgress = confirmAtBottom && !confirmLoading
+                                    && confirmScrollTop == currScrollTop
+                                    && confirmStoreCount == currStoreCount
+                                    && Objects.equals(confirmTopDoc, currTopDoc)
+                                    && Objects.equals(confirmBottomDoc, currBottomDoc);
+
+                            if (stillNoProgress) {
+                                noProgressStreak++;
+                                currScrollTop = confirmScrollTop;
+                                currStoreCount = confirmStoreCount;
+                                currTopDoc = confirmTopDoc;
+                                currBottomDoc = confirmBottomDoc;
+                                atBottom = confirmAtBottom;
+                                storeLoading = confirmLoading;
+                            } else {
+                                noProgressStreak = 0;
+                            }
+                        }
                     } else {
                         noProgressStreak = 0;
                     }
-                    if (noProgressStreak >= 2) {
-                        Log.warn("SelectDocumentPopup: End-of-list reached at attempt [{}] for [{}] (atBottom & no progress for 2 iterations)",
-                                attempt, documentNumber);
+
+                    if (checkbox == null && noProgressStreak >= requiredStreak) {
+                        long finalScrollHeight = readLong(curr, "scrollHeight", scrollHeight);
+                        Log.warn("SelectDocumentPopup: End-of-list reached at attempt [{}] for [{}] — diagnostic "
+                                + "snapshot: scrollTop=[{}] scrollHeight=[{}] clientHeight=[{}] storeCount=[{}] "
+                                + "atBottom=[{}] storeLoading=[{}] confirmedNoProgressStreak=[{}]",
+                                attempt, documentNumber, currScrollTop, finalScrollHeight, clientHeight,
+                                currStoreCount, atBottom, storeLoading, noProgressStreak);
                         break;
                     }
                     prevScrollTop  = currScrollTop;

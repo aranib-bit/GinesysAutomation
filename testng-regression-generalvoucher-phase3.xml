@@ -18,10 +18,11 @@
         <listener class-name="com.gsl.listeners.AnnotationMethodInterceptor"/>
     </listeners>
 
-    <test name="General Voucher Create — Regression Phase 3" parallel="methods" thread-count="2">
+    <test name="General Voucher Create/Revert — Regression Phase 3" parallel="methods" thread-count="2">
         <parameter name="gv.group" value="REGRESSION_PHASE3"/>
         <classes>
             <class name="com.tests.Finance.Operations.Vouchers.CreateGeneralVoucher"/>
+            <class name="com.tests.Finance.Operations.Vouchers.RevertGeneralVoucher"/>
         </classes>
     </test>
 

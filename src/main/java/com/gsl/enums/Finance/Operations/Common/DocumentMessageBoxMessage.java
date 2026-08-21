@@ -48,6 +48,75 @@ public enum DocumentMessageBoxMessage {
     DOC_AMOUNT_READ_ONLY_INFO(
             "Document is adjusted against the selected sub ledger, amount can not be modified manually.",
             PopupType.INFO
+    ),
+
+    /** Appears after clicking Revert on a currently Posted document — Yes/No buttons; Yes un-posts it. */
+    REVERT_UNPOST_CONFIRMATION(
+            "Selected document(s) will be un-posted. Do you want to proceed?",
+            PopupType.CONFIRM
+    ),
+
+    /**
+     * Appears after clicking Revert on a document already in un-posted state — single OK button,
+     * no state change. Live text is {@code "Document No: <docno> - Document is already in
+     * un-posted state."}; this constant deliberately omits the dynamic "Document No: X - "
+     * prefix so {@link com.gsl.pages.Common.DocumentMessageBox#verifyMessage} /
+     * {@code contains()}-based checks still match regardless of which document triggered it.
+     */
+    REVERT_ALREADY_UNPOSTED_INFO(
+            "Document is already in un-posted state.",
+            PopupType.INFO
+    ),
+
+    /**
+     * Appears after clicking Revert on a document whose {@code finvchdet} line(s) are already
+     * bank-reconciled (BRS) — single OK button, no state change; Revert is blocked. Live text is
+     * {@code "Document No: <docno> - BRS is done for this transaction. Cannot be reverted."};
+     * this constant deliberately omits the dynamic "Document No: X - " prefix, same convention
+     * as {@link #REVERT_ALREADY_UNPOSTED_INFO}.
+     */
+    REVERT_BRS_ALREADY_DONE(
+            "BRS is done for this transaction. Cannot be reverted.",
+            PopupType.INFO
+    ),
+
+    /**
+     * Appears after confirming Yes on {@link #REVERT_UNPOST_CONFIRMATION} — a separate
+     * "Result" dialog, single OK button, confirming the un-post actually completed. Live text
+     * is {@code "Document No: <docno> - Reverted Successfully."}; this constant deliberately
+     * omits the dynamic "Document No: X - " prefix, same convention as
+     * {@link #REVERT_ALREADY_UNPOSTED_INFO}. Confirmed via a live screenshot — this dialog was
+     * previously never dismissed by {@code GeneralVoucherMainGrid.confirmRevert()}, leaving it
+     * open and blocking the grid for any caller that needs to keep interacting with the list
+     * page right after un-posting (e.g. {@code EditGeneralVoucher}).
+     */
+    REVERT_SUCCESS_RESULT(
+            "Reverted Successfully.",
+            PopupType.INFO
+    ),
+
+    /**
+     * Appears right after clicking Save, before the final success message — asks whether to
+     * release the document immediately as part of this save. Yes/No buttons.
+     *
+     * <p><b>CONFIRMED role-dependent</b> (live observation, Edit General Voucher): does not
+     * appear for every user role — some roles' save flow never asks (auto-releases, or never
+     * releases at all), so this dialog is genuinely optional per-run, not guaranteed, and must
+     * be detected defensively (present-or-absent) rather than always expected — same idiom
+     * already used for the TDS Auto-Journal Continue prompt in {@code DocumentPopup
+     * #handleTdsAutoJournalPromptIfPresent}.
+     *
+     * <p>Test flows click <b>Yes</b> when this appears (see {@code DocumentPopup
+     * #handleReleaseConfirmationIfPresent}) — default to releasing unless a specific value is
+     * provided (plan §14, per explicit user preference; no such per-scenario override exists
+     * yet). Releasing changes {@code release_status}/{@code release_time}/{@code release_ecode}
+     * together — the common {@code VoucherEditChangeSets} builder marks all three {@code IGNORE}
+     * (not the snapshot engine's usual {@code MUST_NOT_CHANGE} default) precisely because whether
+     * this dialog even appears is role-dependent and not something the test data declares.
+     */
+    RELEASE_AFTER_SAVE_CONFIRMATION(
+            "Document will be released after save. Do you want to release?",
+            PopupType.CONFIRM
     );
 
     private final String text;

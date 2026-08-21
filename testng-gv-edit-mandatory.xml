@@ -1,0 +1,27 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE suite SYSTEM "http://testng.org/testng-1.0.dtd">
+<!--
+    General Voucher Edit MANDATORY Suite — the MANDATORY-tagged EditGeneralVoucher rows only
+    (gv.edit.group=MANDATORY, 3 scenarios per GeneralVoucherEditExecutionGroup's javadoc),
+    standalone from the Create/Revert suites. DB-mode only (testdata.source=DB) —
+    ExcelGeneralVoucherEditDataSource has no group filtering.
+
+    Run: mvn clean test -Pgv-edit-mandatory
+-->
+<suite name="General Voucher Edit — Mandatory Suite" parallel="none" data-provider-thread-count="4">
+
+    <listeners>
+        <listener class-name="com.gsl.listeners.RetryAnnotationTransformer"/>
+        <listener class-name="com.gsl.listeners.TestListener"/>
+        <listener class-name="com.gsl.listeners.SuiteDataLoader"/>
+        <listener class-name="com.gsl.listeners.AnnotationMethodInterceptor"/>
+    </listeners>
+
+    <test name="General Voucher Edit — Mandatory" parallel="methods" thread-count="2">
+        <parameter name="gv.edit.group" value="MANDATORY"/>
+        <classes>
+            <class name="com.tests.Finance.Operations.Vouchers.EditGeneralVoucher"/>
+        </classes>
+    </test>
+
+</suite>

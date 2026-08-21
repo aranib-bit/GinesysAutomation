@@ -72,11 +72,31 @@ public final class DbGatheringExtentLogger {
             else businessLines.add(line);
         }
 
+        // Foldable formatting (plan §4I/Point 10), STILL via infoHtmlOnChildNode — plan §5 (fix
+        // for a live-confirmed 4I regression): a bare infoHtml(...) call here (this method fires
+        // before any StepExecutor.step() exists, per this class's own Javadoc) attaches to the
+        // ROOT TEST's own shared log table, alongside 40+ other real rows whose Status/Timestamp
+        // cells anchor those columns to their thead-declared 70px/110px widths. FoldableSectionRenderer
+        // .CSS's tr:has(.rs-wrap)>td:not(:last-child){display:none} rule then reassigns the lone
+        // remaining cell to an earlier column slot under table-layout:auto, inheriting THAT slot's
+        // narrow width — confirmed live (browser-rendered DOM measurement) to wrap the section
+        // title character-by-character. ActualResultsLogger/SnapshotValidationReporter never hit
+        // this because they always run inside their OWN dedicated StepExecutor.step(...) node,
+        // whose table has only their one widget row — no other row to anchor a competing width.
+        // infoHtmlOnChildNode restores that same dedicated-node/single-row-table context here,
+        // while still using FoldableSectionRenderer's HTML for the actual styling-consistency win
+        // 4I was after.
         if (!businessLines.isEmpty()) {
-            ExtentLogger.infoHtmlOnChildNode("📋 Test Data Resolution", buildPre(businessLines));
+            ExtentLogger.infoHtmlOnChildNode("📋 Test Data Resolution", FoldableSectionRenderer.foldableSection(
+                    "📋", "Test Data Resolution", false, buildPre(businessLines)));
         }
         if (!sqlLines.isEmpty()) {
-            ExtentLogger.infoHtmlOnChildNode("🔍 SQL Queries Executed", buildPre(sqlLines));
+            // Same SQL/Time table shape as ActualResultsLogger's "DB Lookups" section — both
+            // consume the identical "[DB Query ⏱ Nms] SQL..." string format, so this is a real
+            // dedup, not just a styling change, and gives these queries a proper table instead of
+            // a <pre> dump.
+            ExtentLogger.infoHtmlOnChildNode("🔍 SQL Queries Executed", FoldableSectionRenderer.foldableSection(
+                    "🔍", "SQL Queries Executed", false, FoldableSectionRenderer.sqlQueriesTableHtml(sqlLines)));
         }
     }
 

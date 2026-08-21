@@ -96,7 +96,11 @@ public enum NegativeValidation {
     DOC_AMOUNT_READ_ONLY(
             "Document is adjusted against the selected sub ledger, amount can not be modified manually."),
 
-    /** Document date set beyond the latest date the scheme/period allows (e.g. a future date). */
+    /** Document date set beyond the latest date the scheme/period allows (e.g. a future date).
+     *  <b>No longer used by General Voucher Edit</b> — confirmed live the app ACCEPTS a
+     *  future-dated document within the same accounting year (see
+     *  {@code VoucherEditDateVariant#FUTURE_DATE}); kept here only in case a genuine future-date
+     *  rejection rule is ever confirmed for another domain/flow. */
     FUTURE_DATE_NOT_ALLOWED("Document date cannot be a future date"),
 
     /** Reference text longer than the {@code finvchmain.refno} column / form max length. */
@@ -129,6 +133,16 @@ public enum NegativeValidation {
     /** Row's hover-tooltip text when a Type 2/Type 3 row's Site button was never clicked (no
      *  allocation attempted at all). Read via the row indicator, not the Save dialog — see above. */
     GV_SITE_NOT_ALLOCATED("Site allocation is required as ledger is site applicable."),
+
+    // ─── General Voucher — Edit: accounting-year-aware document date ─────────
+    // Asserted directly against the Save dialog via DocumentPopup.verifyErrorMessage — CONFIRMED
+    // live (user-supplied screenshot): editing an existing voucher's date to fall outside its own
+    // finvchmain.ycode's admyear range produces exactly this message.
+
+    /** Edit's new document date crosses into a different accounting year than the voucher's own
+     *  (finvchmain.ycode's admyear range) — the app rejects the save outright. */
+    GV_EDIT_DATE_CROSSES_ACCOUNTING_YEAR(
+            "The entry date cannot be changed to a new accounting year. It should belong to the same accounting year."),
 
     ;
 

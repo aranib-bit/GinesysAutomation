@@ -27,6 +27,7 @@ import com.gsl.testdata.dto.MergedFinanceGeneralVoucherData;
 import com.gsl.utils.Log;
 import com.gsl.utils.dataprovider.fixture.GeneralVoucherFixtureFactory;
 import com.gsl.utils.dataprovider.fixture.LiveGvDbRefs;
+import com.gsl.utils.dataprovider.fixture.finance.GeneralVoucherCombinationFilter;
 import com.gsl.utils.dataprovider.fixture.finance.GeneralVoucherCombinations;
 import com.gsl.utils.dataprovider.fixture.finance.GeneralVoucherExecutionGroup;
 import com.gsl.utils.dataprovider.fixture.finance.GeneralVoucherFixtureOptions;
@@ -39,8 +40,6 @@ import org.jdbi.v3.core.Jdbi;
 import org.testng.SkipException;
 
 import java.util.ArrayList;
-import java.util.Arrays;
-import java.util.Collections;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
@@ -90,8 +89,8 @@ public class DbGeneralVoucherDataSource implements TestDataSource<MergedFinanceG
 
     @Override
     public List<MergedFinanceGeneralVoucherData> load(String methodName) {
-        GeneralVoucherExecutionGroup activeGroup = resolveActiveGroup();
-        Set<GeneralVoucherTag> activeTags = resolveActiveTags();
+        GeneralVoucherExecutionGroup activeGroup = GeneralVoucherCombinationFilter.resolveActiveGroup(xmlGroupParam);
+        Set<GeneralVoucherTag> activeTags = GeneralVoucherCombinationFilter.resolveActiveTags(xmlTagParam);
 
         List<GeneralVoucherScenarioType> scenarios = GeneralVoucherFixtureFactory.scenariosFor(methodName);
         List<MergedFinanceGeneralVoucherData> placeholders = new ArrayList<>();
@@ -115,11 +114,9 @@ public class DbGeneralVoucherDataSource implements TestDataSource<MergedFinanceG
                 continue;
             }
             for (GeneralVoucherVariant variant : GeneralVoucherCombinations.allCombinations()) {
-                if (!matchesGroup(activeGroup, variant.getExecutionGroup())) continue;
+                if (!GeneralVoucherCombinationFilter.survives(variant, activeGroup, activeTags)) continue;
 
-                Set<GeneralVoucherTag> tags = tagsFor(variant);
-                if (!activeTags.isEmpty() && Collections.disjoint(activeTags, tags)) continue;
-
+                Set<GeneralVoucherTag> tags = GeneralVoucherCombinationFilter.tagsFor(variant);
                 GeneralVoucherFixtureOptions opts = GeneralVoucherFixtureOptions.of(
                         variant.getAccountType(), variant.getGlLineType(),
                         variant.isDebitSide(), variant.isReversal(), variant.getPaymentVariant(),
@@ -162,52 +159,6 @@ public class DbGeneralVoucherDataSource implements TestDataSource<MergedFinanceG
                 .invocationIndex(1)
                 .totalInvocations(1)
                 .build();
-    }
-
-    private static Set<GeneralVoucherTag> tagsFor(GeneralVoucherVariant variant) {
-        Set<GeneralVoucherTag> tags = new HashSet<>();
-        switch (variant.getAccountType()) {
-            case EXPENSE -> tags.add(GeneralVoucherTag.EXPENSE);
-            case INCOME -> tags.add(GeneralVoucherTag.INCOME);
-            case ASSET -> tags.add(GeneralVoucherTag.ASSET);
-            case LIABILITY -> tags.add(GeneralVoucherTag.LIABILITY);
-        }
-        switch (variant.getGlLineType()) {
-            case TYPE1_NONE -> tags.add(GeneralVoucherTag.TYPE1_NONE);
-            case TYPE2_SITE_ONLY -> tags.add(GeneralVoucherTag.TYPE2_SITE_ONLY);
-            case TYPE3_SITE_AND_SUBLEDGER -> tags.add(GeneralVoucherTag.TYPE3_SITE_AND_SUBLEDGER);
-        }
-        tags.add(variant.isDebitSide() ? GeneralVoucherTag.DEBIT_SIDE : GeneralVoucherTag.CREDIT_SIDE);
-        tags.add(variant.isReversal() ? GeneralVoucherTag.REVERSAL_YES : GeneralVoucherTag.REVERSAL_NO);
-        switch (variant.getPaymentVariant()) {
-            case CHEQUE -> tags.add(GeneralVoucherTag.PAYMENT_CHEQUE);
-            case NEFT_RTGS -> tags.add(GeneralVoucherTag.PAYMENT_NEFT_RTGS);
-            case NONE -> tags.add(GeneralVoucherTag.PAYMENT_NONE);
-            case CASH -> tags.add(GeneralVoucherTag.PAYMENT_CASH);
-        }
-        return tags;
-    }
-
-    private GeneralVoucherExecutionGroup resolveActiveGroup() {
-        String prop = System.getProperty("gv.group");
-        if (prop == null || prop.isBlank()) prop = this.xmlGroupParam;
-        if (prop == null || prop.isBlank()) return null; // null = run ALL groups
-        return GeneralVoucherExecutionGroup.valueOf(prop.trim().toUpperCase());
-    }
-
-    private Set<GeneralVoucherTag> resolveActiveTags() {
-        String prop = System.getProperty("gv.tag");
-        if (prop == null || prop.isBlank()) prop = this.xmlTagParam;
-        if (prop == null || prop.isBlank()) return Collections.emptySet();
-        return Arrays.stream(prop.split(","))
-                .map(String::trim)
-                .filter(s -> !s.isEmpty())
-                .map(s -> GeneralVoucherTag.valueOf(s.toUpperCase()))
-                .collect(Collectors.toSet());
-    }
-
-    private static boolean matchesGroup(GeneralVoucherExecutionGroup active, GeneralVoucherExecutionGroup target) {
-        return active == null || active == target;
     }
 
     // =========================================================================

@@ -2,6 +2,7 @@ package com.gsl.reports;
 
 import com.gsl.database.DatabaseManager;
 import com.gsl.database.JdbiSqlLogger;
+import com.gsl.reports.FoldableSectionRenderer.Status;
 import com.gsl.reports.contract.TestResultsAccumulator;
 import com.gsl.reports.contract.TestResultsRenderer;
 import com.gsl.database.dao.adm.AdmSiteDao;
@@ -19,8 +20,18 @@ import com.gsl.testdata.dto.MergedFinanceArVoucherData;
 import com.gsl.testdata.dto.MergedFinanceGeneralVoucherData;
 import com.gsl.utils.Log;
 
+import static com.gsl.reports.FoldableSectionRenderer.ICO_DB;
+import static com.gsl.reports.FoldableSectionRenderer.ICO_DOC;
+import static com.gsl.reports.FoldableSectionRenderer.ICO_FLAG;
+import static com.gsl.reports.FoldableSectionRenderer.ICO_LOOKUP;
+import static com.gsl.reports.FoldableSectionRenderer.ICO_MONITOR;
+import static com.gsl.reports.FoldableSectionRenderer.ICO_SUBLEDGER;
+import static com.gsl.reports.FoldableSectionRenderer.ICO_TABLE;
+import static com.gsl.reports.FoldableSectionRenderer.badge;
+
 import java.math.BigDecimal;
 import java.time.format.DateTimeFormatter;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 
@@ -34,6 +45,36 @@ public final class ActualResultsLogger {
 
     private static final DateTimeFormatter DATE_FMT = DateTimeFormatter.ofPattern("dd/MM/yyyy");
     private static final DateTimeFormatter TIME_FMT = DateTimeFormatter.ofPattern("HH:mm:ss");
+
+    // ─── Summary-first / exception-first reporting (Database_Snapshot_Validation_Representation.md) ──
+    // A per-render tally threaded via ThreadLocal rather than a new parameter on every row()/flagRow()
+    // call site — buildPositiveHtml's ~15 section builders all funnel through those two renderers
+    // already, so this is a zero-signature-change way to collect "did anything fail" without
+    // rewriting each section builder's method signature.
+    private static final ThreadLocal<Tally> CURRENT_TALLY = new ThreadLocal<>();
+    /** Swapped for the real Summary+Exceptions HTML once the tally is complete (see {@link #buildPositiveHtml}). */
+    private static final String SUMMARY_PLACEHOLDER = " RS_SUMMARY_PLACEHOLDER ";
+    /** Swapped for {@code "open"}/{@code ""} on the two top-level sections once the tally is
+     *  complete — collapsed by default when nothing failed, forced open when something did. */
+    private static final String SECTION_OPEN_PLACEHOLDER = "RS_SECTION_OPEN_PLACEHOLDER";
+
+    private static final class Tally {
+        int checked, passed, failed, skipped;
+        final List<String[]> failures = new ArrayList<>(); // {field, expected, actual}
+    }
+
+    /** No-op when no render is in progress (e.g. the negative-scenario path, which doesn't call
+     *  {@link #buildPositiveHtml}) — {@code row()}/{@code flagRow()} can call this unconditionally. */
+    private static void tally(Status status, String field, String expected, String actual) {
+        Tally t = CURRENT_TALLY.get();
+        if (t == null) return;
+        t.checked++;
+        switch (status) {
+            case PASS -> t.passed++;
+            case SKIP -> t.skipped++;
+            case FAIL -> { t.failed++; t.failures.add(new String[]{field, expected, actual}); }
+        }
+    }
 
     private ActualResultsLogger() {}
 
@@ -75,6 +116,15 @@ public final class ActualResultsLogger {
     }
 
     private static String buildPositiveHtml(ActualResultsHolder h) {
+        CURRENT_TALLY.set(new Tally());
+        try {
+            return buildPositiveHtmlBody(h);
+        } finally {
+            CURRENT_TALLY.remove();
+        }
+    }
+
+    private static String buildPositiveHtmlBody(ActualResultsHolder h) {
         FinVchMain header = h.getHeader();
 
         String siteActual = h.getUiOwnerSite() != null ? h.getUiOwnerSite() : NOT_REACHED;
@@ -112,19 +162,18 @@ public final class ActualResultsLogger {
         else                            tagActual = h.getTagCount() + " entries";
 
         StringBuilder sb = new StringBuilder();
-        sb.append(CSS);
+        sb.append(FoldableSectionRenderer.CSS);
         sb.append("<div class='rs-wrap'>");
         sb.append(LEGEND);
+        sb.append(SUMMARY_PLACEHOLDER);
 
         // ── UI Validation section ──────────────────────────────────────────────
-        sb.append("<details open><summary class='rs-top rs-ui'>");
-        sb.append("<span style='display:inline-flex;align-items:center;gap:8px'>" + ICO_MONITOR + " UI Validation</span>");
-        sb.append("<span class='rs-chev'>&#9650;</span></summary>");
+        sb.append(FoldableSectionRenderer.sectionOpen(SECTION_OPEN_PLACEHOLDER, "rs-top rs-ui", "",
+                FoldableSectionRenderer.headerLabel(ICO_MONITOR, "UI Validation", 8)));
 
         // Document Information sub-section
-        sb.append("<details open><summary class='rs-sub'>");
-        sb.append("<span style='display:inline-flex;align-items:center;gap:6px'>" + ICO_DOC + " Document Information</span>");
-        sb.append("<span class='rs-chev'>&#9650;</span></summary>");
+        sb.append(FoldableSectionRenderer.sectionOpen("open", "rs-sub", "",
+                FoldableSectionRenderer.headerLabel(ICO_DOC, "Document Information", 6)));
         sb.append(tableOpen());
         sb.append(headerRow("Field", "Expected (test input)", "Actual (UI)", "Status"));
 
@@ -139,20 +188,19 @@ public final class ActualResultsLogger {
         sb.append(row("Doc date",       expDocDate,   docDateActual, matchExact(docDateActual, expDocDate)));
         sb.append(row("Reference",      expReference, refActual,     matchExact(refActual, expReference)));
         sb.append(row("Remarks",        expRemarks,   remarkActual,  matchExact(remarkActual, expRemarks)));
-        sb.append("</tbody>").append(TABLE_CLOSE).append("</details>");
+        sb.append("</tbody>").append(TABLE_CLOSE).append(FoldableSectionRenderer.sectionClose());
 
         // Flags sub-section — AP only
         if (isAp) {
             String expOnAccount = h.getOnAccount() != null ? OnAccountValues.from(h.getOnAccount()).getLabel() : "—";
             String uiOnAccount  = h.getUiOnAccount() != null ? h.getUiOnAccount().trim() : NOT_REACHED;
-            sb.append("<details open><summary class='rs-sub'>");
-            sb.append("<span style='display:inline-flex;align-items:center;gap:6px'>" + ICO_FLAG + " Flags</span>");
-            sb.append("<span class='rs-chev'>&#9650;</span></summary>");
+            sb.append(FoldableSectionRenderer.sectionOpen("open", "rs-sub", "",
+                    FoldableSectionRenderer.headerLabel(ICO_FLAG, "Flags", 6)));
             sb.append(tableOpen());
             sb.append(headerRow("Field", "SL Name", "SL ID", "Expected", "Actual (UI)", "Status"));
             // Document-level flag — no SL row association
             sb.append(flagRow("On account", "—", "—", expOnAccount, uiOnAccount, matchExact(uiOnAccount, expOnAccount)));
-            sb.append("</tbody>").append(TABLE_CLOSE).append("</details>");
+            sb.append("</tbody>").append(TABLE_CLOSE).append(FoldableSectionRenderer.sectionClose());
         }
 
         // Sub Ledger Information sub-section
@@ -164,17 +212,15 @@ public final class ActualResultsLogger {
             sb.append(buildSiteAllocationSection(h));
         }
 
-        sb.append("</details>"); // end UI Validation
+        sb.append(FoldableSectionRenderer.sectionClose()); // end UI Validation
 
         // ── DB Validation section ──────────────────────────────────────────────
-        sb.append("<details open><summary class='rs-top rs-db'>");
-        sb.append("<span style='display:inline-flex;align-items:center;gap:8px'>" + ICO_DB + " DB Validation</span>");
-        sb.append("<span class='rs-chev'>&#9650;</span></summary>");
+        sb.append(FoldableSectionRenderer.sectionOpen(SECTION_OPEN_PLACEHOLDER, "rs-top rs-db", "",
+                FoldableSectionRenderer.headerLabel(ICO_DB, "DB Validation", 8)));
 
         // finvchmain
-        sb.append("<details open><summary class='rs-sub'>");
-        sb.append("<span style='display:inline-flex;align-items:center;gap:6px'>" + ICO_TABLE + " finvchmain</span>");
-        sb.append("<span class='rs-chev'>&#9650;</span></summary>");
+        sb.append(FoldableSectionRenderer.sectionOpen("open", "rs-sub", "",
+                FoldableSectionRenderer.headerLabel(ICO_TABLE, "finvchmain", 6)));
         sb.append(tableOpen());
         sb.append(headerRow("Column", "Expected", "Actual", "Status"));
         Status vchmainStatus = vchcodeActual.equals(NOT_REACHED) ? Status.SKIP : Status.PASS;
@@ -210,22 +256,20 @@ public final class ActualResultsLogger {
                 ? "saved at " + saveTime.format(TIME_FMT) + " (within " + h.getCreationDtToleranceSeconds() + "s)"
                 : "not null";
         sb.append(row("creation_dt", creationDtExpected, creationDtActual, creationDtStatus));
-        sb.append("</tbody>").append(TABLE_CLOSE).append("</details>");
+        sb.append("</tbody>").append(TABLE_CLOSE).append(FoldableSectionRenderer.sectionClose());
 
         // finvchdet
-        sb.append("<details open><summary class='rs-sub'>");
-        sb.append("<span style='display:inline-flex;align-items:center;gap:6px'>" + ICO_TABLE + " finvchdet</span>");
-        sb.append("<span class='rs-chev'>&#9650;</span></summary>");
+        sb.append(FoldableSectionRenderer.sectionOpen("open", "rs-sub", "",
+                FoldableSectionRenderer.headerLabel(ICO_TABLE, "finvchdet", 6)));
         sb.append(tableOpen());
         sb.append(headerRow("Column", "Expected", "Actual", "Status"));
         Status detStatus = detActual.equals(NOT_REACHED) ? Status.SKIP : Status.PASS;
         sb.append(row("Row count", expSlCount + " row(s)", detActual, detStatus));
-        sb.append("</tbody>").append(TABLE_CLOSE).append("</details>");
+        sb.append("</tbody>").append(TABLE_CLOSE).append(FoldableSectionRenderer.sectionClose());
 
         // finpost
-        sb.append("<details open><summary class='rs-sub'>");
-        sb.append("<span style='display:inline-flex;align-items:center;gap:6px'>" + ICO_TABLE + " finpost</span>");
-        sb.append("<span class='rs-chev'>&#9650;</span></summary>");
+        sb.append(FoldableSectionRenderer.sectionOpen("open", "rs-sub", "",
+                FoldableSectionRenderer.headerLabel(ICO_TABLE, "finpost", 6)));
         sb.append(tableOpen());
         sb.append(headerRow("Column", "Expected", "Actual", "Status"));
         Status postStatus = postActual.equals(NOT_REACHED) ? Status.SKIP : Status.PASS;
@@ -234,16 +278,15 @@ public final class ActualResultsLogger {
         if (h.getPostEntries() != null && !h.getPostEntries().isEmpty()) {
             sb.append(buildGlEntriesTable(h.getPostEntries()));
         }
-        sb.append("</details>");
+        sb.append(FoldableSectionRenderer.sectionClose());
 
         // fintag (AP/AR: adjustment tagging) / fincosttag (GV: site allocation tagging) —
         // a structurally different table/concept per voucher type, not a renamed one; see
         // GeneralVoucherDbValidator/FinCostTagValidator vs FinTagValidator/FinTagApValidator.
         String tagSectionLabel = isGv ? "fincosttag (Site Allocation)" : "fintag";
         String tagRowLabel     = isGv ? "Site allocation tag check" : "Tag check";
-        sb.append("<details open><summary class='rs-sub'>");
-        sb.append("<span style='display:inline-flex;align-items:center;gap:6px'>" + ICO_TABLE + " " + tagSectionLabel + "</span>");
-        sb.append("<span class='rs-chev'>&#9650;</span></summary>");
+        sb.append(FoldableSectionRenderer.sectionOpen("open", "rs-sub", "",
+                FoldableSectionRenderer.headerLabel(ICO_TABLE, tagSectionLabel, 6)));
         sb.append(tableOpen());
         sb.append(headerRow("Column", "Expected", "Actual", "Status"));
         Status tagStatus;
@@ -251,9 +294,9 @@ public final class ActualResultsLogger {
         else if (h.getTagCount() == -1) tagStatus = Status.SKIP;
         else tagStatus = Status.PASS;
         sb.append(row(tagRowLabel, expSelectDocEntry, tagActual, tagStatus));
-        sb.append("</tbody>").append(TABLE_CLOSE).append("</details>");
+        sb.append("</tbody>").append(TABLE_CLOSE).append(FoldableSectionRenderer.sectionClose());
 
-        sb.append("</details>"); // end DB Validation
+        sb.append(FoldableSectionRenderer.sectionClose()); // end DB Validation
 
         // DB Lookups section — captured queries from this build
         List<String> captured = JdbiSqlLogger.getCaptured();
@@ -264,6 +307,52 @@ public final class ActualResultsLogger {
         sb.append("</div>"); // end rs-wrap
         sb.append(HIDE_TS_SCRIPT);
 
+        Tally tally = CURRENT_TALLY.get();
+        // Snapshot the failures list before rendering — buildExceptionsHtml's rows re-enter
+        // row()/tally() (the same helper every other section uses), which would otherwise mutate
+        // tally.failures while this very call is iterating over it (ConcurrentModificationException).
+        String summaryAndExceptions = tally == null ? ""
+                : buildSummaryHtml(tally) + buildExceptionsHtml(new ArrayList<>(tally.failures));
+        String sectionOpenAttr = (tally != null && !tally.failures.isEmpty()) ? "open" : "";
+
+        return sb.toString()
+                .replace(SUMMARY_PLACEHOLDER, summaryAndExceptions)
+                .replace(SECTION_OPEN_PLACEHOLDER, sectionOpenAttr);
+    }
+
+    /** Validation Summary card — prepended ahead of the UI/DB Validation sections (doc "Summary →
+     *  Exceptions → Changed Rows → Column Details → Full Snapshot" hierarchy). */
+    private static String buildSummaryHtml(Tally tally) {
+        boolean overallPass = tally.failed == 0;
+        StringBuilder sb = new StringBuilder();
+        sb.append("<div style='padding:10px 14px;margin-bottom:8px;border-radius:8px;")
+          .append("border:0.5px solid #E2E8F0;background:#F8FAFC'>");
+        sb.append("<div style='font-size:11px;font-weight:600;color:#64748B;text-transform:uppercase;")
+          .append("letter-spacing:.05em;margin-bottom:6px'>Validation Summary</div>");
+        sb.append("<div style='display:flex;gap:18px;flex-wrap:wrap;align-items:center;font-size:12px'>");
+        sb.append("<span>Fields Checked: <b>").append(tally.checked).append("</b></span>");
+        sb.append("<span style='color:#27500A'>Passed: <b>").append(tally.passed).append("</b></span>");
+        sb.append("<span style='color:#991B1B'>Failed: <b>").append(tally.failed).append("</b></span>");
+        sb.append("<span style='color:#5F5E5A'>Skipped: <b>").append(tally.skipped).append("</b></span>");
+        sb.append("<span>Overall Result: ").append(badge(overallPass ? Status.PASS : Status.FAIL)).append("</span>");
+        sb.append("</div></div>");
+        return sb.toString();
+    }
+
+    /** Exceptions section — every failed field, surfaced right after the summary, before the full
+     *  UI/DB Validation detail (doc's exception-first principle: "PASS information should be
+     *  compressible"). Only called when {@code failures} is non-empty. */
+    private static String buildExceptionsHtml(List<String[]> failures) {
+        if (failures.isEmpty()) return "";
+        StringBuilder sb = new StringBuilder();
+        sb.append(FoldableSectionRenderer.sectionOpen("open", "rs-sub", "background:#FEF2F2;color:#991B1B",
+                "<span>❌ Exceptions (" + failures.size() + ")</span>"));
+        sb.append(tableOpen());
+        sb.append(headerRow("Field", "Expected", "Actual", "Status"));
+        for (String[] f : failures) {
+            sb.append(row(f[0], f[1], f[2], Status.FAIL));
+        }
+        sb.append("</tbody>").append(TABLE_CLOSE).append(FoldableSectionRenderer.sectionClose());
         return sb.toString();
     }
 
@@ -310,43 +399,16 @@ public final class ActualResultsLogger {
     // ─── DB Lookups section ───────────────────────────────────────────────────
 
     private static String buildDbLookupsSection(List<String> queries) {
-        StringBuilder sb = new StringBuilder();
-        sb.append("<details open><summary class='rs-lookup-sum'>")
-          .append("<span style='display:inline-flex;align-items:center;gap:6px'>")
-          .append(ICO_LOOKUP).append(" DB Lookups &mdash; ").append(queries.size()).append(" quer")
-          .append(queries.size() == 1 ? "y" : "ies").append(" fired during rendering</span>")
-          .append("<span class='rs-chev'>&#9650;</span></summary>");
-        sb.append("<div style='padding:6px 12px 10px;background:#fff'>");
-        sb.append("<table style='width:100%;border-collapse:collapse;font-size:11px;font-family:monospace'>");
-        sb.append("<thead><tr>")
-          .append("<th style='text-align:left;padding:4px 8px;color:#64748B;font-weight:500;border-bottom:0.5px solid #E2E8F0;font-family:sans-serif;font-size:11px'>SQL</th>")
-          .append("<th style='text-align:right;padding:4px 8px;color:#64748B;font-weight:500;border-bottom:0.5px solid #E2E8F0;font-family:sans-serif;font-size:11px;white-space:nowrap'>Time (ms)</th>")
-          .append("</tr></thead><tbody>");
-        for (String q : queries) {
-            // Format: "[DB Query ⏱ 71ms] SELECT ..." — split on "] "
-            String timing = "";
-            String sql = q;
-            int bracket = q.indexOf("] ");
-            if (bracket >= 0) {
-                String prefix = q.substring(0, bracket); // e.g. "[DB Query ⏱ 71ms"
-                sql = q.substring(bracket + 2);
-                int msIdx = prefix.lastIndexOf(' ');
-                if (msIdx >= 0) timing = prefix.substring(msIdx + 1).replace("ms", "");
-            }
-            sb.append("<tr>")
-              .append("<td style='padding:4px 8px;border-bottom:0.5px solid #F1F5F9;color:#334155;word-break:break-all'>")
-              .append(esc(sql)).append("</td>")
-              .append("<td style='padding:4px 8px;border-bottom:0.5px solid #F1F5F9;color:#64748B;text-align:right;white-space:nowrap'>")
-              .append(esc(timing)).append("</td>")
-              .append("</tr>");
-        }
-        sb.append("</tbody></table></div></details>");
-        return sb.toString();
+        String title = "DB Lookups &mdash; " + queries.size() + " quer" + (queries.size() == 1 ? "y" : "ies")
+                + " fired during rendering";
+        return FoldableSectionRenderer.sectionOpen("open", "rs-lookup-sum", "",
+                    FoldableSectionRenderer.headerLabel(ICO_LOOKUP, title, 6))
+             + FoldableSectionRenderer.sqlQueriesTableHtml(queries)
+             + FoldableSectionRenderer.sectionClose();
     }
 
     private static String fmtAmount(BigDecimal v) {
-        if (v == null || v.compareTo(BigDecimal.ZERO) == 0) return "—";
-        return String.format("%,.2f", v);
+        return VoucherReportUtils.fmtAmount(v);
     }
 
     // ─── Sub Ledger Information sub-section ──────────────────────────────────
@@ -392,10 +454,9 @@ public final class ActualResultsLogger {
         Map<String, String>  deductMap    = h.getUiDeductTdsMap();
 
         StringBuilder sb = new StringBuilder();
-        sb.append("<details open><summary class='rs-sub'>");
-        sb.append("<span style='display:inline-flex;align-items:center;gap:6px'>"
-                + ICO_SUBLEDGER + " Sub Ledger Information &#8212; " + slTypeLabel + "</span>");
-        sb.append("<span class='rs-chev'>&#9650;</span></summary>");
+        sb.append(FoldableSectionRenderer.sectionOpen("open", "rs-sub", "",
+                FoldableSectionRenderer.headerLabel(ICO_SUBLEDGER,
+                        "Sub Ledger Information &#8212; " + slTypeLabel, 6)));
         sb.append("<div style='overflow-x:auto;width:100%'><table class='rs-tbl'>");
 
         if (isAp) {
@@ -410,7 +471,7 @@ public final class ActualResultsLogger {
             if (isAp && row instanceof SubLedgerInformation) {
                 SubLedgerInformation sl = (SubLedgerInformation) row;
                 String adjType = sl.getAdjustmentType() != null ? sl.getAdjustmentType().displayLabel() : "—";
-                String amount  = sl.getAmountDr() != null ? String.format("%,.2f", sl.getAmountDr()) : "—";
+                String amount  = VoucherReportUtils.fmtAmount(sl.getAmountDr());
                 String key     = (sl.getId() != null && !sl.getId().isBlank()) ? sl.getId() : sl.getSubLedger();
                 String tdsInfo = uiTdsInfoMap.containsKey(key) ? ns(uiTdsInfoMap.get(key)) : "—";
                 String uiTds   = deductMap.containsKey(key) ? ns(deductMap.get(key)) : NOT_REACHED;
@@ -421,7 +482,7 @@ public final class ActualResultsLogger {
                 com.gsl.testdata.Finance.Operations.Vouchers.ARVoucher.SubLedgerInformation sl =
                         (com.gsl.testdata.Finance.Operations.Vouchers.ARVoucher.SubLedgerInformation) row;
                 String adjType = sl.getAdjustmentType() != null ? sl.getAdjustmentType().displayLabel() : "—";
-                String amount  = sl.getAmountCr() != null ? String.format("%,.2f", sl.getAmountCr()) : "—";
+                String amount  = VoucherReportUtils.fmtAmount(sl.getAmountCr());
                 String key     = (sl.getId() != null && !sl.getId().isBlank()) ? sl.getId() : sl.getSubLedger();
                 String[] popup = resolvePopupCell(needsPaymentInfoWarning, popupMap, key);
                 sb.append(slRowAr(idx++, ns(sl.getSubLedger()), ns(sl.getId()), amount, adjType,
@@ -434,7 +495,7 @@ public final class ActualResultsLogger {
         // Footer flag row — Payment Info blank warning (document-level)
         sb.append(buildPaymentWarningFooter(td, isAp, h.getUiPaymentInfoWarningAppeared()));
 
-        sb.append("</details>");
+        sb.append(FoldableSectionRenderer.sectionClose());
         return sb.toString();
     }
 
@@ -451,22 +512,20 @@ public final class ActualResultsLogger {
         if (lines == null || lines.isEmpty()) return "";
 
         StringBuilder sb = new StringBuilder();
-        sb.append("<details open><summary class='rs-sub'>");
-        sb.append("<span style='display:inline-flex;align-items:center;gap:6px'>"
-                + ICO_SUBLEDGER + " Expense/Income Detail</span>");
-        sb.append("<span class='rs-chev'>&#9650;</span></summary>");
+        sb.append(FoldableSectionRenderer.sectionOpen("open", "rs-sub", "",
+                FoldableSectionRenderer.headerLabel(ICO_SUBLEDGER, "Expense/Income Detail", 6)));
         sb.append("<div style='overflow-x:auto;width:100%'><table class='rs-tbl'>");
         sb.append(headerRow("#", "GL", "Sub Ledger", "Amount (Dr/Cr)", "Is Reversal"));
 
         int idx = 1;
         for (ExpenseIncomeDetail row : lines) {
             String amount = row.isDebit()
-                    ? (row.getExpenseDr() != null ? String.format("%,.2f Dr", row.getExpenseDr()) : "—")
-                    : (row.getIncomeCr()  != null ? String.format("%,.2f Cr", row.getIncomeCr())  : "—");
+                    ? (row.getExpenseDr() != null ? VoucherReportUtils.fmtAmount(row.getExpenseDr()) + " Dr" : "—")
+                    : (row.getIncomeCr()  != null ? VoucherReportUtils.fmtAmount(row.getIncomeCr()) + " Cr"  : "—");
             sb.append(slRowGv(idx++, ns(row.getGeneralLedger()), ns(row.getSubLedger()),
                     amount, row.isReversalYes() ? "YES" : "NO"));
         }
-        sb.append("</tbody></table></div></details>");
+        sb.append("</tbody></table></div>").append(FoldableSectionRenderer.sectionClose());
         return sb.toString();
     }
 
@@ -494,10 +553,8 @@ public final class ActualResultsLogger {
         if (allocations == null || allocations.isEmpty()) return "";
 
         StringBuilder sb = new StringBuilder();
-        sb.append("<details open><summary class='rs-sub'>");
-        sb.append("<span style='display:inline-flex;align-items:center;gap:6px'>"
-                + ICO_SUBLEDGER + " Site Allocation Information</span>");
-        sb.append("<span class='rs-chev'>&#9650;</span></summary>");
+        sb.append(FoldableSectionRenderer.sectionOpen("open", "rs-sub", "",
+                FoldableSectionRenderer.headerLabel(ICO_SUBLEDGER, "Site Allocation Information", 6)));
         sb.append("<div style='overflow-x:auto;width:100%'><table class='rs-tbl'>");
         sb.append(headerRow("Line#", "Site Name", "Amount"));
 
@@ -505,11 +562,11 @@ public final class ActualResultsLogger {
             StringBuilder row = new StringBuilder("<tr>");
             row.append(td(esc(ns(sa.getLineNo()))));
             row.append(td(esc(ns(sa.getSiteName()))));
-            row.append(td(esc(sa.getAmount() != null ? String.format("%,.2f", sa.getAmount()) : "—")));
+            row.append(td(esc(VoucherReportUtils.fmtAmount(sa.getAmount()))));
             row.append("</tr>");
             sb.append(row);
         }
-        sb.append("</tbody></table></div></details>");
+        sb.append("</tbody></table></div>").append(FoldableSectionRenderer.sectionClose());
         return sb.toString();
     }
 
@@ -633,8 +690,9 @@ public final class ActualResultsLogger {
     }
 
     // ─── Table row / cell helpers ─────────────────────────────────────────────
-
-    private enum Status { PASS, FAIL, SKIP }
+    // Status/badge()/icon()/ICO_* all moved to FoldableSectionRenderer (plan §10) so
+    // SnapshotValidationReporter's own Result/Status columns and section headers can share the
+    // same badge pills and inline-SVG icons — see the static imports above.
 
     private static final String STATUS_COL = "Status";
     private static final String TD_BASE    = "padding:7px 12px;border-bottom:0.5px solid #E2E8F0;word-break:break-word";
@@ -662,6 +720,7 @@ public final class ActualResultsLogger {
     }
 
     private static String row(String field, String expected, String actual, Status status) {
+        tally(status, field, expected, actual);
         String rowBg      = status == Status.FAIL ? "#FEF2F2" : "transparent";
         String actualColor = status == Status.FAIL ? "#991B1B" : "#1E293B";
         StringBuilder sb = new StringBuilder();
@@ -688,6 +747,7 @@ public final class ActualResultsLogger {
     /** Row for the Flags section — 6 columns: Field | SL Name | SL ID | Expected | Actual (UI) | Status */
     private static String flagRow(String field, String slName, String slId,
                                   String expected, String actual, Status status) {
+        tally(status, field, expected, actual);
         String rowBg      = status == Status.FAIL ? "#FEF2F2" : "transparent";
         String actualColor = status == Status.FAIL ? "#991B1B" : "#1E293B";
         StringBuilder sb = new StringBuilder();
@@ -710,20 +770,6 @@ public final class ActualResultsLogger {
 
     private static String td(String content) {
         return "<td style='" + TD_BASE + ";color:#1E293B'>" + content + "</td>";
-    }
-
-    private static String badge(Status s) {
-        return switch (s) {
-            case PASS -> "<span style='display:inline-flex;align-items:center;gap:3px;"
-                    + "background:#EAF3DE;color:#27500A;font-size:11px;padding:2px 7px;"
-                    + "border-radius:99px;font-weight:500;white-space:nowrap'>&#10003; Pass</span>";
-            case FAIL -> "<span style='display:inline-flex;align-items:center;gap:3px;"
-                    + "background:#FEE2E2;color:#991B1B;font-size:11px;padding:2px 7px;"
-                    + "border-radius:99px;font-weight:500;white-space:nowrap'>&#10007; Fail</span>";
-            case SKIP -> "<span style='display:inline-flex;align-items:center;gap:3px;"
-                    + "background:#F1EFE8;color:#5F5E5A;font-size:11px;padding:2px 7px;"
-                    + "border-radius:99px;font-weight:500;white-space:nowrap'>&#8722; Skip</span>";
-        };
     }
 
     // ─── Status match helpers ─────────────────────────────────────────────────
@@ -864,37 +910,6 @@ public final class ActualResultsLogger {
         return s.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;");
     }
 
-    // ─── Icons ────────────────────────────────────────────────────────────────
-
-    private static String icon(String path, int size) {
-        return "<svg xmlns='http://www.w3.org/2000/svg' width='" + size + "' height='" + size
-             + "' viewBox='0 0 24 24' fill='none' stroke='currentColor' stroke-width='2' "
-             + "stroke-linecap='round' stroke-linejoin='round' "
-             + "style='vertical-align:middle;flex-shrink:0'>" + path + "</svg>";
-    }
-
-    private static final String ICO_MONITOR   = icon(
-        "<rect x='2' y='3' width='20' height='14' rx='2'/>"
-        + "<line x1='8' y1='21' x2='16' y2='21'/><line x1='12' y1='17' x2='12' y2='21'/>", 14);
-    private static final String ICO_DOC       = icon(
-        "<path d='M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z'/>"
-        + "<polyline points='14 2 14 8 20 8'/>"
-        + "<line x1='16' y1='13' x2='8' y2='13'/><line x1='16' y1='17' x2='8' y2='17'/>", 12);
-    private static final String ICO_FLAG      = icon(
-        "<path d='M4 15s1-1 4-1 5 2 8 2 4-1 4-1V3s-1 1-4 1-5-2-8-2-4 1-4 1z'/>"
-        + "<line x1='4' y1='22' x2='4' y2='15'/>", 12);
-    private static final String ICO_SUBLEDGER = icon(
-        "<path d='M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2'/><circle cx='12' cy='7' r='4'/>", 12);
-    private static final String ICO_DB        = icon(
-        "<ellipse cx='12' cy='5' rx='9' ry='3'/>"
-        + "<path d='M21 12c0 1.66-4 3-9 3s-9-1.34-9-3'/>"
-        + "<path d='M3 5v14c0 1.66 4 3 9 3s9-1.34 9-3V5'/>", 14);
-    private static final String ICO_TABLE     = icon(
-        "<rect x='3' y='3' width='18' height='18' rx='2'/>"
-        + "<line x1='3' y1='9' x2='21' y2='9'/><line x1='9' y1='9' x2='9' y2='21'/>", 12);
-    private static final String ICO_LOOKUP    = icon(
-        "<circle cx='11' cy='11' r='8'/><line x1='21' y1='21' x2='16.65' y2='16.65'/>", 12);
-
     // ─── Status legend ────────────────────────────────────────────────────────
 
     private static final String LEGEND =
@@ -960,44 +975,4 @@ public final class ActualResultsLogger {
         "setTimeout(function(){posBtn(false);},150);}" +
         "})();</script>";
 
-    // ─── CSS ─────────────────────────────────────────────────────────────────
-
-    private static final String CSS =
-        "<style>" +
-        ".rs-top{list-style:none;cursor:pointer;display:flex;align-items:center;" +
-            "justify-content:space-between;gap:8px;" +
-            "font-size:12px;font-weight:500;letter-spacing:.04em;text-transform:uppercase;" +
-            "padding:9px 14px;user-select:none;border-radius:8px 8px 0 0;margin-top:10px}" +
-        ".rs-ui{background:#EAF2FB;color:#1F4E79;border:0.5px solid #B8D4EC}" +
-        ".rs-db{background:#E6F4F4;color:#2C7A7B;border:0.5px solid #B2D8D8}" +
-        ".rs-wrap details[open] .rs-top,.rs-sub{border-radius:0}" +
-        ".rs-sub{list-style:none;cursor:pointer;display:flex;align-items:center;" +
-            "justify-content:space-between;gap:6px;" +
-            "font-size:11px;font-weight:500;color:#64748B;padding:6px 14px;" +
-            "background:#F8FAFC;text-transform:uppercase;letter-spacing:.05em;" +
-            "border:0.5px solid #E2E8F0;border-top:none}" +
-        ".rs-wrap details{border:0.5px solid #E2E8F0;border-radius:8px;overflow:hidden;margin-bottom:2px}" +
-        ".rs-wrap details.rs-inner{border:none;border-bottom:0.5px solid #E2E8F0;border-radius:0}" +
-        ".rs-tbl{width:100%;min-width:540px;border-collapse:collapse;border:none;table-layout:fixed}" +
-        ".rs-tbl tbody tr:last-child td{border-bottom:none}" +
-        ".rs-wrap summary::-webkit-details-marker{display:none}" +
-        ".rs-lookup-sum{list-style:none;cursor:pointer;display:flex;align-items:center;" +
-            "justify-content:space-between;gap:6px;font-size:11px;font-weight:500;" +
-            "color:#475569;padding:6px 14px;background:#F8FAFC;text-transform:uppercase;" +
-            "letter-spacing:.04em;border:0.5px solid #E2E8F0;border-top:none;user-select:none}" +
-        ".rs-chev{font-size:9px;opacity:0.55;flex-shrink:0;display:inline-block;transition:transform .15s}" +
-        ".rs-wrap details:not([open]) .rs-chev{transform:rotate(180deg)}" +
-        // Hide the Status and Timestamp columns of the Extent log row that wraps the widget.
-        // Use > (direct-child combinator) so only the outer Extent <tr>'s own <td>s are hidden,
-        // not the <td>s inside the nested tables within .rs-wrap.
-        // :has() supported: Chrome 105+, Edge 105+, Firefox 121+
-        "tr:has(.rs-wrap)>td:not(:last-child){display:none!important;width:0!important;padding:0!important}" +
-        "tr:has(.rs-wrap)>td:last-child{padding:0!important}" +
-        ".rs-legend{display:flex;align-items:center;flex-wrap:nowrap;overflow-x:auto;gap:6px 10px;" +
-            "padding:8px 14px;background:#F8FAFC;border:0.5px solid #E2E8F0;" +
-            "border-radius:8px;margin-bottom:8px}" +
-        ".rs-leg-lbl{font-size:10px;font-weight:600;color:#64748B;text-transform:uppercase;" +
-            "letter-spacing:.06em;margin-right:2px;white-space:nowrap}" +
-        ".rs-leg-sep{color:#94A3B8;font-size:11px;white-space:nowrap}" +
-        "</style>";
 }

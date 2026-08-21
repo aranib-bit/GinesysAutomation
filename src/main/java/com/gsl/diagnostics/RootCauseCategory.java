@@ -13,6 +13,7 @@ import com.gsl.enums.ReportSeverity;
  */
 public enum RootCauseCategory {
 
+    UNEXPECTED_POPUP       ("UNEXPECTED APPLICATION POPUP",   ReportSeverity.CRITICAL),
     EXTJS_MASK_BLOCKING    ("EXTJS MASK BLOCKING",            ReportSeverity.HIGH),
     CLICK_INTERCEPTED      ("CLICK INTERCEPTED",              ReportSeverity.HIGH),
     GRID_ROW_NOT_FOUND     ("GRID ROW NOT FOUND",            ReportSeverity.HIGH),

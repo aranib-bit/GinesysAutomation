@@ -17,10 +17,11 @@
         <listener class-name="com.gsl.listeners.AnnotationMethodInterceptor"/>
     </listeners>
 
-    <test name="General Voucher Create — Mandatory" parallel="methods" thread-count="2">
+    <test name="General Voucher Create/Revert — Mandatory" parallel="methods" thread-count="2">
         <parameter name="gv.group" value="MANDATORY"/>
         <classes>
             <class name="com.tests.Finance.Operations.Vouchers.CreateGeneralVoucher"/>
+            <class name="com.tests.Finance.Operations.Vouchers.RevertGeneralVoucher"/>
         </classes>
     </test>
 

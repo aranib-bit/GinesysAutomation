@@ -4,6 +4,7 @@ import com.gsl.browser.CustomMetricsObserverInjector;
 import com.gsl.browser.injector.FrontendDiagnosticsInjectorFactory;
 import com.gsl.config.ConfigFactory;
 import com.gsl.database.DocumentReservationRegistry;
+import com.gsl.database.ReservedDocumentKeyAware;
 import com.gsl.driver.Driver;
 import com.gsl.driver.DriverManager;
 import com.gsl.driver.ExecutionContext;
@@ -167,9 +168,34 @@ public abstract class WebTest extends BaseTest {
         ExecutionManager.logState("tearDown:start");
 
         try {
-            DocumentReservationRegistry.releaseCurrentThread();
+            // Plan §15a: a data source that claims ALL of a @Test method's rows upfront in one
+            // load() pass (DbGeneralVoucherEditDataSource, DbGeneralVoucherRevertDataSource) puts
+            // every row's reservation key into this thread's THREAD_RESERVATIONS set before any
+            // row runs — releaseCurrentThread() would release ALL of them the moment the FIRST
+            // row's tearDown fires, prematurely reopening still-pending sibling rows to a parallel
+            // thread (confirmed live: DbGeneralVoucherEditDataSource's own javadoc already
+            // documents an "unexplained no-op Save on a claimed voucher" from this exact race).
+            // So: if this row's own parameter DTO tells us exactly which document it used
+            // (implements ReservedDocumentKeyAware), release ONLY that one key. Every other
+            // domain/data source's DTO doesn't implement the interface, so falls straight through
+            // to the original releaseCurrentThread() behavior below — unchanged.
+            String releasedKey = null;
+            Object[] params = result != null ? result.getParameters() : null;
+            if (params != null) {
+                for (Object p : params) {
+                    if (p instanceof ReservedDocumentKeyAware keyed && keyed.getReservedDocumentKey() != null) {
+                        releasedKey = keyed.getReservedDocumentKey();
+                        break;
+                    }
+                }
+            }
+            if (releasedKey != null) {
+                DocumentReservationRegistry.release(releasedKey);
+            } else {
+                DocumentReservationRegistry.releaseCurrentThread();
+            }
         } catch (Exception e) {
-            Log.warn("[WebTest] [T-{}] DocumentReservationRegistry.releaseCurrentThread() threw: {}", tid, e.getMessage());
+            Log.warn("[WebTest] [T-{}] DocumentReservationRegistry release threw: {}", tid, e.getMessage());
         }
 
         // ── SessionPool mode: give the borrowed session back after EVERY row. On a genuine

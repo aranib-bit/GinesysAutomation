@@ -34,17 +34,11 @@ public class APVoucherDocumentInformation extends VoucherDocumentInformationBase
         ReportLogger.trace("[DocHeader] documentDate → input=" + docInfo.getDocumentdate()
                 + " formatted=" + formatDate(docInfo.getDocumentdate()));
         setReference(docInfo.getReference());
-        // T-03 negative scenario NEG_BLANK_CASHBANK leaves Cash/Bank deliberately empty so Save
-        // raises "Cash/Bank is required". Skip the picker entirely when no value is supplied;
-        // positive scenarios always pass a non-blank Cash/Bank, so this is a no-op for them.
-        String cashbank = docInfo.getCashbank();
-        if (cashbank != null && !cashbank.isBlank()) {
-            clickCashBankSearch();
-            selectCashBank(cashbank);
-            ReportLogger.trace("[DocHeader] cashBank → selected=" + cashbank);
-        } else {
-            ReportLogger.trace("[DocHeader] cashBank → skipped (blank/null — negative scenario)");
-        }
+        // setCashBankField (base class) already has the blank-guard for T-03's NEG_BLANK_CASHBANK
+        // scenario, the equals-guard against re-selecting an already-correct value, and now the
+        // post-fill commit verification too — was previously duplicated here unconditionally.
+        setCashBankField(docInfo.getCashbank());
+        ReportLogger.trace("[DocHeader] cashBank → input=" + docInfo.getCashbank());
         setOnAccount(docInfo.isOnAccount(), docInfo.getOnAccountConfirmAction());
         ReportLogger.trace("[DocHeader] onAccount → value=" + docInfo.isOnAccount()
                 + " confirmAction=" + docInfo.getOnAccountConfirmAction());
@@ -66,19 +60,23 @@ public class APVoucherDocumentInformation extends VoucherDocumentInformationBase
 
     /** Fills only the Cash/Bank field — used in recovery behaviors after dismissing an error popup. */
     public APVoucherDocumentInformation fillCashBankOnly(String cashbank) {
-        if (cashbank != null && !cashbank.isBlank()) {
-            clickCashBankSearch();
-            selectCashBank(cashbank);
-        }
+        setCashBankField(cashbank);
         return this;
     }
 
     private void setOnAccount(boolean onAccount, OnAccountClearConfirmAction confirmAction) {
-        if (onAccount) {
-            ExtJsUtils.selectExtJsRadio(VoucherDocumentFormLabel.ON_ACCOUNT, "Yes");
-        } else {
-            ExtJsUtils.selectExtJsRadio(VoucherDocumentFormLabel.ON_ACCOUNT, "No");
+        String target = onAccount ? "Yes" : "No";
+        // Equals-guard — the highest-priority instance of this codebase-wide gap (see the
+        // "Missing equals-guard" audit): toggling On Account fires a destructive "sub-ledger/TDS/
+        // payment cleared" confirmation dialog, so re-selecting an already-correct value was not
+        // just wasteful but actively risked firing that clear-warning against already-filled data
+        // on any caller (e.g. an Edit flow) that passes the existing value through unchanged.
+        String current = getOnAccount();
+        if (current != null && current.equalsIgnoreCase(target)) {
+            ReportLogger.trace("[DocHeader] onAccount already '" + current + "' — skipping update");
+            return;
         }
+        ExtJsUtils.selectExtJsRadio(VoucherDocumentFormLabel.ON_ACCOUNT, target);
         OnAccountClearConfirmHandler.handleIfPresent(confirmAction);
     }
 

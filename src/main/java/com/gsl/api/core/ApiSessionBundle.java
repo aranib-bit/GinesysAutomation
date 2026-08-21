@@ -2,6 +2,7 @@ package com.gsl.api.core;
 
 import com.gsl.api.client.ArVoucherApiClient;
 import com.gsl.api.client.DcApiClient;
+import com.gsl.api.client.GeneralVoucherApiClient;
 import com.gsl.api.client.GrcApiClient;
 import com.gsl.api.client.ItemApiClient;
 import com.gsl.api.client.LedgerApiClient;
@@ -47,6 +48,7 @@ public final class ApiSessionBundle {
     private final ArVoucherApiClient arVoucherApiClient;
     private final LedgerApiClient ledgerApiClient;
     private final SubLedgerOthersApiClient subLedgerOthersApiClient;
+    private final GeneralVoucherApiClient generalVoucherApiClient;
 
     /**
      * Terminates the server-side session (WEBAPI only — PUBLICAPI's OAuth2 client-credentials

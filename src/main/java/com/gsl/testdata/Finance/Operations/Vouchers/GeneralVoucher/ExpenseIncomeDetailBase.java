@@ -1,6 +1,7 @@
 package com.gsl.testdata.Finance.Operations.Vouchers.GeneralVoucher;
 
 import com.gsl.enums.Finance.Operations.GeneralVoucher.GlLineType;
+import com.gsl.enums.GlAccountType;
 import lombok.Getter;
 import lombok.Setter;
 
@@ -26,4 +27,13 @@ public abstract class ExpenseIncomeDetailBase {
     @Getter
     @Setter
     private GlLineType resolvedGlType;
+
+    /** DB-resolved GL account class (Asset/Liability/Income/Expense, {@code fingl.type}) —
+     *  populated post-load by the data source, same idiom as {@link #resolvedGlType}. Plan §4A:
+     *  needed to report a detail-line edit's GL change in terms a reader recognizes (not just
+     *  "GL changed from X to Y" but "from an Expense GL to an Asset GL"). Null until a GL-type
+     *  transition scenario (or 4A's reporting) sets it — every other scenario leaves it unset. */
+    @Getter
+    @Setter
+    private GlAccountType resolvedAccountClass;
 }

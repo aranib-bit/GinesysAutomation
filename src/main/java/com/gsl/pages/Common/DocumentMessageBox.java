@@ -3,7 +3,6 @@ package com.gsl.pages.Common;
 import com.gsl.enums.Finance.Operations.Common.DocumentMessageBoxMessage;
 import com.gsl.enums.FinanceSaveHeaderType;
 import com.gsl.enums.WaitType;
-import com.gsl.pages.Finance.Operations.ArVoucherListPage;
 import com.gsl.pages.Finance.Setup.AccountClassListPage;
 import com.gsl.pages.Inventory.Product_Definition.ItemListPage;
 import com.gsl.pages.Procurement.Operations.ReceiptsListPage;
@@ -216,11 +215,17 @@ public class DocumentMessageBox {
         JavascriptExecutorUtils.waitForPageLoad();
     }
 
-    public ArVoucherListPage clickYes() {
+    /**
+     * Clicks "Yes" on the discard-confirmation dialog and returns to the list page — the caller
+     * supplies which domain's list page to construct (e.g. {@code ArVoucherListPage::new}),
+     * since this dialog is shared across AR/AP/GV and previously always hard-constructed an
+     * {@code ArVoucherListPage} regardless of the actual calling domain.
+     */
+    public <T> T clickYes(java.util.function.Supplier<T> listPageFactory) {
         SeleniumUtils.click(CommonButton.YES.locator(), WaitType.CLICKABLE, "DISCARD_YES_BUTTON");
         JavascriptExecutorUtils.waitForPageLoad();
         com.gsl.utils.Selenium.WaitUtils.waitForExtMaskBestEffort("post-yes-close");
-        return new ArVoucherListPage();
+        return listPageFactory.get();
     }
 
     public ItemListPage closeItem(){

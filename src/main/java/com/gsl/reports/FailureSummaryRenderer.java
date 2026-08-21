@@ -8,7 +8,10 @@ import com.gsl.reports.profile.RuntimeExecutionProfile;
 import com.gsl.utils.TestContextManager;
 import org.testng.ITestResult;
 
+import java.util.ArrayList;
 import java.util.List;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 
 /**
  * Renders a compact failure-summary box as the first visible entry after the fail
@@ -37,7 +40,7 @@ public final class FailureSummaryRenderer {
 
         Throwable t = result.getThrowable();
         String exType   = t != null ? t.getClass().getSimpleName()  : "Unknown";
-        String exMsg    = t != null ? firstLine(t.getMessage(), 350) : "No message";
+        String exMsg    = t != null ? humanReadableMessage(t) : "No message";
 
         List<String> trail = ActionTrailBuffer.getForDisplay();
         String lastStep = trail.isEmpty() ? "—" : trail.get(trail.size() - 1);
@@ -118,11 +121,117 @@ public final class FailureSummaryRenderer {
         };
     }
 
-    /** Returns the first non-blank line of a multi-line message, truncated to maxLen. */
+    /**
+     * Splits AssertJ {@code SoftAssertions.assertAll()}'s thrown message shape:
+     * {@code "\r\nThe following N assertions failed:\n1) [description] \n<AssertJ noise>\n2) [description] \n..."}
+     * on each numbered entry's leading marker ({@code "N) "}), so every entry's chunk (everything
+     * up to the next marker) can be handled on its own — see {@link #extractBracketedDescription}
+     * for why the description itself still needs picking out of that chunk.
+     */
+    private static final Pattern ENTRY_MARKER = Pattern.compile("(?m)^\\d+\\)\\s*");
+
+    /** Hard ceiling on the fully-joined summary; see {@link #joinWithOverflowSummary}. */
+    private static final int MAX_TOTAL_LEN = 2000;
+
+    /** Per-entry cap — long enough for a real column-diff description, short enough that a dozen
+     *  failures still fit in the box. */
+    private static final int MAX_ENTRY_LEN = 200;
+
+    /**
+     * Builds a human-readable one-line failure summary from {@code t.getMessage()}.
+     *
+     * <p>For AssertJ's {@code SoftAssertionError} (thrown by {@code SoftAssertions.assertAll()}
+     * when one or more staged assertions failed — see {@code VoucherSnapshotValidator}), the raw
+     * message is AssertJ-internal noise wrapping each failure's real description in
+     * {@code N) [description]}; this extracts and joins those descriptions instead of falling
+     * through to {@link #firstLine}, which previously landed on an empty string here (the raw
+     * message starts with a lone {@code \r} before its first {@code \n}, and {@code firstLine}
+     * took everything before that first {@code \n} — i.e. nothing) and rendered as {@code "—"},
+     * hiding the real DB-validation failure reasons from the report.
+     *
+     * <p>Two bugs this replaces: the previous single-shot {@code "\d+\)\s*\[(.*?)]"} regex was
+     * non-greedy, so it stopped at the FIRST {@code ]} it found — since every real description
+     * here already starts with its own {@code "[tableName] ..."} tag, that threw away everything
+     * past the tag instead of the full column-diff detail. And the joined result was then
+     * hard-cut at a global 350-char boundary with no regard for entry boundaries — exactly why a
+     * real report showed a description sheared off mid-word as {@code "...[finpost"} with no
+     * closing bracket. Splitting on the numbered marker first, then taking each chunk's own
+     * {@code [...]} span up to its LAST {@code ]} (not its first), keeps a description's own
+     * nested brackets intact; capping length per-entry (not on the final joined string) means
+     * truncation, if it happens at all, only ever lands after a complete entry.
+     */
+    private static String humanReadableMessage(Throwable t) {
+        String msg = t.getMessage();
+        if (msg == null || msg.isBlank()) return "—";
+
+        String[] chunks = ENTRY_MARKER.split(msg);
+        List<String> descriptions = new ArrayList<>();
+        for (String chunk : chunks) {
+            String description = extractBracketedDescription(chunk);
+            if (description != null && !description.isEmpty()) {
+                descriptions.add(truncate(description, MAX_ENTRY_LEN));
+            }
+        }
+        if (!descriptions.isEmpty()) {
+            return joinWithOverflowSummary(descriptions);
+        }
+
+        return firstLine(msg, 350);
+    }
+
+    /**
+     * Pulls one AssertJ numbered entry's {@code [description]} out of its chunk (the text
+     * between this entry's {@code "N) "} marker and the next, per {@link #ENTRY_MARKER}). The
+     * chunk's first line holds {@code "[description]"}; AssertJ's own "Expecting value to be
+     * true but was false" noise typically follows on the next line, so only the first line is
+     * considered. Taking from the first {@code '['} to the LAST {@code ']'} on that line (not
+     * the first, as the old regex did) keeps a description containing its own nested brackets
+     * intact instead of truncating to just the leading tag.
+     */
+    private static String extractBracketedDescription(String chunk) {
+        if (chunk == null) return null;
+        String firstLine = chunk.strip();
+        int nl = firstLine.indexOf('\n');
+        if (nl >= 0) firstLine = firstLine.substring(0, nl).stripTrailing();
+        int open = firstLine.indexOf('[');
+        int close = firstLine.lastIndexOf(']');
+        if (open < 0 || close <= open) return null;
+        return firstLine.substring(open + 1, close).trim();
+    }
+
+    private static String truncate(String s, int maxLen) {
+        return s.length() > maxLen ? s.substring(0, maxLen) + "…" : s;
+    }
+
+    /**
+     * Joins every (already per-entry-capped) description, stopping short of {@link
+     * #MAX_TOTAL_LEN} rather than hard-cutting the joined string — any entries that don't fit are
+     * summarized as a trailing count instead of being sheared off mid-entry.
+     */
+    private static String joinWithOverflowSummary(List<String> descriptions) {
+        String header = descriptions.size() + " assertion(s) failed: ";
+        StringBuilder sb = new StringBuilder(header);
+        int shown = 0;
+        for (String d : descriptions) {
+            String candidate = (shown == 0 ? "" : "; ") + d;
+            if (sb.length() + candidate.length() > MAX_TOTAL_LEN) break;
+            sb.append(candidate);
+            shown++;
+        }
+        int remaining = descriptions.size() - shown;
+        if (remaining > 0) sb.append("; …(+").append(remaining).append(" more)");
+        return sb.toString();
+    }
+
+    /** Returns the first non-blank line of a multi-line message, truncated to maxLen. Leading
+     *  blank lines/whitespace (e.g. a lone {@code \r} before the real content, as some
+     *  exception types prepend) are stripped first so a message isn't mistaken for empty. */
     private static String firstLine(String s, int maxLen) {
         if (s == null || s.isBlank()) return "—";
-        int nl = s.indexOf('\n');
-        String line = nl >= 0 ? s.substring(0, nl).stripTrailing() : s;
+        String trimmed = s.strip();
+        if (trimmed.isEmpty()) return "—";
+        int nl = trimmed.indexOf('\n');
+        String line = nl >= 0 ? trimmed.substring(0, nl).stripTrailing() : trimmed;
         return line.length() > maxLen ? line.substring(0, maxLen) + "…" : line;
     }
 

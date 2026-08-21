@@ -204,7 +204,7 @@ public class CreateGeneralVoucher extends WebTest {
             if (msgBoxRef[0] != null) {
                 msgBoxRef[0].clickOk();
             }
-            addRef[0].close().clickYes();   // returns to General Voucher list
+            listRef[0] = addRef[0].close().clickYes(GeneralVoucherListPage::new);   // keep the handle
             ReportLogger.business("Voucher page closed, returned to list");
         });
 

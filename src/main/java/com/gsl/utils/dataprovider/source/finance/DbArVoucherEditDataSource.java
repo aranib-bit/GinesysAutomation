@@ -8,6 +8,7 @@ import com.gsl.database.dao.finance.FinGlDao;
 import com.gsl.database.dao.finance.FinSlDao;
 import com.gsl.database.dao.finance.FinVchDetDao;
 import com.gsl.database.dao.finance.FinVchMainDao;
+import com.gsl.enums.PeriodDomain;
 import com.gsl.model.finance.FinGl;
 import com.gsl.model.finance.FinSl;
 import com.gsl.model.finance.FinVchDet;
@@ -18,7 +19,9 @@ import com.gsl.testdata.MasterTestData;
 import com.gsl.testdata.dto.MergedFinanceArVoucherData;
 import com.gsl.utils.Faker.FakerUtils;
 import com.gsl.utils.Log;
+import com.gsl.utils.dataprovider.fixture.finance.VoucherEditDateVariant;
 import com.gsl.utils.dataprovider.source.TestDataSource;
+import com.gsl.utils.dataprovider.source.finance.common.AccountingPeriodResolver;
 import org.jdbi.v3.core.Jdbi;
 import org.testng.SkipException;
 
@@ -100,13 +103,23 @@ public class DbArVoucherEditDataSource implements TestDataSource<MergedFinanceAr
         List<SubLedgerInformation> slRows = resolveSlRows(jdbi, details);
 
         // 6. Build DocumentInformation with NEW date / reference / remarks (same site + GL)
+        // documentdate is accounting-year-aware (via AccountingPeriodResolver) rather than a bare
+        // LocalDate.now() — the same fix applied to GV's Edit data sources, since an unconditional
+        // "today" fails to save once the claimed voucher's own accounting year doesn't bracket
+        // today (see the "GV Edit: accounting-year-aware dates..." plan). RANDOM_MID is the
+        // "typical", always-valid choice — AR has no per-row date-variant/negative-case matrix
+        // yet (out of scope here; only this correctness fix is applied for parity).
+        long ouCode = AccountingPeriodResolver.resolveOuCode(jdbi, header.getAdmsiteCodeOwner());
+        LocalDate newDate = AccountingPeriodResolver.resolveEditDate(
+                jdbi, header.getYcode(), ouCode, VoucherEditDateVariant.RANDOM_MID, PeriodDomain.FINANCE);
+
         DocumentInformation docInfo = new DocumentInformation(
                 header.getSchemeDocno(),          // testCaseId — reuse scheme_docno for traceability
                 siteName,                          // ownersite
                 header.getSchemeDocno(),           // voucherno — existing doc number
                 gl.getGlname(),                    // cashbank
                 FakerUtils.randomRemarks(),        // remarks — NEW value
-                LocalDate.now(),                   // documentdate — NEW value (today)
+                newDate,                            // documentdate — NEW value, accounting-year-aware
                 FakerUtils.randomReference()       // reference — NEW value
         );
 
@@ -118,6 +131,7 @@ public class DbArVoucherEditDataSource implements TestDataSource<MergedFinanceAr
         MergedFinanceArVoucherData editData = MergedFinanceArVoucherData.builder()
                 .existingVoucherNo(header.getSchemeDocno())
                 .releaseStatus(header.getReleaseStatus())
+                .currentDocDate(header.getVchdt())
                 .masterTestData(master)
                 .documentInformation(docInfo)
                 .subLedgerInformationList(slRows)

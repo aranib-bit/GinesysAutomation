@@ -9,6 +9,9 @@ pipeline {
         // Any future staging Jenkinsfile must reuse this exact resource name to stay in
         // the same mutual-exclusion group.
         lock(resource: 'staging-slot')
+        // Prefixes every console log line with a wall-clock timestamp, making it possible
+        // to correlate stage duration (grid startup, test run, etc.) directly from the log.
+        timestamps()
     }
 
     tools {

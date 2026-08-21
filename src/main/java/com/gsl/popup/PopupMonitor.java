@@ -1,10 +1,13 @@
 package com.gsl.popup;
 
 import com.gsl.config.ConfigFactory;
+import com.gsl.driver.DriverManager;
 import com.gsl.enums.PopupType;
+import com.gsl.exceptions.LoaderStillInProgressException;
 import com.gsl.exceptions.UnexpectedPopupException;
 import com.gsl.reports.ExtentLogger;
 import com.gsl.reports.PopupTrailBuffer;
+import com.gsl.utils.Selenium.WaitUtils;
 
 /**
  * Single entry point for unexpected popup detection.
@@ -76,5 +79,61 @@ public final class PopupMonitor {
         ExtentLogger.warning("⚠ Handled popup on [" + actionName + "] — "
                 + popup.popupType() + " | Header: " + popup.header());
         PopupReporter.reportHandledPopup(popup, actionName);
+    }
+
+    /**
+     * Shared diagnosis for a wait/action that just failed (typically a Selenium
+     * {@code TimeoutException} or {@code NoSuchElementException}) — called from the catch block of
+     * every explicit wait in {@code WaitUtils}/{@code JavascriptExecutorUtils}, and after every raw
+     * interaction in {@code ActionUtils}, on top of the click-based check above. Common to every
+     * voucher (AP/AR/GV) and every operation mode (Create/Modify/Revert/Release/Delete), since they
+     * all share those utility classes.
+     *
+     * <p>Before giving up with the original, often-cryptic Selenium exception, checks whether the
+     * <em>real</em> cause is:
+     * <ol>
+     *   <li>An unexpected application popup actually being on screen — thrown as
+     *       {@link UnexpectedPopupException} with the same rich diagnosis used after a click.
+     *       SUCCESS/INFO/CONFIRM are expected outcomes and are not the cause of a failure; WARNING
+     *       is logged/reported but, matching {@link #checkAfterAction}, does not itself explain the
+     *       failure — the search continues to the loader check below.</li>
+     *   <li>No popup, but the ExtJS loading mask is still visible — thrown as
+     *       {@link LoaderStillInProgressException} instead of a bare "waiting for visibility of
+     *       element ... x-mask" timeout.</li>
+     *   <li>Neither — {@code original} is rethrown unchanged; this is a genuine, unrelated
+     *       failure (e.g. an actually-broken locator) and must not be masked.</li>
+     * </ol>
+     *
+     * @param original      the exception that aborted the wait/action
+     * @param actionName    human-readable description of what was being waited for/acted on
+     * @param timeoutSeconds the actual timeout the failed wait was configured with — reported
+     *                       verbatim in {@link LoaderStillInProgressException}'s message, so it
+     *                       must be the caller's real timeout (e.g. a deliberately short 3-second
+     *                       probe), not a hardcoded global default.
+     * @return never returns — always throws. Declared to return {@link RuntimeException} so callers
+     *         can write {@code throw PopupMonitor.diagnoseFailure(e, "...", seconds);}
+     */
+    public static RuntimeException diagnoseFailure(RuntimeException original, String actionName, long timeoutSeconds) {
+        if (ConfigFactory.getWaitConfig().popupDetectionEnabled()) {
+            PopupResult popup = PopupHandler.detectPopup();
+            if (popup != null) {
+                if (popup.popupType() == PopupType.WARNING) {
+                    ExtentLogger.warning("⚠ Warning popup detected while diagnosing [" + actionName
+                            + "] failure — " + popup.header());
+                    PopupReporter.reportHandledPopup(popup, actionName);
+                } else if (popup.popupType() != PopupType.SUCCESS
+                        && popup.popupType() != PopupType.INFO
+                        && popup.popupType() != PopupType.CONFIRM) {
+                    PopupReporter.reportUnexpectedPopup(popup, actionName);
+                    throw new UnexpectedPopupException(popup, actionName);
+                }
+            }
+        }
+
+        if (WaitUtils.isExtMaskPresent(DriverManager.getDriver())) {
+            throw new LoaderStillInProgressException(actionName, timeoutSeconds, original);
+        }
+
+        throw original;
     }
 }

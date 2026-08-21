@@ -1,0 +1,32 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE suite SYSTEM "http://testng.org/testng-1.0.dtd">
+<!--
+    General Voucher Edit Suite — runs both EditGeneralVoucher scenarios
+    (editGeneralVoucherHeader, editGeneralVoucherDetailLine) with no group filtering.
+
+    Intended for testdata.source=EXCEL (set that in src/test/resources/config/config.properties
+    before running — see EditVoucherInfo.java's Javadoc: replace its two sample rows'
+    "Existing Voucher No." placeholders with a real voucher from your environment first).
+    Also works unfiltered against testdata.source=DB (no gv.edit.group parameter here, so
+    DbGeneralVoucherEditDataSource sweeps every MANDATORY + REGRESSION_PHASE1 combination —
+    use testng-gv-edit-mandatory.xml / testng-regression-generalvoucher-edit-phase1.xml instead
+    if you want DB mode split by group).
+
+    Run: mvn clean test -Pgv-edit
+-->
+<suite name="General Voucher Edit Suite" parallel="none" data-provider-thread-count="4">
+
+    <listeners>
+        <listener class-name="com.gsl.listeners.RetryAnnotationTransformer"/>
+        <listener class-name="com.gsl.listeners.TestListener"/>
+        <listener class-name="com.gsl.listeners.SuiteDataLoader"/>
+        <listener class-name="com.gsl.listeners.AnnotationMethodInterceptor"/>
+    </listeners>
+
+    <test name="General Voucher Edit" parallel="methods" thread-count="2">
+        <classes>
+            <class name="com.tests.Finance.Operations.Vouchers.EditGeneralVoucher"/>
+        </classes>
+    </test>
+
+</suite>

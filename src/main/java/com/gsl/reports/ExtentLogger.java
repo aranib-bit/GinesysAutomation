@@ -217,15 +217,15 @@ public final class ExtentLogger {
     private static String buildScrollableTableHtml(String[][] table) {
         StringBuilder sb = new StringBuilder();
         sb.append("<div style='overflow-x:auto;background:#f8fbff;border-left:3px solid #6aacf0;padding:6px 10px;'>")
-          .append("<table style='border-collapse:collapse;font-size:11px;font-family:monospace;white-space:nowrap'>");
+          .append("<table style='border-collapse:collapse;font-size:11px;font-family:monospace;table-layout:auto'>");
         for (int r = 0; r < table.length; r++) {
             sb.append("<tr>");
             for (String cell : table[r]) {
                 if (r == 0) {
-                    sb.append("<th style='border:1px solid #6aacf0;padding:4px 8px;background:#e8f4fd;font-weight:500;color:#0d47a1'>")
+                    sb.append("<th style='border:1px solid #6aacf0;padding:4px 8px;background:#e8f4fd;font-weight:500;color:#0d47a1;word-break:break-word;overflow-wrap:anywhere'>")
                       .append(cell).append("</th>");
                 } else {
-                    sb.append("<td style='border:1px solid #b3d4f5;padding:4px 8px'>")
+                    sb.append("<td style='border:1px solid #b3d4f5;padding:4px 8px;word-break:break-word;overflow-wrap:anywhere'>")
                       .append(cell == null ? "—" : cell).append("</td>");
                 }
             }

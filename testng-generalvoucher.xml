@@ -1,0 +1,32 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE suite SYSTEM "http://testng.org/testng-1.0.dtd">
+<!--
+  General Voucher Suite — mirrors testng-apvoucher.xml's shape.
+  - CreateGeneralVoucher's DataSupplier (MergedFinGeneralVoucherDataSupplier) now emits the full
+    144-combination Expense/Income Detail matrix (see GeneralVoucherCombinations) when no
+    gv.group parameter is set (as here) — no <parameter> means "run all groups". Use
+    testng-gv-mandatory.xml / testng-regression-generalvoucher-phase{1,2,3}.xml to restrict to
+    one tier.
+  - CreateGeneralVoucherNegativeBoundary uses a plain TestNG @DataProvider (3 rows), not the
+    DataSupplier/UserPool machinery — see its class Javadoc for why WebTest.setUp() still
+    borrows a pooled session correctly without one.
+  - Sequential (parallel="none") — this suite hasn't been run against the live app yet with the
+    full matrix — correctness over throughput for the first run.
+-->
+<suite name="General Voucher Suite" parallel="none" data-provider-thread-count="4">
+    <listeners>
+        <listener class-name="com.gsl.listeners.RetryAnnotationTransformer"/>
+        <listener class-name="com.gsl.listeners.TestListener"/>
+        <listener class-name="com.gsl.listeners.SuiteDataLoader"/>
+        <listener class-name="com.gsl.listeners.AnnotationMethodInterceptor"/>
+    </listeners>
+
+    <test name="General Voucher">
+        <classes>
+            <class name="com.tests.Finance.Operations.Vouchers.CreateGeneralVoucher"/>
+            <class name="com.tests.Finance.Operations.Vouchers.CreateGeneralVoucherNegativeBoundary"/>
+            <class name="com.tests.Finance.Operations.Vouchers.RevertGeneralVoucher"/>
+        </classes>
+    </test>
+
+</suite>

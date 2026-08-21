@@ -4,6 +4,7 @@ import com.gsl.enums.Finance.Operations.GeneralVoucher.GlLineType;
 import com.gsl.pages.Finance.Operations.Common.DocumentPopup;
 import com.gsl.pages.Finance.Operations.Common.PaymentInfoCheckWarning;
 import com.gsl.pages.Finance.Operations.GeneralVoucherAdd;
+import com.gsl.pages.Finance.Operations.GeneralVoucherListPage;
 import com.gsl.pages.pagecomponent.Finance.Operations.GeneralVoucher.GeneralVoucherExpenseIncomeDetail;
 import com.gsl.reports.ReportLogger;
 import com.gsl.reports.StepExecutor;
@@ -181,7 +182,7 @@ public final class GeneralVoucherPredicateFactory {
             });
 
             StepExecutor.step("Cancel (Logout deferred)", () -> {
-                page.close().clickYes();
+                page.close().clickYes(GeneralVoucherListPage::new);
                 ReportLogger.session("Logout deferred — session may be reused by a later test on this thread.");
             });
 
@@ -236,7 +237,7 @@ public final class GeneralVoucherPredicateFactory {
             });
 
             StepExecutor.step("Cancel (Logout deferred)", () -> {
-                page.close().clickYes();
+                page.close().clickYes(GeneralVoucherListPage::new);
                 ReportLogger.session("Logout deferred — session may be reused by a later test on this thread.");
             });
 

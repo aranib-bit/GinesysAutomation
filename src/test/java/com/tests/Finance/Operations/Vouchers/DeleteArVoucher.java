@@ -6,6 +6,7 @@ import com.gsl.annotations.TestCaseId;
 import com.gsl.network.pattern.FinanceApiPattern;
 import com.gsl.enums.AppOperation;
 import com.gsl.enums.TestAuthor;
+import com.gsl.enums.VoucherDomain;
 import com.gsl.pages.enums.topmenucomponent.MainModuleType;
 import com.gsl.pages.Finance.Operations.ArVoucherListPage;
 import com.gsl.pages.HomePage;
@@ -20,8 +21,17 @@ import com.gsl.testdata.dto.MergedFinanceArVoucherData;
 import com.gsl.utils.Log;
 import com.gsl.utils.NavigationUtils;
 import com.gsl.utils.dataprovider.MergedFinArVoucherDataSupplier;
+import com.gsl.validation.snapshot.DocumentContext;
+import com.gsl.validation.snapshot.SnapshotService;
+import com.gsl.validation.snapshot.TableRule;
+import com.gsl.validation.snapshot.TableSnapshot;
+import com.gsl.validation.snapshot.audit.AuditAssertion;
+import com.gsl.validation.snapshot.finance.Aud2SnapshotDao;
+import com.gsl.validation.snapshot.finance.VoucherDocumentContextResolver;
 import com.tests.WebTest;
 import org.testng.annotations.Test;
+
+import java.util.Map;
 
 /**
  * Deletes an existing AR Voucher from the Finance → Operations → AR Voucher list page.
@@ -54,8 +64,12 @@ public class DeleteArVoucher extends WebTest {
         final MergedFinanceArVoucherData testData = data;
 
         // Cross-step object holders
-        final HomePage[]          homeRef = new HomePage[1];
-        final ArVoucherListPage[] listRef = new ArVoucherListPage[1];
+        final HomePage[]          homeRef    = new HomePage[1];
+        final ArVoucherListPage[] listRef    = new ArVoucherListPage[1];
+        final DocumentContext[]   contextRef = new DocumentContext[1];
+        final Map<String, Object>[] beforeFinvchmainRowRef = new Map[1];
+
+        Aud2SnapshotDao auditDao = new Aud2SnapshotDao();
 
         // ── Step 1: Login ─────────────────────────────────────────────────────────
         StepExecutor.step("Login to Application", () -> {
@@ -96,6 +110,22 @@ public class DeleteArVoucher extends WebTest {
             }
         });
 
+        // ── Step 4b: Resolve Document Context + Capture pre-delete finvchmain state ───────────
+        // Captured while the row still exists — needed both to resolve the audit table's business
+        // key and, per the framework's confirmed design decision, as the ground truth "old" state
+        // AuditAssertion.assertAuditDeleted compares the audit trail's DELETE row against.
+        StepExecutor.step("Resolve Document Context + Capture Pre-Delete State", () -> {
+            contextRef[0] = new VoucherDocumentContextResolver().resolve(testData.getExistingVoucherNo(), VoucherDomain.AR);
+            TableSnapshot finvchmainSnapshot = new SnapshotService(auditDao).capture(contextRef[0]).getTable("finvchmain");
+            if (finvchmainSnapshot == null || finvchmainSnapshot.getRows().isEmpty()) {
+                throw new IllegalStateException("[DeleteArVoucher] finvchmain row not found for scheme_docno="
+                        + testData.getExistingVoucherNo() + " immediately before delete.");
+            }
+            beforeFinvchmainRowRef[0] = finvchmainSnapshot.getRows().get(0);
+            ReportLogger.business("Captured pre-delete finvchmain state for audit comparison: "
+                    + testData.getExistingVoucherNo());
+        });
+
         // ── Step 5: Delete and Confirm ────────────────────────────────────────────
         StepExecutor.step("Click Delete and Confirm", () -> {
             listRef[0]
@@ -104,19 +134,21 @@ public class DeleteArVoucher extends WebTest {
             ReportLogger.pass("Deletion confirmed for voucher: " + testData.getExistingVoucherNo());
         });
 
-        // ── Step 6: Logout ────────────────────────────────────────────────────────
-        StepExecutor.step("Logout", () -> {
-            com.gsl.driver.SessionManager.closeSessionAndReleaseUser("Delete AR Voucher complete");
-        });
+        // ── Step 6: Logout (deferred — session may be reused by a later test on this thread;
+        // real logout+driver-quit happens via RecoveryManager or end-of-block cleanup only) ────
+        StepExecutor.step("Logout (deferred)", () ->
+                ReportLogger.session("Logout deferred — session may be reused by a later test on this thread."));
 
         // ── Step 7: Database Validation ───────────────────────────────────────────
-        StepExecutor.step("Database Validation", () -> {
-            // TODO: replace with ARVoucherDbValidator.validateDeleted(existingVoucherNo)
-            //   once the validator supports delete assertions (check finvchmain row is
-            //   absent or has status='D').
-            Log.info("[DB-Validate] Delete validation TODO for voucher: {}",
-                    testData.getExistingVoucherNo());
-            ReportLogger.pass("DB validation TODO — voucher targeted for deletion: "
+        // Real audit-trail assertion (replaces the old "TODO" stub): finvchmain's row is gone from
+        // the live table by construction (the delete already happened above) — what this actually
+        // validates is that aud2_finvchmain recorded a DELETE row whose captured state matches what
+        // the record held immediately before deletion, excluding aud2_active_tab_col's housekeeping
+        // columns for this table.
+        StepExecutor.step("Database Validation — Audit Trail", () -> {
+            TableRule finvchmainRule = contextRef[0].getPersistenceMap().findByTableName("finvchmain");
+            AuditAssertion.assertAuditDeleted(contextRef[0], auditDao, finvchmainRule, beforeFinvchmainRowRef[0]);
+            ReportLogger.pass("Audit trail validated — DELETE recorded for voucher: "
                     + testData.getExistingVoucherNo());
         });
     }

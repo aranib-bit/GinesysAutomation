@@ -3,6 +3,7 @@ package com.gsl.utils.Selenium;
 import com.gsl.config.ConfigFactory;
 import com.gsl.driver.DriverManager;
 import com.gsl.enums.WaitType;
+import com.gsl.popup.PopupMonitor;
 import com.gsl.reports.ReportLogger;
 import com.gsl.reports.WaitDurationBuffer;
 import org.openqa.selenium.*;
@@ -63,32 +64,56 @@ public final class WaitUtils {
 
     public static WebElement untilClickable(By by) {
         ReportLogger.uiAction("waitUntilClickable {}", by);
-        return webDriverWait().until(ExpectedConditions.elementToBeClickable(by));
+        try {
+            return webDriverWait().until(ExpectedConditions.elementToBeClickable(by));
+        } catch (TimeoutException e) {
+            throw PopupMonitor.diagnoseFailure(e, "waitUntilClickable " + by, ConfigFactory.getConfig().timeout());
+        }
     }
 
     public static WebElement untilClickable(By by, long seconds) {
         ReportLogger.uiAction("waitUntilClickable {}s {}", seconds, by);
-        return webDriverWait(seconds).until(ExpectedConditions.elementToBeClickable(by));
+        try {
+            return webDriverWait(seconds).until(ExpectedConditions.elementToBeClickable(by));
+        } catch (TimeoutException e) {
+            throw PopupMonitor.diagnoseFailure(e, "waitUntilClickable " + by, seconds);
+        }
     }
 
     public static WebElement untilPresent(By by) {
         ReportLogger.uiAction("waitUntilPresent {}", by);
-        return webDriverWait().until(ExpectedConditions.presenceOfElementLocated(by));
+        try {
+            return webDriverWait().until(ExpectedConditions.presenceOfElementLocated(by));
+        } catch (TimeoutException e) {
+            throw PopupMonitor.diagnoseFailure(e, "waitUntilPresent " + by, ConfigFactory.getConfig().timeout());
+        }
     }
 
     public static WebElement untilPresent(By by, long seconds) {
         ReportLogger.uiAction("waitUntilPresent {}s {}", seconds, by);
-        return webDriverWait(seconds).until(ExpectedConditions.presenceOfElementLocated(by));
+        try {
+            return webDriverWait(seconds).until(ExpectedConditions.presenceOfElementLocated(by));
+        } catch (TimeoutException e) {
+            throw PopupMonitor.diagnoseFailure(e, "waitUntilPresent " + by, seconds);
+        }
     }
 
     public static WebElement untilVisible(By by) {
         ReportLogger.uiAction("waitUntilVisible {}", by);
-        return webDriverWait().until(ExpectedConditions.visibilityOfElementLocated(by));
+        try {
+            return webDriverWait().until(ExpectedConditions.visibilityOfElementLocated(by));
+        } catch (TimeoutException e) {
+            throw PopupMonitor.diagnoseFailure(e, "waitUntilVisible " + by, ConfigFactory.getConfig().timeout());
+        }
     }
 
     public static WebElement untilVisible(By by, long seconds) {
         ReportLogger.uiAction("waitUntilVisible {}s {}", seconds, by);
-        return webDriverWait(seconds).until(ExpectedConditions.visibilityOfElementLocated(by));
+        try {
+            return webDriverWait(seconds).until(ExpectedConditions.visibilityOfElementLocated(by));
+        } catch (TimeoutException e) {
+            throw PopupMonitor.diagnoseFailure(e, "waitUntilVisible " + by, seconds);
+        }
     }
 
     public static boolean untilInvisible(By by) {
@@ -206,7 +231,8 @@ public final class WaitUtils {
                     .findElements(By.xpath(
                             "//div[contains(@class,'x-message-box') and not(contains(@class,'x-hide-display'))]"))
                     .isEmpty();
-            if (!dialogBlocking) throw e;
+            if (dialogBlocking) return;
+            throw PopupMonitor.diagnoseFailure(e, "Loader wait (ExtJS mask)", extJsTimeout());
         }
     }
 

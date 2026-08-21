@@ -1,78 +1,31 @@
 package com.gsl.pages.Finance.Operations;
 
-import com.gsl.annotations.LogStep;
-import com.gsl.enums.WaitType;
-import com.gsl.pages.VerifiablePage;
-import com.gsl.pages.enums.CommonButton;
-import com.gsl.utils.PageHeaderUtils;
-import com.gsl.utils.Selenium.SeleniumUtils;
-import org.openqa.selenium.By;
+import com.gsl.pages.pagecomponent.Finance.Operations.APVoucher.APVoucherListFooter;
+import com.gsl.pages.pagecomponent.Finance.Operations.APVoucher.APVoucherListGridHeader;
+import com.gsl.pages.pagecomponent.Finance.Operations.APVoucher.APVoucherMainGrid;
+import com.gsl.pages.pagecomponent.Finance.Operations.Common.VoucherListPageBase;
 
-public class ApVoucherListPage implements VerifiablePage {
+/**
+ * AP Voucher list page — plan §17: thin domain subclass of the common
+ * {@link VoucherListPageBase}, mirroring {@code GeneralVoucherListPage}. Public API is
+ * unchanged from before this split — {@code NavigationUtils} still instantiates this class
+ * reflectively via its public no-arg constructor, and every method signature tests already call
+ * is preserved (inherited from the base rather than declared here, but the same signatures/
+ * return types) — including {@code selectDocumentInListPage(String)}, which previously existed
+ * only on {@code GeneralVoucherListPage} and is now available here too, closing that gap.
+ * Locators remain the same unresolved {@code //TODO-} placeholders as before (living in
+ * {@code VoucherMainGridBase}, not duplicated locally).
+ */
+public class ApVoucherListPage extends VoucherListPageBase<
+        APVoucherListGridHeader, APVoucherMainGrid, APVoucherListFooter,
+        ApVoucherAdd, ApVoucherListPage> {
 
-    private static final String EXPECTED_PAGE_HEADER = "AP Vouchers";
-
-    // APVOUCHERADD → CommonButton.ADD.locator()
-    // TODO: replace placeholder XPaths below with actual selectors from the live AP Voucher list UI
-    private static final class Loc {
-        static final By SEARCH_BOX     = By.xpath("//TODO-search-input");
-        static final By SEARCH_BUTTON  = By.xpath("//TODO-search-button");
-        static final By EDIT_ICON      = By.xpath("//TODO-edit-icon-first-row");
-        static final By DELETE_ICON    = By.xpath("//TODO-delete-icon-first-row");
-        static final By UNPOST_BUTTON  = By.xpath("//TODO-unpost-button");
-        static final By CONFIRM_DELETE = By.xpath("//TODO-confirm-delete-button");
+    public ApVoucherListPage() {
+        super(new APVoucherListGridHeader(), new APVoucherMainGrid(), new APVoucherListFooter());
     }
 
-    /**
-     * Confirms the browser is actually showing the AP Voucher list right now, via the page-header
-     * text — a live signal independent of URL/menu-highlight state. Called by {@code NavigationUtils}
-     * right after navigation lands, before a caller trusts this page object (e.g. before clicking
-     * the generic, page-agnostic "Add" button that exists on most list pages).
-     */
     @Override
-    public void verifyOnThisPage() {
-        String actual = PageHeaderUtils.getPageHeaderText();
-        if (!EXPECTED_PAGE_HEADER.equalsIgnoreCase(actual)) {
-            throw new IllegalStateException(
-                    "Expected to be on the AP Voucher list (page header '" + EXPECTED_PAGE_HEADER
-                    + "') but the live page header reads '" + actual + "' instead.");
-        }
-    }
-
-    @LogStep("Open New AP Voucher Form")
-    public ApVoucherAdd clickAdd() {
-        SeleniumUtils.click(CommonButton.ADD.locator(), WaitType.CLICKABLE, "APVOUCHERADD");
+    protected ApVoucherAdd newAddPage() {
         return new ApVoucherAdd();
-    }
-
-    @LogStep("Search AP Voucher by Document Number")
-    public ApVoucherListPage searchByVoucherNo(String voucherNo) {
-        SeleniumUtils.sendKeys(Loc.SEARCH_BOX, WaitType.VISIBLE, voucherNo, "SEARCH_BOX");
-        SeleniumUtils.click(Loc.SEARCH_BUTTON, WaitType.CLICKABLE, "SEARCH_BUTTON");
-        return this;
-    }
-
-    @LogStep("Open AP Voucher for Edit")
-    public ApVoucherAdd clickEditForVoucher() {
-        SeleniumUtils.click(Loc.EDIT_ICON, WaitType.CLICKABLE, "EDIT_ICON");
-        return new ApVoucherAdd();
-    }
-
-    @LogStep("Click Delete for AP Voucher")
-    public ApVoucherListPage clickDeleteForVoucher() {
-        SeleniumUtils.click(Loc.DELETE_ICON, WaitType.CLICKABLE, "DELETE_ICON");
-        return this;
-    }
-
-    @LogStep("Unpost AP Voucher")
-    public ApVoucherListPage clickUnpost() {
-        SeleniumUtils.click(Loc.UNPOST_BUTTON, WaitType.CLICKABLE, "UNPOST_BUTTON");
-        return this;
-    }
-
-    @LogStep("Confirm Delete Dialog")
-    public ApVoucherListPage confirmDelete() {
-        SeleniumUtils.click(Loc.CONFIRM_DELETE, WaitType.CLICKABLE, "CONFIRM_DELETE");
-        return this;
     }
 }

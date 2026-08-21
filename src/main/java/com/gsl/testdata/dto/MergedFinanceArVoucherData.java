@@ -84,6 +84,17 @@ public class MergedFinanceArVoucherData
     private String releaseStatus;
 
     /**
+     * The voucher's date BEFORE this edit, as read from {@code finvchmain.vchdt} at
+     * data-source-build time. {@code null} in Create/Delete mode. Mirrors
+     * {@code MergedFinanceGeneralVoucherData#getCurrentDocDate()} — populated for parity by
+     * {@code DbArVoucherEditDataSource}, but not yet wired into a report row here: unlike GV,
+     * this DTO has no {@code operationMode}-style field to reliably distinguish an Edit row from
+     * a Delete row (both set {@link #existingVoucherNo} identically), so an Edit-only report
+     * guard isn't safely available yet.
+     */
+    private java.time.LocalDate currentDocDate;
+
+    /**
      * DB query limits carried from placeholder to Phase 2 lazy loading.
      * Non-null in DB mode; null in Excel mode (not used by Excel path).
      */

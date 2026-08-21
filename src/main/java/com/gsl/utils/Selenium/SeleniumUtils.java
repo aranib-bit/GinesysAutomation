@@ -20,10 +20,66 @@ import org.openqa.selenium.support.ui.ExpectedConditions;
 import org.openqa.selenium.support.ui.WebDriverWait;
 
 import java.time.Duration;
+import java.util.function.Supplier;
 
 public class SeleniumUtils {
 
     private SeleniumUtils() {}
+
+    /** Caps {@link #fillAndVerifyCommit}'s retry loop — an intermittent ExtJS commit race (not a
+     *  deterministic bug) needs a bounded retry, not a longer single wait; see that method's
+     *  Javadoc. Promoted here (from its original home in {@code VoucherDocumentInformationBase})
+     *  so any field-fill method across the Finance page-object layer can reuse the same
+     *  retry-until-verified mechanism, not just the Reference/Remarks fields it was first fixed
+     *  for. */
+    public static final int MAX_COMMIT_ATTEMPTS = 3;
+
+    /**
+     * Runs {@code fillAndCommitAction} (whatever combination of type/click/Tab a given field
+     * needs to both enter and commit a value), then reads the field back via {@code readback} to
+     * confirm the commit actually landed — retrying the whole cycle up to
+     * {@link #MAX_COMMIT_ATTEMPTS} times before failing loudly.
+     *
+     * <p>Fixes a confirmed-live, intermittent ExtJS commit race where a field visibly shows the
+     * typed/selected value but what's actually submitted on Save silently stays stale — first
+     * caught on the Reference field, then Remarks (both in {@code VoucherDocumentInformationBase});
+     * generalized here so any other field (General Ledger, Sub Ledger, Amount, Is Reversal,
+     * Ledger Narration, Cash/Bank, ...) can get the same protection via a caller-supplied
+     * {@code readback} instead of assuming a plain text input's {@code "value"} attribute — a
+     * combo/picker field's committed display text may live in a different DOM location entirely.
+     */
+    public static void fillAndVerifyCommit(String fieldLabel, String value,
+            Runnable fillAndCommitAction, Supplier<String> readback) {
+        for (int attempt = 1; attempt <= MAX_COMMIT_ATTEMPTS; attempt++) {
+            fillAndCommitAction.run();
+            String actual = readback.get();
+            if (value.equals(actual)) return;
+            Log.warn("[SeleniumUtils] {} field shows '{}' after fill+commit attempt {}/{}, expected "
+                    + "'{}' — retrying.", fieldLabel, actual, attempt, MAX_COMMIT_ATTEMPTS, value);
+        }
+        throw new AssertionError("[SeleniumUtils] " + fieldLabel + " field failed to commit '" + value
+                + "' after " + MAX_COMMIT_ATTEMPTS + " attempts — UI fill/commit likely failed.");
+    }
+
+    /**
+     * {@link BigDecimal}-aware overload of {@link #fillAndVerifyCommit(String, String, Runnable,
+     * Supplier)} for amount fields — compares via {@link BigDecimal#compareTo} rather than string
+     * equality, since a committed cell's formatted text (e.g. trailing/absent decimal places) need
+     * not match the input's own {@code toPlainString()} rendering even when the two are numerically
+     * identical. Same retry-until-verified mechanism and attempt cap otherwise.
+     */
+    public static void fillAndVerifyCommit(String fieldLabel, java.math.BigDecimal value,
+            Runnable fillAndCommitAction, Supplier<java.math.BigDecimal> readback) {
+        for (int attempt = 1; attempt <= MAX_COMMIT_ATTEMPTS; attempt++) {
+            fillAndCommitAction.run();
+            java.math.BigDecimal actual = readback.get();
+            if (actual != null && value.compareTo(actual) == 0) return;
+            Log.warn("[SeleniumUtils] {} field shows '{}' after fill+commit attempt {}/{}, expected "
+                    + "'{}' — retrying.", fieldLabel, actual, attempt, MAX_COMMIT_ATTEMPTS, value);
+        }
+        throw new AssertionError("[SeleniumUtils] " + fieldLabel + " field failed to commit '" + value
+                + "' after " + MAX_COMMIT_ATTEMPTS + " attempts — UI fill/commit likely failed.");
+    }
 
     public static void click(By by, String elementName) {
         click(by, elementName, LogCategory.UI_ACTION);

@@ -1,6 +1,8 @@
 package com.gsl.diagnostics;
 
 import com.gsl.browser.JsErrorClassification;
+import com.gsl.exceptions.LoaderStillInProgressException;
+import com.gsl.exceptions.UnexpectedPopupException;
 import org.openqa.selenium.ElementClickInterceptedException;
 import org.openqa.selenium.NoSuchElementException;
 import org.openqa.selenium.StaleElementReferenceException;
@@ -28,6 +30,20 @@ public final class RootCauseClassifier {
             return RootCause.of(RootCauseCategory.UNKNOWN, "No throwable on the test result.", "LOW");
         }
         String msg = in.message();
+
+        // 0a–0b — PopupMonitor.diagnoseFailure() already confirmed these live, at the moment of
+        // failure, by querying the DOM — not a message-pattern guess like the rules below. Always
+        // wins over the heuristics further down.
+        if (t instanceof UnexpectedPopupException) {
+            return RootCause.of(RootCauseCategory.UNEXPECTED_POPUP,
+                    "An unexpected application popup was confirmed present at the moment of failure. "
+                    + firstLine(msg, 240), "HIGH");
+        }
+        if (t instanceof LoaderStillInProgressException) {
+            return RootCause.of(RootCauseCategory.EXTJS_MASK_BLOCKING,
+                    "An ExtJS loading mask was confirmed still visible at the moment of failure — the "
+                    + "application had not finished loading/processing in time. " + firstLine(msg, 240), "HIGH");
+        }
 
         // 1–2 — Click intercepted (very common). x-mask overlay is the dominant cause here.
         if (t instanceof ElementClickInterceptedException) {

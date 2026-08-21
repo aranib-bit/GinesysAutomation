@@ -2,6 +2,7 @@ package com.gsl.api.core;
 
 import com.gsl.api.client.ArVoucherApiClient;
 import com.gsl.api.client.DcApiClient;
+import com.gsl.api.client.GeneralVoucherApiClient;
 import com.gsl.api.client.GrcApiClient;
 import com.gsl.api.client.ItemApiClient;
 import com.gsl.api.client.LedgerApiClient;
@@ -97,6 +98,7 @@ public final class ApiSessionFactory {
                 .arVoucherApiClient(new ArVoucherApiClient(spec))
                 .ledgerApiClient(new LedgerApiClient(spec))
                 .subLedgerOthersApiClient(new SubLedgerOthersApiClient(spec))
+                .generalVoucherApiClient(new GeneralVoucherApiClient(spec))
                 .build();
     }
 }

@@ -2,6 +2,7 @@ package com.gsl.utils.dataprovider.fixture.finance;
 
 import com.gsl.pages.Common.DocumentMessageBox;
 import com.gsl.pages.Finance.Operations.ArVoucherAdd;
+import com.gsl.pages.Finance.Operations.ArVoucherListPage;
 import com.gsl.pages.Finance.Operations.Common.DocumentPopup;
 import com.gsl.pages.Finance.Operations.Common.PaymentInfoCheckWarning;
 import com.gsl.pages.pagecomponent.Finance.Operations.Common.SubLedgerRowLocator;
@@ -82,7 +83,7 @@ public final class ArVoucherPredicateFactory {
 
                 ReportLogger.pass("Voucher saved. Document No: " + docNoRef[0]);
                 messageBox.clickOk();
-                page.close().clickYes();
+                page.close().clickYes(ArVoucherListPage::new);
                 ReportLogger.session("Logout deferred — session may be reused by a later test on this thread.");
             });
 
@@ -148,7 +149,7 @@ public final class ArVoucherPredicateFactory {
 
                 ReportLogger.pass("Voucher saved. Document No: " + docNoRef[0]);
                 messageBox.clickOk();
-                page.close().clickYes();
+                page.close().clickYes(ArVoucherListPage::new);
                 ReportLogger.session("Logout deferred — session may be reused by a later test on this thread.");
             });
 
@@ -214,7 +215,7 @@ public final class ArVoucherPredicateFactory {
 
                 ReportLogger.pass("Voucher saved. Document No: " + docNoRef[0]);
                 messageBox.clickOk();
-                page.close().clickYes();
+                page.close().clickYes(ArVoucherListPage::new);
                 ReportLogger.session("Logout deferred — session may be reused by a later test on this thread.");
             });
 
@@ -281,7 +282,7 @@ public final class ArVoucherPredicateFactory {
 
                 ReportLogger.pass("Voucher saved. Document No: " + docNoRef[0]);
                 messageBox.clickOk();
-                page.close().clickYes();
+                page.close().clickYes(ArVoucherListPage::new);
                 ReportLogger.session("Logout deferred — session may be reused by a later test on this thread.");
             });
 
@@ -333,7 +334,7 @@ public final class ArVoucherPredicateFactory {
             });
 
             StepExecutor.step("Cancel (Logout deferred)", () -> {
-                page.close().clickYes();
+                page.close().clickYes(ArVoucherListPage::new);
                 ReportLogger.session("Logout deferred — session may be reused by a later test on this thread.");
             });
 
@@ -388,7 +389,7 @@ public final class ArVoucherPredicateFactory {
 
                 ReportLogger.pass("Voucher saved at boundary. Document No: " + docNoRef[0]);
                 messageBox.clickOk();
-                page.close().clickYes();
+                page.close().clickYes(ArVoucherListPage::new);
                 ReportLogger.session("Logout deferred — session may be reused by a later test on this thread.");
             });
 
@@ -449,7 +450,7 @@ public final class ArVoucherPredicateFactory {
             });
 
             StepExecutor.step("Cancel (Logout deferred)", () -> {
-                page.close().clickYes();
+                page.close().clickYes(ArVoucherListPage::new);
                 ReportLogger.session("Logout deferred — session may be reused by a later test on this thread.");
             });
 

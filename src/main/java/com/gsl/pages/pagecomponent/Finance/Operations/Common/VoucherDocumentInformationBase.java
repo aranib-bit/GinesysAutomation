@@ -92,14 +92,7 @@ public abstract class VoucherDocumentInformationBase {
         setDocScheme(docInfo.getVoucherno());
         setDocumentDate(formatDate(docInfo.getDocumentdate()));
         setReference(docInfo.getReference());
-        // T-03 negative scenario NEG_BLANK_CASHBANK leaves Cash/Bank deliberately empty so Save
-        // raises "Cash/Bank is required". Skip the picker when no value is supplied; positive
-        // scenarios always pass a non-blank Cash/Bank, so this is a no-op for them.
-        String cashbank = docInfo.getCashbank();
-        if (cashbank != null && !cashbank.isBlank()) {
-            clickCashBankSearch();
-            selectCashBank(cashbank);
-        }
+        setCashBankField(docInfo.getCashbank());
     }
 
     // ── Protected setters — available to subclasses for custom ordering ───────
@@ -108,6 +101,16 @@ public abstract class VoucherDocumentInformationBase {
         // No override supplied (null/blank) — leave whatever scheme the app defaulted to.
         // Mirrors fillCommonFields' Cash/Bank blank-guard: positive scenarios normally
         // don't pass a Voucher No./scheme override, so this is a no-op for them.
+        //
+        // IMPORTANT for Edit flows: this blank-guard is the ONLY branch that never touches the
+        // UI. Passing the voucher's EXISTING scheme_docno here (to hit the "already matches,
+        // skip" branch below) still requires the getAttribute() read below to succeed first,
+        // which waits for the field's visibility — and on a live General Voucher Edit run that
+        // wait timed out (Voucher No. is disabled/rendered differently in Edit mode than in
+        // Create mode). Edit data sources must pass null here, not the existing value, to
+        // guarantee this method never interacts with the field at all — see
+        // ExcelGeneralVoucherEditDataSource/DbGeneralVoucherEditDataSource's own comments on
+        // their DocumentInformation construction for the concrete fix.
         if (docscheme == null || docscheme.isBlank()) {
             Log.info("DOC_SCHEME override not supplied — leaving default value in place");
             return;
@@ -136,15 +139,53 @@ public abstract class VoucherDocumentInformationBase {
         SeleniumUtils.sendKeys(documentDate, WaitType.CLICKABLE, date, "DOCUMENT_DATE");
     }
 
-    protected void setReference(String referenceValue) {
-        if (referenceValue == null || referenceValue.isBlank()) return;
-        SeleniumUtils.sendKeys(reference, WaitType.CLICKABLE, referenceValue, "REFERENCE");
+    /** Sets Cash/Bank — equals-guard first (Edit flows pass the voucher's own EXISTING, unchanged
+     *  Cash/Bank through here; it's never actually re-selected on Edit, so without this check
+     *  every Edit run unconditionally re-opened the picker and re-clicked the same value for no
+     *  reason), then {@link SeleniumUtils#fillAndVerifyCommit} to confirm the pick actually landed
+     *  (retrying on mismatch), same protection now given to every other field in this class.
+     *  Blank/null is a deliberate no-op — T-03's NEG_BLANK_CASHBANK scenario leaves Cash/Bank
+     *  empty so Save raises "Cash/Bank is required"; positive scenarios always pass a non-blank
+     *  value. */
+    protected void setCashBankField(String cashbank) {
+        if (cashbank == null || cashbank.isBlank()) return;
+        String current = getCashBank();
+        if (current != null && current.equalsIgnoreCase(cashbank)) {
+            Log.info("CASH_BANK is already '{}' — skipping update", cashbank);
+            return;
+        }
+        SeleniumUtils.fillAndVerifyCommit("CASH_BANK", cashbank,
+                () -> {
+                    clickCashBankSearch();
+                    selectCashBank(cashbank);
+                },
+                this::getCashBank);
     }
 
+    /** Sets the Reference field via {@link SeleniumUtils#fillAndVerifyCommit} (type → Tab to force
+     *  the ExtJS textfield to commit its typed DOM value into the bound model → read back to
+     *  confirm, retrying on mismatch). */
+    protected void setReference(String referenceValue) {
+        if (referenceValue == null || referenceValue.isBlank()) return;
+        SeleniumUtils.fillAndVerifyCommit("REFERENCE", referenceValue,
+                () -> {
+                    SeleniumUtils.sendKeys(reference, WaitType.CLICKABLE, referenceValue, "REFERENCE");
+                    WaitUtils.untilVisible(reference).sendKeys(Keys.TAB);
+                },
+                () -> SeleniumUtils.getAttribute(reference, "value", "REFERENCE"));
+    }
+
+    /** Sets the Remarks (narration) field via {@link SeleniumUtils#fillAndVerifyCommit} — {@link
+     *  #handleNarrationTextPopup} is the "commit" half of each attempt (handles the Narration Text
+     *  picker popup's three branches), with the readback/retry happening after it returns. */
     protected void setRemarks(String remarksValue) {
         if (remarksValue == null || remarksValue.isBlank()) return;
-        SeleniumUtils.sendKeys(remarks, WaitType.CLICKABLE, remarksValue, "REMARKS");
-        handleNarrationTextPopup(remarksValue);
+        SeleniumUtils.fillAndVerifyCommit("REMARKS", remarksValue,
+                () -> {
+                    SeleniumUtils.sendKeys(remarks, WaitType.CLICKABLE, remarksValue, "REMARKS");
+                    handleNarrationTextPopup(remarksValue);
+                },
+                () -> SeleniumUtils.getAttribute(remarks, "value", "REMARKS"));
     }
 
     /**
@@ -166,7 +207,16 @@ public abstract class VoucherDocumentInformationBase {
             JavascriptExecutorUtils.waitForExtJS();
             WaitUtils.untilVisible(NARRATION_POPUP_HEADER, 3);
         } catch (TimeoutException | NoSuchElementException e) {
-            ExtentLogger.info("[REMARKS] Narration Text popup did not appear — keeping typed value as-is");
+            // No popup means no row is available to select — the same situation the "no match"
+            // branch below handles by pressing Tab to force the combo to commit the typed text as
+            // its real bound value. This branch used to just log and return without doing that,
+            // which left the field showing the typed text but never actually committed it — the
+            // combo's real submitted value stayed whatever it was before this call (confirmed live:
+            // nartext intermittently saved as blank on Save even though the typed text was visible
+            // on screen and identical to the field's own pre-existing value). Pressing Tab here
+            // mirrors the no-match branch's already-established fix for exactly this situation.
+            WaitUtils.untilVisible(remarks).sendKeys(Keys.TAB);
+            ExtentLogger.info("[REMARKS] Narration Text popup did not appear — pressed Tab to commit typed value '" + remarksValue + "'");
             return;
         }
 

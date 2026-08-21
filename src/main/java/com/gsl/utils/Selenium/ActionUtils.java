@@ -2,6 +2,7 @@ package com.gsl.utils.Selenium;
 
 import com.gsl.driver.DriverManager;
 import com.gsl.enums.WaitType;
+import com.gsl.popup.PopupMonitor;
 import com.gsl.reports.ReportLogger;
 import org.openqa.selenium.By;
 import org.openqa.selenium.WebElement;
@@ -37,12 +38,22 @@ public class ActionUtils {
         ReportLogger.uiAction("rightClick {}", locator);
         WebElement element = DriverManager.getDriver().findElement(locator);
         getActions().contextClick(element).perform();
+        PopupMonitor.checkAfterAction("rightClick " + locator);
     }
 
     public static void doubleClick(By locator) {
         ReportLogger.uiAction("doubleClick {}", locator);
         WebElement element = DriverManager.getDriver().findElement(locator);
         getActions().doubleClick(element).perform();
+        PopupMonitor.checkAfterAction("doubleClick " + locator);
+    }
+
+    /** Overload for a caller that already holds the {@link WebElement} (e.g. a row located via
+     *  some other means) rather than a fresh {@link By} lookup. */
+    public static void doubleClick(WebElement element) {
+        ReportLogger.uiAction("doubleClick {}", element);
+        getActions().doubleClick(element).perform();
+        PopupMonitor.checkAfterAction("doubleClick " + element);
     }
 
 
@@ -50,6 +61,7 @@ public class ActionUtils {
         ReportLogger.uiAction("clickAndHold {}", locator);
         WebElement element = DriverManager.getDriver().findElement(locator);
         getActions().clickAndHold(element).perform();
+        PopupMonitor.checkAfterAction("clickAndHold " + locator);
     }
 
     public static void sendKeys(By locator, CharSequence keys) {
@@ -57,6 +69,7 @@ public class ActionUtils {
         WebElement element = DriverManager.getDriver().findElement(locator);
         element.clear();
         getActions().sendKeys(element, keys).perform();
+        PopupMonitor.checkAfterAction("sendKeys " + locator);
     }
 
     public static void dragAndDrop(By sourceLocator, By targetLocator) {
@@ -64,5 +77,6 @@ public class ActionUtils {
         WebElement source = DriverManager.getDriver().findElement(sourceLocator);
         WebElement target = DriverManager.getDriver().findElement(targetLocator);
         getActions().dragAndDrop(source, target).perform();
+        PopupMonitor.checkAfterAction("dragAndDrop " + sourceLocator + " -> " + targetLocator);
     }
 }

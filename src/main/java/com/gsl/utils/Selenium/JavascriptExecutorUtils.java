@@ -4,6 +4,7 @@ import com.gsl.config.ConfigFactory;
 import com.gsl.driver.DriverManager;
 import com.gsl.exceptions.SubLedgerNotFoundException;
 import com.gsl.pages.enums.Inventory.Product_Definition.GroupHierarchyType;
+import com.gsl.popup.PopupMonitor;
 import com.gsl.reports.ExtentLogger;
 import com.gsl.reports.ReportLogger;
 import org.openqa.selenium.*;
@@ -374,30 +375,42 @@ public final class JavascriptExecutorUtils {
     }
 
     public static void waitForExtJS() {
-        WaitUtils.webDriverWait(WaitUtils.extJsTimeoutSeconds()).until(
-                driver -> (Boolean) ((JavascriptExecutor) driver).executeScript(
-                        "return !!(window.Ext && window.Ext.isReady && " +
-                                "!window.Ext.Ajax.isLoading() && " +
-                                "window.Ext.ComponentQuery.query('[isMasked=true]').length === 0);"
-                )
-        );
+        try {
+            WaitUtils.webDriverWait(WaitUtils.extJsTimeoutSeconds()).until(
+                    driver -> (Boolean) ((JavascriptExecutor) driver).executeScript(
+                            "return !!(window.Ext && window.Ext.isReady && " +
+                                    "!window.Ext.Ajax.isLoading() && " +
+                                    "window.Ext.ComponentQuery.query('[isMasked=true]').length === 0);"
+                    )
+            );
+        } catch (TimeoutException e) {
+            throw PopupMonitor.diagnoseFailure(e, "waitForExtJS", WaitUtils.extJsTimeoutSeconds());
+        }
     }
 
     public static void waitForExtLayout() {
-        WaitUtils.webDriverWait(WaitUtils.extJsTimeoutSeconds()).until(
-                driver -> (Boolean) ((JavascriptExecutor) driver).executeScript(
-                        "return window.Ext !== undefined && Ext.ComponentManager.all.getCount() > 0;"
-                )
-        );
+        try {
+            WaitUtils.webDriverWait(WaitUtils.extJsTimeoutSeconds()).until(
+                    driver -> (Boolean) ((JavascriptExecutor) driver).executeScript(
+                            "return window.Ext !== undefined && Ext.ComponentManager.all.getCount() > 0;"
+                    )
+            );
+        } catch (TimeoutException e) {
+            throw PopupMonitor.diagnoseFailure(e, "waitForExtLayout", WaitUtils.extJsTimeoutSeconds());
+        }
     }
 
     public static void waitForStoreLoad(String storeId) {
-        WaitUtils.webDriverWait(WaitUtils.extJsTimeoutSeconds()).until(
-                driver -> (Boolean) ((JavascriptExecutor) driver).executeScript(
-                        "var store = Ext.getStore('" + storeId + "');" +
-                        "return store ? !store.isLoading() : true;"
-                )
-        );
+        try {
+            WaitUtils.webDriverWait(WaitUtils.extJsTimeoutSeconds()).until(
+                    driver -> (Boolean) ((JavascriptExecutor) driver).executeScript(
+                            "var store = Ext.getStore('" + storeId + "');" +
+                            "return store ? !store.isLoading() : true;"
+                    )
+            );
+        } catch (TimeoutException e) {
+            throw PopupMonitor.diagnoseFailure(e, "waitForStoreLoad " + storeId, WaitUtils.extJsTimeoutSeconds());
+        }
     }
 
     public static void waitForPageLoad() {
@@ -438,41 +451,46 @@ public final class JavascriptExecutorUtils {
 
 
     public static void waitForComponentReady() {
-        WaitUtils.webDriverWait(ConfigFactory.getWaitConfig().componentReadyTimeoutSeconds())
-                .until(driver -> {
-                    Object result = ((JavascriptExecutor) driver).executeScript(
-                            "if (window.Ext && window.Ext.ComponentQuery) {" +
-                                    "var comps = Ext.ComponentQuery.query('[isMasked=true]');" +
-                                    "return comps.map(function(c){ " +
-                                    "   return {" +
-                                    "       xtype: c.xtype || '', " +
-                                    "       itemId: c.itemId || '', " +
-                                    "       id: c.id || ''" +
-                                    "   };" +
-                                    "});" +
-                                    "} else { return []; }"
-                    );
+        try {
+            WaitUtils.webDriverWait(ConfigFactory.getWaitConfig().componentReadyTimeoutSeconds())
+                    .until(driver -> {
+                        Object result = ((JavascriptExecutor) driver).executeScript(
+                                "if (window.Ext && window.Ext.ComponentQuery) {" +
+                                        "var comps = Ext.ComponentQuery.query('[isMasked=true]');" +
+                                        "return comps.map(function(c){ " +
+                                        "   return {" +
+                                        "       xtype: c.xtype || '', " +
+                                        "       itemId: c.itemId || '', " +
+                                        "       id: c.id || ''" +
+                                        "   };" +
+                                        "});" +
+                                        "} else { return []; }"
+                        );
 
-                    if (result instanceof List) {
-                        List<?> list = (List<?>) result;
+                        if (result instanceof List) {
+                            List<?> list = (List<?>) result;
 
-                        if (list.isEmpty()) {
-                            System.out.println("✅ No masked/loading components found.");
-                            return true;  // <---- FIXED ✅ return true when ready
-                        } else {
-                            for (Object obj : list) {
-                                if (obj instanceof Map) {
-                                    Map<?, ?> comp = (Map<?, ?>) obj;
-                                    System.out.println("⏳ Still loading -> xtype: " + comp.get("xtype")
-                                            + ", itemId: " + comp.get("itemId")
-                                            + ", id: " + comp.get("id"));
+                            if (list.isEmpty()) {
+                                System.out.println("✅ No masked/loading components found.");
+                                return true;  // <---- FIXED ✅ return true when ready
+                            } else {
+                                for (Object obj : list) {
+                                    if (obj instanceof Map) {
+                                        Map<?, ?> comp = (Map<?, ?>) obj;
+                                        System.out.println("⏳ Still loading -> xtype: " + comp.get("xtype")
+                                                + ", itemId: " + comp.get("itemId")
+                                                + ", id: " + comp.get("id"));
+                                    }
                                 }
+                                return false; // not ready yet
                             }
-                            return false; // not ready yet
                         }
-                    }
-                    return true; // if script didn’t return a list, continue
-                });
+                        return true; // if script didn’t return a list, continue
+                    });
+        } catch (TimeoutException e) {
+            throw PopupMonitor.diagnoseFailure(e, "waitForComponentReady",
+                    ConfigFactory.getWaitConfig().componentReadyTimeoutSeconds());
+        }
     }
 
 

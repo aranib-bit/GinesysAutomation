@@ -1,81 +1,76 @@
 package com.gsl.pages.Finance.Operations;
 
-import com.gsl.annotations.LogStep;
-import com.gsl.enums.WaitType;
-import com.gsl.pages.VerifiablePage;
-import com.gsl.pages.enums.CommonButton;
-import com.gsl.utils.PageHeaderUtils;
-import com.gsl.utils.Selenium.SeleniumUtils;
-import org.openqa.selenium.By;
+import com.gsl.pages.enums.Finance.Operations.GeneralVoucher.GeneralVoucherRevertOutcome;
+import com.gsl.pages.pagecomponent.Finance.Operations.Common.VoucherListPageBase;
+import com.gsl.pages.pagecomponent.Finance.Operations.GeneralVoucher.GeneralVoucherListFooter;
+import com.gsl.pages.pagecomponent.Finance.Operations.GeneralVoucher.GeneralVoucherListGridHeader;
+import com.gsl.pages.pagecomponent.Finance.Operations.GeneralVoucher.GeneralVoucherMainGrid;
 
 /**
- * General Voucher list page — mirrors {@code ApVoucherListPage} exactly, including
- * its still-open {@code //TODO-} placeholder locators for search/edit/delete/unpost
- * (consistent, pre-existing debt across the codebase, not new here).
+ * General Voucher list page — plan §17: thin domain subclass of the common
+ * {@link VoucherListPageBase}. Public API is unchanged from before this split —
+ * {@code NavigationUtils} still instantiates this class reflectively via its public no-arg
+ * constructor, and every method signature tests already call is preserved (inherited from the
+ * base rather than declared here, but the same signatures/return types).
+ *
+ * <p>Only what's genuinely GV-specific stays here: the Revert-flow composites
+ * ({@link #clickRevert()}/{@link #confirmRevert()}/{@link #revertSelectedDocument()}) —
+ * {@code confirmRevert()}'s dialog-text matching is confirmed only against GV's live DOM (plan
+ * §12), and its return type ({@link GeneralVoucherRevertOutcome}) is itself a GV-named enum.
+ * Everything else ({@code clickAdd}/{@code searchByVoucherNo}/{@code clickEditForVoucher}/
+ * {@code clickEditFromActions}/{@code doubleClickToEdit}/{@code clickDeleteForVoucher}/
+ * {@code clickUnpost}/{@code confirmDelete}/{@code clickActions}/{@code clickRefresh}/
+ * {@code clickClearFilter}/{@code clickNextPage}/{@code selectDocumentInListPage}) is inherited.
  */
-public class GeneralVoucherListPage implements VerifiablePage {
+public class GeneralVoucherListPage extends VoucherListPageBase<
+        GeneralVoucherListGridHeader, GeneralVoucherMainGrid, GeneralVoucherListFooter,
+        GeneralVoucherAdd, GeneralVoucherListPage> {
 
-    /** TODO: confirm against the live UI — best-effort guess, not yet verified. */
-    private static final String EXPECTED_PAGE_HEADER = "General Vouchers";
+    public GeneralVoucherListPage() {
+        super(new GeneralVoucherListGridHeader(), new GeneralVoucherMainGrid(), new GeneralVoucherListFooter());
+    }
 
-    // GENERALVOUCHERADD → CommonButton.ADD.locator()
-    private static final class Loc {
-        static final By SEARCH_BOX     = By.xpath("//TODO-search-input");
-        static final By SEARCH_BUTTON  = By.xpath("//TODO-search-button");
-        static final By EDIT_ICON      = By.xpath("//TODO-edit-icon-first-row");
-        static final By DELETE_ICON    = By.xpath("//TODO-delete-icon-first-row");
-        static final By UNPOST_BUTTON  = By.xpath("//TODO-unpost-button");
-        static final By CONFIRM_DELETE = By.xpath("//TODO-confirm-delete-button");
+    @Override
+    protected GeneralVoucherAdd newAddPage() {
+        return new GeneralVoucherAdd();
+    }
+
+    // ── Revert from List Page (GV-specific — plan §10/§12) ───────────────────────
+
+    /**
+     * Clicks "Revert" in the open Actions dropdown — step 3 of the Revert-from-List-Page flow.
+     * Does NOT confirm the follow-up Yes/No dialog — call {@link #confirmRevert()} separately.
+     */
+    public GeneralVoucherListPage clickRevert() {
+        getMainGrid().clickRevert();
+        return this;
     }
 
     /**
-     * Confirms the browser is actually showing the General Voucher list right now, via the
-     * page-header text — same live-DOM-signal pattern as {@code ApVoucherListPage}.
+     * Confirms whichever post-Revert dialog appears — step 4 (completes the operation). Returns
+     * which case actually happened (Posted → un-posted vs. already un-posted, no-op) so the
+     * caller can assert the correct expected DB outcome.
      */
-    @Override
-    public void verifyOnThisPage() {
-        String actual = PageHeaderUtils.getPageHeaderText();
-        if (!EXPECTED_PAGE_HEADER.equalsIgnoreCase(actual)) {
-            throw new IllegalStateException(
-                    "Expected to be on the General Voucher list (page header '" + EXPECTED_PAGE_HEADER
-                    + "') but the live page header reads '" + actual + "' instead.");
-        }
+    public GeneralVoucherRevertOutcome confirmRevert() {
+        return getMainGrid().confirmRevert();
     }
 
-    @LogStep("Open New General Voucher Form")
-    public GeneralVoucherAdd clickAdd() {
-        SeleniumUtils.click(CommonButton.ADD.locator(), WaitType.CLICKABLE, "GENERALVOUCHERADD");
-        return new GeneralVoucherAdd();
-    }
-
-    @LogStep("Search General Voucher by Document Number")
-    public GeneralVoucherListPage searchByVoucherNo(String voucherNo) {
-        SeleniumUtils.sendKeys(Loc.SEARCH_BOX, WaitType.VISIBLE, voucherNo, "SEARCH_BOX");
-        SeleniumUtils.click(Loc.SEARCH_BUTTON, WaitType.CLICKABLE, "SEARCH_BUTTON");
-        return this;
-    }
-
-    @LogStep("Open General Voucher for Edit")
-    public GeneralVoucherAdd clickEditForVoucher() {
-        SeleniumUtils.click(Loc.EDIT_ICON, WaitType.CLICKABLE, "EDIT_ICON");
-        return new GeneralVoucherAdd();
-    }
-
-    @LogStep("Click Delete for General Voucher")
-    public GeneralVoucherListPage clickDeleteForVoucher() {
-        SeleniumUtils.click(Loc.DELETE_ICON, WaitType.CLICKABLE, "DELETE_ICON");
-        return this;
-    }
-
-    @LogStep("Unpost General Voucher")
-    public GeneralVoucherListPage clickUnpost() {
-        SeleniumUtils.click(Loc.UNPOST_BUTTON, WaitType.CLICKABLE, "UNPOST_BUTTON");
-        return this;
-    }
-
-    @LogStep("Confirm Delete Dialog")
-    public GeneralVoucherListPage confirmDelete() {
-        SeleniumUtils.click(Loc.CONFIRM_DELETE, WaitType.CLICKABLE, "CONFIRM_DELETE");
-        return this;
+    /**
+     * Composite convenience over {@link #clickActions()}/{@link #clickRevert()}/
+     * {@link #confirmRevert()} — plan §10. General Voucher has no standalone "Unpost" button;
+     * un-posting a document IS the Revert action, so this is the one method a caller reaches
+     * for whenever it just needs a Posted document un-posted (e.g. {@code EditGeneralVoucher}'s
+     * "Unpost if Posted" step), without re-deriving the three-call sequence inline. Assumes the
+     * target document's row is already selected/checked in the list — call
+     * {@link #selectDocumentInListPage(String)} first, same as the Revert-from-List-Page flow.
+     *
+     * <p>Deliberately NOT used by {@link com.tests.Finance.Operations.Vouchers.RevertGeneralVoucher}
+     * itself — that test interposes a diagnostic DB re-read between the Actions and Revert
+     * clicks for its own race-condition checks, which this collapsed method has no room for.
+     */
+    public GeneralVoucherRevertOutcome revertSelectedDocument() {
+        clickActions();
+        clickRevert();
+        return confirmRevert();
     }
 }

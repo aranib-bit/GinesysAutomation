@@ -1,7 +1,9 @@
 package com.gsl.reports;
 
 import com.gsl.testdata.Finance.Operations.Vouchers.Common.VoucherSubLedgerRow;
+import com.gsl.testdata.Finance.Operations.Vouchers.GeneralVoucher.DetailLineEditTarget;
 import com.gsl.testdata.Finance.Operations.Vouchers.GeneralVoucher.ExpenseIncomeDetail;
+import com.gsl.testdata.dto.GeneralVoucherOperationMode;
 import com.gsl.testdata.dto.MergedFinanceGeneralVoucherData;
 
 import java.math.BigDecimal;
@@ -63,11 +65,65 @@ public final class GeneralVoucherExtentDescriptionLogger
 
     @Override
     protected void appendExtraHeaderRows(MergedFinanceGeneralVoucherData data, List<String[]> rows) {
-        // GV header table has no extra rows
+        // Same operationMode-first, existingVoucherNo-fallback check logPositiveExpected uses —
+        // Edit also sets existingVoucherNo, so operationMode must be checked first; a null
+        // operationMode (rows built before that field existed) falls back to the
+        // existingVoucherNo-based inference the description builder has always used.
+        boolean isEditOrRevert = data.getOperationMode() == GeneralVoucherOperationMode.EDIT
+                || data.getOperationMode() == GeneralVoucherOperationMode.REVERT
+                || (data.getOperationMode() == null && data.getExistingVoucherNo() != null);
+
+        // "Doc Scheme" (the base Header table's own row, sourced from documentInformation's
+        // voucherno) is deliberately blank for Edit — see DbGeneralVoucherEditDataSource's
+        // Javadoc: that field is left null so the UI's Voucher No. widget is never touched
+        // during Edit. "Voucher No." here is a distinct, always-populated field: the actual
+        // identifying document number being edited/reverted (existingVoucherNo), needed since
+        // Doc Scheme can't stand in for it on these two operation modes.
+        if (isEditOrRevert) {
+            rows.add(new String[]{ "Voucher No.", nullSafe(data.getExistingVoucherNo()) });
+        }
+
+        // Edit-only cross-reference to the fuller "Document Context" table EditGeneralVoucher
+        // renders later (Step 5) — one row here is enough to link the two without duplicating
+        // that table's DB-plumbing detail (vchcode, persistence-map tables, etc.) into Header.
+        if (data.getOperationMode() == GeneralVoucherOperationMode.EDIT) {
+            rows.add(new String[]{ "Entry Method",
+                    data.getEntryMethod() != null ? data.getEntryMethod().name() : "ACTIONS_EDIT (default)" });
+
+            // "Current Doc Date"/"Expected Doc Date" — Edit-only (Revert never changes the date,
+            // so these would be misleading there). "Expected Doc Date" mirrors the value already
+            // shown in the base Header table's "Doc Date" row (documentInformation's NEW/target
+            // date) under a clearer label; "Current Doc Date" is the voucher's ORIGINAL date
+            // (finvchmain.vchdt at data-source-build time) — surfaced together so a reviewer can
+            // confirm at a glance that the edit's new date stays within the same accounting year
+            // as the original (see AccountingPeriodResolver).
+            rows.add(new String[]{ "Current Doc Date",
+                    data.getCurrentDocDate() != null ? data.getCurrentDocDate().format(DATE_FMT) : "" });
+            var doc = data.getDocumentInformation();
+            rows.add(new String[]{ "Expected Doc Date",
+                    doc != null && doc.getDocumentdate() != null ? doc.getDocumentdate().format(DATE_FMT) : "" });
+        }
     }
 
     @Override
     protected void logPositiveExpected(MergedFinanceGeneralVoucherData data) {
+        // Same null-fallback GeneralVoucherDescriptionBuilder uses for its actionVerb swap: check
+        // operationMode==EDIT first (Edit also sets existingVoucherNo, so it must win before the
+        // existingVoucherNo-based REVERT fallback below), then existingVoucherNo!=null for REVERT,
+        // else CREATE. A null operationMode (rows built before that field existed) falls through
+        // to the same existingVoucherNo-based inference the description builder always used.
+        if (data.getOperationMode() == GeneralVoucherOperationMode.EDIT) {
+            logPositiveExpectedForEdit(data);
+            return;
+        }
+        if (data.getExistingVoucherNo() != null) {
+            logPositiveExpectedForRevert();
+            return;
+        }
+        logPositiveExpectedForCreate(data);
+    }
+
+    private void logPositiveExpectedForCreate(MergedFinanceGeneralVoucherData data) {
         int lineCount = data.getExpenseIncomeDetailList() != null ? data.getExpenseIncomeDetailList().size() : 0;
         int siteRowCount = data.getSiteApplicableRows() != null ? data.getSiteApplicableRows().size() : 0;
 
@@ -78,6 +134,72 @@ public final class GeneralVoucherExtentDescriptionLogger
             { "DB — finvchdet",    lineCount + " row(s): glcode, damount/camount (per row's isDebit()), isreversal" },
             { "DB — finpost",      "1 VMG + " + lineCount + " VDG posting entries, balanced (BLOCKING — test fails if absent)" },
             { "DB — fincosttag",   siteRowCount + " row(s) — site allocation tagging for Type2/Type3 rows (COLLECT — non-blocking)" },
+        });
+    }
+
+    private void logPositiveExpectedForEdit(MergedFinanceGeneralVoucherData data) {
+        boolean isDetailLineEdit = data.getEditedDetailLine() != null;
+        String finvchdetDetail = isDetailLineEdit
+                ? "LineNo '" + data.getEditedDetailLine().getLineNo() + "' updated in place (damount/camount and/or isreversal); every other row unchanged"
+                : "unchanged — this is a header-only edit";
+
+        // These two rows now differ by scenario rather than a single generic "(whichever
+        // changed)" string for every Edit run — since a detail-only scenario's data source
+        // leaves refno/nartext/vchdt genuinely untouched (see DbGeneralVoucherEditDataSource/
+        // ExcelGeneralVoucherEditDataSource), a reviewer can now tell from this table alone
+        // whether a given run was scoped to the header or the detail line.
+        String finvchmainDetail = isDetailLineEdit
+                ? "refno/nartext/vchdt unchanged (this is a detail-only edit); counter-leg damount/camount moves by the same amount as the edited detail line, dataversion bumped"
+                : "1 record updated: " + headerChangeDetail(data) + ", dataversion bumped";
+        String finpostDetail = isDetailLineEdit
+                ? "Only the matching per-line (VDG) posting entry for the edited line updates its damount/camount to the new amount; every other posting row unchanged"
+                : "Matching narration/refno posting entries updated together with finvchmain";
+
+        ExtentLogger.infoTable(new String[][]{
+            { "Expected Outcome",  "Details" },
+            { "UI — Save",         "Document updated in place; same Document No. redisplayed on form" },
+            { "DB — finvchmain",   finvchmainDetail },
+            { "DB — finvchdet",    finvchdetDetail },
+            { "DB — finpost",      finpostDetail },
+            { "DB — fincosttag",   "Row(s) deleted+reinserted under new surrogate code (site allocation recomputed on every Save for a cost-tag-applicable document)" },
+        });
+    }
+
+    /** Plan §9b: states precisely which of refno/nartext/vchdt changed and to what value, instead
+     *  of the old "(whichever of those actually changed)" placeholder — same old→new data
+     *  {@code GeneralVoucherDescriptionBuilder.headerFieldScopePhrase} uses (originalReference/
+     *  originalRemarks/currentDocDate vs. the new documentInformation), kept as a small separate
+     *  helper here since this class already duplicates its own report-table phrasing rather than
+     *  sharing builder-internal helpers across the two classes. */
+    private static String headerChangeDetail(MergedFinanceGeneralVoucherData data) {
+        var doc = data.getDocumentInformation();
+        StringBuilder sb = new StringBuilder();
+        String newRef = doc != null ? doc.getReference() : null;
+        if (!java.util.Objects.equals(data.getOriginalReference(), newRef)) {
+            appendClause(sb, "refno: '" + data.getOriginalReference() + "' → '" + newRef + "'");
+        }
+        String newRemarks = doc != null ? doc.getRemarks() : null;
+        if (!java.util.Objects.equals(data.getOriginalRemarks(), newRemarks)) {
+            appendClause(sb, "nartext: '" + data.getOriginalRemarks() + "' → '" + newRemarks + "'");
+        }
+        String newDate = doc != null && doc.getDocumentdate() != null
+                ? doc.getDocumentdate().format(VoucherReportUtils.DATE_FMT) : null;
+        String oldDate = data.getCurrentDocDate() != null
+                ? data.getCurrentDocDate().format(VoucherReportUtils.DATE_FMT) : null;
+        if (!java.util.Objects.equals(oldDate, newDate)) {
+            appendClause(sb, "vchdt: " + oldDate + " → " + newDate);
+        }
+        return sb.length() > 0 ? sb.toString() : "no header field actually changed";
+    }
+
+    private void logPositiveExpectedForRevert() {
+        ExtentLogger.infoTable(new String[][]{
+            { "Expected Outcome",  "Details" },
+            { "UI — Revert",       "release_status flips Posted ('P') → Un-posted ('U'); no-op if already 'U'" },
+            { "DB — finvchmain",   "release_status updated only; every other column unchanged" },
+            { "DB — finvchdet",    "no record changes expected" },
+            { "DB — finpost",      "no record changes expected" },
+            { "DB — fincosttag",   "no record changes expected" },
         });
     }
 
@@ -96,26 +218,108 @@ public final class GeneralVoucherExtentDescriptionLogger
     @Override
     protected void logMiddleSections(MergedFinanceGeneralVoucherData data) {
         List<ExpenseIncomeDetail> lines = data.getExpenseIncomeDetailList();
+        DetailLineEditTarget editedLine = data.getEditedDetailLine();
+        // Plan §4B/4A: an ADD_NEW_LINE target has no pre-edit counterpart in `lines` at all (it's
+        // not on the voucher yet at data-gathering time) — appended as its own extra row, tagged,
+        // rather than silently missing from this table.
+        boolean addNewLine = editedLine != null && editedLine.getShape() == DetailLineEditTarget.EditShape.ADD_NEW_LINE;
         ExtentLogger.info("<b>Income/Expense Detail</b>");
-        if (lines == null || lines.isEmpty()) {
+        if ((lines == null || lines.isEmpty()) && !addNewLine) {
             ExtentLogger.infoTable(new String[][]{
-                { "Line#", "GL", "Sub-Ledger", "Sub Ledger Id", "Expense(Dr)", "Income(Cr)", "Is Reversal" },
-                { "—", "(intentionally blank for this scenario)", "", "", "", "", "" }
+                { "Line#", "GL", "Sub-Ledger", "Sub Ledger Id", "Expense(Dr)", "Income(Cr)", "Is Reversal", "Change (this Edit)" },
+                { "—", "(intentionally blank for this scenario)", "", "", "", "", "", "" }
             });
             return;
         }
-        String[][] table = new String[1 + lines.size()][7];
-        table[0] = new String[]{ "Line#", "GL", "Sub-Ledger", "Sub Ledger Id", "Expense(Dr)", "Income(Cr)", "Is Reversal" };
-        for (int i = 0; i < lines.size(); i++) {
+        int existingCount = lines != null ? lines.size() : 0;
+        String[][] table = new String[1 + existingCount + (addNewLine ? 1 : 0)][8];
+        table[0] = new String[]{ "Line#", "GL", "Sub-Ledger", "Sub Ledger Id", "Expense(Dr)", "Income(Cr)", "Is Reversal", "Change (this Edit)" };
+        for (int i = 0; i < existingCount; i++) {
             ExpenseIncomeDetail r = lines.get(i);
             table[i + 1] = new String[]{
                 nullSafe(r.getLineNo()), nullSafe(r.getGeneralLedger()), nullSafe(r.getSubLedger()),
                 nullSafe(r.getSubLedgerId()),
-                r.getExpenseDr() != null ? r.getExpenseDr().toPlainString() : "",
-                r.getIncomeCr() != null ? r.getIncomeCr().toPlainString() : "",
-                r.isReversalYes() ? "YES" : "NO"
+                VoucherReportUtils.fmtAmount(r.getExpenseDr()),
+                VoucherReportUtils.fmtAmount(r.getIncomeCr()),
+                r.isReversalYes() ? "YES" : "NO",
+                buildDetailLineChangeText(editedLine, r)
+            };
+        }
+        if (addNewLine) {
+            ExpenseIncomeDetail newRow = editedLine.getNewValues();
+            table[existingCount + 1] = new String[]{
+                nullSafe(newRow.getLineNo()), nullSafe(newRow.getGeneralLedger()), nullSafe(newRow.getSubLedger()),
+                nullSafe(newRow.getSubLedgerId()),
+                VoucherReportUtils.fmtAmount(newRow.getExpenseDr()),
+                VoucherReportUtils.fmtAmount(newRow.getIncomeCr()),
+                newRow.isReversalYes() ? "YES" : "NO",
+                "(NEW LINE ADDED)"
             };
         }
         ExtentLogger.infoTable(table);
+    }
+
+    /**
+     * Renders the old→new change for the one row a detail-line edit targets — blank for every
+     * other row. Previously this table showed only the pre-edit amount with nothing indicating
+     * which line was about to change or to what, which was confusing when verifying the edit
+     * took effect (report-review finding). {@code beforeRow} comes from the pre-edit
+     * {@code expenseIncomeDetailList} already logged above; {@code editedLine.getNewValues()}
+     * carries the post-edit target — both already resolved by the data source, nothing new is
+     * captured here.
+     */
+    private static String buildDetailLineChangeText(DetailLineEditTarget editedLine, ExpenseIncomeDetail beforeRow) {
+        if (editedLine == null || editedLine.getLineNo() == null
+                || !editedLine.getLineNo().equals(beforeRow.getLineNo())
+                // ADD_NEW_LINE's row is rendered as its own extra "(NEW LINE ADDED)" row above —
+                // its LineNo never matches an existing pre-edit row, but guard explicitly anyway.
+                || editedLine.getShape() == DetailLineEditTarget.EditShape.ADD_NEW_LINE) {
+            return "";
+        }
+        ExpenseIncomeDetail after = editedLine.getNewValues();
+        StringBuilder sb = new StringBuilder();
+
+        // Plan §4A: GL-type transition — state the GL change itself (name + account class, when
+        // resolved), not just the amount that happens to move alongside it.
+        if (!java.util.Objects.equals(beforeRow.getGeneralLedger(), after.getGeneralLedger())) {
+            appendClause(sb, "GL: " + glLabel(beforeRow) + " → " + glLabel(after));
+        }
+
+        String beforeDr = VoucherReportUtils.fmtAmount(beforeRow.getExpenseDr());
+        String afterDr = VoucherReportUtils.fmtAmount(after.getExpenseDr());
+        String beforeCr = VoucherReportUtils.fmtAmount(beforeRow.getIncomeCr());
+        String afterCr = VoucherReportUtils.fmtAmount(after.getIncomeCr());
+
+        if (after.getExpenseDr() != null && !beforeDr.equals(afterDr)) {
+            appendClause(sb, "Expense(Dr): " + beforeDr + " → " + afterDr);
+        } else if (after.getIncomeCr() != null && !beforeCr.equals(afterCr)) {
+            appendClause(sb, "Income(Cr): " + beforeCr + " → " + afterCr);
+        }
+
+        if (beforeRow.isReversalYes() != after.isReversalYes()) {
+            appendClause(sb, "Is Reversal: " + (beforeRow.isReversalYes() ? "YES" : "NO")
+                    + " → " + (after.isReversalYes() ? "YES" : "NO"));
+        }
+
+        // Plan §4A: for a Site-applicable line, SITE_SPLIT_ONLY is the one shape where the
+        // Expense(Dr)/Income(Cr) diff above shows NO change (by design — newValues is an exact
+        // copy of beforeRow) even though the line genuinely changed; state that explicitly rather
+        // than leaving the row looking untouched.
+        boolean siteApplicable = after.getResolvedGlType() != null && after.getResolvedGlType().isSiteApplicable();
+        if (siteApplicable && editedLine.getShape() == DetailLineEditTarget.EditShape.SITE_SPLIT_ONLY) {
+            appendClause(sb, "Site allocation: same total amount — sitewise split redistributed");
+        }
+
+        return sb.length() > 0 ? sb.toString() : "(no change)";
+    }
+
+    private static void appendClause(StringBuilder sb, String clause) {
+        if (sb.length() > 0) sb.append("; ");
+        sb.append(clause);
+    }
+
+    private static String glLabel(ExpenseIncomeDetail row) {
+        return row.getGeneralLedger() + (row.getResolvedAccountClass() != null
+                ? " [" + row.getResolvedAccountClass().label() + "]" : "");
     }
 }

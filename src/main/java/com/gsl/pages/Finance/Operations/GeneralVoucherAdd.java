@@ -8,8 +8,12 @@ import com.gsl.pages.pagecomponent.Finance.Operations.GeneralVoucher.GeneralVouc
 import com.gsl.pages.pagecomponent.Finance.Operations.GeneralVoucher.GeneralVoucherExpenseIncomeDetail;
 import com.gsl.pages.pagecomponent.Finance.Operations.GeneralVoucher.GeneralVoucherFooter;
 import com.gsl.testdata.Finance.Operations.Vouchers.GeneralVoucher.DocumentInformation;
+import com.gsl.testdata.Finance.Operations.Vouchers.GeneralVoucher.ExpenseIncomeDetail;
 import com.gsl.testdata.Finance.Operations.Vouchers.GeneralVoucher.PaymentInformation;
+import com.gsl.testdata.Finance.Operations.Vouchers.GeneralVoucher.SiteAllocation;
 import com.gsl.testdata.dto.MergedFinanceGeneralVoucherData;
+
+import java.util.List;
 
 /**
  * Top-level facade page for creating/viewing a General Voucher — mirrors
@@ -46,6 +50,29 @@ public class GeneralVoucherAdd implements CashBankParent {
 
     public GeneralVoucherExpenseIncomeDetail getExpenseIncomeDetail() {
         return generalVoucherExpenseIncomeDetail;
+    }
+
+    /** Edits an existing Expense/Income Detail row in place — see
+     *  {@code GeneralVoucherExpenseIncomeDetail#editRow}'s Javadoc for scope/limitations. */
+    public GeneralVoucherAdd editExpenseIncomeRow(int rowIndex, ExpenseIncomeDetail newValues) {
+        generalVoucherExpenseIncomeDetail.editRow(rowIndex, newValues);
+        return this;
+    }
+
+    /** Appends and fills a brand-new Expense/Income Detail row — plan §4B's "add a new line"
+     *  shape. See {@code GeneralVoucherExpenseIncomeDetail#addRow}'s Javadoc for scope. */
+    public GeneralVoucherAdd addExpenseIncomeRow(int rowIndex, ExpenseIncomeDetail newRow,
+            List<SiteAllocation> allocations) {
+        generalVoucherExpenseIncomeDetail.addRow(rowIndex, newRow, allocations);
+        return this;
+    }
+
+    /** Re-opens a row's Allocate Sites popup and applies a new split — plan §4B's
+     *  "site-split-only" shape. See {@code GeneralVoucherExpenseIncomeDetail#reallocateSites}'s
+     *  Javadoc, including its UNCONFIRMED live-DOM caveat. */
+    public GeneralVoucherAdd reallocateExpenseIncomeRowSites(int rowIndex, List<SiteAllocation> newSiteAllocations) {
+        generalVoucherExpenseIncomeDetail.reallocateSites(rowIndex, newSiteAllocations);
+        return this;
     }
 
     /** Fills the Cash/Bank counter-leg's Payment Window — see {@code GeneralVoucherExpenseIncomeDetail

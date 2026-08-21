@@ -2,6 +2,7 @@ package com.gsl.pages.Finance.Operations.Common;
 
 import com.gsl.config.ConfigFactory;
 import com.gsl.driver.DriverManager;
+import com.gsl.enums.Finance.Operations.Common.DocumentMessageBoxMessage;
 import com.gsl.enums.WaitType;
 import com.gsl.pages.Common.DocumentMessageBox;
 import com.gsl.pages.enums.CommonButton;
@@ -178,6 +179,15 @@ public class DocumentPopup {
 
         ReportLogger.business("Waiting for validation error popup to appear...");
         WaitUtils.fluentWaitBuilder().until(ExpectedConditions.visibilityOfElementLocated(Loc.MESSAGE_TEXT));
+
+        // Same role-dependent release-after-save confirmation waitForMessageBox()/clickProceed()
+        // already handle — missing here caused a negative date-validation scenario (Edit's
+        // "Verify Negative Validation" step) to read THIS confirmation dialog instead of the real
+        // validation outcome that only appears after answering it (confirmed live 2026-08-18: DB
+        // showed zero actual data change on the claimed voucher, proving no save had committed
+        // when this method's assertion fired against the wrong dialog).
+        handleReleaseConfirmationIfPresent(driver);
+
         String actualMessage = driver.findElement(Loc.MESSAGE_TEXT).getText();
         ReportLogger.business("Validation error popup message: " + actualMessage);
 
@@ -229,6 +239,10 @@ public class DocumentPopup {
         WaitUtils.fluentWaitBuilder().until(ExpectedConditions.visibilityOfElementLocated(Loc.MESSAGE_TEXT));
         System.out.println("Messagebox is now visible");
 
+        // If the (role-dependent) release-after-save confirmation is showing, click No —
+        // see DocumentMessageBoxMessage.RELEASE_AFTER_SAVE_CONFIRMATION's Javadoc.
+        handleReleaseConfirmationIfPresent(driver);
+
         // If the app unexpectedly shows the payment-info-check warning dialog,
         // auto-detect AR vs AP variant and click the appropriate proceed button.
         try {
@@ -277,6 +291,10 @@ public class DocumentPopup {
 
         WaitUtils.fluentWaitBuilder().until(ExpectedConditions.visibilityOfElementLocated(Loc.MESSAGE_TEXT));
         System.out.println("Messagebox is now visible after payment info proceed.");
+
+        // If the (role-dependent) release-after-save confirmation is showing, click No —
+        // see DocumentMessageBoxMessage.RELEASE_AFTER_SAVE_CONFIRMATION's Javadoc.
+        handleReleaseConfirmationIfPresent(driver);
 
         // If TDS Auto Journal prompt is showing next, click Continue and wait for success popup.
         handleTdsAutoJournalPromptIfPresent(wait, driver);
@@ -353,6 +371,42 @@ public class DocumentPopup {
      * <p>If no Continue button is present this method is a no-op — the caller proceeds
      * directly to {@link DocumentMessageBox#verifyDocumentSave}.
      */
+    /**
+     * After a message box becomes visible, checks whether the (role-dependent) release-after-
+     * save confirmation is showing — see {@link DocumentMessageBoxMessage#RELEASE_AFTER_SAVE_CONFIRMATION}'s
+     * Javadoc for why this must be checked defensively rather than always expected. If present,
+     * clicks <b>Yes</b> (release the document) and waits for the message box text to change to
+     * whatever dialog follows — plan §14, per explicit user preference: default to Yes unless a
+     * specific value is provided (no such per-scenario override exists yet, so every scenario
+     * gets Yes today). A no-op — same {@code messagebox-1001} element simply shows different
+     * content next — when this particular dialog never appears at all.
+     */
+    private void handleReleaseConfirmationIfPresent(WebDriver driver) {
+        try {
+            List<WebElement> msgEls = driver.findElements(Loc.MESSAGE_TEXT);
+            if (msgEls.isEmpty() || !msgEls.get(0).isDisplayed()) return;
+            String msgText = msgEls.get(0).getText();
+            if (msgText == null || !msgText.contains(DocumentMessageBoxMessage.RELEASE_AFTER_SAVE_CONFIRMATION.getText())) {
+                return; // not this dialog — role-dependent, may simply not appear at all
+            }
+            System.out.println("Release-after-save confirmation detected (role-dependent) — clicking Yes "
+                    + "to release");
+            final String priorText = msgText;
+            SeleniumUtils.click(CommonButton.YES.locator(), WaitType.CLICKABLE, "RELEASE_AFTER_SAVE_YES");
+            WaitUtils.fluentWaitBuilder()
+                    .withMessage("the message box to change from the release-confirmation dialog to the next one")
+                    .until(d -> {
+                        List<WebElement> els = d.findElements(Loc.MESSAGE_TEXT);
+                        if (els.isEmpty() || !els.get(0).isDisplayed()) return false;
+                        String now = els.get(0).getText();
+                        return now != null && !now.isBlank() && !now.equals(priorText);
+                    });
+            System.out.println("Message box changed after accepting release.");
+        } catch (Exception e) {
+            System.out.println("Release-after-save confirmation check skipped (non-fatal): " + e.getMessage());
+        }
+    }
+
     private void handleTdsAutoJournalPromptIfPresent(WebDriverWait wait, WebDriver driver) {
         try {
             List<WebElement> continueBtns = driver.findElements(CommonButton.CONTINUE.locator());

@@ -259,6 +259,56 @@ public class GeneralVoucherExpenseIncomeDetail extends VoucherSubLedgerInformati
     }
 
     /**
+     * Edits an EXISTING Expense/Income Detail row in place — the Edit-flow counterpart to
+     * {@link #fillExpenseIncomeRows}. Deliberately does <b>not</b> click "Add Row" (unlike the
+     * create-flow loop, which adds one new row per call after the first) — {@code rowIndex} must
+     * already exist in the grid (resolved by the Edit data source/test from an existing
+     * {@code finvchdet} row's position). Reuses the same {@link #fillRowBasicFields} helper the
+     * create flow uses, applied against the given row index instead of a freshly-added one — sets
+     * General Ledger/Ledger Narration/Is Reversal/Expense(Dr)-Income(Cr) only.
+     *
+     * <p>V1's Edit scope (plan §V1 confirmed scope) is limited to narration/reversal/amount on an
+     * already-Site-resolved row — it deliberately does not re-open the Allocate Sites popup or
+     * change Sub Ledger, since neither is part of the detail-line-edit scenario and re-touching a
+     * live site allocation is unconfirmed/out of scope territory (see {@link #allocateSites}'s own
+     * Javadoc on how fragile that popup already is for the create flow).
+     */
+    public GeneralVoucherExpenseIncomeDetail editRow(int rowIndex, ExpenseIncomeDetail newValues) {
+        ExtentLogger.info("[GV ExpenseIncomeDetail] Editing existing row at index " + rowIndex + ": GL='"
+                + newValues.getGeneralLedger() + "', LineNo='" + newValues.getLineNo() + "'");
+        fillRowBasicFields(rowIndex, newValues);
+        return this;
+    }
+
+    /**
+     * Appends a brand-new row (clicking Add Row first, same trigger
+     * {@link #fillExpenseIncomeRows}'s create-loop uses for every row after the first) and fills
+     * it — the Edit-flow counterpart to that create-loop, for plan §4B's "add a brand-new line"
+     * shape ({@code DetailLineEditTarget.EditShape#ADD_NEW_LINE}).
+     *
+     * <p>V1 scope is deliberately restricted to a {@code TYPE1_NONE} new line (see
+     * {@code DbGeneralVoucherEditDataSource.buildAddNewLine}'s Javadoc for why — the
+     * {@code isCostTagApplicable()} pre-edit-resolution trap), so {@code allocations} is expected
+     * empty/null for now; accepted anyway so a future Type2/Type3 new-line variant needs no
+     * signature change here.
+     *
+     * @param rowIndex the new row's 0-based grid index — always the last row (grid size before
+     *        this call), since Add Row appends
+     */
+    public GeneralVoucherExpenseIncomeDetail addRow(int rowIndex, ExpenseIncomeDetail newRow,
+            List<SiteAllocation> allocations) {
+        ExtentLogger.info("[GV ExpenseIncomeDetail] Adding new row at index " + rowIndex + ": GL='"
+                + newRow.getGeneralLedger() + "', LineNo='" + newRow.getLineNo() + "'");
+        clickAddRowButton();
+        JavascriptExecutorUtils.waitForExtJS();
+        fillRowBasicFields(rowIndex, newRow);
+        if (allocations != null && !allocations.isEmpty()) {
+            allocateSites(rowIndex, allocations);
+        }
+        return this;
+    }
+
+    /**
      * Fills the Allocate Sites popup with {@code allocations}, then commits with OK when the
      * allocation is complete or backs out with Cancel when it deliberately isn't.
      *
@@ -282,6 +332,35 @@ public class GeneralVoucherExpenseIncomeDetail extends VoucherSubLedgerInformati
      */
     private void allocateSites(int rowIndex, List<SiteAllocation> allocations) {
         AllocateSitesPopup popup = clickSiteButton(rowIndex);
+        commitSiteAllocations(rowIndex, popup, allocations, "Allocate Sites");
+    }
+
+    /**
+     * Re-opens the row's Allocate Sites popup and applies {@code newSiteAllocations} — plan §4B's
+     * "site-split-only" shape ({@code DetailLineEditTarget.EditShape#SITE_SPLIT_ONLY}): same total
+     * amount, only the sitewise split changes.
+     *
+     * <p><b>UNCONFIRMED against the live DOM</b> — flagged in the plan for confirmation before
+     * relying on this for a real run: whether re-adding a site that is ALREADY present in the
+     * popup's Allocated Site(s) grid (with a different amount) edits that row in place, inserts a
+     * duplicate, or is rejected by the app. No existing call site has ever exercised this —
+     * {@link #allocateSites}/the create flow only ever adds to an empty popup. If it does not edit
+     * in place, this method needs a "remove an allocated row" locator that doesn't exist anywhere
+     * in this codebase today — the same descope reasoning already applied to the dropped
+     * "remove-and-re-add a line" shape.
+     */
+    public GeneralVoucherExpenseIncomeDetail reallocateSites(int rowIndex, List<SiteAllocation> newSiteAllocations) {
+        ExtentLogger.info("[GV ExpenseIncomeDetail] Row " + (rowIndex + 1) + ": reallocating sites — "
+                + newSiteAllocations.size() + " target allocation(s)");
+        AllocateSitesPopup popup = clickSiteButton(rowIndex);
+        commitSiteAllocations(rowIndex, popup, newSiteAllocations, "Site reallocation");
+        return this;
+    }
+
+    /** Shared commit logic behind {@link #allocateSites}/{@link #reallocateSites} — see
+     *  {@link #allocateSites}'s Javadoc for why OK isn't always the right action. */
+    private void commitSiteAllocations(int rowIndex, AllocateSitesPopup popup,
+            List<SiteAllocation> allocations, String actionLabel) {
         for (SiteAllocation alloc : allocations) {
             popup.addSiteAllocation(alloc.getSiteName(), alloc.getAmount());
         }
@@ -292,7 +371,7 @@ public class GeneralVoucherExpenseIncomeDetail extends VoucherSubLedgerInformati
             return;
         }
 
-        ExtentLogger.warning("[GV ExpenseIncomeDetail] Row " + (rowIndex + 1) + ": Allocate Sites left "
+        ExtentLogger.warning("[GV ExpenseIncomeDetail] Row " + (rowIndex + 1) + ": " + actionLabel + " left "
                 + "incomplete after " + allocations.size() + " allocation(s) — Pending Amount = "
                 + (pending == null ? "<unreadable>" : pending.toPlainString())
                 + ". Cancelling instead of OK; Save is expected to raise its own site-allocation "
@@ -395,23 +474,36 @@ public class GeneralVoucherExpenseIncomeDetail extends VoucherSubLedgerInformati
     }
 
     private void setGeneralLedger(int rowIndex, String generalLedger) {
-        openCellForEdit(rowCellByPosition(rowIndex, "General ledger"), "GV_GL_CELL_ROW_" + rowIndex);
+        // Equals-guard, same idiom as setSubLedger below — an unedited row's GL already shows the
+        // target value (e.g. a detail-line edit that only changes amount/narration, not GL), so
+        // without this check every such row unconditionally re-opened the combo and re-selected
+        // the same option for no reason.
+        String current = getGeneralLedger(rowIndex);
+        if (current != null && current.trim().equalsIgnoreCase(generalLedger.trim())) {
+            ExtentLogger.info("[GV ExpenseIncomeDetail] Row " + rowIndex + ": General Ledger already '"
+                    + current + "' — skipping update");
+            return;
+        }
 
-        SeleniumUtils.clear(ACTIVE_EDITOR_INPUT, "GV_GL_COMBO");
-        SeleniumUtils.sendKeys(ACTIVE_EDITOR_INPUT, WaitType.VISIBLE, generalLedger, "GV_GL_COMBO");
-        JavascriptExecutorUtils.waitForExtJS();
+        SeleniumUtils.fillAndVerifyCommit("GV_GENERAL_LEDGER_ROW_" + rowIndex, generalLedger, () -> {
+            openCellForEdit(rowCellByPosition(rowIndex, "General ledger"), "GV_GL_CELL_ROW_" + rowIndex);
 
-        By option = gridBoundlistOption(generalLedger, null);
-        WaitUtils.fluentWaitBuilder()
-                .withMessage("General Ledger option '" + generalLedger + "' to be clickable in the "
-                        + "open combo dropdown (row " + rowIndex + ") — locator: " + option)
-                .until(driver -> {
-                    driver.findElement(option).click();
-                    return true;
-                });
-        ExtentLogger.info("GV_GL_OPTION_" + generalLedger + " clicked successfully");
-        JavascriptExecutorUtils.waitForExtJS();
-        JavascriptExecutorUtils.waitForPageLoad();
+            SeleniumUtils.clear(ACTIVE_EDITOR_INPUT, "GV_GL_COMBO");
+            SeleniumUtils.sendKeys(ACTIVE_EDITOR_INPUT, WaitType.VISIBLE, generalLedger, "GV_GL_COMBO");
+            JavascriptExecutorUtils.waitForExtJS();
+
+            By option = gridBoundlistOption(generalLedger, null);
+            WaitUtils.fluentWaitBuilder()
+                    .withMessage("General Ledger option '" + generalLedger + "' to be clickable in the "
+                            + "open combo dropdown (row " + rowIndex + ") — locator: " + option)
+                    .until(driver -> {
+                        driver.findElement(option).click();
+                        return true;
+                    });
+            ExtentLogger.info("GV_GL_OPTION_" + generalLedger + " clicked successfully");
+            JavascriptExecutorUtils.waitForExtJS();
+            JavascriptExecutorUtils.waitForPageLoad();
+        }, () -> getGeneralLedger(rowIndex));
     }
 
     private void setSubLedger(int rowIndex, String subLedger, String subLedgerId) {
@@ -442,99 +534,138 @@ public class GeneralVoucherExpenseIncomeDetail extends VoucherSubLedgerInformati
             return;
         }
 
-        openCellForEdit(rowCellByPosition(rowIndex, "Sub Ledger"), "GV_SL_CELL_ROW_" + rowIndex);
+        SeleniumUtils.fillAndVerifyCommit("GV_SUB_LEDGER_ROW_" + rowIndex, subLedger, () -> {
+            openCellForEdit(rowCellByPosition(rowIndex, "Sub Ledger"), "GV_SL_CELL_ROW_" + rowIndex);
 
-        SeleniumUtils.clear(ACTIVE_EDITOR_INPUT, "GV_SL_COMBO");
-        SeleniumUtils.sendKeys(ACTIVE_EDITOR_INPUT, WaitType.VISIBLE, subLedger, "GV_SL_COMBO");
-        JavascriptExecutorUtils.waitForExtJS();
+            SeleniumUtils.clear(ACTIVE_EDITOR_INPUT, "GV_SL_COMBO");
+            SeleniumUtils.sendKeys(ACTIVE_EDITOR_INPUT, WaitType.VISIBLE, subLedger, "GV_SL_COMBO");
+            JavascriptExecutorUtils.waitForExtJS();
 
-        // Sub Ledger names are not guaranteed unique — disambiguate by Id when provided. Both
-        // branches hit the SAME grid-style picker, so both use the data-qtip locator; the Id is
-        // only an extra column predicate, never a different element shape.
-        By option = gridBoundlistOption(subLedger, subLedgerId);
-        WaitUtils.fluentWaitBuilder()
-                .withMessage("Sub Ledger option '" + subLedger
-                        + (subLedgerId != null && !subLedgerId.isBlank() ? "' (id=" + subLedgerId + ")" : "'")
-                        + " to be clickable in the open combo dropdown (row " + rowIndex + ") — locator: " + option)
-                .until(driver -> {
-                    driver.findElement(option).click();
-                    return true;
-                });
-        ExtentLogger.info("GV_SL_OPTION_" + subLedger + " clicked successfully");
-        JavascriptExecutorUtils.waitForExtJS();
-        JavascriptExecutorUtils.waitForPageLoad();
+            // Sub Ledger names are not guaranteed unique — disambiguate by Id when provided. Both
+            // branches hit the SAME grid-style picker, so both use the data-qtip locator; the Id is
+            // only an extra column predicate, never a different element shape.
+            By option = gridBoundlistOption(subLedger, subLedgerId);
+            WaitUtils.fluentWaitBuilder()
+                    .withMessage("Sub Ledger option '" + subLedger
+                            + (subLedgerId != null && !subLedgerId.isBlank() ? "' (id=" + subLedgerId + ")" : "'")
+                            + " to be clickable in the open combo dropdown (row " + rowIndex + ") — locator: " + option)
+                    .until(driver -> {
+                        driver.findElement(option).click();
+                        return true;
+                    });
+            ExtentLogger.info("GV_SL_OPTION_" + subLedger + " clicked successfully");
+            JavascriptExecutorUtils.waitForExtJS();
+            JavascriptExecutorUtils.waitForPageLoad();
+        }, () -> getSubLedger(rowIndex));
     }
 
     private void setLedgerNarration(int rowIndex, String narration) {
         if (narration == null || narration.isBlank()) return;
-        openCellForEdit(rowCellByPosition(rowIndex, "Ledger Narration", LEDGER_NARRATION_COLUMN_ID),
-                "GV_NARRATION_CELL_ROW_" + rowIndex);
+        String current = getLedgerNarration(rowIndex);
+        if (current != null && current.trim().equalsIgnoreCase(narration.trim())) {
+            ExtentLogger.info("[GV ExpenseIncomeDetail] Row " + rowIndex + ": Ledger Narration already '"
+                    + current + "' — skipping update");
+            return;
+        }
+        SeleniumUtils.fillAndVerifyCommit("GV_LEDGER_NARRATION_ROW_" + rowIndex, narration, () -> {
+            openCellForEdit(rowCellByPosition(rowIndex, "Ledger Narration", LEDGER_NARRATION_COLUMN_ID),
+                    "GV_NARRATION_CELL_ROW_" + rowIndex);
 
-        SeleniumUtils.clear(ACTIVE_EDITOR_INPUT, "GV_NARRATION");
-        SeleniumUtils.sendKeys(ACTIVE_EDITOR_INPUT, WaitType.VISIBLE, narration, "GV_NARRATION");
-        SeleniumUtils.pressTab(ACTIVE_EDITOR_INPUT, "GV_NARRATION");
-        JavascriptExecutorUtils.waitForExtJS();
+            SeleniumUtils.clear(ACTIVE_EDITOR_INPUT, "GV_NARRATION");
+            SeleniumUtils.sendKeys(ACTIVE_EDITOR_INPUT, WaitType.VISIBLE, narration, "GV_NARRATION");
+            SeleniumUtils.pressTab(ACTIVE_EDITOR_INPUT, "GV_NARRATION");
+            JavascriptExecutorUtils.waitForExtJS();
+        }, () -> getLedgerNarration(rowIndex));
     }
 
     private void setIsReversal(int rowIndex, boolean reversal) {
         String value = reversal ? "Yes" : "No";
-        openCellForEdit(rowCellByPosition(rowIndex, "Is Reversal"), "GV_ISREVERSAL_CELL_ROW_" + rowIndex);
-
-        // Open the list via its arrow trigger, NOT by typing the value.
-        //
-        // This is a closed Yes/No combo whose cell already renders the default "No", so
-        // sendKeys("No") writes the value that is already there, fires no change event, and ExtJS
-        // never expands the picker. Confirmed in run 20260807_105226: the editor sat at
-        // aria-expanded="false" with every x-boundlist-floating still display:none while the wait
-        // burned its full timeout. With only two options there is nothing to filter anyway — open
-        // and pick is both simpler and correct for either value.
-        //
-        // Guarded rather than unconditional: openCellForEdit's click may already have expanded the
-        // picker, and the trigger toggles, so clicking it blindly could close the list we need.
-        // Same self-correcting shape as openCellForEdit's single-then-double-click fallback.
-        int shortWaitSeconds = (int) ConfigFactory.getWaitConfig().shortWaitSeconds();
-        if (!SeleniumUtils.isElementPresent(VISIBLE_BOUNDLIST, shortWaitSeconds)) {
-            SeleniumUtils.click(ACTIVE_EDITOR_PICKER_TRIGGER, WaitType.CLICKABLE, "GV_ISREVERSAL_TRIGGER");
-            JavascriptExecutorUtils.waitForExtJS();
+        String current = getIsReversal(rowIndex);
+        if (current != null && current.trim().equalsIgnoreCase(value)) {
+            ExtentLogger.info("[GV ExpenseIncomeDetail] Row " + rowIndex + ": Is Reversal already '"
+                    + current + "' — skipping update");
+            return;
         }
-        // Option row shape still unconfirmed — the picker has never been seen open, so it is
-        // unknown whether it renders <li> items or grid-style x-boundlist-item divs.
-        // simpleBoundlistOption() matches either element name, and Yes/No needs no second column to
-        // disambiguate, so the text match holds either way.
-        By option = simpleBoundlistOption(value);
-        WaitUtils.fluentWaitBuilder()
-                .withMessage("Is Reversal option '" + value + "' to be clickable in the open combo "
-                        + "dropdown (row " + rowIndex + ") — locator: " + option)
-                .until(driver -> {
-                    driver.findElement(option).click();
-                    return true;
-                });
-        JavascriptExecutorUtils.waitForExtJS();
+        SeleniumUtils.fillAndVerifyCommit("GV_IS_REVERSAL_ROW_" + rowIndex, value, () -> {
+            openCellForEdit(rowCellByPosition(rowIndex, "Is Reversal"), "GV_ISREVERSAL_CELL_ROW_" + rowIndex);
+
+            // Open the list via its arrow trigger, NOT by typing the value.
+            //
+            // This is a closed Yes/No combo whose cell already renders the default "No", so
+            // sendKeys("No") writes the value that is already there, fires no change event, and ExtJS
+            // never expands the picker. Confirmed in run 20260807_105226: the editor sat at
+            // aria-expanded="false" with every x-boundlist-floating still display:none while the wait
+            // burned its full timeout. With only two options there is nothing to filter anyway — open
+            // and pick is both simpler and correct for either value.
+            //
+            // Guarded rather than unconditional: openCellForEdit's click may already have expanded the
+            // picker, and the trigger toggles, so clicking it blindly could close the list we need.
+            // Same self-correcting shape as openCellForEdit's single-then-double-click fallback.
+            int shortWaitSeconds = (int) ConfigFactory.getWaitConfig().shortWaitSeconds();
+            if (!SeleniumUtils.isElementPresent(VISIBLE_BOUNDLIST, shortWaitSeconds)) {
+                SeleniumUtils.click(ACTIVE_EDITOR_PICKER_TRIGGER, WaitType.CLICKABLE, "GV_ISREVERSAL_TRIGGER");
+                JavascriptExecutorUtils.waitForExtJS();
+            }
+            // Option row shape still unconfirmed — the picker has never been seen open, so it is
+            // unknown whether it renders <li> items or grid-style x-boundlist-item divs.
+            // simpleBoundlistOption() matches either element name, and Yes/No needs no second column to
+            // disambiguate, so the text match holds either way.
+            By option = simpleBoundlistOption(value);
+            WaitUtils.fluentWaitBuilder()
+                    .withMessage("Is Reversal option '" + value + "' to be clickable in the open combo "
+                            + "dropdown (row " + rowIndex + ") — locator: " + option)
+                    .until(driver -> {
+                        driver.findElement(option).click();
+                        return true;
+                    });
+            JavascriptExecutorUtils.waitForExtJS();
+        }, () -> getIsReversal(rowIndex));
     }
 
     private void setExpenseAmount(int rowIndex, BigDecimal amount) {
         if (amount == null) return;
-        openCellForEdit(rowCellByPosition(rowIndex, "Expense (Dr)"), "GV_EXPENSE_AMOUNT_CELL_ROW_" + rowIndex);
+        BigDecimal current = getExpenseAmount(rowIndex);
+        if (current != null && current.compareTo(amount) == 0) {
+            ExtentLogger.info("[GV ExpenseIncomeDetail] Row " + rowIndex + ": Expense (Dr) already '"
+                    + current + "' — skipping update");
+            return;
+        }
+        SeleniumUtils.fillAndVerifyCommit("GV_EXPENSE_AMOUNT_ROW_" + rowIndex, amount, () -> {
+            openCellForEdit(rowCellByPosition(rowIndex, "Expense (Dr)"), "GV_EXPENSE_AMOUNT_CELL_ROW_" + rowIndex);
 
-        SeleniumUtils.clear(ACTIVE_EDITOR_INPUT, "GV_EXPENSE_AMOUNT");
-        SeleniumUtils.sendKeys(ACTIVE_EDITOR_INPUT, WaitType.VISIBLE, amount.toPlainString(), "GV_EXPENSE_AMOUNT");
-        SeleniumUtils.pressTab(ACTIVE_EDITOR_INPUT, "GV_EXPENSE_AMOUNT");
-        JavascriptExecutorUtils.waitForExtJS();
+            SeleniumUtils.clear(ACTIVE_EDITOR_INPUT, "GV_EXPENSE_AMOUNT");
+            SeleniumUtils.sendKeys(ACTIVE_EDITOR_INPUT, WaitType.VISIBLE, amount.toPlainString(), "GV_EXPENSE_AMOUNT");
+            SeleniumUtils.pressTab(ACTIVE_EDITOR_INPUT, "GV_EXPENSE_AMOUNT");
+            JavascriptExecutorUtils.waitForExtJS();
+        }, () -> getExpenseAmount(rowIndex));
     }
 
     private void setIncomeAmount(int rowIndex, BigDecimal amount) {
         if (amount == null) return;
-        openCellForEdit(rowCellByPosition(rowIndex, "Income (Cr)"), "GV_INCOME_AMOUNT_CELL_ROW_" + rowIndex);
+        BigDecimal current = getIncomeAmount(rowIndex);
+        if (current != null && current.compareTo(amount) == 0) {
+            ExtentLogger.info("[GV ExpenseIncomeDetail] Row " + rowIndex + ": Income (Cr) already '"
+                    + current + "' — skipping update");
+            return;
+        }
+        SeleniumUtils.fillAndVerifyCommit("GV_INCOME_AMOUNT_ROW_" + rowIndex, amount, () -> {
+            openCellForEdit(rowCellByPosition(rowIndex, "Income (Cr)"), "GV_INCOME_AMOUNT_CELL_ROW_" + rowIndex);
 
-        SeleniumUtils.clear(ACTIVE_EDITOR_INPUT, "GV_INCOME_AMOUNT");
-        SeleniumUtils.sendKeys(ACTIVE_EDITOR_INPUT, WaitType.VISIBLE, amount.toPlainString(), "GV_INCOME_AMOUNT");
-        SeleniumUtils.pressTab(ACTIVE_EDITOR_INPUT, "GV_INCOME_AMOUNT");
-        JavascriptExecutorUtils.waitForExtJS();
+            SeleniumUtils.clear(ACTIVE_EDITOR_INPUT, "GV_INCOME_AMOUNT");
+            SeleniumUtils.sendKeys(ACTIVE_EDITOR_INPUT, WaitType.VISIBLE, amount.toPlainString(), "GV_INCOME_AMOUNT");
+            SeleniumUtils.pressTab(ACTIVE_EDITOR_INPUT, "GV_INCOME_AMOUNT");
+            JavascriptExecutorUtils.waitForExtJS();
+        }, () -> getIncomeAmount(rowIndex));
     }
 
     // =========================================================================
     // Read-back getters
     // =========================================================================
+
+    public String getGeneralLedger(int rowIndex) {
+        return SeleniumUtils.getAttribute(rowCellByPosition(rowIndex, "General ledger"), "textContent",
+                "GV_GENERAL_LEDGER_ROW_" + rowIndex);
+    }
 
     public String getSubLedger(int rowIndex) {
         return SeleniumUtils.getAttribute(rowCellByPosition(rowIndex, "Sub Ledger"), "textContent",

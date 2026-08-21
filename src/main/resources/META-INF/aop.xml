@@ -11,6 +11,7 @@
     </weaver>
     <aspects>
         <aspect name="com.gsl.aspects.LoggingAspect"/>
+        <aspect name="com.gsl.aspects.AuditLoggingAspect"/>
         <aspect name="io.github.sskorol.core.DataSupplierAspect"/>
     </aspects>
 </aspectj>
