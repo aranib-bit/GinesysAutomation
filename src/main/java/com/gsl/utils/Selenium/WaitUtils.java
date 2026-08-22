@@ -13,6 +13,7 @@ import org.openqa.selenium.support.ui.Wait;
 import org.openqa.selenium.support.ui.WebDriverWait;
 
 import java.time.Duration;
+import java.util.List;
 
 import static com.gsl.driver.DriverManager.getDriver;
 
@@ -116,9 +117,69 @@ public final class WaitUtils {
         }
     }
 
+    /**
+     * Waits for every element matching {@code by} to genuinely disappear from the screen —
+     * shares the same "genuinely visible" discipline as {@link #isGenuineMaskVisible(WebDriver)},
+     * generalized to an arbitrary locator instead of the hardcoded {@code .x-mask}/{@code
+     * .x-mask-msg} selector. This is the single choke point behind {@code SeleniumUtils
+     * .elementDisappear(By, String)} — used at 30+ call sites across the framework for every
+     * "wait for a transient loader/overlay to disappear" scenario (login's splash screen and
+     * authenticator loader, every list page's loading mask, GRC/DocumentMessageBox popups, etc.).
+     *
+     * <p>Before this fix it used Selenium's {@code ExpectedConditions.invisibilityOfElementLocated},
+     * which is exactly the naive {@code isDisplayed()}-only check that {@link #isGenuineMaskVisible}
+     * was already proven wrong for on {@code .x-mask} — and the exact same false-positive pattern
+     * was then independently observed live on two *other* locators sharing this method:
+     * {@code LoginPage}'s {@code AUTHENTICATOR_LOADER} wait and {@code
+     * FrameworkConstants.getLoadingMask()}'s {@code .x-mask-fixed} wait both timed out with a
+     * screenshot showing nothing blocking the screen. Three independent confirmations of the same
+     * root cause on three different locators is enough to fix it here once, rather than waiting
+     * for every remaining caller to fail separately first.
+     */
     public static boolean untilInvisible(By by) {
         ReportLogger.uiAction("waitUntilInvisible {}", by);
-        return webDriverWait().until(ExpectedConditions.invisibilityOfElementLocated(by));
+        return webDriverWait().until(driver -> !isGenuinelyVisible(driver, by));
+    }
+
+    /**
+     * Generic counterpart to {@link #isGenuineMaskVisible(WebDriver)} — same bounding-box +
+     * on-screen + {@code display}/{@code visibility}/{@code opacity} check, but for any locator
+     * instead of the hardcoded ExtJS mask selector. Deliberately skips the {@code
+     * elementFromPoint} topmost check that {@code isGenuineMaskVisible} needs (that one exists to
+     * confirm a mask is actually *blocking a click* — this one only answers "has this element
+     * visually gone away", which doesn't care what else is stacked above/below it).
+     *
+     * <p>Resolves elements via {@link WebDriver#findElements(By)} (works for any {@code By} type —
+     * xpath, css, etc. — unlike re-parsing the locator inside JS) then inspects each one's real
+     * rendered box via JS. A {@link StaleElementReferenceException} on any single element means
+     * that element has already left the DOM — correctly treated as "not visible", not a failure.
+     * Never throws — returns {@code false} on a null driver or any other evaluation error.
+     */
+    private static boolean isGenuinelyVisible(WebDriver driver, By locator) {
+        if (driver == null) return false;
+        try {
+            List<WebElement> elements = driver.findElements(locator);
+            if (elements.isEmpty()) return false;
+            JavascriptExecutor js = (JavascriptExecutor) driver;
+            for (WebElement el : elements) {
+                try {
+                    Boolean visible = (Boolean) js.executeScript(
+                            "var el=arguments[0];" +
+                            "var r=el.getBoundingClientRect();" +
+                            "if(r.width<=0||r.height<=0) return false;" +
+                            "if(r.bottom<=0||r.right<=0||r.top>=window.innerHeight||r.left>=window.innerWidth) return false;" +
+                            "var s=window.getComputedStyle(el);" +
+                            "if(s.display==='none'||s.visibility==='hidden'||parseFloat(s.opacity)===0) return false;" +
+                            "return true;", el);
+                    if (Boolean.TRUE.equals(visible)) return true;
+                } catch (StaleElementReferenceException stale) {
+                    // element already left the DOM mid-check — genuinely gone, check the rest
+                }
+            }
+            return false;
+        } catch (Exception e) {
+            return false;
+        }
     }
 
     /** PRESENCE / CLICKABLE / VISIBLE dispatcher (used by {@code SeleniumUtils.click}). */
