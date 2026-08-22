@@ -436,10 +436,15 @@ public class DbArVoucherDataSource implements TestDataSource<MergedFinanceArVouc
                 .mode(DocumentSelectionMode.fromString(fcfg.docSelectorMode()))
                 .build();
 
+        // OU code: no distinct "OU code" source exists in this framework — assumed 1:1 with
+        // ownerSiteCode, same convention already established in DbApVoucherDataSource. An
+        // earlier version of this line indexed into ouCodes (hrdemp_ou, no ORDER BY) instead,
+        // which could produce an incoherent OU/site pairing and, when a row's admou_code was
+        // NULL, a NullPointerException on ouCodes.get(0).intValue().
         DocumentSelectionResult selection = DataAvailabilityGuard.selectOrBackfill(
                 () -> DocumentSelector.selectAtomic(selReq),
                 selReq.getSubLedgerCount() * selReq.getDocumentCount(),
-                new PendingArDocumentBackfillStrategy((int) ownerSite.code, ouCodes.isEmpty() ? 0 : ouCodes.get(0).intValue(),
+                new PendingArDocumentBackfillStrategy((int) ownerSite.code, (int) ownerSite.code,
                         ConfigFactory.getApiConfig().defaultInventoryGroupCode()));
         List<SlNameWithId> pendingSlNames = selection.getSelectedSls();
         Map<String, List<PendingSlDocument>> pendingDocsBySlName = selection.getDocsBySlKey();
