@@ -33,7 +33,7 @@ import com.gsl.database.DataAvailabilityGuard;
 import com.gsl.database.DocumentSelectionResult;
 import com.gsl.database.DocumentSelector;
 import com.gsl.database.SelectorRequest;
-import com.gsl.database.finance.PendingArDocumentBackfillStrategy;
+import com.gsl.database.finance.ApVoucherArBackfillStrategy;
 import com.gsl.enums.DocumentSelectionMode;
 import com.gsl.config.WaitConfig;
 import com.gsl.utils.dataprovider.source.TestDataSource;
@@ -444,8 +444,7 @@ public class DbArVoucherDataSource implements TestDataSource<MergedFinanceArVouc
         DocumentSelectionResult selection = DataAvailabilityGuard.selectOrBackfill(
                 () -> DocumentSelector.selectAtomic(selReq),
                 selReq.getSubLedgerCount() * selReq.getDocumentCount(),
-                new PendingArDocumentBackfillStrategy((int) ownerSite.code, (int) ownerSite.code,
-                        ConfigFactory.getApiConfig().defaultInventoryGroupCode()));
+                new ApVoucherArBackfillStrategy(effectiveClsCode, (int) ownerSite.code, (int) ownerSite.code, ecode));
         List<SlNameWithId> pendingSlNames = selection.getSelectedSls();
         Map<String, List<PendingSlDocument>> pendingDocsBySlName = selection.getDocsBySlKey();
 

@@ -13,6 +13,7 @@ public enum BackfillStepLabel {
     CREATE_GRC("Create GRC"),
     CREATE_DC("Create DC"),
     CREATE_AR_VOUCHER("Create AR Voucher"),
+    CREATE_AP_VOUCHER("Create AP Voucher"),
     CREATE_SERVICE_INVOICE_ADHOC("Create Service Invoice Adhoc"),
     VERIFY_POSTED("Verify Posted (release_status)");
 

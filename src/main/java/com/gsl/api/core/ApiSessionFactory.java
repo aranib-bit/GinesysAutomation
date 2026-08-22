@@ -1,5 +1,6 @@
 package com.gsl.api.core;
 
+import com.gsl.api.client.ApVoucherApiClient;
 import com.gsl.api.client.ArVoucherApiClient;
 import com.gsl.api.client.DcApiClient;
 import com.gsl.api.client.GeneralVoucherApiClient;
@@ -96,6 +97,7 @@ public final class ApiSessionFactory {
                 .transferOutApiClient(new TransferOutApiClient(spec))
                 .serviceInvoiceAdhocApiClient(new ServiceInvoiceAdhocApiClient(spec))
                 .arVoucherApiClient(new ArVoucherApiClient(spec))
+                .apVoucherApiClient(new ApVoucherApiClient(spec))
                 .ledgerApiClient(new LedgerApiClient(spec))
                 .subLedgerOthersApiClient(new SubLedgerOthersApiClient(spec))
                 .generalVoucherApiClient(new GeneralVoucherApiClient(spec))

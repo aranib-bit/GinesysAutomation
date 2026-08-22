@@ -1,5 +1,6 @@
 package com.gsl.api.core;
 
+import com.gsl.api.client.ApVoucherApiClient;
 import com.gsl.api.client.ArVoucherApiClient;
 import com.gsl.api.client.DcApiClient;
 import com.gsl.api.client.GeneralVoucherApiClient;
@@ -46,6 +47,7 @@ public final class ApiSessionBundle {
     private final TransferOutApiClient transferOutApiClient;
     private final ServiceInvoiceAdhocApiClient serviceInvoiceAdhocApiClient;
     private final ArVoucherApiClient arVoucherApiClient;
+    private final ApVoucherApiClient apVoucherApiClient;
     private final LedgerApiClient ledgerApiClient;
     private final SubLedgerOthersApiClient subLedgerOthersApiClient;
     private final GeneralVoucherApiClient generalVoucherApiClient;
