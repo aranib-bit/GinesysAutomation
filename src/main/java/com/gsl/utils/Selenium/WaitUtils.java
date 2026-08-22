@@ -199,21 +199,44 @@ public final class WaitUtils {
     }
 
     /**
+     * Real answer to "is an ExtJS loading mask actually visible right now?" — checks bounding box
+     * and computed style via JS rather than trusting Selenium's {@code isDisplayed()}, which ExtJS
+     * commonly fools with zero-size/hidden {@code .x-mask} leftovers it never removes from the DOM.
+     * A node only counts as blocking when it has a non-zero rendered size AND is not
+     * {@code display:none}/{@code visibility:hidden}. Never throws — returns {@code false} on a
+     * null driver or any evaluation error (the session may be dead by the time this runs).
+     *
+     * <p>Single source of truth shared by {@link #isExtMaskPresent(WebDriver)} (and therefore
+     * {@code PopupMonitor.diagnoseFailure}, {@code RootCauseClassifier}, and
+     * {@code HealthChecker.isLoaderVisible()}), {@link #waitForExtMaskInternal()},
+     * {@link #waitForExtMaskBestEffort(String)}, and {@link #waitForPostSaveMask(String)}.
+     */
+    private static boolean isGenuineMaskVisible(WebDriver driver) {
+        if (driver == null) return false;
+        try {
+            return (Boolean) ((JavascriptExecutor) driver).executeScript(
+                    "var m=document.querySelectorAll('.x-mask, .x-mask-msg');" +
+                    "for(var i=0;i<m.length;i++){" +
+                    "  var r=m[i].getBoundingClientRect();" +
+                    "  var s=window.getComputedStyle(m[i]);" +
+                    "  if(r.width>0 && r.height>0 && s.display!=='none' && s.visibility!=='hidden')" +
+                    "    return true;" +
+                    "} return false;");
+        } catch (Exception e) {
+            return false;
+        }
+    }
+
+    /**
      * Non-throwing query: is an ExtJS loading mask currently visible?
      *
      * <p>Used by the root-cause classifier at failure time to corroborate a "mask still blocking"
-     * verdict. Reuses the same {@code .x-mask, .x-mask-msg} selector as {@link #waitForExtMask()}.
+     * verdict. Reuses the same genuine-visibility check as {@link #waitForExtMask()}.
      * Never throws — returns {@code false} on a null driver or any lookup error (the session may be
      * dead by the time this runs).
      */
     public static boolean isExtMaskPresent(WebDriver driver) {
-        if (driver == null) return false;
-        try {
-            return driver.findElements(By.cssSelector(".x-mask, .x-mask-msg"))
-                         .stream().anyMatch(WebElement::isDisplayed);
-        } catch (Exception e) {
-            return false;
-        }
+        return isGenuineMaskVisible(driver);
     }
 
     /**
@@ -222,10 +245,7 @@ public final class WaitUtils {
      */
     private static void waitForExtMaskInternal() {
         try {
-            webDriverWait(extJsTimeout())
-                    .until(ExpectedConditions.invisibilityOfElementLocated(
-                            By.cssSelector(".x-mask, .x-mask-msg")
-                    ));
+            webDriverWait(extJsTimeout()).until(driver -> !isGenuineMaskVisible(driver));
         } catch (TimeoutException e) {
             boolean dialogBlocking = !DriverManager.getDriver()
                     .findElements(By.xpath(
@@ -310,20 +330,7 @@ public final class WaitUtils {
             new WebDriverWait(DriverManager.getDriver(),
                     Duration.ofSeconds(extJsTimeout()),
                     Duration.ofMillis(ConfigFactory.getWaitConfig().pollingMillis()))
-                    .until(driver -> {
-                        try {
-                            return (Boolean) ((JavascriptExecutor) driver).executeScript(
-                                    "var m=document.querySelectorAll('.x-mask, .x-mask-msg');" +
-                                    "for(var i=0;i<m.length;i++){" +
-                                    "  var r=m[i].getBoundingClientRect();" +
-                                    "  var s=window.getComputedStyle(m[i]);" +
-                                    "  if(r.width>0 && r.height>0 && s.display!=='none' && s.visibility!=='hidden')" +
-                                    "    return false;" +
-                                    "} return true;");
-                        } catch (Exception e) {
-                            return true;   // cannot evaluate → do not block
-                        }
-                    });
+                    .until(driver -> !isGenuineMaskVisible(driver));
         } catch (Exception ignored) {
             // best-effort: a stuck/zero-size mask must never fail the test
         } finally {
@@ -347,20 +354,7 @@ public final class WaitUtils {
                     .pollingEvery(Duration.ofMillis(ConfigFactory.getWaitConfig().pollingMillis()))
                     .ignoring(NoSuchElementException.class)
                     .ignoring(StaleElementReferenceException.class)
-                    .until(driver -> {
-                        try {
-                            return (Boolean) ((JavascriptExecutor) driver).executeScript(
-                                    "var m=document.querySelectorAll('.x-mask,.x-mask-msg');" +
-                                    "for(var i=0;i<m.length;i++){" +
-                                    "  var r=m[i].getBoundingClientRect();" +
-                                    "  var s=window.getComputedStyle(m[i]);" +
-                                    "  if(r.width>0&&r.height>0&&s.display!=='none'&&s.visibility!=='hidden')" +
-                                    "    return false;" +
-                                    "} return true;");
-                        } catch (Exception e) {
-                            return true; // cannot evaluate → treat as clear
-                        }
-                    });
+                    .until(driver -> !isGenuineMaskVisible(driver));
         } catch (Exception ignored) {
             // best-effort: timed-out mask must never fail the test
         } finally {
