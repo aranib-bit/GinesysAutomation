@@ -1,6 +1,7 @@
 package com.gsl.api.client;
 
 import com.gsl.api.core.ApiClient;
+import com.gsl.api.core.ApiException;
 import com.gsl.api.model.common.LookupValue;
 import com.gsl.api.model.common.PricingData;
 import com.gsl.api.model.item.ItemCreateRequest;
@@ -41,9 +42,28 @@ public class ItemApiClient extends ApiClient {
         return codes.isEmpty() ? 0 : codes.get(0);
     }
 
-    /** POST /ItemMaster/GetGroupDefaultValues */
+    /**
+     * POST /ItemMaster/GetGroupDefaultValues
+     *
+     * <p>Investigated a recurring {@code success=false: An internal error occurred during your
+     * request!} failure on this endpoint (2026-08-22 staging runs) — the server's error envelope
+     * is fully generic ({@code code:null, details:null, validationErrors:null}), and a direct DB
+     * check ruled out the two obvious test-data theories (the configured
+     * {@code datafallback.ar.defaultInventoryGroupCode} group doesn't exist / is extinct; the
+     * group is missing config other groups have) — the group was fine on both counts. The one
+     * remaining lead was that both occurrences ran back-to-back on the *same* thread, which
+     * {@link ApiException#getMessage()} alone can't surface after the fact. Wrapping with
+     * {@code inventoryGroupCode} + thread name here means the *next* occurrence is immediately
+     * correlatable with backend logs without repeating this DB investigation from scratch.
+     */
     public ItemLookupData fetchGroupDefaults(int inventoryGroupCode) {
-        Response response = postRaw("/ItemMaster/GetGroupDefaultValues", Map.of("invgrp", LookupValue.ofCode(inventoryGroupCode)));
+        Response response;
+        try {
+            response = postRaw("/ItemMaster/GetGroupDefaultValues", Map.of("invgrp", LookupValue.ofCode(inventoryGroupCode)));
+        } catch (ApiException e) {
+            throw new ApiException(e.getMessage() + " [inventoryGroupCode=" + inventoryGroupCode
+                    + ", thread=" + Thread.currentThread().getName() + "]", e.getStatusCode(), e);
+        }
         Integer categoryCode = response.jsonPath().getInt("result.invcat1.code");
         return ItemLookupData.builder()
                 .inventoryGroupCode(inventoryGroupCode)

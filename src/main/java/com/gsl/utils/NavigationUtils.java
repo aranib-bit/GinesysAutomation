@@ -1,6 +1,7 @@
 package com.gsl.utils;
 
 import com.gsl.constants.FrameworkConstants;
+import com.gsl.driver.DriverManager;
 import com.gsl.driver.ExecutionContext;
 import com.gsl.driver.ExecutionManager;
 import com.gsl.pages.HomePage;
@@ -20,6 +21,9 @@ import com.gsl.pages.pagecomponent.Procurement.ProcurementTopMenuComponent;
 import com.gsl.reports.NavigationLogger;
 import com.gsl.reports.PoolAttributionStats;
 import com.gsl.utils.Selenium.SeleniumUtils;
+import com.gsl.utils.Selenium.WaitUtils;
+import org.openqa.selenium.By;
+import org.openqa.selenium.WebDriver;
 
 import java.util.function.Supplier;
 
@@ -301,8 +305,47 @@ public final class NavigationUtils {
      */
     private static void verifyAndRecordPage(ExecutionContext ctx, Object page, String pageLabel) {
         if (page instanceof VerifiablePage verifiable) {
-            verifiable.verifyOnThisPage();
+            try {
+                verifiable.verifyOnThisPage();
+            } catch (RuntimeException e) {
+                logVerificationFailureDiagnostics(pageLabel, e);
+                throw e;
+            }
             ctx.setCurrentPage(pageLabel);
+        }
+    }
+
+    /**
+     * Captures the live DOM/mask/element-count state at the moment a page-identity verification
+     * fails — the failure-branch counterpart {@link ExecutionManager#logState} never covers (it
+     * only runs after verification succeeds). Without this, a "page-header never appeared after
+     * a side-menu click" timeout was undiagnosable after the fact: no record of whether a genuine
+     * ExtJS mask was actually blocking, whether the target menu-item locator matched more than
+     * one element (a stale/duplicate DOM node — ExtJS is known to pool rather than destroy
+     * elements, per the {@code WaitUtils.isGenuineMaskVisible} investigation), or what the live
+     * URL was at that instant. Reconstructs the same {@code //span[text()='<pageLabel>']} locator
+     * {@code OperationsSideMenuComponent.clickMenuItem} used to click the menu item, so a count
+     * &gt; 1 here directly confirms the "stale duplicate span" theory for next time.
+     *
+     * <p>Purely additive diagnostics — never throws itself, and always rethrows the original
+     * failure unchanged so no test's behavior changes.
+     */
+    private static void logVerificationFailureDiagnostics(String pageLabel, RuntimeException failure) {
+        try {
+            WebDriver driver = DriverManager.getDriver();
+            boolean maskVisible = WaitUtils.isExtMaskPresent(driver);
+            By menuItemLocator = By.xpath(String.format("//span[text()='%s']", pageLabel));
+            int matchingElements = driver.findElements(menuItemLocator).size();
+            String currentUrl = driver.getCurrentUrl();
+            NavigationLogger.warn(
+                    "Page-identity verification failed for '{}' — LoaderVisible={} | "
+                            + "MenuItemMatches({})={} | CurrentUrl={} | Failure={}: {}",
+                    pageLabel, maskVisible, menuItemLocator, matchingElements, currentUrl,
+                    failure.getClass().getSimpleName(), failure.getMessage());
+        } catch (Exception diagnosticFailure) {
+            NavigationLogger.warn("Page-identity verification failed for '{}', and diagnostic "
+                            + "capture itself threw ({}) — session may already be dead.",
+                    pageLabel, diagnosticFailure.getMessage());
         }
     }
 
