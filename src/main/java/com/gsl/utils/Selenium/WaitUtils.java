@@ -199,12 +199,26 @@ public final class WaitUtils {
     }
 
     /**
-     * Real answer to "is an ExtJS loading mask actually visible right now?" — checks bounding box
-     * and computed style via JS rather than trusting Selenium's {@code isDisplayed()}, which ExtJS
-     * commonly fools with zero-size/hidden {@code .x-mask} leftovers it never removes from the DOM.
-     * A node only counts as blocking when it has a non-zero rendered size AND is not
-     * {@code display:none}/{@code visibility:hidden}. Never throws — returns {@code false} on a
-     * null driver or any evaluation error (the session may be dead by the time this runs).
+     * Real answer to "is an ExtJS loading mask actually visible right now?" — checks whether a
+     * {@code .x-mask}/{@code .x-mask-msg} candidate is actually the topmost thing rendered on
+     * screen, rather than trusting Selenium's {@code isDisplayed()} or a bare size/style check.
+     *
+     * <p>ExtJS commonly <b>pools and reuses</b> a single mask element instead of destroying it —
+     * a "hidden" mask is often left in the DOM still sized and {@code display:block}/
+     * {@code visibility:visible}, just moved off-screen, faded to {@code opacity:0}, or stacked
+     * behind the newly-rendered content (lower {@code z-index}). A size+display/visibility-only
+     * check (the first iteration of this method) still misses all three of those, so it can
+     * report a dead leftover mask as "genuinely visible" — confirmed live via
+     * {@code RootCauseClassifier}'s "EXTJS MASK BLOCKING — Confidence: HIGH" verdict firing on a
+     * failure whose own screenshot showed a fully-rendered, unmasked page.
+     *
+     * <p>Fix: for each candidate with a non-zero, on-screen, non-transparent bounding rect, use
+     * {@code document.elementFromPoint()} at the rect's own center and confirm the mask (or a
+     * container of it) is actually the topmost element there — the same signal a human looking at
+     * a screenshot would use, so it catches off-screen, opacity-faded, AND z-index-buried
+     * leftovers in one check instead of enumerating more CSS hiding tricks individually.
+     * Never throws — returns {@code false} on a null driver or any evaluation error (the session
+     * may be dead by the time this runs).
      *
      * <p>Single source of truth shared by {@link #isExtMaskPresent(WebDriver)} (and therefore
      * {@code PopupMonitor.diagnoseFailure}, {@code RootCauseClassifier}, and
@@ -217,10 +231,16 @@ public final class WaitUtils {
             return (Boolean) ((JavascriptExecutor) driver).executeScript(
                     "var m=document.querySelectorAll('.x-mask, .x-mask-msg');" +
                     "for(var i=0;i<m.length;i++){" +
-                    "  var r=m[i].getBoundingClientRect();" +
-                    "  var s=window.getComputedStyle(m[i]);" +
-                    "  if(r.width>0 && r.height>0 && s.display!=='none' && s.visibility!=='hidden')" +
-                    "    return true;" +
+                    "  var el=m[i];" +
+                    "  var r=el.getBoundingClientRect();" +
+                    "  if(r.width<=0||r.height<=0) continue;" +
+                    "  if(r.bottom<=0||r.right<=0||r.top>=window.innerHeight||r.left>=window.innerWidth) continue;" +
+                    "  var s=window.getComputedStyle(el);" +
+                    "  if(s.display==='none'||s.visibility==='hidden'||parseFloat(s.opacity)===0) continue;" +
+                    "  var cx=Math.min(Math.max((r.left+r.right)/2,0),window.innerWidth-1);" +
+                    "  var cy=Math.min(Math.max((r.top+r.bottom)/2,0),window.innerHeight-1);" +
+                    "  var top=document.elementFromPoint(cx,cy);" +
+                    "  if(top && (top===el || el.contains(top) || top.contains(el))) return true;" +
                     "} return false;");
         } catch (Exception e) {
             return false;
