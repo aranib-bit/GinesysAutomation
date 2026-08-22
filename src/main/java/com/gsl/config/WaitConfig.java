@@ -87,6 +87,16 @@ public interface WaitConfig extends Config {
     @DefaultValue("3")
     int clickOverlayRetryMax();
 
+    /**
+     * Timeout for the post-module-click "Loading Package" bootstrap wait
+     * ({@code TopModuleMenuComponent.navigateToModule()}) — deliberately separate from the
+     * generic {@code timeout} and {@code extjs.timeout} tiers since this one-off, heavier
+     * module-bootstrap step has a different SLA than a routine mask clear.
+     */
+    @Key("module.packageload.timeout.seconds")
+    @DefaultValue("60")
+    long modulePackageLoadTimeoutSeconds();
+
     @Key("popup.detection.enabled")
     @DefaultValue("true")
     boolean popupDetectionEnabled();

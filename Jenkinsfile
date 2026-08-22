@@ -1,3 +1,16 @@
+// Each Jenkins job's default MAVEN_PROFILE is derived from its job name so that
+// the 3 (soon more) jobs sharing this one Jenkinsfile don't fight over a single
+// hardcoded default. Manually editing "Default Value" in a job's Configure page
+// does NOT stick — this block is re-applied from source on every build. To give
+// a new job its own default, add a case here instead.
+def pickDefaultProfile(jobName) {
+    def name = (jobName ?: '').toUpperCase()
+    if (name.contains('AR-MANDATORY')) return 'ar-mandatory'
+    if (name.contains('GV-MANDATORY')) return 'gv-mandatory'
+    if (name.contains('AP-MANDATORY')) return 'ap-mandatory'
+    return 'ap-mandatory' // safe fallback for any job not yet mapped (e.g. future regression jobs)
+}
+
 pipeline {
     agent any
 
@@ -19,7 +32,11 @@ pipeline {
     }
 
     parameters {
-        string(name: 'MAVEN_PROFILE', defaultValue: 'ap-mandatory', description: 'Maven profile / suite to run')
+        string(
+            name: 'MAVEN_PROFILE',
+            defaultValue: pickDefaultProfile(env.JOB_NAME),
+            description: 'Maven profile / suite to run'
+        )
     }
 
     environment {

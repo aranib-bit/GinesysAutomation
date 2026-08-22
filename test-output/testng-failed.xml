@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE suite SYSTEM "https://testng.org/testng-1.0.dtd">
+<suite name="Failed suite [Pipeline Mechanism Smoke Suite Priority]" guice-stage="DEVELOPMENT">
+  <test thread-count="5" parallel="instances" name="Smoke(failed)">
+    <classes>
+      <class name="com.tests.smoketest.PipelineMechanismSmokeTestPriority">
+        <methods>
+          <include name="stepB" invocation-numbers="0"/>
+        </methods>
+      </class> <!-- com.tests.smoketest.PipelineMechanismSmokeTestPriority -->
+    </classes>
+  </test> <!-- Smoke(failed) -->
+</suite> <!-- Failed suite [Pipeline Mechanism Smoke Suite Priority] -->

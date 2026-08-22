@@ -1,5 +1,6 @@
 package com.gsl.pages.pagecomponent;
 
+import com.gsl.config.ConfigFactory;
 import com.gsl.constants.FrameworkConstants;
 import com.gsl.driver.DriverManager;
 import com.gsl.enums.LogCategory;
@@ -44,7 +45,14 @@ public class TopModuleMenuComponent {
         // because a reused session was already on this module — a mask left over from the prior
         // test's last action can still be up, and the caller's next click has no other guaranteed
         // clearance point before it fires.
-        SeleniumUtils.elementDisappear(FrameworkConstants.getLoadingMask(), "Loading Mask");
+        //
+        // Uses module.packageload.timeout.seconds (60s default), not the generic 30s timeout —
+        // this is the post-module-entry "Loading Package..." bootstrap wait (menu/permissions/
+        // site package fetch), a heavier one-off step than a routine mask clear. Confirmed via
+        // screenshot evidence (reports/runs/20260822_213931) that the spinner is still genuinely
+        // active past 30s under staging load, not a stale/false-positive mask.
+        SeleniumUtils.elementDisappear(FrameworkConstants.getLoadingMask(), "Loading Mask",
+                ConfigFactory.getWaitConfig().modulePackageLoadTimeoutSeconds());
         return getPageObjectForModule(requiredModule);
     }
 

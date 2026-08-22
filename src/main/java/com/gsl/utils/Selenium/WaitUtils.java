@@ -142,6 +142,17 @@ public final class WaitUtils {
     }
 
     /**
+     * Same "genuinely visible" discipline as {@link #untilInvisible(By)}, at an explicit timeout
+     * instead of the default {@code timeout()} — for waits with a structurally different SLA
+     * (e.g. {@code TopModuleMenuComponent.navigateToModule()}'s post-click "Loading Package"
+     * module-bootstrap wait, which is a heavier one-off step than a routine mask clear).
+     */
+    public static boolean untilInvisible(By by, long seconds) {
+        ReportLogger.uiAction("waitUntilInvisible {}s {}", seconds, by);
+        return webDriverWait(seconds).until(driver -> !isGenuinelyVisible(driver, by));
+    }
+
+    /**
      * Generic counterpart to {@link #isGenuineMaskVisible(WebDriver)} — same bounding-box +
      * on-screen + {@code display}/{@code visibility}/{@code opacity} check, but for any locator
      * instead of the hardcoded ExtJS mask selector. Deliberately skips the {@code

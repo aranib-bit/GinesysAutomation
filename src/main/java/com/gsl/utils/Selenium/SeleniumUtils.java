@@ -217,6 +217,21 @@ public class SeleniumUtils {
         }
         return state;
     }
+
+    /**
+     * {@link #elementDisappear(By, String)} with an explicit timeout — for waits with a
+     * structurally different SLA than the standard 30s default (e.g. the post-module-click
+     * "Loading Package" bootstrap wait). Every other call site is unaffected.
+     */
+    public static boolean elementDisappear(By by, String elementName, long seconds) {
+        boolean state = waitUntilElementInVisible(by, seconds);
+        if (state) {
+            Log.debug("{} is now invisible", elementName);
+        } else {
+            Log.debug("{} is still visible", elementName);
+        }
+        return state;
+    }
     public static void sendKeys(By by, WaitType waitType,String value, String elementName) {
         JavascriptExecutorUtils.waitForPageLoad();
         JavascriptExecutorUtils.waitForExtJS();
@@ -306,6 +321,10 @@ public class SeleniumUtils {
 
     private static boolean waitUntilElementInVisible(By by) {
         return WaitUtils.untilInvisible(by);
+    }
+
+    private static boolean waitUntilElementInVisible(By by, long seconds) {
+        return WaitUtils.untilInvisible(by, seconds);
     }
 
     public static String getText(By by, String elementName) {
