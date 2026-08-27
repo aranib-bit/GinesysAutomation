@@ -1,6 +1,5 @@
 package com.gsl.listeners;
 
-import com.gsl.constants.FrameworkConstants;
 import com.gsl.annotations.FrameworkAnnotation;
 import com.gsl.annotations.FrameworkValidation;
 import com.gsl.annotations.TestCaseId;
@@ -137,8 +136,9 @@ public class TestListener implements ITestListener, ISuiteListener {
     @Override
     public void onFinish(ISuite suite) {
         SummaryReportBuilder.build(suite);
+        // flushReports() also republishes reports/latest/index.html (see ExtentReport) —
+        // no separate copyToLatest() call needed here anymore.
         ExtentReport.flushReports();
-        copyToLatest();
         Log.logHeap("suite-finish:" + suite.getName());
     }
 
@@ -551,50 +551,4 @@ public class TestListener implements ITestListener, ISuiteListener {
         ExtentManager.clearAll();
     }
 
-    // ── Phase 0: copy run report to reports/latest/ for CI pickup ──────────────
-
-    private static void copyToLatest() {
-        try {
-            java.nio.file.Path runDir    = java.nio.file.Paths.get(FrameworkConstants.getRunReportDir());
-            java.nio.file.Path latestDir = java.nio.file.Paths.get(FrameworkConstants.getLatestReportDir());
-            java.nio.file.Files.createDirectories(latestDir);
-            java.nio.file.Path runIndex = runDir.resolve("index.html");
-            patchDeadCdnReferences(runIndex);
-            java.nio.file.Files.copy(
-                runIndex,
-                latestDir.resolve("index.html"),
-                java.nio.file.StandardCopyOption.REPLACE_EXISTING
-            );
-            Log.info("[Phase0] Latest report copied to {}", latestDir.resolve("index.html"));
-        } catch (Exception e) {
-            Log.warn("[Phase0] Could not copy report to latest/: {}", e.getMessage());
-        }
-    }
-
-    // ExtentSparkReporter's built-in HTML template hardcodes a <script> tag pointing at
-    // cdn.rawgit.com, a CDN that was permanently shut down in 2019 — the report renders
-    // blank wherever that script is required to run. jsdelivr's "gh" proxy serves the exact
-    // same file straight from the same GitHub repo (extent-framework/extent-github-cdn),
-    // which the report's own CSS <link> already relies on, so it's a safe drop-in swap.
-    private static void patchDeadCdnReferences(java.nio.file.Path indexHtml) {
-        try {
-            // ISO-8859-1 maps every byte 0-255 to exactly one char with no decode failures —
-            // unlike Files.readString(UTF_8), which throws MalformedInputException the moment the
-            // report contains any byte sequence that isn't valid UTF-8 (this report's generation
-            // pipeline is not guaranteed to write pure UTF-8 throughout). Writing back with the
-            // same charset round-trips every byte unchanged except inside our own replacement.
-            byte[] bytes = java.nio.file.Files.readAllBytes(indexHtml);
-            String html = new String(bytes, java.nio.charset.StandardCharsets.ISO_8859_1);
-            String patched = html.replaceAll(
-                "https://cdn\\.rawgit\\.com/([^/\"']+)/([^/\"']+)/([^/\"']+)/([^\"'\\s]+)",
-                "https://cdn.jsdelivr.net/gh/$1/$2@$3/$4"
-            );
-            if (!patched.equals(html)) {
-                java.nio.file.Files.write(indexHtml, patched.getBytes(java.nio.charset.StandardCharsets.ISO_8859_1));
-                Log.info("[Phase0] Patched dead cdn.rawgit.com reference(s) in report HTML");
-            }
-        } catch (Exception e) {
-            Log.warn("[Phase0] Could not patch CDN references: {}", e.getMessage());
-        }
-    }
 }

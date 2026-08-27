@@ -125,7 +125,39 @@ pipeline {
 
         stage('Run Tests') {
             steps {
-                bat ".\\mvnw.cmd clean test -P%MAVEN_PROFILE% -Drunmode=docker_grid -Dheadless=true"
+                script {
+                    // Run the suite and periodically re-publish the "Extent Report" build-page
+                    // link while it's still running, so it refreshes during the build instead of
+                    // only appearing once at the very end (post.always still does the final,
+                    // authoritative publish/archive/robocopy after this stage completes).
+                    def testsFinished = false
+                    parallel(
+                        'tests': {
+                            try {
+                                bat ".\\mvnw.cmd clean test -P%MAVEN_PROFILE% -Drunmode=docker_grid -Dheadless=true"
+                            } finally {
+                                testsFinished = true
+                            }
+                        },
+                        'live-report': {
+                            while (!testsFinished) {
+                                sleep(time: 30, unit: 'SECONDS')
+                                if (!testsFinished) {
+                                    catchError(buildResult: null, stageResult: null) {
+                                        publishHTML(target: [
+                                            allowMissing: true,
+                                            alwaysLinkToLastBuild: true,
+                                            keepAll: true,
+                                            reportDir: 'reports/latest',
+                                            reportFiles: 'index.html',
+                                            reportName: 'Extent Report'
+                                        ])
+                                    }
+                                }
+                            }
+                        }
+                    )
+                }
             }
         }
     }

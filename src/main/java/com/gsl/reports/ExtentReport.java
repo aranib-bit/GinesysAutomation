@@ -259,6 +259,59 @@ public final class ExtentReport {
         SHARD_EXTENTS.values().forEach(e -> {
             try { e.flush(); } catch (Exception ignored) {}
         });
+        // Phase0: every flush (per-test, batched, or suite-end) also republishes
+        // reports/latest/index.html, so the fixed-path file CI publishes/serves stays
+        // live throughout the run instead of only updating once at suite finish.
+        copyToLatest();
+    }
+
+    // ── Phase 0: copy run report to reports/latest/ for CI pickup ──────────────
+    // Runs on every flushReports() call — see comment above — so this fixed path
+    // is live-updating during the run, not just written once at suite end.
+
+    static void copyToLatest() {
+        try {
+            Path runDir    = Paths.get(FrameworkConstants.getRunReportDir());
+            Path latestDir = Paths.get(FrameworkConstants.getLatestReportDir());
+            Files.createDirectories(latestDir);
+            Path runIndex = runDir.resolve("index.html");
+            patchDeadCdnReferences(runIndex);
+            Files.copy(
+                runIndex,
+                latestDir.resolve("index.html"),
+                java.nio.file.StandardCopyOption.REPLACE_EXISTING
+            );
+            Log.info("[Phase0] Latest report copied to {}", latestDir.resolve("index.html"));
+        } catch (Exception e) {
+            Log.warn("[Phase0] Could not copy report to latest/: {}", e.getMessage());
+        }
+    }
+
+    // ExtentSparkReporter's built-in HTML template hardcodes a <script> tag pointing at
+    // cdn.rawgit.com, a CDN that was permanently shut down in 2019 — the report renders
+    // blank wherever that script is required to run. jsdelivr's "gh" proxy serves the exact
+    // same file straight from the same GitHub repo (extent-framework/extent-github-cdn),
+    // which the report's own CSS <link> already relies on, so it's a safe drop-in swap.
+    private static void patchDeadCdnReferences(Path indexHtml) {
+        try {
+            // ISO-8859-1 maps every byte 0-255 to exactly one char with no decode failures —
+            // unlike Files.readString(UTF_8), which throws MalformedInputException the moment the
+            // report contains any byte sequence that isn't valid UTF-8 (this report's generation
+            // pipeline is not guaranteed to write pure UTF-8 throughout). Writing back with the
+            // same charset round-trips every byte unchanged except inside our own replacement.
+            byte[] bytes = Files.readAllBytes(indexHtml);
+            String html = new String(bytes, java.nio.charset.StandardCharsets.ISO_8859_1);
+            String patched = html.replaceAll(
+                "https://cdn\\.rawgit\\.com/([^/\"']+)/([^/\"']+)/([^/\"']+)/([^\"'\\s]+)",
+                "https://cdn.jsdelivr.net/gh/$1/$2@$3/$4"
+            );
+            if (!patched.equals(html)) {
+                Files.write(indexHtml, patched.getBytes(java.nio.charset.StandardCharsets.ISO_8859_1));
+                Log.info("[Phase0] Patched dead cdn.rawgit.com reference(s) in report HTML");
+            }
+        } catch (Exception e) {
+            Log.warn("[Phase0] Could not patch CDN references: {}", e.getMessage());
+        }
     }
 
     public static void createTest(String testCaseName) {
