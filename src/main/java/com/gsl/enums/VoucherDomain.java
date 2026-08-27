@@ -25,6 +25,17 @@ public enum VoucherDomain implements VoucherDocumentLabels {
         /** TODO-confirm against {@code mdmenu.sys_shortcode} — same open item as GV's (plan §2/§4/§9). */
         @Override public String getMenuShortcode() { return "FinanceARVoucher"; }
         @Override public VoucherType getVoucherType() { return VoucherType.AR; }
+        /**
+         * AR's Sub-Ledger Information grid has no "Sub Ledger Id" column (confirmed live —
+         * run 20260827_133420, FIN-AR-ADD-DOC-04: columns are Sub Ledger / General Ledger /
+         * Reference Site / Ledger Narration / Is Reversal / Amount only). The row's Excel
+         * {@code Id} is only meaningful for disambiguating same-named options in the
+         * sub-ledger combo-box picker ({@code subLedgerPickerRow}), not for locating the
+         * grid row itself — Name + Reference Site is unique enough there.
+         */
+        @Override public boolean excludesCommonColumn(CommonVoucherGridColumnHeader col) {
+            return col == CommonVoucherGridColumnHeader.SUB_LEDGER_ID;
+        }
     },
     AP {
         @Override public String getDateFieldId() { return "transactionDate"; }
@@ -138,6 +149,17 @@ public enum VoucherDomain implements VoucherDocumentLabels {
      * Returns {@code false} by default — every domain has every common column.
      */
     public boolean excludesCommonListColumn(CommonVoucherListColumn col) {
+        return false;
+    }
+
+    /**
+     * Returns {@code true} if a domain's grid doesn't render {@code col} at all — e.g. AR's
+     * Sub-Ledger Information grid has no "Sub Ledger Id" column, unlike the assumption baked
+     * into {@link CommonVoucherGridColumnHeader}. Returns {@code false} by default — every
+     * domain has every common grid column. Mirrors {@link #excludesCommonListColumn} exactly,
+     * for grid columns instead of list columns.
+     */
+    public boolean excludesCommonColumn(CommonVoucherGridColumnHeader col) {
         return false;
     }
 

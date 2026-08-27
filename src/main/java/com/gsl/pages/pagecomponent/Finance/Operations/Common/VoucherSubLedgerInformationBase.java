@@ -27,6 +27,10 @@ public abstract class VoucherSubLedgerInformationBase implements AdjustmentEntry
     private final String colSubLedger;
     private final String colRefSite;
     private final String colSlId;
+    /** False when {@code domain}'s Sub-Ledger Information grid has no "Sub Ledger Id" column
+     *  (e.g. AR — see {@link VoucherDomain#excludesCommonColumn}) — the WITH_SLID templates
+     *  below would then never match a real row, so callers must fall back to name+refSite. */
+    private final boolean slIdColumnAvailable;
 
     // ── XPath templates — built once in constructor ───────────────────────────
 
@@ -40,6 +44,7 @@ public abstract class VoucherSubLedgerInformationBase implements AdjustmentEntry
         this.colSubLedger = domain.getSubLedgerColumnHeader().columnIdXPath();
         this.colRefSite   = CommonVoucherGridColumnHeader.REFERENCE_SITE.resolveFor(domain).columnIdXPath();
         this.colSlId      = CommonVoucherGridColumnHeader.SUB_LEDGER_ID.resolveFor(domain).columnIdXPath();
+        this.slIdColumnAvailable = !domain.excludesCommonColumn(CommonVoucherGridColumnHeader.SUB_LEDGER_ID);
 
         SUBLEDGERADJUSTBUTTON_TEMPLATE =
                 "//tr[td[@data-columnid=" + colSubLedger + "]/div[text()='%s']" +
@@ -76,14 +81,14 @@ public abstract class VoucherSubLedgerInformationBase implements AdjustmentEntry
     }
 
     protected void clickAdjust(String subLedgerName, String referenceSite, String slid) {
-        String xpath = (slid != null && !slid.isBlank())
+        String xpath = (slIdColumnAvailable && slid != null && !slid.isBlank())
                 ? String.format(SUBLEDGERADJUSTBUTTON_TEMPLATE_WITH_SLID, subLedgerName, referenceSite, slid)
                 : String.format(SUBLEDGERADJUSTBUTTON_TEMPLATE, subLedgerName, referenceSite);
         SeleniumUtils.click(By.xpath(xpath), WaitType.CLICKABLE, "SUBLEDGERADJUSTBUTTON");
     }
 
     protected PaymentInformationPopup clickPaymentButton(String subLedger, String referenceSite, String slid) {
-        String xpath = (slid != null && !slid.isBlank())
+        String xpath = (slIdColumnAvailable && slid != null && !slid.isBlank())
                 ? String.format(PAYMENT_BUTTON_TEMPLATE_WITH_SLID, subLedger, referenceSite, slid)
                 : String.format(PAYMENT_BUTTON_TEMPLATE, subLedger, referenceSite);
         SeleniumUtils.click(By.xpath(xpath), WaitType.CLICKABLE, "PAYMENT_BUTTON_" + subLedger);
