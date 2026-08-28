@@ -6,7 +6,7 @@ import lombok.Value;
  * Immutable result of TDS name resolution for a vendor SL.
  *
  * <p>Produced by {@link com.gsl.database.query.TdsNameQuery#resolve} and stored in
- * {@link com.gsl.utils.dataprovider.fixture.LiveDbRefs#getSlToTdsResolution()},
+ * {@link com.gsl.utils.dataprovider.fixture.ApVoucherLiveDbRefs#getSlToTdsResolution()},
  * keyed by {@code "slName|slId"}.
  *
  * <h3>Invariants</h3>

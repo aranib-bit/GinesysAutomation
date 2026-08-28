@@ -14,7 +14,15 @@ import java.util.List;
 import java.util.Map;
 
 /**
- * Immutable carrier of all live reference values fetched from the DB for one test run.
+ * Immutable carrier of all live reference values fetched from the DB for one AP Voucher test run.
+ *
+ * <p><b>Renamed from {@code LiveDbRefs}</b> (was shared with AR Voucher) — investigation found
+ * only 7 of the 13 fields here are genuinely used by both domains; the other 6
+ * ({@code tdsBehaviour}/{@code slToTdsResolution}/{@code slToRefSiteName}/{@code slToCmpCode}/
+ * {@code slToClstype}/{@code selectDocPaymentMode}) are AP-only, with AR relying on
+ * {@code @Builder.Default} empty values to silently no-op them. AR now has its own trimmed
+ * {@link ArVoucherLiveDbRefs} carrying only the genuinely-shared subset — mirrors
+ * {@link LiveGvDbRefs}, which already had a principled reason to be separate.
  *
  * <ul>
  *   <li>{@code cashBankName}        — active Cash or Bank GL scoped to the user's sites (fingl)</li>
@@ -37,7 +45,7 @@ import java.util.Map;
  */
 @Value
 @Builder
-public class LiveDbRefs {
+public class ApVoucherLiveDbRefs {
     String cashBankName;
     String ownerSiteName;
     String docSchemeName;
@@ -63,10 +71,6 @@ public class LiveDbRefs {
      * <p>Populated in {@code DbApVoucherDataSource} step 5c via
      * {@link com.gsl.database.query.TdsNameQuery#resolve} for all TDS-applicable
      * advance-payment scenarios.
-     *
-     * <p><b>Default: empty map</b> — AR Voucher and non-TDS AP scenarios never set this field;
-     * the {@code @Builder.Default} ensures {@code DbArVoucherDataSource} requires no changes
-     * when new AP-only fields are added here.
      *
      * <p>Consumed by
      * {@link com.gsl.utils.dataprovider.fixture.finance.ApVoucherTemplateLoader#buildTdsRows}
@@ -114,7 +118,6 @@ public class LiveDbRefs {
      * {@link com.gsl.utils.dataprovider.fixture.finance.ApVoucherFixtureOptions#getSelectDocPaymentMode()}.
      * RANDOM is resolved to CHEQUE or NEFT_RTGS (never NONE) inside
      * {@link com.gsl.utils.dataprovider.fixture.finance.ApVoucherTemplateLoader#docSelectDocumentTemplate}.
-     * Defaults to NONE for all non-Select-Document scenarios (AR Voucher, Advance, etc.).
      */
     @Builder.Default
     SelectDocumentVariant.PaymentMode selectDocPaymentMode = SelectDocumentVariant.PaymentMode.NONE;

@@ -10,9 +10,11 @@ import java.util.List;
 
 /**
  * Immutable carrier of the live DB reference values fetched for one General Voucher
- * Expense/Income Detail combination — the GV analogue of {@link LiveDbRefs}, kept as its
- * own small class rather than extending the AP/AR-shared one (GV's dimensions don't overlap
- * with AP/AR's TDS/pending-document/classification fields).
+ * Expense/Income Detail combination — the GV analogue of {@link ApVoucherLiveDbRefs}/
+ * {@link ArVoucherLiveDbRefs}, kept as its own small class rather than extending either of
+ * those (GV's dimensions don't overlap with AP/AR's TDS/pending-document/classification
+ * fields). AP and AR were themselves later split from a single shared type into these two,
+ * for the same reason — see their own Javadoc.
  *
  * <p><b>Multi-GL / multi-Site (GL-count × Site-count breakup):</b> {@link #resolvedRows} carries
  * one entry per distinct GL selected for this combination — {@code glCount} entries (1 for the

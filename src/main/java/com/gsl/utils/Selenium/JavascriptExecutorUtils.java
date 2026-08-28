@@ -892,6 +892,84 @@ public final class JavascriptExecutorUtils {
     }
 
 
+    /**
+     * Returns whether the grid column whose header text matches {@code headerText} is currently
+     * hidden via the app's "Columns" chooser — the authoritative signal for "is this column
+     * currently visible", queried directly from ExtJS's own {@code column.hidden} property
+     * rather than any CSS/bounding-rect check (which would false-positive on horizontal scroll
+     * or mid-animation states unrelated to chooser visibility). Promotes the {@code hidden}
+     * computation {@link #printExtJsGridColumns(WebDriver, int)} already does but only prints —
+     * this is the first caller that actually needs the boolean back.
+     *
+     * <p>Matches {@code headerText} after stripping any trailing multi-sort badge (e.g.
+     * {@code "Voucher Date (1)"} still matches header text {@code "Voucher Date"}).
+     *
+     * <p>Grabs {@code Ext.ComponentQuery.query('gridpanel')[0]} — the first gridpanel on the
+     * page, same limitation the existing debug methods above already carry; fine for voucher
+     * list pages (exactly one grid), would need generalizing for a page with multiple grids.
+     *
+     * @throws NoSuchElementException if no column with that header text is found in the grid
+     */
+    public static boolean isGridColumnHidden(String headerText) {
+        JavascriptExecutor js = (JavascriptExecutor) DriverManager.getDriver();
+        String script =
+                "var grid = Ext.ComponentQuery.query('gridpanel')[0];" +
+                        "if (!grid) return null;" +
+                        "var cols = grid.getColumnManager().getColumns();" +
+                        "for (var i = 0; i < cols.length; i++) {" +
+                        "   var t = (cols[i].text || '').replace(/\\s*\\(\\d+\\)\\s*$/, '').trim();" +
+                        "   if (t === arguments[0]) return !!cols[i].hidden;" +
+                        "}" +
+                        "return null;";
+
+        Object result = js.executeScript(script, headerText);
+        if (result == null) {
+            throw new NoSuchElementException(
+                    "JavascriptExecutorUtils.isGridColumnHidden: no grid column found with header text ["
+                            + headerText + "]");
+        }
+        return (Boolean) result;
+    }
+
+    /**
+     * Returns the 0-based left-to-right position of the grid column whose header text matches
+     * {@code headerText} among the currently VISIBLE columns only (hidden columns are skipped
+     * when counting, so hiding/showing other columns shifts this value — it always reflects what
+     * a user actually sees, not the column's fixed index in ExtJS's full internal column array).
+     * Column order is mutable — a column can be dragged to a new position independent of its
+     * {@code mandatory}/hidden state (e.g. Voucher No./Voucher Date can be reordered even though
+     * they can't be hidden) — this is the live-DOM read counterpart to {@link #isGridColumnHidden}
+     * for that reordering, matching {@code GridColumnMenu.getColumnPosition}/{@code reorderColumn}.
+     *
+     * <p>Same header-text-matching (multi-sort-badge-stripped) and single-gridpanel-page
+     * limitation as {@link #isGridColumnHidden}.
+     *
+     * @throws NoSuchElementException if no column with that header text is found in the grid
+     */
+    public static int getVisibleColumnPosition(String headerText) {
+        JavascriptExecutor js = (JavascriptExecutor) DriverManager.getDriver();
+        String script =
+                "var grid = Ext.ComponentQuery.query('gridpanel')[0];" +
+                        "if (!grid) return null;" +
+                        "var cols = grid.getColumnManager().getColumns();" +
+                        "var visibleIndex = -1;" +
+                        "for (var i = 0; i < cols.length; i++) {" +
+                        "   if (cols[i].hidden) continue;" +
+                        "   visibleIndex++;" +
+                        "   var t = (cols[i].text || '').replace(/\\s*\\(\\d+\\)\\s*$/, '').trim();" +
+                        "   if (t === arguments[0]) return visibleIndex;" +
+                        "}" +
+                        "return null;";
+
+        Object result = js.executeScript(script, headerText);
+        if (result == null) {
+            throw new NoSuchElementException(
+                    "JavascriptExecutorUtils.getVisibleColumnPosition: no VISIBLE grid column found "
+                            + "with header text [" + headerText + "] (it may be hidden, or absent)");
+        }
+        return ((Number) result).intValue();
+    }
+
     public static void printAllExtJsComboDetails() {
         JavascriptExecutor js = (JavascriptExecutor) DriverManager.getDriver();
 

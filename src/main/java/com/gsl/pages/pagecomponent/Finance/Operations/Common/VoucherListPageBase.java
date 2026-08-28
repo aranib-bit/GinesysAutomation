@@ -2,6 +2,9 @@ package com.gsl.pages.pagecomponent.Finance.Operations.Common;
 
 import com.gsl.annotations.LogStep;
 import com.gsl.pages.VerifiablePage;
+import com.gsl.pages.enums.Finance.Operations.Common.IVoucherListColumn;
+
+import java.util.Optional;
 
 /**
  * Common Tier-1 list-page facade shared by AR/AP/GV voucher list pages — plan §17.
@@ -214,6 +217,85 @@ public abstract class VoucherListPageBase<
      */
     public TSelf selectDocumentInListPage(String documentNumber) {
         VoucherGridPaginationFinder.selectDocumentAcrossPages(documentNumber, mainGrid, gridFooter);
+        return self();
+    }
+
+    // --------------------------------------------------------------------------------------
+    // Column header menu (sort / filter / show-hide) — thin delegates to GridColumnMenu,
+    // mirroring how selectDocumentInListPage above delegates to VoucherGridPaginationFinder.
+    // --------------------------------------------------------------------------------------
+
+    /** Sorts the grid by {@code column} ascending, replacing any existing sort. */
+    public TSelf sortColumnAscending(IVoucherListColumn column) {
+        GridColumnMenu.sortAscending(column);
+        return self();
+    }
+
+    /** Sorts the grid by {@code column} descending, replacing any existing sort. */
+    public TSelf sortColumnDescending(IVoucherListColumn column) {
+        GridColumnMenu.sortDescending(column);
+        return self();
+    }
+
+    /** Adds {@code column} as the next multi-sort priority (ascending), preserving any existing sort. */
+    public TSelf addSortColumnAscending(IVoucherListColumn column) {
+        GridColumnMenu.addSortAscending(column);
+        return self();
+    }
+
+    /** Adds {@code column} as the next multi-sort priority (descending), preserving any existing sort. */
+    public TSelf addSortColumnDescending(IVoucherListColumn column) {
+        GridColumnMenu.addSortDescending(column);
+        return self();
+    }
+
+    /** Applies a "Contains anywhere..." filter to {@code column} (STRING columns only, this pass). */
+    public TSelf filterColumnByContains(IVoucherListColumn column, String value) {
+        GridColumnMenu.filterByContains(column, value);
+        return self();
+    }
+
+    /** Applies an "Exact match..." filter to {@code column} (STRING columns only, this pass). */
+    public TSelf filterColumnByExactMatch(IVoucherListColumn column, String value) {
+        GridColumnMenu.filterByExactMatch(column, value);
+        return self();
+    }
+
+    /** Shows {@code column} via the "Columns ▸" chooser (no-op if already visible). */
+    public TSelf showColumn(IVoucherListColumn column) {
+        GridColumnMenu.showColumn(column);
+        return self();
+    }
+
+    /** Hides {@code column} via the "Columns ▸" chooser (no-op if already hidden).
+     *  @throws com.gsl.exceptions.MandatoryColumnException if {@code column.mandatory()} */
+    public TSelf hideColumn(IVoucherListColumn column) {
+        GridColumnMenu.hideColumn(column);
+        return self();
+    }
+
+    /** Whether {@code column} is currently visible in the live grid. */
+    public boolean isColumnVisible(IVoucherListColumn column) {
+        return GridColumnMenu.isColumnCurrentlyVisible(column);
+    }
+
+    /** The multi-sort priority badge (e.g. {@code (1)}, {@code (2)}) currently shown on
+     *  {@code column}'s header, if any. */
+    public Optional<Integer> getColumnSortOrder(IVoucherListColumn column) {
+        return GridColumnMenu.getMultiSortOrder(column);
+    }
+
+    /** The 0-based left-to-right position of {@code column} among currently-visible columns —
+     *  empty if not currently visible. Position is mutable (drag-reorder) independent of
+     *  hideability, so this always reflects the live DOM, never an assumed fixed layout. */
+    public java.util.OptionalInt getColumnPosition(IVoucherListColumn column) {
+        return GridColumnMenu.getColumnPosition(column);
+    }
+
+    /** Drags {@code column}'s header to {@code targetPosition} (0-based, among currently-visible
+     *  columns) — the same interaction a user performs to reorder grid columns. */
+    public TSelf reorderColumn(IVoucherListColumn column, int targetPosition) {
+        GridColumnMenu.reorderColumn(column, targetPosition);
         return self();
     }
 }

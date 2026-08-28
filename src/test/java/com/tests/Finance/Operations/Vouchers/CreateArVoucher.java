@@ -6,7 +6,6 @@ import com.gsl.annotations.TestCaseId;
 import com.gsl.network.pattern.FinanceApiPattern;
 import com.gsl.enums.AppOperation;
 import com.gsl.enums.TestAuthor;
-import com.gsl.enums.VoucherDomain;
 import com.gsl.pages.enums.topmenucomponent.MainModuleType;
 import com.gsl.pages.Finance.Operations.ArVoucherListPage;
 import com.gsl.pages.HomePage;
@@ -15,8 +14,6 @@ import com.gsl.pages.enums.Finance.Operations.OperationsMenuType;
 import com.gsl.pages.Finance.Operations.ArVoucherAdd;
 import com.gsl.testdata.dto.MergedFinanceArVoucherData;
 import com.gsl.driver.DriverManager;
-import com.gsl.pages.Finance.Operations.Common.DocumentPopup;
-import com.gsl.flow.Finance.Operations.Common.PostSaveDialogHandler;
 import com.gsl.testdata.UserCredential;
 import com.gsl.reports.ActualResultsHolder;
 import com.gsl.reports.ArVoucherExtentDescriptionLogger;
@@ -27,11 +24,8 @@ import com.gsl.utils.Log;
 import com.gsl.utils.NavigationUtils;
 import com.gsl.utils.dataprovider.MergedFinArVoucherDataSupplier;
 import com.gsl.utils.dataprovider.source.finance.DbArVoucherDataSource;
-import com.gsl.validation.db.finance.ARVoucherDbValidator;
-import com.gsl.validation.db.finance.VoucherDbContextBuilder;
 import com.tests.WebTest;
 import org.testng.annotations.Test;
-import org.testng.asserts.SoftAssert;
 
 
 @ApiFlow(FinanceApiPattern.AR_VOUCHER)
@@ -76,14 +70,9 @@ public class CreateArVoucher extends WebTest {
         // ── Effectively-final references for lambda use ──────────────────────────
         final MergedFinanceArVoucherData testData = data;
 
-        // Cross-step object holders (DB snapshot state now lives inside VoucherDbContextBuilder)
-        final SoftAssert softAssert = new SoftAssert();
-        final HomePage[]          homeRef       = new HomePage[1];
-        final ArVoucherListPage[] listRef       = new ArVoucherListPage[1];
-        final ArVoucherAdd[]      addRef        = new ArVoucherAdd[1];
-        final String[]            docNoRef      = new String[1];
-        final com.gsl.pages.Common.DocumentMessageBox[] msgBoxRef = new com.gsl.pages.Common.DocumentMessageBox[1];
-        final DocumentPopup[]     popupRef      = new DocumentPopup[1];
+        final HomePage[]          homeRef = new HomePage[1];
+        final ArVoucherListPage[] listRef = new ArVoucherListPage[1];
+        final ArVoucherAdd[]      addRef  = new ArVoucherAdd[1];
 
         // ── Step 1: Login ─────────────────────────────────────────────────────────
         StepExecutor.step("Login to Application", () -> {
@@ -102,76 +91,14 @@ public class CreateArVoucher extends WebTest {
             ReportLogger.business("AR Voucher list page opened");
         });
 
-        // ── Step 3: Document header ───────────────────────────────────────────────
-        StepExecutor.step("Fill Document Information", () -> {
-            addRef[0] = listRef[0].clickAdd()
-                    .fillDocumentHeader(testData.getDocumentInformation());
-            var docInfo = addRef[0].getDocumentInformation();
-            ReportLogger.business("Doc Scheme  (UI): " + docInfo.getDocScheme());
-            ReportLogger.business("Doc Date    (UI): " + docInfo.getDocumentDate());
-            ReportLogger.business("Reference   (UI): " + docInfo.getReference());
-            ReportLogger.business("Cash / Bank (UI): " + docInfo.getCashBank());
-            ReportLogger.business("Remarks     (UI): " + docInfo.getRemarks());
-            ActualResultsHolder.get().setUiOwnerSite(docInfo.getOwnerSite());
-            ActualResultsHolder.get().setUiCashBank(docInfo.getCashBank());
-        });
+        // ── Step 3: Open Add form ─────────────────────────────────────────────────
+        StepExecutor.step("Open Add Form", () -> addRef[0] = listRef[0].clickAdd());
 
-        // ── Step 4: Sub-ledger rows + adjustments + payment ───────────────────────
-        StepExecutor.step("Fill Sub-Ledger Information", () -> {
-            addRef[0].fillSubLedgerRows(testData, true);
-            ReportLogger.business("Sub-ledger section complete: "
-                    + testData.getSubLedgerInformationList().size() + " rows");
-        });
-
-        // ── Step 5a: Capture Pre-Save DB State (finpost snapshot) ─────────────────
-        StepExecutor.step("Capture Pre-Save DB State (finpost snapshot)", () ->
-                VoucherDbContextBuilder.capturePreState(testData));
-
-        // ── Step 5b: Click Save ────────────────────────────────────────────────────
-        StepExecutor.step("Click Save", () -> {
-            VoucherDbContextBuilder.markSaveStart();
-            popupRef[0] = addRef[0].clickSave();
-        });
-
-        // ── Step 5c: Handle Post-Save Dialogs (type-aware) ────────────────────────
-        StepExecutor.step("Handle Post-Save Dialogs", () ->
-                msgBoxRef[0] = PostSaveDialogHandler.forDomain(VoucherDomain.AR)
-                        .handle(popupRef[0], testData));
-
-        // ── Step 5d: Verify Save Result ─────────────────────────────────────────────
-        StepExecutor.step("Verify Save Result", () -> {
-            docNoRef[0] = msgBoxRef[0].verifyDocumentSave(softAssert).getDocumentNo();
-            Log.info("Extracted Document No: {}", docNoRef[0]);
-            ReportLogger.pass("Voucher saved. Document No: " + docNoRef[0]);
-        });
-
-        // ── Step 5e: Capture Post-Save DB State (finpost snapshot) ────────────────
-        StepExecutor.step("Capture Post-Save DB State (finpost snapshot)", () ->
-                VoucherDbContextBuilder.capturePostState());
-
-        // ── Step 6: Close Voucher Page (per entry; lands back on the list) ────────
-        StepExecutor.step("Close Voucher Page", () -> {
-            if (msgBoxRef[0] != null) {
-                msgBoxRef[0].clickOk();
-            }
-            listRef[0] = addRef[0].close().clickYes(ArVoucherListPage::new);   // keep the handle
-            ReportLogger.business("Voucher page closed, returned to list");
-        });
-
-        // ── Step 7: Logout (deferred — session may be reused by a later test on this thread;
-        // real logout+driver-quit happens via RecoveryManager or end-of-block cleanup only) ────
-        StepExecutor.step("Logout (deferred)", () ->
-                ReportLogger.session("Logout deferred — session may be reused by a later test on this thread."));
-
-        // ── Step 8: Database Validation ───────────────────────────────────────────
-        StepExecutor.step("Database Validation", () -> {
-            new ARVoucherDbValidator().validate(
-                    VoucherDbContextBuilder.build(docNoRef[0], testData));
-            ReportLogger.pass("DB validated. Document No: " + docNoRef[0]);
-        });
-
-        // ── Step 9: Finalize save assertions (deferred header check) ──────────────
-        StepExecutor.step("Finalize save assertions", softAssert::assertAll);
+        // ── Delegate fill/save/verify/logout to the scenario behaviour ────────────
+        // (ArVoucherScenarioType.POSITIVE_CREATE_BEHAVIOR — see VoucherScenarioType unification)
+        boolean ok = testData.getScenarioType().execute(testData, addRef[0]);
+        org.testng.Assert.assertTrue(ok,
+                "Scenario behaviour did not complete successfully: " + testData.getScenarioType());
     }
 
     /**

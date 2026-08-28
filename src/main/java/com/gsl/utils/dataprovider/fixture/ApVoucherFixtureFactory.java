@@ -92,14 +92,14 @@ public class ApVoucherFixtureFactory {
      * <ol>
      *   <li>{@code ApVoucherScenarioType.values()} — all scenario types</li>
      *   <li>{@link #SHOULD_RUN} BiPredicate — filter to applicable scenarios</li>
-     *   <li>{@link ApVoucherScenarioType#loadData(LiveDbRefs)} — build data from DB values</li>
+     *   <li>{@link ApVoucherScenarioType#loadData(ApVoucherLiveDbRefs)} — build data from DB values</li>
      * </ol>
      *
      * @param testMethodName the exact test method name (e.g. {@code "createApVoucherAdvancePayment"})
      * @param refs           live DB reference values fetched by DbApVoucherDataSource
      * @return one data object per applicable scenario type
      */
-    public List<MergedFinanceApVoucherData> generate(String testMethodName, LiveDbRefs refs) {
+    public List<MergedFinanceApVoucherData> generate(String testMethodName, ApVoucherLiveDbRefs refs) {
         return scenariosFor(testMethodName).stream()
                 .map(scenario -> scenario.loadData(refs))
                 .collect(Collectors.toList());

@@ -2,7 +2,7 @@ package com.gsl.utils.dataprovider.fixture.finance;
 
 import com.gsl.pages.Finance.Operations.ApVoucherAdd;
 import com.gsl.testdata.dto.MergedFinanceApVoucherData;
-import com.gsl.utils.dataprovider.fixture.LiveDbRefs;
+import com.gsl.utils.dataprovider.fixture.ApVoucherLiveDbRefs;
 
 import java.util.function.BiPredicate;
 import java.util.function.Function;
@@ -11,7 +11,7 @@ import java.util.function.Supplier;
 /**
  * Each enum constant combines:
  * <ul>
- *   <li>A <b>template loader</b> — {@code Function<LiveDbRefs, MergedFinanceApVoucherData>}
+ *   <li>A <b>template loader</b> — {@code Function<ApVoucherLiveDbRefs, MergedFinanceApVoucherData>}
  *       that builds the test data from live DB values.</li>
  *   <li>A <b>behavior supplier</b> — {@code Supplier<BiPredicate<MergedFinanceApVoucherData, ApVoucherAdd>>}
  *       that performs the UI interaction and returns true if the voucher was saved.</li>
@@ -27,7 +27,8 @@ import java.util.function.Supplier;
  *   <li>{@code DOC_*} scenarios     → {@code createApVoucherDocumentPayment} test method</li>
  * </ul>
  */
-public enum ApVoucherScenarioType {
+public enum ApVoucherScenarioType implements
+        VoucherScenarioType<MergedFinanceApVoucherData, ApVoucherAdd, ApVoucherLiveDbRefs> {
 
     // ─── Advance Payment (On Account = Yes) ──────────────────────────────────
 
@@ -37,7 +38,7 @@ public enum ApVoucherScenarioType {
      */
     ADVANCE_NO_TDS(
             ApVoucherTemplateLoader::advanceNoTdsTemplate,
-            ApVoucherPredicateFactory.ADVANCE_NO_TDS_BEHAVIOR,
+            ApVoucherPredicateFactory.ADVANCE_POSITIVE_BEHAVIOR,
             true
     ),
 
@@ -48,7 +49,7 @@ public enum ApVoucherScenarioType {
      */
     ADVANCE_WITH_TDS(
             ApVoucherTemplateLoader::advanceWithTdsTemplate,
-            ApVoucherPredicateFactory.ADVANCE_WITH_TDS_BEHAVIOR,
+            ApVoucherPredicateFactory.ADVANCE_POSITIVE_BEHAVIOR,
             true
     ),
 
@@ -61,7 +62,7 @@ public enum ApVoucherScenarioType {
      */
     ADVANCE_WITH_TDS_NO_NATURE(
             ApVoucherTemplateLoader::advanceWithTdsTemplate,
-            ApVoucherPredicateFactory.ADVANCE_WITH_TDS_BEHAVIOR,
+            ApVoucherPredicateFactory.ADVANCE_POSITIVE_BEHAVIOR,
             true
     ),
 
@@ -72,7 +73,7 @@ public enum ApVoucherScenarioType {
      */
     ADVANCE_WITH_TDS_SINGLE_NATURE(
             ApVoucherTemplateLoader::advanceWithTdsTemplate,
-            ApVoucherPredicateFactory.ADVANCE_WITH_TDS_BEHAVIOR,
+            ApVoucherPredicateFactory.ADVANCE_POSITIVE_BEHAVIOR,
             true
     ),
 
@@ -85,7 +86,7 @@ public enum ApVoucherScenarioType {
      */
     ADVANCE_MULTI_SL_WITH_PAYMENT(
             ApVoucherTemplateLoader::advanceMultiSlWithPaymentTemplate,
-            ApVoucherPredicateFactory.ADVANCE_NO_TDS_BEHAVIOR,
+            ApVoucherPredicateFactory.ADVANCE_POSITIVE_BEHAVIOR,
             true
     ),
 
@@ -98,7 +99,7 @@ public enum ApVoucherScenarioType {
      */
     DOC_NO_ADJUSTMENT(
             ApVoucherTemplateLoader::docNoAdjustmentTemplate,
-            ApVoucherPredicateFactory.DOC_NO_ADJUSTMENT_BEHAVIOR,
+            ApVoucherPredicateFactory.DOC_POSITIVE_BEHAVIOR,
             false
     ),
 
@@ -108,7 +109,7 @@ public enum ApVoucherScenarioType {
      */
     DOC_SELECT_DOCUMENT(
             ApVoucherTemplateLoader::docSelectDocumentTemplate,
-            ApVoucherPredicateFactory.DOC_SELECT_DOCUMENT_BEHAVIOR,
+            ApVoucherPredicateFactory.DOC_POSITIVE_BEHAVIOR,
             false
     ),
 
@@ -118,7 +119,7 @@ public enum ApVoucherScenarioType {
      */
     DOC_FIFO(
             ApVoucherTemplateLoader::docFifoTemplate,
-            ApVoucherPredicateFactory.DOC_FIFO_BEHAVIOR,
+            ApVoucherPredicateFactory.DOC_POSITIVE_BEHAVIOR,
             false
     ),
 
@@ -127,7 +128,7 @@ public enum ApVoucherScenarioType {
      */
     DOC_REFERENCE_SITEWISE_FIFO(
             ApVoucherTemplateLoader::docRefSitewiseFifoTemplate,
-            ApVoucherPredicateFactory.DOC_REFERENCE_SITEWISE_FIFO_BEHAVIOR,
+            ApVoucherPredicateFactory.DOC_POSITIVE_BEHAVIOR,
             false
     ),
 
@@ -224,7 +225,7 @@ public enum ApVoucherScenarioType {
 
     // ─────────────────────────────────────────────────────────────────────────
 
-    private final Function<LiveDbRefs, MergedFinanceApVoucherData> templateLoader;
+    private final Function<ApVoucherLiveDbRefs, MergedFinanceApVoucherData> templateLoader;
     private final Supplier<BiPredicate<MergedFinanceApVoucherData, ApVoucherAdd>> behaviorSupplier;
 
     /**
@@ -236,7 +237,7 @@ public enum ApVoucherScenarioType {
     private final boolean onAccount;
 
     ApVoucherScenarioType(
-            Function<LiveDbRefs, MergedFinanceApVoucherData> templateLoader,
+            Function<ApVoucherLiveDbRefs, MergedFinanceApVoucherData> templateLoader,
             Supplier<BiPredicate<MergedFinanceApVoucherData, ApVoucherAdd>> behaviorSupplier,
             boolean onAccount) {
         this.templateLoader    = templateLoader;
@@ -257,7 +258,8 @@ public enum ApVoucherScenarioType {
      * @param refs live DB reference values fetched by DbApVoucherDataSource
      * @return fully built test data object ready for injection into the test
      */
-    public MergedFinanceApVoucherData loadData(LiveDbRefs refs) {
+    @Override
+    public MergedFinanceApVoucherData loadData(ApVoucherLiveDbRefs refs) {
         MergedFinanceApVoucherData data = templateLoader.apply(refs);
         data.setScenarioType(this);
         return data;
@@ -270,6 +272,7 @@ public enum ApVoucherScenarioType {
      * @param page the ApVoucherAdd page component (injected by the test method)
      * @return true if the AP Voucher was saved (or validation error confirmed for negative scenarios)
      */
+    @Override
     public boolean execute(MergedFinanceApVoucherData data, ApVoucherAdd page) {
         return behaviorSupplier.get().test(data, page);
     }

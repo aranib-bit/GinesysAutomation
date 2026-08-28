@@ -5,6 +5,7 @@ import com.gsl.enums.WaitType;
 import com.gsl.popup.PopupMonitor;
 import com.gsl.reports.ReportLogger;
 import org.openqa.selenium.By;
+import org.openqa.selenium.Keys;
 import org.openqa.selenium.WebElement;
 import org.openqa.selenium.interactions.Actions;
 import org.openqa.selenium.interactions.WheelInput;
@@ -70,6 +71,23 @@ public class ActionUtils {
         element.clear();
         getActions().sendKeys(element, keys).perform();
         PopupMonitor.checkAfterAction("sendKeys " + locator);
+    }
+
+    /** Presses Escape (via keyboard, not targeted at any element) — used to dismiss a floating
+     *  ExtJS menu/flyout that has no reliable "close" button of its own. */
+    public static void pressEscape() {
+        ReportLogger.uiAction("pressEscape");
+        getActions().sendKeys(Keys.ESCAPE).perform();
+    }
+
+    /** Holds Shift while clicking — the modifier-key interaction ExtJS grids use to append a
+     *  column to an existing multi-column sort instead of replacing it (see
+     *  {@code GridColumnMenu.addSortAscending}/{@code addSortDescending}). */
+    public static void shiftClick(By locator) {
+        ReportLogger.uiAction("shiftClick {}", locator);
+        WebElement element = DriverManager.getDriver().findElement(locator);
+        getActions().keyDown(Keys.SHIFT).click(element).keyUp(Keys.SHIFT).perform();
+        PopupMonitor.checkAfterAction("shiftClick " + locator);
     }
 
     public static void dragAndDrop(By sourceLocator, By targetLocator) {

@@ -1,20 +1,27 @@
 package com.gsl.utils.dataprovider.fixture.finance;
 
 import com.gsl.enums.Finance.Operations.GeneralVoucher.GlLineType;
+import com.gsl.enums.VoucherDomain;
+import com.gsl.flow.Finance.Operations.Common.PostSaveDialogHandler;
+import com.gsl.pages.Common.DocumentMessageBox;
 import com.gsl.pages.Finance.Operations.Common.DocumentPopup;
 import com.gsl.pages.Finance.Operations.Common.PaymentInfoCheckWarning;
 import com.gsl.pages.Finance.Operations.GeneralVoucherAdd;
 import com.gsl.pages.Finance.Operations.GeneralVoucherListPage;
 import com.gsl.pages.pagecomponent.Finance.Operations.GeneralVoucher.GeneralVoucherExpenseIncomeDetail;
+import com.gsl.reports.ActualResultsHolder;
 import com.gsl.reports.ReportLogger;
 import com.gsl.reports.StepExecutor;
 import com.gsl.testdata.Finance.Operations.Vouchers.GeneralVoucher.DocumentInformation;
 import com.gsl.testdata.Finance.Operations.Vouchers.GeneralVoucher.ExpenseIncomeDetail;
 import com.gsl.testdata.Finance.Operations.Vouchers.GeneralVoucher.SiteAllocation;
 import com.gsl.testdata.dto.MergedFinanceGeneralVoucherData;
+import com.gsl.validation.db.finance.GeneralVoucherDbValidator;
+import org.testng.asserts.SoftAssert;
 
 import java.math.BigDecimal;
 import java.time.LocalDate;
+import java.time.LocalDateTime;
 import java.util.List;
 import java.util.function.BiPredicate;
 import java.util.function.Supplier;
@@ -135,6 +142,79 @@ public final class GeneralVoucherPredicateFactory {
                 .totalInvocations(1)
                 .build();
     }
+
+    /**
+     * Positive create behavior — fill header + Expense/Income rows + Cash/Bank payment info →
+     * Save → handle post-save dialogs → verify → close → logout (deferred) → DB validate →
+     * finalize assertions. Verbatim extraction of {@code CreateGeneralVoucher}'s former
+     * {@code runVoucherCreationFlow} steps 3–11 (see {@code VoucherScenarioType} unification) —
+     * Step 1 (Login) and the lazy-DB-load block stay in the test method, since GV's
+     * {@code GetAllSiteForAUser} lookup must run after login/navigation, unlike AP/AR.
+     */
+    public static final Supplier<BiPredicate<MergedFinanceGeneralVoucherData, GeneralVoucherAdd>>
+        POSITIVE_CREATE_BEHAVIOR = () -> (data, page) -> {
+
+            final String[] docNoRef = new String[1];
+            final DocumentMessageBox[] msgBoxRef = new DocumentMessageBox[1];
+            final DocumentPopup[] popupRef = new DocumentPopup[1];
+            final LocalDateTime[] saveStartTimeRef = new LocalDateTime[1];
+            final SoftAssert softAssert = new SoftAssert();
+
+            StepExecutor.step("Fill Document Information", () -> {
+                page.fillDocumentHeader(data.getDocumentInformation());
+                var docInfo = page.getDocumentInformation();
+                ReportLogger.business("Doc Scheme  (UI): " + docInfo.getDocScheme());
+                ReportLogger.business("Doc Date    (UI): " + docInfo.getDocumentDate());
+                ReportLogger.business("Reference   (UI): " + docInfo.getReference());
+                ReportLogger.business("Cash / Bank (UI): " + docInfo.getCashBank());
+                ReportLogger.business("Remarks     (UI): " + docInfo.getRemarks());
+                ActualResultsHolder.get().setUiOwnerSite(docInfo.getOwnerSite());
+                ActualResultsHolder.get().setUiCashBank(docInfo.getCashBank());
+            });
+
+            StepExecutor.step("Fill Expense/Income Detail", () -> {
+                page.fillExpenseIncomeRows(data);
+                ReportLogger.business("Expense/Income Detail section complete: "
+                        + data.getExpenseIncomeDetailList().size() + " rows");
+            });
+
+            StepExecutor.step("Fill Cash/Bank Payment Information", () ->
+                    page.handlePaymentInformation(data.getCashBankPaymentInfo()));
+
+            StepExecutor.step("Click Save", () -> {
+                saveStartTimeRef[0] = LocalDateTime.now();
+                popupRef[0] = page.clickSave();
+            });
+
+            StepExecutor.step("Handle Post-Save Dialogs", () ->
+                    msgBoxRef[0] = PostSaveDialogHandler.forDomain(VoucherDomain.GV)
+                            .handle(popupRef[0], data));
+
+            StepExecutor.step("Verify Save Result", () -> {
+                docNoRef[0] = msgBoxRef[0].verifyDocumentSave(softAssert).getDocumentNo();
+                ReportLogger.pass("Voucher saved. Document No: " + docNoRef[0]);
+            });
+
+            StepExecutor.step("Close Voucher Page", () -> {
+                if (msgBoxRef[0] != null) {
+                    msgBoxRef[0].clickOk();
+                }
+                page.close().clickYes(GeneralVoucherListPage::new);
+                ReportLogger.business("Voucher page closed, returned to list");
+            });
+
+            StepExecutor.step("Logout (deferred)", () ->
+                    ReportLogger.session("Logout deferred — session may be reused by a later test on this thread."));
+
+            StepExecutor.step("Database Validation", () -> {
+                new GeneralVoucherDbValidator().validate(data, docNoRef[0], saveStartTimeRef[0]);
+                ReportLogger.pass("DB validated. Document No: " + docNoRef[0]);
+            });
+
+            StepExecutor.step("Finalize save assertions", softAssert::assertAll);
+
+            return docNoRef[0] != null;
+        };
 
     /**
      * Shared negative-scenario behavior: fill header + rows → Save → assert the

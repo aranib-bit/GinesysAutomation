@@ -2,7 +2,7 @@ package com.gsl.utils.dataprovider.fixture.finance;
 
 import com.gsl.pages.Finance.Operations.ArVoucherAdd;
 import com.gsl.testdata.dto.MergedFinanceArVoucherData;
-import com.gsl.utils.dataprovider.fixture.LiveDbRefs;
+import com.gsl.utils.dataprovider.fixture.ArVoucherLiveDbRefs;
 
 import java.util.function.BiPredicate;
 import java.util.function.Function;
@@ -11,7 +11,7 @@ import java.util.function.Supplier;
 /**
  * Each enum constant combines:
  * <ul>
- *   <li>A <b>template loader</b> — {@code Function<LiveDbRefs, MergedFinanceArVoucherData>}
+ *   <li>A <b>template loader</b> — {@code Function<ArVoucherLiveDbRefs, MergedFinanceArVoucherData>}
  *       that builds the test data from live DB values.</li>
  *   <li>A <b>behavior supplier</b> — {@code Supplier<BiPredicate<MergedFinanceArVoucherData, ArVoucherAdd>>}
  *       that performs the UI interaction and returns true if the voucher was saved.</li>
@@ -19,26 +19,27 @@ import java.util.function.Supplier;
  *
  * The {@code Supplier} wrapper ensures lazy evaluation — safe for parallel test execution.
  */
-public enum ArVoucherScenarioType {
+public enum ArVoucherScenarioType implements
+        VoucherScenarioType<MergedFinanceArVoucherData, ArVoucherAdd, ArVoucherLiveDbRefs> {
 
     DOC_NO_ADJUSTMENT(
             ArVoucherTemplateLoader::docNoAdjustmentTemplate,
-            ArVoucherPredicateFactory.DOC_NO_ADJUSTMENT_BEHAVIOR
+            ArVoucherPredicateFactory.POSITIVE_CREATE_BEHAVIOR
     ),
 
     SELECT_DOCUMENT(
             ArVoucherTemplateLoader::selectDocumentTemplate,
-            ArVoucherPredicateFactory.SELECT_DOCUMENT_BEHAVIOR
+            ArVoucherPredicateFactory.POSITIVE_CREATE_BEHAVIOR
     ),
 
     FIFO_SETOFF(
             ArVoucherTemplateLoader::fifoTemplate,
-            ArVoucherPredicateFactory.FIFO_SETOFF_BEHAVIOR
+            ArVoucherPredicateFactory.POSITIVE_CREATE_BEHAVIOR
     ),
 
     REFERENCE_SITEWISE_FIFO(
             ArVoucherTemplateLoader::refSitewiseFifoTemplate,
-            ArVoucherPredicateFactory.REF_SITEWISE_FIFO_BEHAVIOR
+            ArVoucherPredicateFactory.POSITIVE_CREATE_BEHAVIOR
     ),
 
     // ─── T-03 Negative scenarios (expect a validation-error popup) ────────────
@@ -76,11 +77,11 @@ public enum ArVoucherScenarioType {
             ArVoucherPredicateFactory.INLINE_VALIDATION_BEHAVIOR
     );
 
-    private final Function<LiveDbRefs, MergedFinanceArVoucherData> templateLoader;
+    private final Function<ArVoucherLiveDbRefs, MergedFinanceArVoucherData> templateLoader;
     private final Supplier<BiPredicate<MergedFinanceArVoucherData, ArVoucherAdd>> behaviorSupplier;
 
     ArVoucherScenarioType(
-            Function<LiveDbRefs, MergedFinanceArVoucherData> templateLoader,
+            Function<ArVoucherLiveDbRefs, MergedFinanceArVoucherData> templateLoader,
             Supplier<BiPredicate<MergedFinanceArVoucherData, ArVoucherAdd>> behaviorSupplier) {
         this.templateLoader   = templateLoader;
         this.behaviorSupplier = behaviorSupplier;
@@ -90,7 +91,8 @@ public enum ArVoucherScenarioType {
      * Builds the test data object from live DB values and stamps {@code scenarioType = this}
      * on it so the test method can dispatch to {@link #execute}.
      */
-    public MergedFinanceArVoucherData loadData(LiveDbRefs refs) {
+    @Override
+    public MergedFinanceArVoucherData loadData(ArVoucherLiveDbRefs refs) {
         MergedFinanceArVoucherData data = templateLoader.apply(refs);
         data.setScenarioType(this);
         return data;
@@ -103,6 +105,7 @@ public enum ArVoucherScenarioType {
      * @param page the ArVoucherAdd page component (injected by the test method)
      * @return true if the AR Voucher was saved successfully
      */
+    @Override
     public boolean execute(MergedFinanceArVoucherData data, ArVoucherAdd page) {
         return behaviorSupplier.get().test(data, page);
     }

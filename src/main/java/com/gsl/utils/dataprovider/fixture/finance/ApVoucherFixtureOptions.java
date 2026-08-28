@@ -91,7 +91,7 @@ public class ApVoucherFixtureOptions {
      * Which TDS Applicable Amount behaviour to exercise for {@code ADVANCE_WITH_TDS} scenarios.
      * Defaults to {@link TdsApplicableAmountBehaviour#GROSS_EQUALS_TDS} (the smoke baseline).
      *
-     * <p>Passed through {@link com.gsl.utils.dataprovider.fixture.LiveDbRefs} into
+     * <p>Passed through {@link com.gsl.utils.dataprovider.fixture.ApVoucherLiveDbRefs} into
      * {@link com.gsl.utils.dataprovider.fixture.finance.ApVoucherTemplateLoader#buildTdsRows}
      * so that the generated {@link com.gsl.testdata.Finance.Operations.Vouchers.APVoucher.TdsAndNetPayable}
      * rows carry the correct behaviour name for execution-time dispatch.
@@ -127,7 +127,7 @@ public class ApVoucherFixtureOptions {
 
     /**
      * Payment mode declared by the {@link SelectDocumentVariant} for DOC_SELECT_DOCUMENT scenarios.
-     * Carried through to {@link com.gsl.utils.dataprovider.fixture.LiveDbRefs} and resolved inside
+     * Carried through to {@link com.gsl.utils.dataprovider.fixture.ApVoucherLiveDbRefs} and resolved inside
      * {@link ApVoucherTemplateLoader#docSelectDocumentTemplate}. RANDOM resolves to CHEQUE or
      * NEFT_RTGS only — NONE is a dedicated separate variant.
      * Defaults to {@link SelectDocumentVariant.PaymentMode#NONE} for all non-Select-Document scenarios.

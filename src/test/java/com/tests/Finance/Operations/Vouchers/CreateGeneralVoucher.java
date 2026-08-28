@@ -6,11 +6,7 @@ import com.gsl.annotations.TestCaseId;
 import com.gsl.driver.DriverManager;
 import com.gsl.enums.AppOperation;
 import com.gsl.enums.TestAuthor;
-import com.gsl.enums.VoucherDomain;
-import com.gsl.flow.Finance.Operations.Common.PostSaveDialogHandler;
 import com.gsl.network.pattern.FinanceApiPattern;
-import com.gsl.pages.Common.DocumentMessageBox;
-import com.gsl.pages.Finance.Operations.Common.DocumentPopup;
 import com.gsl.pages.Finance.Operations.GeneralVoucherAdd;
 import com.gsl.pages.Finance.Operations.GeneralVoucherListPage;
 import com.gsl.pages.HomePage;
@@ -26,10 +22,8 @@ import com.gsl.utils.Log;
 import com.gsl.utils.NavigationUtils;
 import com.gsl.utils.dataprovider.MergedFinGeneralVoucherDataSupplier;
 import com.gsl.utils.dataprovider.source.finance.DbGeneralVoucherDataSource;
-import com.gsl.validation.db.finance.GeneralVoucherDbValidator;
 import com.tests.WebTest;
 import org.testng.annotations.Test;
-import org.testng.asserts.SoftAssert;
 
 /**
  * Positive-path tests for General Voucher — mirrors {@code CreateApVoucher}'s flow shape, split
@@ -46,6 +40,16 @@ import org.testng.asserts.SoftAssert;
  *       save. "MIXED" is reserved for this method only — it is no longer used as a catch-all tag
  *       for the combination matrix's own (single-ledger-type) rows.</li>
  * </ul>
+ *
+ * <p>Both methods delegate fill/save/verify/logout/DB-validation to
+ * {@code GeneralVoucherPredicateFactory.POSITIVE_CREATE_BEHAVIOR} via
+ * {@link com.gsl.utils.dataprovider.fixture.finance.GeneralVoucherScenarioType#execute} — see
+ * the {@code VoucherScenarioType} unification. Login and the lazy-DB-load block stay here
+ * rather than moving into the behavior: GV's {@code DbGeneralVoucherDataSource}
+ * {@code GetAllSiteForAUser} lookup executes a relative-URL XHR inside the current Selenium
+ * browser's page context and needs the app already loaded, so the lazy load must run after
+ * login/navigation — the opposite ordering from AP/AR (see the lazy-load block below for the
+ * full root-cause note).
  *
  * <p>Per-row GL-type branching lives in
  * {@code GeneralVoucherExpenseIncomeDetail.fillExpenseIncomeRows}, not here —
@@ -87,10 +91,11 @@ public class CreateGeneralVoucher extends WebTest {
     }
 
     /**
-     * Shared UI flow for both {@link #createGeneralVoucher} and {@link #createGeneralVoucherMixedTypes}
-     * — login, resolve test data, fill header, fill Expense/Income Detail rows (per-row Type1/2/3
-     * branching lives inside {@code GeneralVoucherExpenseIncomeDetail}, not here), save, verify,
-     * DB-validate.
+     * Shared entry flow for both {@link #createGeneralVoucher} and
+     * {@link #createGeneralVoucherMixedTypes} — login, resolve test data (lazy DB load),
+     * navigate, open the Add form, then delegate the entire fill/save/verify/DB-validate/logout
+     * sequence to the scenario's behavior via
+     * {@link com.gsl.utils.dataprovider.fixture.finance.GeneralVoucherScenarioType#execute}.
      *
      * @param placeholderOrData the row from the DataProvider — either already-resolved Excel-mode
      *                          data, or a DB-mode placeholder (empty {@code expenseIncomeDetailList})
@@ -101,14 +106,9 @@ public class CreateGeneralVoucher extends WebTest {
     private void runVoucherCreationFlow(MergedFinanceGeneralVoucherData placeholderOrData,
             java.util.function.UnaryOperator<MergedFinanceGeneralVoucherData> lazyLoader) {
 
-        final HomePage[]                 homeRef  = new HomePage[1];
-        final GeneralVoucherListPage[]    listRef  = new GeneralVoucherListPage[1];
-        final GeneralVoucherAdd[]         addRef   = new GeneralVoucherAdd[1];
-        final String[]                    docNoRef = new String[1];
-        final DocumentMessageBox[]         msgBoxRef = new DocumentMessageBox[1];
-        final DocumentPopup[]              popupRef = new DocumentPopup[1];
-        final java.time.LocalDateTime[]    saveStartTimeRef = new java.time.LocalDateTime[1];
-        final SoftAssert softAssert = new SoftAssert();
+        final HomePage[]              homeRef = new HomePage[1];
+        final GeneralVoucherListPage[] listRef = new GeneralVoucherListPage[1];
+        final GeneralVoucherAdd[]      addRef  = new GeneralVoucherAdd[1];
 
         // ── Step 1: Login ─────────────────────────────────────────────────────────
         StepExecutor.step("Login to Application", () -> {
@@ -154,72 +154,13 @@ public class CreateGeneralVoucher extends WebTest {
             ReportLogger.business("General Voucher list page opened");
         });
 
-        // ── Step 3: Document header ───────────────────────────────────────────────
-        StepExecutor.step("Fill Document Information", () -> {
-            addRef[0] = listRef[0].clickAdd()
-                    .fillDocumentHeader(testData.getDocumentInformation());
-            var docInfo = addRef[0].getDocumentInformation();
-            ReportLogger.business("Doc Scheme  (UI): " + docInfo.getDocScheme());
-            ReportLogger.business("Doc Date    (UI): " + docInfo.getDocumentDate());
-            ReportLogger.business("Reference   (UI): " + docInfo.getReference());
-            ReportLogger.business("Cash / Bank (UI): " + docInfo.getCashBank());
-            ReportLogger.business("Remarks     (UI): " + docInfo.getRemarks());
-            ActualResultsHolder.get().setUiOwnerSite(docInfo.getOwnerSite());
-            ActualResultsHolder.get().setUiCashBank(docInfo.getCashBank());
-        });
+        // ── Step 3: Open Add form ─────────────────────────────────────────────────
+        StepExecutor.step("Open Add Form", () -> addRef[0] = listRef[0].clickAdd());
 
-        // ── Step 4: Fill Expense/Income Detail rows (per-row Type1/2/3 branching
-        //            lives inside GeneralVoucherExpenseIncomeDetail, not here) ─────
-        StepExecutor.step("Fill Expense/Income Detail", () -> {
-            addRef[0].fillExpenseIncomeRows(testData);
-            ReportLogger.business("Expense/Income Detail section complete: "
-                    + testData.getExpenseIncomeDetailList().size() + " rows");
-        });
-
-        // ── Step 4b: Cash/Bank counter-leg Payment Window (CHEQUE/NEFT_RTGS only —
-        //             no-op for null/CASH, see GeneralVoucherExpenseIncomeDetail#handlePaymentInformation) ──
-        StepExecutor.step("Fill Cash/Bank Payment Information", () -> {
-            addRef[0].handlePaymentInformation(testData.getCashBankPaymentInfo());
-        });
-
-        // ── Step 5: Click Save ────────────────────────────────────────────────────
-        StepExecutor.step("Click Save", () -> {
-            saveStartTimeRef[0] = java.time.LocalDateTime.now();
-            popupRef[0] = addRef[0].clickSave();
-        });
-
-        // ── Step 6: Handle Post-Save Dialogs ──────────────────────────────────────
-        StepExecutor.step("Handle Post-Save Dialogs", () ->
-                msgBoxRef[0] = PostSaveDialogHandler.forDomain(VoucherDomain.GV)
-                        .handle(popupRef[0], testData));
-
-        // ── Step 7: Verify Save Result ─────────────────────────────────────────────
-        StepExecutor.step("Verify Save Result", () -> {
-            docNoRef[0] = msgBoxRef[0].verifyDocumentSave(softAssert).getDocumentNo();
-            ReportLogger.pass("Voucher saved. Document No: " + docNoRef[0]);
-        });
-
-        // ── Step 8: Close Voucher Page ────────────────────────────────────────────
-        StepExecutor.step("Close Voucher Page", () -> {
-            if (msgBoxRef[0] != null) {
-                msgBoxRef[0].clickOk();
-            }
-            listRef[0] = addRef[0].close().clickYes(GeneralVoucherListPage::new);   // keep the handle
-            ReportLogger.business("Voucher page closed, returned to list");
-        });
-
-        // ── Step 9: Logout (deferred — session may be reused by a later test on this thread;
-        // real logout+driver-quit happens via RecoveryManager or end-of-block cleanup only) ────
-        StepExecutor.step("Logout (deferred)", () ->
-                ReportLogger.session("Logout deferred — session may be reused by a later test on this thread."));
-
-        // ── Step 10: Database Validation (fincosttag site-allocation checks — see plan §2.1/§2.2) ──
-        StepExecutor.step("Database Validation", () -> {
-            new GeneralVoucherDbValidator().validate(testData, docNoRef[0], saveStartTimeRef[0]);
-            ReportLogger.pass("DB validated. Document No: " + docNoRef[0]);
-        });
-
-        // ── Step 11: Finalize save assertions (deferred header check) ─────────────
-        StepExecutor.step("Finalize save assertions", softAssert::assertAll);
+        // ── Delegate fill/save/verify/logout to the scenario behaviour ────────────
+        // (GeneralVoucherPredicateFactory.POSITIVE_CREATE_BEHAVIOR — see VoucherScenarioType unification)
+        boolean ok = testData.getScenarioType().execute(testData, addRef[0]);
+        org.testng.Assert.assertTrue(ok,
+                "Scenario behaviour did not complete successfully: " + testData.getScenarioType());
     }
 }

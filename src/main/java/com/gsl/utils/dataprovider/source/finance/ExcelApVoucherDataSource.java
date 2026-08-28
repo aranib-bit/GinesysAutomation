@@ -11,10 +11,9 @@ import com.gsl.testdata.MasterTestData;
 import com.gsl.testdata.dto.MergedFinanceApVoucherData;
 import com.gsl.utils.Log;
 import com.gsl.utils.dataprovider.source.TestDataSource;
+import com.gsl.utils.io.OptionalColumnMerger;
 import io.github.sskorol.data.XlsxReader;
 import one.util.streamex.IntStreamEx;
-import org.apache.poi.ss.usermodel.*;
-import org.apache.poi.xssf.usermodel.XSSFWorkbook;
 import org.jdbi.v3.core.Jdbi;
 
 import java.util.List;
@@ -251,159 +250,30 @@ public class ExcelApVoucherDataSource implements TestDataSource<MergedFinanceApV
     }
 
     /**
-     * Reads the optional "On Account Confirm" column from the DocumentInformation sheet
-     * using Apache POI directly — bypassing XlsxReader so that absent column headers
-     * never cause a hard failure.
-     *
-     * <p>If the column is absent the method is a silent no-op.
-     * If present, values are merged into {@code docList} via
-     * {@link DocumentInformation#setOnAccountConfirm(String)}, keyed on TestCaseID (case-insensitive).
+     * Reads the optional "On Account Confirm" column from the DocumentInformation sheet —
+     * bypassing XlsxReader so that an absent column header never causes a hard failure — and
+     * merges values into {@code docList} via {@link DocumentInformation#setOnAccountConfirm(String)},
+     * keyed on TestCaseID (case-insensitive). Mechanics live in {@link OptionalColumnMerger}.
      */
     private static void readOptionalOnAccountConfirm(
             String excelPath, List<DocumentInformation> docList) {
-
-        final String SHEET_NAME  = "DocumentInformation";
-        final String COL_TC_ID   = "TestCaseID";
-        final String COL_CONFIRM = "On Account Confirm";
-
-        try (java.io.FileInputStream fis = new java.io.FileInputStream(excelPath);
-             Workbook workbook = new XSSFWorkbook(fis)) {
-
-            Sheet sheet = workbook.getSheet(SHEET_NAME);
-            if (sheet == null) {
-                Log.debug("[ExcelApVoucherDataSource] Sheet '{}' not found — skipping On Account Confirm read",
-                        SHEET_NAME);
-                return;
-            }
-
-            Row header = sheet.getRow(0);
-            if (header == null) return;
-
-            int tcIdCol = -1, confirmCol = -1;
-            for (Cell cell : header) {
-                String h = cell.getStringCellValue().trim();
-                if (COL_TC_ID.equalsIgnoreCase(h))   tcIdCol    = cell.getColumnIndex();
-                if (COL_CONFIRM.equalsIgnoreCase(h))  confirmCol = cell.getColumnIndex();
-            }
-
-            if (confirmCol == -1) {
-                Log.debug("[ExcelApVoucherDataSource] '{}' column not present in sheet '{}' — no-op",
-                        COL_CONFIRM, SHEET_NAME);
-                return;
-            }
-
-            // Build lookup: testcaseid (lower) → confirm value
-            java.util.Map<String, String> confirmMap = new java.util.HashMap<>();
-            for (int r = 1; r <= sheet.getLastRowNum(); r++) {
-                Row row = sheet.getRow(r);
-                if (row == null) continue;
-                String tcId = tcIdCol >= 0 ? cellStr(row.getCell(tcIdCol)) : null;
-                String val  = cellStr(row.getCell(confirmCol));
-                if (tcId != null && val != null) {
-                    confirmMap.put(tcId.toLowerCase(), val);
-                }
-            }
-
-            docList.forEach(doc -> {
-                if (doc.getTestCaseId() != null) {
-                    String val = confirmMap.get(doc.getTestCaseId().toLowerCase());
-                    if (val != null) doc.setOnAccountConfirm(val);
-                }
-            });
-
-            Log.debug("[ExcelApVoucherDataSource] 'On Account Confirm' merged for {} row(s)", confirmMap.size());
-
-        } catch (Exception e) {
-            Log.warn("[ExcelApVoucherDataSource] Could not read '{}' column — skipping ({})",
-                    COL_CONFIRM, e.getMessage());
-        }
+        OptionalColumnMerger.mergeByOneKey(
+                excelPath, "DocumentInformation", "TestCaseID", "On Account Confirm",
+                docList, DocumentInformation::getTestCaseId, DocumentInformation::setOnAccountConfirm,
+                "[ExcelApVoucherDataSource]");
     }
 
     /**
-     * Reads the optional "Deduct TDS Confirm" column from the SubLedgerInformation sheet
-     * using Apache POI directly — bypassing XlsxReader so that absent column headers
-     * never cause a hard failure.
-     *
-     * <p>If the column is absent the method is a silent no-op.
-     * If present, values are merged into {@code subLedgerList} via
-     * {@link SubLedgerInformation#setDeductTdsConfirm(String)}, keyed on
-     * TestCaseID (case-insensitive) + LineNo.
+     * Reads the optional "Deduct TDS Confirm" column from the SubLedgerInformation sheet —
+     * bypassing XlsxReader so that an absent column header never causes a hard failure — and
+     * merges values into {@code subLedgerList} via {@link SubLedgerInformation#setDeductTdsConfirm(String)},
+     * keyed on TestCaseID (case-insensitive) + LineNo. Mechanics live in {@link OptionalColumnMerger}.
      */
     private static void readOptionalDeductTdsConfirm(
             String excelPath, List<SubLedgerInformation> subLedgerList) {
-
-        final String SHEET_NAME  = "SubLedgerInformation";
-        final String COL_TC_ID   = "TestCaseID";
-        final String COL_LINE_NO = "LineNo";
-        final String COL_CONFIRM = "Deduct TDS Confirm";
-
-        try (java.io.FileInputStream fis = new java.io.FileInputStream(excelPath);
-             Workbook workbook = new XSSFWorkbook(fis)) {
-
-            Sheet sheet = workbook.getSheet(SHEET_NAME);
-            if (sheet == null) {
-                Log.debug("[ExcelApVoucherDataSource] Sheet '{}' not found — skipping Deduct TDS Confirm read",
-                        SHEET_NAME);
-                return;
-            }
-
-            Row header = sheet.getRow(0);
-            if (header == null) return;
-
-            int tcIdCol = -1, lineNoCol = -1, confirmCol = -1;
-            for (Cell cell : header) {
-                String h = cell.getStringCellValue().trim();
-                if (COL_TC_ID.equalsIgnoreCase(h))   tcIdCol    = cell.getColumnIndex();
-                if (COL_LINE_NO.equalsIgnoreCase(h))  lineNoCol  = cell.getColumnIndex();
-                if (COL_CONFIRM.equalsIgnoreCase(h))  confirmCol = cell.getColumnIndex();
-            }
-
-            if (confirmCol == -1) {
-                Log.debug("[ExcelApVoucherDataSource] '{}' column not present in sheet '{}' — no-op",
-                        COL_CONFIRM, SHEET_NAME);
-                return;
-            }
-
-            // Build lookup: "testcaseid|lineno" → confirm value
-            java.util.Map<String, String> confirmMap = new java.util.HashMap<>();
-            for (int r = 1; r <= sheet.getLastRowNum(); r++) {
-                Row row = sheet.getRow(r);
-                if (row == null) continue;
-                String tcId   = tcIdCol   >= 0 ? cellStr(row.getCell(tcIdCol))   : null;
-                String lineNo = lineNoCol >= 0 ? cellStr(row.getCell(lineNoCol)) : null;
-                String val    = cellStr(row.getCell(confirmCol));
-                if (tcId != null && lineNo != null && val != null) {
-                    confirmMap.put(tcId.toLowerCase() + "|" + lineNo, val);
-                }
-            }
-
-            subLedgerList.forEach(sl -> {
-                if (sl.getTestCaseID() != null && sl.getLineNo() != null) {
-                    String key = sl.getTestCaseID().toLowerCase() + "|" + sl.getLineNo();
-                    String val = confirmMap.get(key);
-                    if (val != null) sl.setDeductTdsConfirm(val);
-                }
-            });
-
-            Log.debug("[ExcelApVoucherDataSource] 'Deduct TDS Confirm' merged for {} row(s)", confirmMap.size());
-
-        } catch (Exception e) {
-            Log.warn("[ExcelApVoucherDataSource] Could not read '{}' column — skipping ({})",
-                    COL_CONFIRM, e.getMessage());
-        }
-    }
-
-    /** Returns trimmed cell string, or {@code null} if blank/missing. */
-    private static String cellStr(Cell cell) {
-        if (cell == null) return null;
-        String val;
-        if (cell.getCellType() == CellType.STRING) {
-            val = cell.getStringCellValue();
-        } else if (cell.getCellType() == CellType.NUMERIC) {
-            val = String.valueOf((long) cell.getNumericCellValue());
-        } else {
-            val = cell.toString();
-        }
-        return val == null || val.isBlank() ? null : val.trim();
+        OptionalColumnMerger.mergeByTwoKeys(
+                excelPath, "SubLedgerInformation", "TestCaseID", "LineNo", "Deduct TDS Confirm",
+                subLedgerList, SubLedgerInformation::getTestCaseID, SubLedgerInformation::getLineNo,
+                SubLedgerInformation::setDeductTdsConfirm, "[ExcelApVoucherDataSource]");
     }
 }

@@ -36,7 +36,7 @@ import com.gsl.testdata.dto.MergedFinanceApVoucherData;
 import com.gsl.utils.Faker.FakerUtils;
 import com.gsl.utils.Log;
 import com.gsl.utils.dataprovider.fixture.ApVoucherFixtureFactory;
-import com.gsl.utils.dataprovider.fixture.LiveDbRefs;
+import com.gsl.utils.dataprovider.fixture.ApVoucherLiveDbRefs;
 import com.gsl.utils.dataprovider.fixture.finance.ApVoucherExecutionGroup;
 import com.gsl.utils.dataprovider.fixture.finance.ApVoucherFixtureOptions;
 import com.gsl.utils.dataprovider.fixture.finance.ApVoucherScenarioType;
@@ -550,12 +550,12 @@ public class DbApVoucherDataSource implements TestDataSource<MergedFinanceApVouc
         // 6. AP Voucher doc scheme verified for user's site
         String docSchemeName = findApVoucherDocSchemeName(jdbi, d, siteCodes);
 
-        // 7. Package into LiveDbRefs — include tdsBehaviour from fixture options so that
+        // 7. Package into ApVoucherLiveDbRefs — include tdsBehaviour from fixture options so that
         //    ApVoucherTemplateLoader.buildTdsRows() generates the correct behaviour name
         //    on the TdsAndNetPayable DTO for flow-layer dispatch at test execution time.
         //    slToTdsResolution is only set for TDS-applicable advance scenarios (step 5c above).
         //    slToRefSiteName, slToCmpCode, slToClstype are resolved for all scenarios (step 5d).
-        LiveDbRefs refs = LiveDbRefs.builder()
+        ApVoucherLiveDbRefs refs = ApVoucherLiveDbRefs.builder()
                 .cashBankName(cashBankName)
                 .ownerSiteName(ownerSiteName)
                 .docSchemeName(docSchemeName)
@@ -1475,7 +1475,7 @@ public class DbApVoucherDataSource implements TestDataSource<MergedFinanceApVouc
      */
     private static void buildAndSetGatheringLog(
             String loginName, long ecode,
-            LiveDbRefs refs,
+            ApVoucherLiveDbRefs refs,
             Map<String, List<PendingSlDocument>> pendingDocsBySlName,
             MergedFinanceApVoucherData data,
             List<String> executedQueries) {

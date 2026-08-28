@@ -21,14 +21,11 @@ import com.gsl.testdata.UserCredential;
 import com.gsl.testdata.dto.MergedFinanceGeneralVoucherData;
 import com.gsl.utils.Log;
 import com.gsl.utils.NavigationUtils;
-import com.gsl.utils.dataprovider.fixture.finance.GeneralVoucherPredicateFactory;
+import com.gsl.utils.dataprovider.fixture.GeneralVoucherFixtureFactory;
 import com.tests.WebTest;
 import org.testng.Assert;
 import org.testng.annotations.DataProvider;
 import org.testng.annotations.Test;
-
-import java.util.function.BiPredicate;
-import java.util.function.Supplier;
 
 /**
  * General Voucher — Negative &amp; Boundary scenarios.
@@ -36,50 +33,45 @@ import java.util.function.Supplier;
  * <p>Scoped to the 3 candidate scenarios the plan calls out (§4):
  * site-allocation Pending Amount != 0, Type3 row missing Sub Ledger, and a
  * Type2 row whose Site is never allocated. See
- * {@link GeneralVoucherPredicateFactory} for the data + shared behavior.
+ * {@code GeneralVoucherPredicateFactory} for the data + shared behavior.
  *
- * <p>Unlike {@code CreateApVoucher.createApVoucherNegativeBoundary}, this uses
- * a plain TestNG {@code @DataProvider} rather than the DataSupplier/UserPool
- * infrastructure — {@code WebTest.setUp()} falls back to its default
- * SessionPool-borrow branch when no {@code UserCredential} appears in the
- * test's actual parameters (confirmed via {@code WebTest.setUp}'s
- * {@code extractCredential} logic), so this still gets a pooled, logged-in
- * session exactly like the DataSupplier-driven positive test does.
+ * <p>Dispatches via {@link com.gsl.utils.dataprovider.fixture.finance.GeneralVoucherScenarioType#execute}
+ * like every other domain's negative-boundary test — no more raw-tuple {@code @DataProvider}
+ * carrying the behavior alongside the data (see the {@code VoucherScenarioType} unification;
+ * this was the exact bypass that interface exists to make impossible).
+ *
+ * <p>Unlike {@code CreateApVoucher.createApVoucherNegativeBoundary}, this keeps its own
+ * dedicated {@code @DataProvider} rather than routing through
+ * {@code MergedFinGeneralVoucherDataSupplier} — that supplier exists to toggle Excel/DB sourcing
+ * and apply {@code gv.group}/{@code gv.tag} filters, none of which apply to these 3 hand-built
+ * Java fixtures. It also passes no explicit {@code UserCredential} parameter — {@code
+ * WebTest.setUp()} falls back to its default SessionPool-borrow branch when none appears in the
+ * test's actual parameters (confirmed via {@code WebTest.setUp}'s {@code extractCredential}
+ * logic), so this still gets a pooled, logged-in session exactly like the DataSupplier-driven
+ * positive test does.
  */
 @ApiFlow(FinanceApiPattern.GENERAL_VOUCHER)
 public class CreateGeneralVoucherNegativeBoundary extends WebTest {
 
-    /**
-     * Third column picks the shared behavior each scenario actually needs — not every negative
-     * scenario validates the same way. {@link GeneralVoucherPredicateFactory#subLedgerRequired()}
-     * is blocked by the app at the Site-button click, before Save is ever reached (confirmed live,
-     * run 20260807_171711), so it needs {@code NEG_SUBLEDGER_REQUIRED_BEHAVIOR} — the other two
-     * genuinely fail at Save and use the shared {@code NEGATIVE_FORM_VALIDATION_BEHAVIOR}. Same
-     * per-scenario-behavior idiom {@code ApVoucherPredicateFactory}/{@code ArVoucherPredicateFactory}
-     * use (their own {@code *ScenarioType} enum maps a scenario to one of several behaviors);
-     * this DataProvider just makes the mapping explicit per row instead of via an enum, since GV's
-     * negative suite is 3 rows, not the dozens AP/AR's scaffolding was built for.
-     */
     @DataProvider(name = "GeneralVoucherNegativeBoundaryData")
     public Object[][] negativeBoundaryData() {
-        return new Object[][]{
-                {"Site allocation Pending Amount != 0", GeneralVoucherPredicateFactory.siteAllocationPending(),
-                        GeneralVoucherPredicateFactory.NEGATIVE_FORM_VALIDATION_BEHAVIOR},
-                {"Type3 row missing Sub Ledger",        GeneralVoucherPredicateFactory.subLedgerRequired(),
-                        GeneralVoucherPredicateFactory.NEG_SUBLEDGER_REQUIRED_BEHAVIOR},
-                {"Type2 row — Site never allocated",    GeneralVoucherPredicateFactory.siteNotAllocated(),
-                        GeneralVoucherPredicateFactory.NEGATIVE_FORM_VALIDATION_BEHAVIOR},
-        };
+        // refs=null is safe — every NEG_* scenario's templateLoader ignores its refs parameter
+        // (its data is hand-built in Java, not resolved from live DB refs). See
+        // GeneralVoucherFixtureFactory#generate's javadoc.
+        return new GeneralVoucherFixtureFactory()
+                .generate("createGeneralVoucherNegativeBoundary", null)
+                .stream()
+                .map(data -> new Object[]{data})
+                .toArray(Object[][]::new);
     }
 
     @FrameworkAnnotation(value = TestAuthor.ARANI, module = MainModuleType.FINANCE, subModule = "FinanceGenVoucher", operation = AppOperation.ADD)
     @TestCaseId("FIN-GV-ADD-NEG")
     @Test(description = "Create General Voucher – Negative & Boundary",
             dataProvider = "GeneralVoucherNegativeBoundaryData")
-    public void createGeneralVoucherNegativeBoundary(String scenarioName, MergedFinanceGeneralVoucherData data,
-            Supplier<BiPredicate<MergedFinanceGeneralVoucherData, GeneralVoucherAdd>> behavior) {
+    public void createGeneralVoucherNegativeBoundary(MergedFinanceGeneralVoucherData data) {
 
-        Log.info("Create General Voucher (Negative & Boundary) — scenario: {}", scenarioName);
+        Log.info("Create General Voucher (Negative & Boundary) — scenario: {}", data.getScenarioType());
 
         ActualResultsHolder.get().setVoucherType("GV");
         ActualResultsHolder.get().setNegativeScenario(true);
@@ -109,12 +101,12 @@ public class CreateGeneralVoucherNegativeBoundary extends WebTest {
         // ── Step 3: Open Add form ─────────────────────────────────────────────────
         StepExecutor.step("Open Add Form", () -> {
             addRef[0] = listRef[0].clickAdd();
-            ReportLogger.business("Scenario: " + scenarioName + " | expect error: "
+            ReportLogger.business("Scenario: " + data.getScenarioType() + " | expect error: "
                     + data.getExpectedValidation().expectedMessage());
         });
 
-        // ── Delegate fill/save/verify/logout to whichever behavior this scenario needs ────────────
-        boolean ok = behavior.get().test(data, addRef[0]);
-        Assert.assertTrue(ok, "Negative-boundary scenario did not complete successfully: " + scenarioName);
+        // ── Delegate fill/save/verify/logout to the scenario behaviour ────────────
+        boolean ok = data.getScenarioType().execute(data, addRef[0]);
+        Assert.assertTrue(ok, "Negative-boundary scenario did not complete successfully: " + data.getScenarioType());
     }
 }

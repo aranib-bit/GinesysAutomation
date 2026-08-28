@@ -15,14 +15,9 @@ import com.gsl.testdata.UserCredential;
 import com.gsl.testdata.dto.MergedFinanceGeneralVoucherData;
 import com.gsl.utils.Log;
 import com.gsl.utils.dataprovider.source.TestDataSource;
+import com.gsl.utils.io.OptionalColumnMerger;
 import io.github.sskorol.data.XlsxReader;
 import one.util.streamex.IntStreamEx;
-import org.apache.poi.ss.usermodel.Cell;
-import org.apache.poi.ss.usermodel.CellType;
-import org.apache.poi.ss.usermodel.Row;
-import org.apache.poi.ss.usermodel.Sheet;
-import org.apache.poi.ss.usermodel.Workbook;
-import org.apache.poi.xssf.usermodel.XSSFWorkbook;
 import org.jdbi.v3.core.Jdbi;
 
 import java.util.List;
@@ -239,85 +234,16 @@ public class ExcelGeneralVoucherDataSource implements TestDataSource<MergedFinan
     }
 
     /**
-     * Reads the optional "Expected GL Type" column from the ExpenseIncomeDetail
-     * sheet using Apache POI directly — bypassing XlsxReader so that an absent
-     * column header never causes a hard failure. Same idiom as
-     * {@code ExcelApVoucherDataSource.readOptionalOnAccountConfirm}.
+     * Reads the optional "Expected GL Type" column from the ExpenseIncomeDetail sheet —
+     * bypassing XlsxReader so that an absent column header never causes a hard failure — and
+     * merges values into {@code lineList} via {@link ExpenseIncomeDetail#setExpectedGlType(String)},
+     * keyed on TestCaseID (case-insensitive) + LineNo. Mechanics live in {@link OptionalColumnMerger}.
      */
     private static void readOptionalExpectedGlType(
             String excelPath, List<ExpenseIncomeDetail> lineList) {
-
-        final String SHEET_NAME  = "ExpenseIncomeDetail";
-        final String COL_TC_ID   = "TestCaseID";
-        final String COL_LINE_NO = "LineNo";
-        final String COL_TYPE    = "Expected GL Type";
-
-        try (java.io.FileInputStream fis = new java.io.FileInputStream(excelPath);
-             Workbook workbook = new XSSFWorkbook(fis)) {
-
-            Sheet sheet = workbook.getSheet(SHEET_NAME);
-            if (sheet == null) {
-                Log.debug("[ExcelGeneralVoucherDataSource] Sheet '{}' not found — skipping Expected GL Type read",
-                        SHEET_NAME);
-                return;
-            }
-
-            Row header = sheet.getRow(0);
-            if (header == null) return;
-
-            int tcIdCol = -1, lineNoCol = -1, typeCol = -1;
-            for (Cell cell : header) {
-                String h = cell.getStringCellValue().trim();
-                if (COL_TC_ID.equalsIgnoreCase(h))   tcIdCol   = cell.getColumnIndex();
-                if (COL_LINE_NO.equalsIgnoreCase(h)) lineNoCol = cell.getColumnIndex();
-                if (COL_TYPE.equalsIgnoreCase(h))    typeCol   = cell.getColumnIndex();
-            }
-
-            if (typeCol == -1) {
-                Log.debug("[ExcelGeneralVoucherDataSource] '{}' column not present in sheet '{}' — no-op",
-                        COL_TYPE, SHEET_NAME);
-                return;
-            }
-
-            java.util.Map<String, String> typeMap = new java.util.HashMap<>();
-            for (int r = 1; r <= sheet.getLastRowNum(); r++) {
-                Row row = sheet.getRow(r);
-                if (row == null) continue;
-                String tcId   = tcIdCol   >= 0 ? cellStr(row.getCell(tcIdCol))   : null;
-                String lineNo = lineNoCol >= 0 ? cellStr(row.getCell(lineNoCol)) : null;
-                String val    = cellStr(row.getCell(typeCol));
-                if (tcId != null && lineNo != null && val != null) {
-                    typeMap.put(tcId.toLowerCase() + "|" + lineNo, val);
-                }
-            }
-
-            lineList.forEach(line -> {
-                if (line.getTestCaseID() != null && line.getLineNo() != null) {
-                    String key = line.getTestCaseID().toLowerCase() + "|" + line.getLineNo();
-                    String val = typeMap.get(key);
-                    if (val != null) line.setExpectedGlType(val);
-                }
-            });
-
-            Log.debug("[ExcelGeneralVoucherDataSource] 'Expected GL Type' merged for {} row(s)", typeMap.size());
-
-        } catch (Exception e) {
-            Log.warn("[ExcelGeneralVoucherDataSource] Could not read '{}' column — skipping ({})",
-                    COL_TYPE, e.getMessage());
-        }
-    }
-
-    /** Returns trimmed cell string, or {@code null} if blank/missing. */
-    private static String cellStr(Cell cell) {
-        if (cell == null) return null;
-        String val;
-        if (cell.getCellType() == CellType.STRING) {
-            val = cell.getStringCellValue();
-        } else if (cell.getCellType() == CellType.NUMERIC) {
-            val = String.valueOf((long) cell.getNumericCellValue());
-        } else {
-            val = cell.toString();
-        }
-        return val == null || val.isBlank() ? null : val.trim();
+        OptionalColumnMerger.mergeByTwoKeys(
+                excelPath, "ExpenseIncomeDetail", "TestCaseID", "LineNo", "Expected GL Type",
+                lineList, ExpenseIncomeDetail::getTestCaseID, ExpenseIncomeDetail::getLineNo,
+                ExpenseIncomeDetail::setExpectedGlType, "[ExcelGeneralVoucherDataSource]");
     }
 }

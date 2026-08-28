@@ -22,7 +22,7 @@ import com.gsl.testdata.dto.MergedFinanceArVoucherData;
 import com.gsl.utils.Faker.FakerUtils;
 import com.gsl.utils.Log;
 import com.gsl.utils.dataprovider.fixture.ArVoucherFixtureFactory;
-import com.gsl.utils.dataprovider.fixture.LiveDbRefs;
+import com.gsl.utils.dataprovider.fixture.ArVoucherLiveDbRefs;
 import com.gsl.utils.dataprovider.fixture.finance.ArVoucherExecutionGroup;
 import com.gsl.utils.dataprovider.fixture.finance.ArVoucherFixtureOptions;
 import com.gsl.utils.dataprovider.fixture.finance.ArVoucherScenarioType;
@@ -510,8 +510,10 @@ public class DbArVoucherDataSource implements TestDataSource<MergedFinanceArVouc
         // 7. AR Voucher doc scheme verified for user's site
         String docSchemeName = findArVoucherDocSchemeName(jdbi, d, siteCodes);
 
-        // 8. Package into LiveDbRefs — AR Voucher has no TDS behaviour or TDS name resolution
-        LiveDbRefs refs = LiveDbRefs.builder()
+        // 8. Package into ArVoucherLiveDbRefs — AR Voucher has no TDS behaviour or TDS name
+        //    resolution (those fields don't exist on this AR-specific type at all; see its
+        //    Javadoc for the full field-usage verification).
+        ArVoucherLiveDbRefs refs = ArVoucherLiveDbRefs.builder()
                 .cashBankName(cashBankName)
                 .ownerSiteName(ownerSiteName)
                 .docSchemeName(docSchemeName)
@@ -520,8 +522,6 @@ public class DbArVoucherDataSource implements TestDataSource<MergedFinanceArVouc
                 .slToArApName(slToArApName)
                 .slToRefSiteName(slToRefSiteName)
                 .cashBankType(targetCashBankType)
-                .tdsBehaviour(null)     // not applicable for AR Voucher
-                // slToTdsResolution intentionally omitted — defaults to empty map
                 .build();
 
         printRefs(loginName, ecode, refs, pendingDocsBySlName);
@@ -702,7 +702,7 @@ public class DbArVoucherDataSource implements TestDataSource<MergedFinanceArVouc
      */
     private static void buildAndSetGatheringLog(
             String loginName, long ecode,
-            LiveDbRefs refs,
+            ArVoucherLiveDbRefs refs,
             java.util.Map<String, List<com.gsl.model.finance.PendingSlDocument>> pendingDocsBySlName,
             MergedFinanceArVoucherData data,
             List<String> executedQueries) {
@@ -798,7 +798,7 @@ public class DbArVoucherDataSource implements TestDataSource<MergedFinanceArVouc
     }
 
     private static void printRefs(String loginName, long ecode,
-                                  LiveDbRefs refs,
+                                  ArVoucherLiveDbRefs refs,
                                   Map<String, List<PendingSlDocument>> pendingDocsBySlName) {
         Log.info("[DB] ============================================================");
         Log.info("[DB] Live DB reference values resolved:");

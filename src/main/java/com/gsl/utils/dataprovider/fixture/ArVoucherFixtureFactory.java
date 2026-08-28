@@ -64,14 +64,14 @@ public class ArVoucherFixtureFactory {
      * <ol>
      *   <li>{@code ArVoucherScenarioType.values()} — all scenario types</li>
      *   <li>{@link #SHOULD_RUN} BiPredicate — filter to applicable scenarios</li>
-     *   <li>{@link ArVoucherScenarioType#loadData(LiveDbRefs)} — build data from DB values</li>
+     *   <li>{@link ArVoucherScenarioType#loadData(ArVoucherLiveDbRefs)} — build data from DB values</li>
      * </ol>
      *
      * @param testMethodName the exact test method name (e.g. {@code "createArVoucher"})
      * @param refs           live DB reference values fetched by DbArVoucherDataSource
      * @return one data object per applicable scenario type
      */
-    public List<MergedFinanceArVoucherData> generate(String testMethodName, LiveDbRefs refs) {
+    public List<MergedFinanceArVoucherData> generate(String testMethodName, ArVoucherLiveDbRefs refs) {
         return scenariosFor(testMethodName).stream()
                 .map(scenario -> scenario.loadData(refs))
                 .collect(Collectors.toList());

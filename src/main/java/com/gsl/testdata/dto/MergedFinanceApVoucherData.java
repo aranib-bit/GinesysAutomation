@@ -57,7 +57,7 @@ public class MergedFinanceApVoucherData
 
     /**
      * DB mode scenario type. {@code null} in Excel mode.
-     * Set by {@link ApVoucherScenarioType#loadData(com.gsl.utils.dataprovider.fixture.LiveDbRefs)}
+     * Set by {@link ApVoucherScenarioType#loadData(com.gsl.utils.dataprovider.fixture.ApVoucherLiveDbRefs)}
      * so the test method can detect a placeholder vs. fully-loaded data.
      */
     private ApVoucherScenarioType scenarioType;

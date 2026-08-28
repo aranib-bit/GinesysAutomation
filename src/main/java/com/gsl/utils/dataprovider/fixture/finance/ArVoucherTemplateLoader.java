@@ -23,7 +23,7 @@ import com.gsl.testdata.MasterTestData;
 import com.gsl.testdata.dto.MergedFinanceArVoucherData;
 import com.gsl.utils.Log;
 import com.gsl.utils.cheque.UniqueChequeGenerator;
-import com.gsl.utils.dataprovider.fixture.LiveDbRefs;
+import com.gsl.utils.dataprovider.fixture.ArVoucherLiveDbRefs;
 import org.jdbi.v3.core.Jdbi;
 
 import java.math.BigDecimal;
@@ -41,17 +41,17 @@ import java.util.stream.Collectors;
 /**
  * Builds {@link MergedFinanceArVoucherData} instances from live DB values.
  * Each static method is one named scenario template.
- * Called by {@link ArVoucherScenarioType#loadData(LiveDbRefs)}.
+ * Called by {@link ArVoucherScenarioType#loadData(ArVoucherLiveDbRefs)}.
  */
 public final class ArVoucherTemplateLoader {
 
     // ─── Template 1: SELECT_DOCUMENT ─────────────────────────────────────────
     /**
      * Builds test data for the "manually select open documents" scenario.
-     * {@code selectDocumentList} is pre-populated from {@link LiveDbRefs#getPendingDocsBySlName()}
+     * {@code selectDocumentList} is pre-populated from {@link ArVoucherLiveDbRefs#getPendingDocsBySlName()}
      * so the predicate knows exactly which document numbers to tick in the UI popup.
      */
-    public static MergedFinanceArVoucherData selectDocumentTemplate(LiveDbRefs refs) {
+    public static MergedFinanceArVoucherData selectDocumentTemplate(ArVoucherLiveDbRefs refs) {
         String id = "DB_SEL_DOC";
         List<SubLedgerInformation> subLedgers = buildSubLedgers(
                 refs.getPendingSlNames(), AdjustmentType.SELECT_DOCUMENT,
@@ -87,7 +87,7 @@ public final class ArVoucherTemplateLoader {
      * @param variant   the combination to build data for
      */
     public static MergedFinanceArVoucherData selectDocumentTemplate(
-            LiveDbRefs refs, Jdbi jdbi, List<Long> siteCodes, SelectDocumentVariant variant) {
+            ArVoucherLiveDbRefs refs, Jdbi jdbi, List<Long> siteCodes, SelectDocumentVariant variant) {
 
         String id = variant.getVariantId();
 
@@ -182,7 +182,7 @@ public final class ArVoucherTemplateLoader {
      * One SL line, amountCr = total pending for that SL, no adjustment type set,
      * no payment rows (Bank GL triggers "Ignore & Proceed" on save).
      */
-    public static MergedFinanceArVoucherData docNoAdjustmentTemplate(LiveDbRefs refs) {
+    public static MergedFinanceArVoucherData docNoAdjustmentTemplate(ArVoucherLiveDbRefs refs) {
         String id = "DB_NO_ADJ";
         List<SubLedgerInformation> subLedgers = buildSubLedgers(
                 refs.getPendingSlNames(), null,
@@ -208,7 +208,7 @@ public final class ArVoucherTemplateLoader {
      * Builds test data for the FIFO automatic set-off scenario.
      * No pre-loaded document list — FIFO auto-selects documents in the UI.
      */
-    public static MergedFinanceArVoucherData fifoTemplate(LiveDbRefs refs) {
+    public static MergedFinanceArVoucherData fifoTemplate(ArVoucherLiveDbRefs refs) {
         String id = "DB_FIFO";
         List<SubLedgerInformation> subLedgers = buildSubLedgers(
                 refs.getPendingSlNames(), AdjustmentType.FIFO_SETOFF,
@@ -236,7 +236,7 @@ public final class ArVoucherTemplateLoader {
     /**
      * Builds test data for the Reference Sitewise FIFO scenario.
      */
-    public static MergedFinanceArVoucherData refSitewiseFifoTemplate(LiveDbRefs refs) {
+    public static MergedFinanceArVoucherData refSitewiseFifoTemplate(ArVoucherLiveDbRefs refs) {
         String id = "DB_REF_FIFO";
         List<SubLedgerInformation> subLedgers = buildSubLedgers(
                 refs.getPendingSlNames(), AdjustmentType.REFERENCE_SITEWISE_FIFO_SETOFF,
@@ -279,7 +279,7 @@ public final class ArVoucherTemplateLoader {
     // ─── T-03 Negative & Boundary templates ──────────────────────────────────
 
     /** NEG_BLANK_CASHBANK — valid SL, Cash/Bank left blank → "Cash/Bank is required". */
-    public static MergedFinanceArVoucherData negBlankCashbankTemplate(LiveDbRefs refs) {
+    public static MergedFinanceArVoucherData negBlankCashbankTemplate(ArVoucherLiveDbRefs refs) {
         String id = "DB_NEG_BLANK_CASHBANK";
         List<SubLedgerInformation> subLedgers = buildSubLedgers(
                 refs.getPendingSlNames(), null, refs.getPendingDocsBySlName(),
@@ -289,7 +289,7 @@ public final class ArVoucherTemplateLoader {
     }
 
     /** NEG_BLANK_SUBLEDGER — valid Cash/Bank, no SL row filled (empty grid) → "Sub-Ledger is required". */
-    public static MergedFinanceArVoucherData negBlankSubledgerTemplate(LiveDbRefs refs) {
+    public static MergedFinanceArVoucherData negBlankSubledgerTemplate(ArVoucherLiveDbRefs refs) {
         String id = "DB_NEG_BLANK_SUBLEDGER";
         return negativeData(id, "NEGATIVE | Blank Sub-Ledger", refs, List.of(),
                 refs.getCashBankName(), FakerUtils.randomReference(), NegativeValidation.BLANK_SUBLEDGER_AR);
@@ -297,7 +297,7 @@ public final class ArVoucherTemplateLoader {
 
     /** NEG_BLANK_MANDATORY_REFERENCE — Reference left blank → "Reference No. is required"
      *  (only when the resolved scheme makes Reference mandatory). */
-    public static MergedFinanceArVoucherData negBlankReferenceTemplate(LiveDbRefs refs) {
+    public static MergedFinanceArVoucherData negBlankReferenceTemplate(ArVoucherLiveDbRefs refs) {
         String id = "DB_NEG_BLANK_REF";
         List<SubLedgerInformation> subLedgers = buildSubLedgers(
                 refs.getPendingSlNames(), null, refs.getPendingDocsBySlName(),
@@ -307,7 +307,7 @@ public final class ArVoucherTemplateLoader {
     }
 
     /** BOUND_AMOUNT_MIN_VALID — smallest positive line amount (0.01) → must save. */
-    public static MergedFinanceArVoucherData boundAmountMinValidTemplate(LiveDbRefs refs) {
+    public static MergedFinanceArVoucherData boundAmountMinValidTemplate(ArVoucherLiveDbRefs refs) {
         String id = "DB_BOUND_AMT_MIN_VALID";
         List<SubLedgerInformation> subLedgers = buildSubLedgersWithAmount(
                 refs.getPendingSlNames(), refs.getOwnerSiteName(), refs.getSlToArApName(),
@@ -330,7 +330,7 @@ public final class ArVoucherTemplateLoader {
     }
 
     /** BOUND_AMOUNT_MIN_INVALID — zero line amount → rejected (NegativeValidation.ZERO_AMOUNT). */
-    public static MergedFinanceArVoucherData boundAmountMinInvalidTemplate(LiveDbRefs refs) {
+    public static MergedFinanceArVoucherData boundAmountMinInvalidTemplate(ArVoucherLiveDbRefs refs) {
         String id = "DB_BOUND_AMT_MIN_INVALID";
         List<SubLedgerInformation> subLedgers = buildSubLedgersWithAmount(
                 refs.getPendingSlNames(), refs.getOwnerSiteName(), refs.getSlToArApName(),
@@ -345,7 +345,7 @@ public final class ArVoucherTemplateLoader {
      * {@code NEGATIVE_FORM_VALIDATION_BEHAVIOR} asserts the right popup. No payment.
      */
     private static MergedFinanceArVoucherData negativeData(
-            String id, String name, LiveDbRefs refs,
+            String id, String name, ArVoucherLiveDbRefs refs,
             List<SubLedgerInformation> subLedgers,
             String cashbank, String reference, NegativeValidation expected) {
         return MergedFinanceArVoucherData.builder()
@@ -363,10 +363,10 @@ public final class ArVoucherTemplateLoader {
                 .build();
     }
 
-    /** Cash/Bank override variant of {@link #buildDoc(String, LiveDbRefs, String, String)} — used by
+    /** Cash/Bank override variant of {@link #buildDoc(String, ArVoucherLiveDbRefs, String, String)} — used by
      *  NEG_BLANK_CASHBANK ({@code cashbankName = null}). */
     private static DocumentInformation buildDoc(
-            String id, LiveDbRefs refs, String remarks, String reference, String cashbankName) {
+            String id, ArVoucherLiveDbRefs refs, String remarks, String reference, String cashbankName) {
         return new DocumentInformation(
                 id,
                 refs.getOwnerSiteName(),
@@ -412,7 +412,7 @@ public final class ArVoucherTemplateLoader {
      * ArVoucherAdd.setDocScheme() receives.
      */
     private static DocumentInformation buildDoc(
-            String id, LiveDbRefs refs, String remarks, String reference) {
+            String id, ArVoucherLiveDbRefs refs, String remarks, String reference) {
         return new DocumentInformation(
                 id,
                 refs.getOwnerSiteName(),
@@ -667,7 +667,7 @@ public final class ArVoucherTemplateLoader {
      * </ul>
      */
     private static String resolveReferenceSite(
-            SelectDocumentVariant variant, LiveDbRefs refs, Jdbi jdbi) {
+            SelectDocumentVariant variant, ArVoucherLiveDbRefs refs, Jdbi jdbi) {
 
         if (!variant.isCustomerTypeSl() || variant.getRefSiteMode() == null) {
             return refs.getOwnerSiteName();

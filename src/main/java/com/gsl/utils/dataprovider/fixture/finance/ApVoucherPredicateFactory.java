@@ -1,11 +1,14 @@
 package com.gsl.utils.dataprovider.fixture.finance;
 
+import com.gsl.enums.VoucherDomain;
+import com.gsl.flow.Finance.Operations.Common.PostSaveDialogHandler;
 import com.gsl.pages.Common.DocumentMessageBox;
 import com.gsl.pages.Finance.Operations.ApVoucherAdd;
 import com.gsl.pages.Finance.Operations.ApVoucherListPage;
 import com.gsl.pages.Finance.Operations.Common.DocumentPopup;
 import com.gsl.pages.Finance.Operations.Common.PaymentInfoCheckWarning;
 import com.gsl.pages.pagecomponent.Finance.Operations.Common.SubLedgerRowLocator;
+import com.gsl.reports.ActualResultsHolder;
 import com.gsl.reports.ReportLogger;
 import com.gsl.reports.StepExecutor;
 import com.gsl.testdata.Finance.Operations.Vouchers.APVoucher.SelectDocument;
@@ -15,6 +18,7 @@ import com.gsl.utils.Log;
 import com.gsl.validation.db.finance.APVoucherDbValidator;
 import com.gsl.validation.db.finance.ApVoucherDbContext;
 import com.gsl.validation.db.finance.StateCapture;
+import com.gsl.validation.db.finance.VoucherDbContextBuilder;
 
 import java.time.LocalDateTime;
 import java.util.Collections;
@@ -23,6 +27,7 @@ import java.util.Map;
 import java.util.function.BiPredicate;
 import java.util.function.Supplier;
 import java.util.stream.Collectors;
+import org.testng.asserts.SoftAssert;
 
 /**
  * Behavior predicates for each AP Voucher scenario type.
@@ -46,351 +51,176 @@ import java.util.stream.Collectors;
  */
 public final class ApVoucherPredicateFactory {
 
-    // ─── Advance Payment behaviors ────────────────────────────────────────────
+    // ─── Positive create behaviors ────────────────────────────────────────────
+    //
+    // ADVANCE_POSITIVE_BEHAVIOR / DOC_POSITIVE_BEHAVIOR replace 6 former per-scenario
+    // constants (ADVANCE_NO_TDS/ADVANCE_WITH_TDS/DOC_NO_ADJUSTMENT/DOC_SELECT_DOCUMENT/
+    // DOC_FIFO/DOC_REFERENCE_SITEWISE_FIFO_BEHAVIOR) that were dead code — nothing called
+    // execute() for any positive scenario, only createApVoucherNegativeBoundary did, and
+    // when finally exercised (per the VoucherScenarioType unification) the old bodies were
+    // found NOT to be faithful copies of the live inline flow in CreateApVoucher.java (wrong
+    // PostSaveDialogHandler usage, wrong DB-validation context, wrong boolean args to
+    // fillSubLedgerRowsFor*, missing ActualResultsHolder UI-echo fields). These two are
+    // verbatim extractions of that live flow instead — the per-scenario branching that used
+    // to live in 6 separate constants now lives inside fillSubLedgerRowsForDocument/Advance
+    // itself (driven by data content), exactly like the still-active negative/boundary
+    // behaviors below already do via data.isOnAccount().
 
     /**
-     * ADVANCE_NO_TDS behavior:
-     * Fill header → fill sub-ledger rows (advance, no TDS) → Save.
-     * Bank GL triggers "Ignore &amp; Proceed" when no payment rows are present.
-     * No pre/post state capture (advance creates a fresh AP entry, not settling a document).
+     * ADVANCE_POSITIVE_BEHAVIOR — every Advance Payment positive scenario (On Account = Yes;
+     * SelectDocument/FIFO never present; TDS &amp; Net Payable filled when
+     * {@code data.isTdsProvided()}). Verbatim extraction of
+     * {@code CreateApVoucher.createApVoucherAdvancePayment}'s steps 3-9.
      */
     public static final Supplier<BiPredicate<MergedFinanceApVoucherData, ApVoucherAdd>>
-        ADVANCE_NO_TDS_BEHAVIOR = () -> (data, page) -> {
+        ADVANCE_POSITIVE_BEHAVIOR = () -> (data, page) -> {
 
-            final String[] docNoRef             = new String[1];
-            final LocalDateTime[] saveStartTime = new LocalDateTime[1];
+            final String[] docNoRef = new String[1];
+            final DocumentMessageBox[] msgBoxRef = new DocumentMessageBox[1];
+            final DocumentPopup[] popupRef = new DocumentPopup[1];
+            final SoftAssert softAssert = new SoftAssert();
 
             StepExecutor.step("Fill Document Information", () -> {
                 page.fillDocumentHeader(data.getDocumentInformation());
-                ReportLogger.info("Cash Bank: " + data.getDocumentInformation().getCashbank()
-                        + " | On Account: " + data.getDocumentInformation().getOnAccount());
+                var docInfo = page.getDocumentInformation();
+                ReportLogger.business("Doc Scheme  (UI): " + docInfo.getDocScheme());
+                ReportLogger.business("Doc Date    (UI): " + docInfo.getDocumentDate());
+                ReportLogger.business("Reference   (UI): " + docInfo.getReference());
+                ReportLogger.business("Cash / Bank (UI): " + docInfo.getCashBank());
+                ReportLogger.business("On Account  (UI): " + docInfo.getOnAccount());
+                ReportLogger.business("Remarks     (UI): " + docInfo.getRemarks());
+                ActualResultsHolder.get().setUiOwnerSite(docInfo.getOwnerSite());
+                ActualResultsHolder.get().setUiCashBank(docInfo.getCashBank());
+                ActualResultsHolder.get().setUiOnAccount(docInfo.getOnAccount());
             });
 
-            StepExecutor.step("Sub-Ledger Rows (Advance)", () -> {
-                page.fillSubLedgerRowsForAdvance(data, false);
-                ReportLogger.info("Advance sub-ledger section complete");
+            StepExecutor.step("Fill Sub-Ledger Information", () -> {
+                page.fillSubLedgerRowsForAdvance(data, true);
+                ReportLogger.business("Sub-ledger section complete: "
+                        + data.getSubLedgerInformationList().size() + " rows");
+                data.getSubLedgerInformationList().forEach(sl -> {
+                    String key = (sl.getId() != null && !sl.getId().isBlank()) ? sl.getId() : sl.getSubLedger();
+                    String uiVal = page.readDeductTds(
+                            sl.getSubLedger(),
+                            sl.getReferenceSite() != null ? sl.getReferenceSite() : "",
+                            sl.getId());
+                    ActualResultsHolder.get().getUiDeductTdsMap().put(key, uiVal);
+                });
+                if (data.isTdsProvided()) {
+                    page.fillTdsAndNetPayable(data);
+                    ReportLogger.business("TDS rows filled: " + data.getTdsAndNetPayableList().size());
+                }
             });
 
-            StepExecutor.step("Save AP Voucher", () -> {
-                saveStartTime[0] = LocalDateTime.now();
-                DocumentPopup savePopup = page.clickSave();
-                DocumentMessageBox messageBox = data.isNeedsPaymentInfoWarning()
-                        ? savePopup.verifyPaymentInfoCheckWarning(PaymentInfoCheckWarning.AP_VOUCHER)
-                                   .clickProceed(PaymentInfoCheckWarning.AP_VOUCHER)
-                        : savePopup.waitForMessageBox();
-                docNoRef[0] = messageBox.extractDocumentNo();
-                Log.info("AP Voucher saved. Document No: {}", docNoRef[0]);
+            StepExecutor.step("Click Save", () -> {
+                VoucherDbContextBuilder.markSaveStart();
+                popupRef[0] = page.clickSave();
+            });
+
+            StepExecutor.step("Handle Post-Save Dialogs", () ->
+                    msgBoxRef[0] = PostSaveDialogHandler.forDomain(VoucherDomain.AP)
+                            .handle(popupRef[0], data));
+
+            StepExecutor.step("Verify Save Result", () -> {
+                docNoRef[0] = msgBoxRef[0].verifyDocumentSave(softAssert).getDocumentNo();
                 ReportLogger.pass("Voucher saved. Document No: " + docNoRef[0]);
-                messageBox.clickOk();
-                page.close().clickYes(ApVoucherListPage::new);
-                ReportLogger.session("Logout deferred — session may be reused by a later test on this thread.");
             });
+
+            StepExecutor.step("Close Voucher Page", () -> {
+                if (msgBoxRef[0] != null) {
+                    msgBoxRef[0].clickOk();
+                }
+                page.close().clickYes(ApVoucherListPage::new);
+                ReportLogger.business("Voucher page closed, returned to list");
+            });
+
+            StepExecutor.step("Logout (deferred)", () ->
+                    ReportLogger.session("Logout deferred — session may be reused by a later test on this thread."));
 
             StepExecutor.step("Database Validation", () -> {
                 new APVoucherDbValidator().validate(
-                        ApVoucherDbContext.builder()
-                                .voucherNo(docNoRef[0])
-                                .testData(data)
-                                // preState / postState = empty maps (default) for advance
-                                .saveStartTime(saveStartTime[0])
-                                .build());
+                        VoucherDbContextBuilder.buildAp(docNoRef[0], data));
                 ReportLogger.pass("DB validated. Document No: " + docNoRef[0]);
             });
+
+            StepExecutor.step("Finalize save assertions", softAssert::assertAll);
 
             return docNoRef[0] != null;
         };
 
     /**
-     * ADVANCE_WITH_TDS behavior:
-     * Fill header → fill sub-ledger rows → fill TDS &amp; Net Payable rows → Save.
-     * The TDS rows are auto-populated from the SL's TDS configuration;
-     * the predicate verifies the populated values and confirms with "Proceed".
+     * DOC_POSITIVE_BEHAVIOR — every Document Payment positive scenario (On Account = No;
+     * SelectDocument always present via {@code fillSubLedgerRowsForDocument(data, true)}; FIFO
+     * setoff filled when {@code referenceSitewiseFIFOList} is non-empty; TDS never present).
+     * Verbatim extraction of {@code CreateApVoucher.createApVoucherDocumentPayment}'s
+     * steps 3-9.
      */
     public static final Supplier<BiPredicate<MergedFinanceApVoucherData, ApVoucherAdd>>
-        ADVANCE_WITH_TDS_BEHAVIOR = () -> (data, page) -> {
+        DOC_POSITIVE_BEHAVIOR = () -> (data, page) -> {
 
-            final String[] docNoRef             = new String[1];
-            final LocalDateTime[] saveStartTime = new LocalDateTime[1];
+            final String[] docNoRef = new String[1];
+            final DocumentMessageBox[] msgBoxRef = new DocumentMessageBox[1];
+            final DocumentPopup[] popupRef = new DocumentPopup[1];
+            final SoftAssert softAssert = new SoftAssert();
 
             StepExecutor.step("Fill Document Information", () -> {
                 page.fillDocumentHeader(data.getDocumentInformation());
-                ReportLogger.info("Cash Bank: " + data.getDocumentInformation().getCashbank()
-                        + " | On Account: " + data.getDocumentInformation().getOnAccount());
+                var docInfo = page.getDocumentInformation();
+                ReportLogger.business("Doc Scheme  (UI): " + docInfo.getDocScheme());
+                ReportLogger.business("Doc Date    (UI): " + docInfo.getDocumentDate());
+                ReportLogger.business("Reference   (UI): " + docInfo.getReference());
+                ReportLogger.business("Cash / Bank (UI): " + docInfo.getCashBank());
+                ReportLogger.business("On Account  (UI): " + docInfo.getOnAccount());
+                ReportLogger.business("Remarks     (UI): " + docInfo.getRemarks());
+                ActualResultsHolder.get().setUiOwnerSite(docInfo.getOwnerSite());
+                ActualResultsHolder.get().setUiCashBank(docInfo.getCashBank());
+                ActualResultsHolder.get().setUiOnAccount(docInfo.getOnAccount());
             });
 
-            StepExecutor.step("Sub-Ledger Rows (Advance + TDS)", () -> {
-                page.fillSubLedgerRowsForAdvance(data, false);
-                ReportLogger.info("Advance sub-ledger section complete");
-            });
-
-            // TDS is no longer a standalone top-level step: each row's "Calculate TDS &
-            // Net Payable" sub-step reports under its SL row group (via SubLedgerRowStepRegistry).
-            page.fillTdsAndNetPayable(data);
-
-            StepExecutor.step("Save AP Voucher", () -> {
-                saveStartTime[0] = LocalDateTime.now();
-                DocumentPopup savePopup = page.clickSave();
-                DocumentMessageBox messageBox = data.isNeedsPaymentInfoWarning()
-                        ? savePopup.verifyPaymentInfoCheckWarning(PaymentInfoCheckWarning.AP_VOUCHER)
-                                   .clickProceed(PaymentInfoCheckWarning.AP_VOUCHER)
-                        : savePopup.waitForMessageBox();
-                docNoRef[0] = messageBox.extractDocumentNo();
-                Log.info("AP Voucher (TDS) saved. Document No: {}", docNoRef[0]);
-                ReportLogger.pass("Voucher saved. Document No: " + docNoRef[0]);
-                messageBox.clickOk();
-                page.close().clickYes(ApVoucherListPage::new);
-                ReportLogger.session("Logout deferred — session may be reused by a later test on this thread.");
-            });
-
-            StepExecutor.step("Database Validation", () -> {
-                new APVoucherDbValidator().validate(
-                        ApVoucherDbContext.builder()
-                                .voucherNo(docNoRef[0])
-                                .testData(data)
-                                .saveStartTime(saveStartTime[0])
-                                .build());
-                ReportLogger.pass("DB validated. Document No: " + docNoRef[0]);
-            });
-
-            return docNoRef[0] != null;
-        };
-
-    // ─── Document Payment behaviors ───────────────────────────────────────────
-
-    /**
-     * DOC_NO_ADJUSTMENT behavior:
-     * Fill header → fill sub-ledger rows (no adjustment) → Save.
-     * Pre/post invoice state is captured around Save for DB delta validation.
-     * Bank GL triggers "Ignore &amp; Proceed" when no payment rows are present.
-     */
-    public static final Supplier<BiPredicate<MergedFinanceApVoucherData, ApVoucherAdd>>
-        DOC_NO_ADJUSTMENT_BEHAVIOR = () -> (data, page) -> {
-
-            final String[] docNoRef              = new String[1];
-            final Map<String, FinPost>[] preRef  = new Map[1];
-            final Map<String, FinPost>[] postRef = new Map[1];
-            final LocalDateTime[] saveStartTime  = new LocalDateTime[1];
-
-            StepExecutor.step("Fill Document Information", () -> {
-                page.fillDocumentHeader(data.getDocumentInformation());
-                ReportLogger.info("Cash Bank: " + data.getDocumentInformation().getCashbank());
-            });
-
-            StepExecutor.step("Sub-Ledger Rows (No Adjustment)", () -> {
-                page.fillSubLedgerRowsForDocument(data, false);
-                ReportLogger.info("Document sub-ledger section complete (no adjustment)");
-            });
-
-            StepExecutor.step("Save AP Voucher", () -> {
-                List<String> invoiceNos = collectInvoiceNos(data);
-                StateCapture stateCapture = new StateCapture();
-                preRef[0] = stateCapture.captureInvoiceState(invoiceNos);
-
-                saveStartTime[0] = LocalDateTime.now();
-                DocumentPopup savePopup = page.clickSave();
-                DocumentMessageBox messageBox = data.isNeedsPaymentInfoWarning()
-                        ? savePopup.verifyPaymentInfoCheckWarning(PaymentInfoCheckWarning.AP_VOUCHER)
-                                   .clickProceed(PaymentInfoCheckWarning.AP_VOUCHER)
-                        : savePopup.waitForMessageBox();
-                docNoRef[0] = messageBox.extractDocumentNo();
-                Log.info("AP Voucher saved. Document No: {}", docNoRef[0]);
-
-                postRef[0] = stateCapture.captureInvoiceState(invoiceNos);
-                ReportLogger.pass("Voucher saved. Document No: " + docNoRef[0]);
-                messageBox.clickOk();
-                page.close().clickYes(ApVoucherListPage::new);
-                ReportLogger.session("Logout deferred — session may be reused by a later test on this thread.");
-            });
-
-            StepExecutor.step("Database Validation", () -> {
-                new APVoucherDbValidator().validate(
-                        ApVoucherDbContext.builder()
-                                .voucherNo(docNoRef[0])
-                                .testData(data)
-                                .preState(preRef[0])
-                                .postState(postRef[0])
-                                .saveStartTime(saveStartTime[0])
-                                .build());
-                ReportLogger.pass("DB validated. Document No: " + docNoRef[0]);
-            });
-
-            return docNoRef[0] != null;
-        };
-
-    /**
-     * DOC_SELECT_DOCUMENT behavior:
-     * Fill header → fill sub-ledger rows (Select Document popup) → Save.
-     * Pre/post state captured for DB delta validation.
-     */
-    public static final Supplier<BiPredicate<MergedFinanceApVoucherData, ApVoucherAdd>>
-        DOC_SELECT_DOCUMENT_BEHAVIOR = () -> (data, page) -> {
-
-            final String[] docNoRef              = new String[1];
-            final Map<String, FinPost>[] preRef  = new Map[1];
-            final Map<String, FinPost>[] postRef = new Map[1];
-            final LocalDateTime[] saveStartTime  = new LocalDateTime[1];
-
-            StepExecutor.step("Fill Document Information", () -> {
-                page.fillDocumentHeader(data.getDocumentInformation());
-                ReportLogger.info("Cash Bank: " + data.getDocumentInformation().getCashbank());
-            });
-
-            StepExecutor.step("Sub-Ledger Rows (Select Document)", () -> {
+            StepExecutor.step("Fill Sub-Ledger Information", () -> {
                 page.fillSubLedgerRowsForDocument(data, true);
-                ReportLogger.info("Document sub-ledger section complete (Select Document)");
+                ReportLogger.business("Sub-ledger section complete: "
+                        + data.getSubLedgerInformationList().size() + " rows");
             });
 
-            StepExecutor.step("Save AP Voucher", () -> {
-                List<String> invoiceNos = collectInvoiceNos(data);
-                StateCapture stateCapture = new StateCapture();
-                preRef[0] = stateCapture.captureInvoiceState(invoiceNos);
+            StepExecutor.step("Capture Pre-Save DB State (finpost snapshot)", () ->
+                    VoucherDbContextBuilder.capturePreState(data));
 
-                saveStartTime[0] = LocalDateTime.now();
-                DocumentPopup savePopup = page.clickSave();
-                DocumentMessageBox messageBox = data.isNeedsPaymentInfoWarning()
-                        ? savePopup.verifyPaymentInfoCheckWarning(PaymentInfoCheckWarning.AP_VOUCHER)
-                                   .clickProceed(PaymentInfoCheckWarning.AP_VOUCHER)
-                        : savePopup.waitForMessageBox();
-                docNoRef[0] = messageBox.extractDocumentNo();
-                Log.info("AP Voucher saved. Document No: {}", docNoRef[0]);
+            StepExecutor.step("Click Save", () -> {
+                VoucherDbContextBuilder.markSaveStart();
+                popupRef[0] = page.clickSave();
+            });
 
-                postRef[0] = stateCapture.captureInvoiceState(invoiceNos);
+            StepExecutor.step("Handle Post-Save Dialogs", () ->
+                    msgBoxRef[0] = PostSaveDialogHandler.forDomain(VoucherDomain.AP)
+                            .handle(popupRef[0], data));
+
+            StepExecutor.step("Verify Save Result", () -> {
+                docNoRef[0] = msgBoxRef[0].verifyDocumentSave(softAssert).getDocumentNo();
                 ReportLogger.pass("Voucher saved. Document No: " + docNoRef[0]);
-                messageBox.clickOk();
-                page.close().clickYes(ApVoucherListPage::new);
-                ReportLogger.session("Logout deferred — session may be reused by a later test on this thread.");
             });
+
+            StepExecutor.step("Capture Post-Save DB State (finpost snapshot)", () ->
+                    VoucherDbContextBuilder.capturePostState());
+
+            StepExecutor.step("Close Voucher Page", () -> {
+                if (msgBoxRef[0] != null) {
+                    msgBoxRef[0].clickOk();
+                }
+                page.close().clickYes(ApVoucherListPage::new);
+                ReportLogger.business("Voucher page closed, returned to list");
+            });
+
+            StepExecutor.step("Logout (deferred)", () ->
+                    ReportLogger.session("Logout deferred — session may be reused by a later test on this thread."));
 
             StepExecutor.step("Database Validation", () -> {
                 new APVoucherDbValidator().validate(
-                        ApVoucherDbContext.builder()
-                                .voucherNo(docNoRef[0])
-                                .testData(data)
-                                .preState(preRef[0])
-                                .postState(postRef[0])
-                                .saveStartTime(saveStartTime[0])
-                                .build());
+                        VoucherDbContextBuilder.buildAp(docNoRef[0], data));
                 ReportLogger.pass("DB validated. Document No: " + docNoRef[0]);
             });
 
-            return docNoRef[0] != null;
-        };
-
-    /**
-     * DOC_FIFO_BEHAVIOR:
-     * Fill header → fill sub-ledger rows (FIFO auto set-off) → Save.
-     * Pre/post state captured for DB delta validation.
-     * Cash GL adds CASH payment rows; Bank GL triggers "Ignore &amp; Proceed".
-     */
-    public static final Supplier<BiPredicate<MergedFinanceApVoucherData, ApVoucherAdd>>
-        DOC_FIFO_BEHAVIOR = () -> (data, page) -> {
-
-            final String[] docNoRef              = new String[1];
-            final Map<String, FinPost>[] preRef  = new Map[1];
-            final Map<String, FinPost>[] postRef = new Map[1];
-            final LocalDateTime[] saveStartTime  = new LocalDateTime[1];
-
-            StepExecutor.step("Fill Document Information", () -> {
-                page.fillDocumentHeader(data.getDocumentInformation());
-                ReportLogger.info("Cash Bank: " + data.getDocumentInformation().getCashbank());
-            });
-
-            StepExecutor.step("Sub-Ledger Rows (FIFO)", () -> {
-                page.fillSubLedgerRowsForDocument(data, true);
-                ReportLogger.info("Document sub-ledger section complete (FIFO)");
-            });
-
-            StepExecutor.step("Save AP Voucher", () -> {
-                List<String> invoiceNos = collectInvoiceNos(data);
-                StateCapture stateCapture = new StateCapture();
-                preRef[0] = stateCapture.captureInvoiceState(invoiceNos);
-
-                saveStartTime[0] = LocalDateTime.now();
-                DocumentPopup savePopup = page.clickSave();
-                DocumentMessageBox messageBox = data.isNeedsPaymentInfoWarning()
-                        ? savePopup.verifyPaymentInfoCheckWarning(PaymentInfoCheckWarning.AP_VOUCHER)
-                                   .clickProceed(PaymentInfoCheckWarning.AP_VOUCHER)
-                        : savePopup.waitForMessageBox();
-                docNoRef[0] = messageBox.extractDocumentNo();
-                Log.info("AP Voucher saved. Document No: {}", docNoRef[0]);
-
-                postRef[0] = stateCapture.captureInvoiceState(invoiceNos);
-                ReportLogger.pass("Voucher saved. Document No: " + docNoRef[0]);
-                messageBox.clickOk();
-                page.close().clickYes(ApVoucherListPage::new);
-                ReportLogger.session("Logout deferred — session may be reused by a later test on this thread.");
-            });
-
-            StepExecutor.step("Database Validation", () -> {
-                new APVoucherDbValidator().validate(
-                        ApVoucherDbContext.builder()
-                                .voucherNo(docNoRef[0])
-                                .testData(data)
-                                .preState(preRef[0])
-                                .postState(postRef[0])
-                                .saveStartTime(saveStartTime[0])
-                                .build());
-                ReportLogger.pass("DB validated. Document No: " + docNoRef[0]);
-            });
-
-            return docNoRef[0] != null;
-        };
-
-    /**
-     * DOC_REFERENCE_SITEWISE_FIFO_BEHAVIOR:
-     * Fill header → fill sub-ledger rows (Reference Sitewise FIFO) → Save.
-     * Pre/post state captured for DB delta validation.
-     */
-    public static final Supplier<BiPredicate<MergedFinanceApVoucherData, ApVoucherAdd>>
-        DOC_REFERENCE_SITEWISE_FIFO_BEHAVIOR = () -> (data, page) -> {
-
-            final String[] docNoRef              = new String[1];
-            final Map<String, FinPost>[] preRef  = new Map[1];
-            final Map<String, FinPost>[] postRef = new Map[1];
-            final LocalDateTime[] saveStartTime  = new LocalDateTime[1];
-
-            StepExecutor.step("Fill Document Information", () -> {
-                page.fillDocumentHeader(data.getDocumentInformation());
-                ReportLogger.info("Cash Bank: " + data.getDocumentInformation().getCashbank());
-            });
-
-            StepExecutor.step("Sub-Ledger Rows (Reference Sitewise FIFO)", () -> {
-                page.fillSubLedgerRowsForDocument(data, true);
-                ReportLogger.info("Document sub-ledger section complete (Ref-Sitewise FIFO)");
-            });
-
-            StepExecutor.step("Save AP Voucher", () -> {
-                List<String> invoiceNos = collectInvoiceNos(data);
-                StateCapture stateCapture = new StateCapture();
-                preRef[0] = stateCapture.captureInvoiceState(invoiceNos);
-
-                saveStartTime[0] = LocalDateTime.now();
-                DocumentPopup savePopup = page.clickSave();
-                DocumentMessageBox messageBox = data.isNeedsPaymentInfoWarning()
-                        ? savePopup.verifyPaymentInfoCheckWarning(PaymentInfoCheckWarning.AP_VOUCHER)
-                                   .clickProceed(PaymentInfoCheckWarning.AP_VOUCHER)
-                        : savePopup.waitForMessageBox();
-                docNoRef[0] = messageBox.extractDocumentNo();
-                Log.info("AP Voucher saved. Document No: {}", docNoRef[0]);
-
-                postRef[0] = stateCapture.captureInvoiceState(invoiceNos);
-                ReportLogger.pass("Voucher saved. Document No: " + docNoRef[0]);
-                messageBox.clickOk();
-                page.close().clickYes(ApVoucherListPage::new);
-                ReportLogger.session("Logout deferred — session may be reused by a later test on this thread.");
-            });
-
-            StepExecutor.step("Database Validation", () -> {
-                new APVoucherDbValidator().validate(
-                        ApVoucherDbContext.builder()
-                                .voucherNo(docNoRef[0])
-                                .testData(data)
-                                .preState(preRef[0])
-                                .postState(postRef[0])
-                                .saveStartTime(saveStartTime[0])
-                                .build());
-                ReportLogger.pass("DB validated. Document No: " + docNoRef[0]);
-            });
+            StepExecutor.step("Finalize save assertions", softAssert::assertAll);
 
             return docNoRef[0] != null;
         };
