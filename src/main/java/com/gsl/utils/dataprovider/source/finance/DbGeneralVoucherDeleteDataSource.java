@@ -7,6 +7,7 @@ import com.gsl.enums.Finance.Operations.Common.DocumentMessageBoxMessage;
 import com.gsl.enums.PeriodDomain;
 import com.gsl.model.finance.FinVchMain;
 import com.gsl.pages.enums.Finance.Operations.GeneralVoucher.GeneralVoucherRevertOutcome;
+import com.gsl.testdata.Finance.Operations.Vouchers.GeneralVoucher.DocumentInformation;
 import com.gsl.testdata.dto.GeneralVoucherOperationMode;
 import com.gsl.testdata.dto.MergedFinanceGeneralVoucherData;
 import com.gsl.utils.Log;
@@ -67,10 +68,15 @@ public class DbGeneralVoucherDeleteDataSource implements TestDataSource<MergedFi
      * in a closed period can't even be Unposted, let alone deleted).
      */
     private static MergedFinanceGeneralVoucherData resolvePositiveCandidate(Jdbi jdbi, Set<Long> claimedThisRun) {
-        Long vchcode = claimOneCandidate(jdbi, claimedThisRun, false)
+        List<String> gatheringLog = new ArrayList<>();
+        gatheringLog.add("═══════════════════════════════════════════════════════════");
+        gatheringLog.add("  DB DATA GATHERING — VOUCHER CLAIM (GENERAL VOUCHER DELETE)");
+        gatheringLog.add("═══════════════════════════════════════════════════════════");
+
+        Long vchcode = claimOneCandidate(jdbi, claimedThisRun, false, gatheringLog)
                 .orElseThrow(() -> new SkipException(
-                        "Skipped due to lack of data: no unclaimed General Voucher "
-                        + "(release_status IN ('U','P')) found in an open accounting period for Delete."));
+                        "No documents found for the criteria: vchtype='G', release_status IN ('U','P'), "
+                        + "own accounting year/financial month open, unclaimed this run — need 1."));
 
         FinVchMain header = jdbi.onDemand(FinVchMainDao.class).findByVoucherCode(vchcode)
                 .orElseThrow(() -> new IllegalStateException(
@@ -78,15 +84,30 @@ public class DbGeneralVoucherDeleteDataSource implements TestDataSource<MergedFi
 
         Log.info("[DB-Delete] Claimed General Voucher for Delete: vchcode={}, scheme_docno='{}', "
                 + "release_status='{}'", vchcode, header.getSchemeDocno(), header.getReleaseStatus());
+        gatheringLog.add("  Claimed voucher scheme_docno='" + header.getSchemeDocno() + "' (vchcode=" + vchcode
+                + "), release_status='" + header.getReleaseStatus() + "'");
+        gatheringLog.add("═══════════════════════════════════════════════════════════");
+
+        // documentInformation must be non-null — DeleteGeneralVoucher calls
+        // GeneralVoucherExtentDescriptionLogger.log(data) unconditionally at the top of its flow
+        // (mirroring Revert/Edit's convention), and that shared base class reads
+        // data.getDocumentInformation().getDocumentdate() with no null check (same NPE class
+        // confirmed live for GV Edit's own negative row, report 20260831_163724). Built straight
+        // from the header's own current values — no DB lookups needed.
+        DocumentInformation docInfo = new DocumentInformation(
+                "GV_DELETE_POSITIVE", header.getSchemeDocno(), header.getVchdt(),
+                header.getRefno(), null, header.getNartext());
 
         return MergedFinanceGeneralVoucherData.builder()
                 .scenarioTypeLabel("GV_DELETE_POSITIVE")
                 .existingVoucherNo(header.getSchemeDocno())
                 .releaseStatus(header.getReleaseStatus())
+                .documentInformation(docInfo)
                 .reservedDocumentKey(String.valueOf(vchcode))
                 .operationMode(GeneralVoucherOperationMode.DELETE)
                 .expenseIncomeDetailList(List.of())
                 .siteAllocationList(List.of())
+                .dbGatheringLog(gatheringLog)
                 .invocationIndex(1)
                 .totalInvocations(1)
                 .build();
@@ -106,10 +127,16 @@ public class DbGeneralVoucherDeleteDataSource implements TestDataSource<MergedFi
     private static Optional<MergedFinanceGeneralVoucherData> resolveClosedPeriodNegativeCandidate(
             Jdbi jdbi, Set<Long> claimedThisRun) {
 
-        Optional<Long> claimed = claimOneCandidate(jdbi, claimedThisRun, true);
+        List<String> gatheringLog = new ArrayList<>();
+        gatheringLog.add("═══════════════════════════════════════════════════════════");
+        gatheringLog.add("  DB DATA GATHERING — CLOSED-PERIOD VOUCHER CLAIM (GENERAL VOUCHER DELETE, NEGATIVE)");
+        gatheringLog.add("═══════════════════════════════════════════════════════════");
+
+        Optional<Long> claimed = claimOneCandidate(jdbi, claimedThisRun, true, gatheringLog);
         if (claimed.isEmpty()) {
-            Log.warn("[DB] GeneralVoucherDelete: no closed-period General Voucher available for the "
-                    + "CANNOT_REVERT_MONTH_CLOSED negative scenario — skipping it (nothing to backfill against).");
+            Log.warn("[DB] GeneralVoucherDelete: No documents found for the criteria: vchtype='G', "
+                    + "release_status IN ('U','P'), own accounting year/financial month closed — "
+                    + "CANNOT_REVERT_MONTH_CLOSED negative scenario skipped (nothing to backfill against).");
             return Optional.empty();
         }
 
@@ -123,16 +150,29 @@ public class DbGeneralVoucherDeleteDataSource implements TestDataSource<MergedFi
                 + "to be REJECTED with: \"{}\"",
                 vchcode, header.getSchemeDocno(), header.getReleaseStatus(),
                 DocumentMessageBoxMessage.REVERT_MONTH_ALREADY_CLOSED.getText());
+        gatheringLog.add("  Claimed voucher scheme_docno='" + header.getSchemeDocno() + "' (vchcode=" + vchcode
+                + "), release_status='" + header.getReleaseStatus()
+                + "' — own accounting year/financial month CONFIRMED closed; expecting \"Unpost if Posted\" "
+                + "to be REJECTED with: \"" + DocumentMessageBoxMessage.REVERT_MONTH_ALREADY_CLOSED.getText() + "\"");
+        gatheringLog.add("═══════════════════════════════════════════════════════════");
+
+        // documentInformation must be non-null — same NPE-avoidance reasoning as
+        // resolvePositiveCandidate above.
+        DocumentInformation docInfo = new DocumentInformation(
+                "GV_DELETE_NEGATIVE_MONTH_CLOSED", header.getSchemeDocno(), header.getVchdt(),
+                header.getRefno(), null, header.getNartext());
 
         return Optional.of(MergedFinanceGeneralVoucherData.builder()
                 .scenarioTypeLabel("GV_DELETE_NEGATIVE_MONTH_CLOSED")
                 .existingVoucherNo(header.getSchemeDocno())
                 .releaseStatus(header.getReleaseStatus())
+                .documentInformation(docInfo)
                 .reservedDocumentKey(String.valueOf(vchcode))
                 .operationMode(GeneralVoucherOperationMode.DELETE)
                 .expectedRevertOutcome(GeneralVoucherRevertOutcome.CANNOT_REVERT_MONTH_CLOSED)
                 .expenseIncomeDetailList(List.of())
                 .siteAllocationList(List.of())
+                .dbGatheringLog(gatheringLog)
                 .invocationIndex(1)
                 .totalInvocations(1)
                 .build());
@@ -147,23 +187,45 @@ public class DbGeneralVoucherDeleteDataSource implements TestDataSource<MergedFi
      * claim needs a GL-account-type match (Delete doesn't care which ledger type the voucher
      * uses).
      */
-    private static Optional<Long> claimOneCandidate(Jdbi jdbi, Set<Long> claimedThisRun, boolean requireClosedPeriod) {
+    private static Optional<Long> claimOneCandidate(Jdbi jdbi, Set<Long> claimedThisRun, boolean requireClosedPeriod,
+            List<String> gatheringLog) {
         String sql =
             "SELECT vchcode FROM finvchmain " +
             "WHERE vchtype = 'G' AND release_status IN ('U', 'P') " +
-            "ORDER BY vchcode";
+            // ycode/vchdt, never vchcode — see AccountingPeriodResolver#findCurrentYear's Javadoc
+            // (an insert-order surrogate key, no guaranteed relationship to accounting period).
+            "ORDER BY ycode DESC, vchdt DESC";
 
         List<Long> candidates = jdbi.withHandle(handle -> handle.createQuery(sql).mapTo(Long.class).list());
         FinVchMainDao headerDao = jdbi.onDemand(FinVchMainDao.class);
 
+        // Current-year preference only applies to the positive (open-period) claim — the
+        // closed-period negative claim deliberately wants a NON-current year.
+        Long currentYcode = requireClosedPeriod
+                ? null
+                : AccountingPeriodResolver.logAndResolveCurrentYcode(jdbi, headerDao, candidates, gatheringLog);
+
+        java.util.function.Predicate<FinVchMain> baseFilter = header -> {
+            boolean periodOpen = AccountingPeriodResolver.isEditable(jdbi, header, PeriodDomain.FINANCE);
+            return requireClosedPeriod != periodOpen;
+        };
+
+        if (currentYcode != null) {
+            Optional<Long> claimed = scanAndClaim(headerDao, candidates, claimedThisRun,
+                    baseFilter.and(header -> header.getYcode() == currentYcode));
+            if (claimed.isPresent()) return claimed;
+        }
+        return scanAndClaim(headerDao, candidates, claimedThisRun, baseFilter);
+    }
+
+    private static Optional<Long> scanAndClaim(FinVchMainDao headerDao, List<Long> candidates,
+            Set<Long> claimedThisRun, java.util.function.Predicate<FinVchMain> filter) {
         for (Long vchcode : candidates) {
             if (claimedThisRun.contains(vchcode)) continue;
 
             FinVchMain header = headerDao.findByVoucherCode(vchcode).orElse(null);
             if (header == null) continue;
-
-            boolean periodOpen = AccountingPeriodResolver.isEditable(jdbi, header, PeriodDomain.FINANCE);
-            if (requireClosedPeriod ? periodOpen : !periodOpen) continue;
+            if (!filter.test(header)) continue;
 
             if (!DocumentReservationRegistry.tryReserve(String.valueOf(vchcode))) continue;
 

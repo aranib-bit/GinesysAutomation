@@ -149,15 +149,26 @@ public class DbArVoucherEditDataSource implements TestDataSource<MergedFinanceAr
      * has no "peek" API, so each popped id's header is fetched and checked via
      * {@link AccountingPeriodResolver#isEditable} before being accepted; a rejected id is simply
      * discarded (not returned to the queue) since {@code DbIdQueue}'s contract is pop-once-only.
+     *
+     * <p><b>Does NOT prefer the current accounting year</b> the way the GV data sources now do
+     * (see the "GV Revert picks documents in a now-closed accounting period, + closed-period
+     * negative-test coverage" plan, follow-up round 2) — deliberately, not an oversight.
+     * {@code DbIdQueue} is a shared, pop-once-only FIFO drawn from by every concurrently-running
+     * AR Edit test thread; discarding a perfectly valid open-period candidate just because it
+     * isn't in the current year (holding out for a better one) would permanently shrink the pool
+     * for every other consumer with no safe way to put it back, unlike GV's data sources (which
+     * re-run their own live, freely-rescannable ad-hoc query per claim). The candidate actually
+     * accepted is still logged against today's resolved current year below, so a report reader
+     * can see whether it happened to be current-year or not.
      */
     private static FinVchMain claimOpenPeriodCandidate(Jdbi jdbi) {
         while (true) {
             Long vchcode = DbIdQueue.getNextId(MenuOperationKey.build("FinanceARVoucher", "Modify"));
             if (vchcode == null) {
                 throw new SkipException(
-                        "[DbArVoucherEditDataSource] No AR Voucher available for Edit. " +
-                        "Ensure finvchmain has rows WHERE vchtype='R' AND release_status IN ('N','U','P') " +
-                        "in an open accounting year/financial month.");
+                        "No documents found for the criteria: vchtype='R', release_status IN ('N','U','P'), "
+                        + "own accounting year/financial month open (DbIdQueue key "
+                        + "'FinanceARVoucher.Modify' exhausted).");
             }
 
             FinVchMain header = jdbi.onDemand(FinVchMainDao.class)
@@ -166,10 +177,26 @@ public class DbArVoucherEditDataSource implements TestDataSource<MergedFinanceAr
                             "[DbArVoucherEditDataSource] finvchmain row not found for vchcode=" + vchcode));
 
             if (AccountingPeriodResolver.isEditable(jdbi, header, PeriodDomain.FINANCE)) {
+                logCurrentYearComparison(jdbi, header);
                 return header;
             }
             Log.info("[DB-Edit] Skipping vchcode={} — its own accounting year/financial month is closed.", vchcode);
         }
+    }
+
+    /** Informational only (see {@link #claimOpenPeriodCandidate}'s Javadoc for why this doesn't
+     *  change acceptance) — logs whether the accepted candidate happens to be in today's
+     *  resolved current accounting year. */
+    private static void logCurrentYearComparison(Jdbi jdbi, FinVchMain header) {
+        long ouCode = AccountingPeriodResolver.resolveOuCode(jdbi, header.getAdmsiteCodeOwner());
+        AccountingPeriodResolver.findCurrentYear(jdbi, LocalDate.now(), ouCode).ifPresentOrElse(
+                currentYear -> Log.info("[DB-Edit] Claimed vchcode={} (ycode={}) — {} today's current admyear "
+                        + "ycode={} '{}' for admou_code={}.",
+                        header.getVchcode(), header.getYcode(),
+                        header.getYcode() == currentYear.getYcode() ? "matches" : "does NOT match",
+                        currentYear.getYcode(), currentYear.getYname(), ouCode),
+                () -> Log.info("[DB-Edit] Claimed vchcode={} (ycode={}) — no open admyear found containing "
+                        + "today for admou_code={}.", header.getVchcode(), header.getYcode(), ouCode));
     }
 
     /**

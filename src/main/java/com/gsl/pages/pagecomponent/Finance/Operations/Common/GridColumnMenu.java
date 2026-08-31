@@ -16,7 +16,9 @@ import com.gsl.utils.Selenium.JavascriptExecutorUtils;
 import com.gsl.utils.Selenium.SeleniumUtils;
 import com.gsl.utils.Selenium.WaitUtils;
 import org.openqa.selenium.By;
+import org.openqa.selenium.ElementNotInteractableException;
 import org.openqa.selenium.Keys;
+import org.openqa.selenium.StaleElementReferenceException;
 import org.openqa.selenium.WebElement;
 
 import java.util.Comparator;
@@ -526,7 +528,32 @@ public final class GridColumnMenu {
         // of sending ENTER to the same locator after typing (see AccountGroupListPage's cell
         // editor). Uses the driver directly (not ActionUtils.sendKeys, which would re-clear the
         // field we just populated).
-        DriverManager.getDriver().findElement(input).sendKeys(Keys.ENTER);
+        //
+        // Tolerates ElementNotInteractableException/StaleElementReferenceException here —
+        // confirmed live (report 20260831_163724, FIN-GV-EDIT-HEADER-01/02/03): the same
+        // documented hover-flyout auto-collapse race (see the comment above this block) can still
+        // close the flyout in the narrow window between sendKeysWithStaleRetry finishing and this
+        // Enter send starting, even with the continued-hover mitigation already in place. The
+        // failure screenshot for that exact run showed the grid ALREADY correctly filtered down to
+        // the target row at the moment of failure — i.e. ExtJS's own live keyup/change filtering
+        // had already committed the value before Enter's own interactability check failed on an
+        // element that had already done its job. Swallowing this specific race (rather than
+        // propagating) is safe because the caller (selectDocumentIfPresentOnCurrentPage, invoked
+        // right after applyFilter returns) independently verifies whether the target row is
+        // actually present — that's the real success signal, not whether this keystroke landed.
+        try {
+            DriverManager.getDriver().findElement(input).sendKeys(Keys.ENTER);
+        } catch (ElementNotInteractableException | StaleElementReferenceException e) {
+            Log.warn("[GridColumnMenu] applyFilter: Enter-send on '{}' hit {} (likely the documented "
+                    + "hover-flyout auto-collapse race) — the filter value was very likely already "
+                    + "committed via ExtJS's own live keyup handling; continuing rather than failing "
+                    + "here, since the caller verifies row presence independently.",
+                    column.headerText() + "_" + mode + "_FILTER_INPUT", e.getClass().getSimpleName());
+            ExtentLogger.warning(String.format(
+                    "[Flyout-Race Tolerated] Enter-send on '%s' hit %s — treated as non-fatal, filter "
+                    + "value was likely already committed; caller verifies row presence independently.",
+                    column.headerText() + "_" + mode + "_FILTER_INPUT", e.getClass().getSimpleName()));
+        }
         JavascriptExecutorUtils.waitForExtJS();
         // waitForExtJS() alone only checks the global Ext.Ajax/isMasked component-flag signal —
         // weaker than the real DOM/visual mask check already used for the grid's own refresh

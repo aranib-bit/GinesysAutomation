@@ -176,16 +176,23 @@ public class SeleniumUtils {
             try {
                 sendKeys(by, waitType, value, elementName);
                 return;
-            } catch (StaleElementReferenceException e) {
+            } catch (StaleElementReferenceException | ElementNotInteractableException e) {
+                // Widened (2026-08-31) beyond StaleElementReferenceException to also retry
+                // ElementNotInteractableException — confirmed live (report 20260831_163724,
+                // GridColumnMenu.applyFilter's hover-flyout auto-collapse race) that a flyout
+                // input can go not-interactable (hidden/collapsed) rather than genuinely stale
+                // when ExtJS auto-collapses it mid-interaction; same re-resolve-and-retry
+                // response applies to both.
+                String exceptionKind = e instanceof StaleElementReferenceException ? "a stale element" : "a not-interactable element";
                 if (attempt >= STALE_RETRY_MAX_ATTEMPTS) {
-                    Log.error("[STALE-RETRY] '{}' still stale after {} attempts. Giving up.", elementName, attempt);
+                    Log.error("[STALE-RETRY] '{}' still hitting {} after {} attempts. Giving up.", elementName, exceptionKind, attempt);
                     throw e;
                 }
-                Log.warn("[STALE-RETRY] SendKeys on '{}' hit a stale element — attempt {}/{}. Re-resolving and retrying…",
-                        elementName, attempt, STALE_RETRY_MAX_ATTEMPTS);
+                Log.warn("[STALE-RETRY] SendKeys on '{}' hit {} — attempt {}/{}. Re-resolving and retrying…",
+                        elementName, exceptionKind, attempt, STALE_RETRY_MAX_ATTEMPTS);
                 ExtentLogger.warning(String.format(
-                        "[Stale-Element Retry %d/%d] SendKeys on '%s' hit a stale element (likely an ExtJS re-render) — re-resolving",
-                        attempt, STALE_RETRY_MAX_ATTEMPTS, elementName));
+                        "[Stale-Element Retry %d/%d] SendKeys on '%s' hit %s (likely an ExtJS re-render/flyout collapse) — re-resolving",
+                        attempt, STALE_RETRY_MAX_ATTEMPTS, elementName, exceptionKind));
                 JavascriptExecutorUtils.waitForExtJS();
             }
         }

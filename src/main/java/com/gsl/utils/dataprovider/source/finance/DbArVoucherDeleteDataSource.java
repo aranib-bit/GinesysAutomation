@@ -55,8 +55,8 @@ public class DbArVoucherDeleteDataSource implements TestDataSource<MergedFinance
         Long vchcode = DbIdQueue.getNextId(MenuOperationKey.build("FinanceARVoucher", "Delete"));
         if (vchcode == null) {
             throw new SkipException(
-                    "[DbArVoucherDeleteDataSource] No AR Voucher available for Delete. " +
-                    "Ensure finvchmain has rows WHERE vchtype='R' AND release_status IN ('N','U','P').");
+                    "No documents found for the criteria: vchtype='R', release_status IN ('N','U','P') " +
+                    "(DbIdQueue key 'FinanceARVoucher.Delete' exhausted).");
         }
 
         Log.info("[DB-Delete] Fetching AR Voucher for Delete: vchcode={}", vchcode);
@@ -157,7 +157,8 @@ public class DbArVoucherDeleteDataSource implements TestDataSource<MergedFinance
                     .build());
         }
 
-        Log.warn("[DB-Delete] No closed-period AR Voucher available for a negative scenario claim.");
+        Log.warn("[DB-Delete] No documents found for the criteria: vchtype='R', release_status IN "
+                + "('N','U','P'), own accounting year/financial month closed — negative scenario claim skipped.");
         return Optional.empty();
     }
 }

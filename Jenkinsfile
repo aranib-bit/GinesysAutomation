@@ -125,47 +125,20 @@ pipeline {
 
         stage('Run Tests') {
             steps {
-                script {
-                    // Run the suite and periodically re-publish the "Extent Report" build-page
-                    // link while it's still running, so it refreshes during the build instead of
-                    // only appearing once at the very end (post.always still does the final,
-                    // authoritative publish/archive/robocopy after this stage completes).
-                    def testsFinished = false
-                    parallel(
-                        'tests': {
-                            try {
-                                bat ".\\mvnw.cmd clean test -P%MAVEN_PROFILE% -Drunmode=docker_grid -Dheadless=true"
-                            } finally {
-                                testsFinished = true
-                            }
-                        },
-                        'live-report': {
-                            while (!testsFinished) {
-                                sleep(time: 30, unit: 'SECONDS')
-                                if (!testsFinished) {
-                                    catchError(buildResult: null, stageResult: null) {
-                                        // keepAll: false here on purpose — with keepAll: true, every
-                                        // periodic call in this loop persists its own separate sidebar
-                                        // "Extent Report" link instead of refreshing one link, so a long
-                                        // build ends up with N stale duplicates (one per poll) plus the
-                                        // final post.always publish. keepAll: false keeps only the latest
-                                        // poll's HTML, so this call just shows live progress; the
-                                        // authoritative, permanently kept report is the post.always
-                                        // publishHTML below (keepAll: true).
-                                        publishHTML(target: [
-                                            allowMissing: true,
-                                            alwaysLinkToLastBuild: true,
-                                            keepAll: false,
-                                            reportDir: 'reports/latest',
-                                            reportFiles: 'index.html',
-                                            reportName: 'Extent Report'
-                                        ])
-                                    }
-                                }
-                            }
-                        }
-                    )
-                }
+                // NOTE on live progress: reports/latest/index.html is refreshed by the
+                // framework after every single test case (ExtentReport.flushReports(),
+                // gated by report.flush.batch.enabled=false in report.properties). To
+                // watch it update live *during* this stage, open this build's
+                // "Workspace" link in Jenkins and browse to reports/latest/index.html
+                // directly — do NOT call publishHTML on a timer here: the HTML
+                // Publisher plugin registers a brand-new project-level "Extent Report"
+                // sidebar action on every single invocation regardless of the keepAll
+                // setting (keepAll only affects whether past builds' archived HTML is
+                // retained on disk, not whether a call registers a fresh sidebar
+                // action) — a periodic call therefore produces one duplicate link per
+                // poll. publishHTML must be called at most once per build; that one
+                // call is the authoritative post.always publish below.
+                bat ".\\mvnw.cmd clean test -P%MAVEN_PROFILE% -Drunmode=docker_grid -Dheadless=true"
             }
         }
     }

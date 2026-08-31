@@ -84,16 +84,30 @@ public class GeneralVoucherMainGrid extends VoucherMainGridBase {
         if (messageText.contains(DocumentMessageBoxMessage.REVERT_UNPOST_CONFIRMATION.getText())) {
             SeleniumUtils.click(CommonButton.YES.locator(), WaitType.CLICKABLE, "GENERALVOUCHER_REVERT_CONFIRM_YES");
             JavascriptExecutorUtils.waitForExtJS();
-            // A SEPARATE "Result" success dialog follows the Yes confirmation (confirmed via a
-            // live screenshot) — previously never dismissed here, leaving it open and blocking
-            // the grid for any caller that needs to keep interacting with the list page right
-            // after un-posting (e.g. EditGeneralVoucher). Must be closed before returning.
+            // A SEPARATE "Result" dialog follows the Yes confirmation (confirmed via a live
+            // screenshot) — previously never dismissed here, leaving it open and blocking the
+            // grid for any caller that needs to keep interacting with the list page right after
+            // un-posting (e.g. EditGeneralVoucher). Must be closed before returning.
+            //
+            // Live evidence (report runs 20260831_140246 and 20260831_163724) confirms this
+            // Result dialog is where a closed-accounting-period rejection actually surfaces —
+            // NOT as an alternative to the first REVERT_UNPOST_CONFIRMATION dialog above, since
+            // the app only discovers the period is closed once Revert is actually attempted
+            // after Yes is clicked. A top-level check for REVERT_MONTH_ALREADY_CLOSED (checked
+            // against the FIRST dialog's text) never fired for this reason — it must be checked
+            // here, against resultText, before the generic "not a success" throw below.
             DocumentMessageBox resultBox = new DocumentMessageBox();
             String resultText = resultBox.getMessageText();
+            if (resultText.contains(DocumentMessageBoxMessage.REVERT_MONTH_ALREADY_CLOSED.getText())) {
+                resultBox.clickOk();
+                JavascriptExecutorUtils.waitForExtJS();
+                return GeneralVoucherRevertOutcome.CANNOT_REVERT_MONTH_CLOSED;
+            }
             if (!resultText.contains(DocumentMessageBoxMessage.REVERT_SUCCESS_RESULT.getText())) {
                 throw new IllegalStateException(
                         "GeneralVoucherMainGrid.confirmRevert(): expected the '"
-                        + DocumentMessageBoxMessage.REVERT_SUCCESS_RESULT.getText()
+                        + DocumentMessageBoxMessage.REVERT_SUCCESS_RESULT.getText() + "' or '"
+                        + DocumentMessageBoxMessage.REVERT_MONTH_ALREADY_CLOSED.getText()
                         + "' Result dialog after confirming Yes, but found: [" + resultText + "].");
             }
             resultBox.clickOk();
@@ -110,16 +124,10 @@ public class GeneralVoucherMainGrid extends VoucherMainGridBase {
             JavascriptExecutorUtils.waitForExtJS();
             return GeneralVoucherRevertOutcome.CANNOT_REVERT_BRS_DONE;
         }
-        if (messageText.contains(DocumentMessageBoxMessage.REVERT_MONTH_ALREADY_CLOSED.getText())) {
-            msgBox.clickOk();
-            JavascriptExecutorUtils.waitForExtJS();
-            return GeneralVoucherRevertOutcome.CANNOT_REVERT_MONTH_CLOSED;
-        }
         throw new IllegalStateException(
                 "GeneralVoucherMainGrid.confirmRevert(): unrecognized post-Revert dialog text: ["
                 + messageText + "]. Expected one of '" + DocumentMessageBoxMessage.REVERT_UNPOST_CONFIRMATION.getText()
                 + "', '" + DocumentMessageBoxMessage.REVERT_ALREADY_UNPOSTED_INFO.getText()
-                + "', '" + DocumentMessageBoxMessage.REVERT_BRS_ALREADY_DONE.getText()
-                + "', or '" + DocumentMessageBoxMessage.REVERT_MONTH_ALREADY_CLOSED.getText() + "'.");
+                + "', or '" + DocumentMessageBoxMessage.REVERT_BRS_ALREADY_DONE.getText() + "'.");
     }
 }

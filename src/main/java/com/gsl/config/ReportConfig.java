@@ -6,7 +6,7 @@ import org.aeonbits.owner.Config;
 public interface ReportConfig extends Config {
 
     @Key("report.flush.batch.enabled")
-    @DefaultValue("true")
+    @DefaultValue("false")
     boolean flushBatchEnabled();
 
     @Key("report.flush.batch.size")

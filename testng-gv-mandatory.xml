@@ -34,4 +34,16 @@
         </classes>
     </test>
 
+    <!-- DbGeneralVoucherDeleteDataSource has no gv.group/gv.edit.group filtering concept — it
+         always emits exactly 2 rows (1 positive open-period, 1 closed-period negative), so this
+         test needs no <parameter>. Positive path depends on VoucherMainGridBase.DELETE_ICON/
+         CONFIRM_DELETE, still unconfirmed //TODO- placeholder locators (same pre-existing gap
+         DeleteArVoucher already carries) — confirm those against the live DOM before trusting
+         this test's positive scenario in CI. -->
+    <test name="General Voucher Delete" parallel="methods" thread-count="1">
+        <classes>
+            <class name="com.tests.Finance.Operations.Vouchers.DeleteGeneralVoucher"/>
+        </classes>
+    </test>
+
 </suite>

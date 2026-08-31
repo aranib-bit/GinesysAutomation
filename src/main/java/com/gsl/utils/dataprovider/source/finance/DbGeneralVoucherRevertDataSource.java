@@ -141,10 +141,11 @@ public class DbGeneralVoucherRevertDataSource implements TestDataSource<MergedFi
         Long vchcode;
         try {
             vchcode = DataAvailabilityGuard.selectOrBackfill(
-                    () -> claimOnePostedVoucher(jdbi, accountType, claimedThisRun)
+                    () -> claimOnePostedVoucher(jdbi, accountType, claimedThisRun, gatheringLog)
                             .orElseThrow(() -> new SkipException(
-                                    "Skipped due to lack of data: no unclaimed Posted (release_status='P') "
-                                    + "General Voucher found for account type=" + accountType + " — need 1.")),
+                                    "No documents found for the criteria: vchtype='G', release_status='P', "
+                                    + "account type=" + accountType + ", not already BRS'd, own accounting "
+                                    + "year/financial month open, unclaimed this run — need 1.")),
                     1,
                     new GeneralVoucherApiBackfillStrategy(accountType));
         } finally {
@@ -226,16 +227,26 @@ public class DbGeneralVoucherRevertDataSource implements TestDataSource<MergedFi
      * General Voucher's DB-mode Create source ({@link DbGeneralVoucherDataSource}) already does its
      * own live ad-hoc JDBI queries rather than going through that queue machinery, and this
      * registry-backed filter closes the actual gap without that larger migration.
+     *
+     * <p><b>Prefers the CURRENT accounting year</b> (the one containing today's date) over an
+     * older-but-still-open one — see {@link AccountingPeriodResolver#findCurrentYear}'s Javadoc.
+     * Ordered {@code ycode DESC, vchdt DESC} (never {@code vchcode} — an insert-order surrogate
+     * key with no guaranteed relationship to accounting period or document date), then scanned in
+     * two passes: pass 1 only accepts a candidate whose own {@code ycode} matches today's
+     * resolved year; pass 2 (only if pass 1 finds nothing) falls back to any open-period candidate
+     * in that same corrected order. {@code gatheringLog} records which year was resolved as
+     * "current" (or that none could be, falling back immediately) so a report reader can see why a
+     * given candidate was or wasn't preferred.
      */
     private static Optional<Long> claimOnePostedVoucher(
-            Jdbi jdbi, GlAccountType type, Set<Long> claimedThisRun) {
+            Jdbi jdbi, GlAccountType type, Set<Long> claimedThisRun, List<String> gatheringLog) {
         String sql =
             "SELECT DISTINCT m.vchcode FROM finvchmain m " +
             "JOIN finvchdet d ON d.vchcode = m.vchcode " +
             "JOIN fingl g ON g.glcode = d.glcode " +
             "WHERE m.vchtype = 'G' AND m.release_status = 'P' AND g.type = :type " +
             "AND NOT EXISTS (SELECT 1 FROM finvchdet d2 WHERE d2.vchcode = m.vchcode AND d2.brsdt IS NOT NULL) " +
-            "ORDER BY m.vchcode";
+            "ORDER BY m.ycode DESC, m.vchdt DESC";
 
         List<Long> candidates = jdbi.withHandle(handle ->
             handle.createQuery(sql)
@@ -245,12 +256,34 @@ public class DbGeneralVoucherRevertDataSource implements TestDataSource<MergedFi
         );
 
         FinVchMainDao headerDao = jdbi.onDemand(FinVchMainDao.class);
+        Long currentYcode = AccountingPeriodResolver.logAndResolveCurrentYcode(jdbi, headerDao, candidates, gatheringLog);
+
+        // Pass 1: current-year candidates only.
+        if (currentYcode != null) {
+            Optional<Long> claimed = scanForClaim(jdbi, headerDao, candidates, claimedThisRun,
+                    header -> header.getYcode() == currentYcode);
+            if (claimed.isPresent()) return claimed;
+        }
+        // Pass 2 (fallback): any open-period candidate, same ycode DESC/vchdt DESC order.
+        return scanForClaim(jdbi, headerDao, candidates, claimedThisRun, header -> true);
+    }
+
+    /**
+     * Shared claim scan: walks {@code candidates} in their already-fetched order, accepting the
+     * first one that's not already claimed this run, whose period is OPEN, and that satisfies
+     * {@code extraFilter} (e.g. "same ycode as today") — reserving it via
+     * {@link DocumentReservationRegistry} before returning. Used for both passes of
+     * {@link #claimOnePostedVoucher}.
+     */
+    private static Optional<Long> scanForClaim(Jdbi jdbi, FinVchMainDao headerDao, List<Long> candidates,
+            Set<Long> claimedThisRun, java.util.function.Predicate<FinVchMain> extraFilter) {
         for (Long vchcode : candidates) {
             if (claimedThisRun.contains(vchcode)) continue;
 
             FinVchMain header = headerDao.findByVoucherCode(vchcode).orElse(null);
             if (header == null) continue;
             if (!AccountingPeriodResolver.isEditable(jdbi, header, PeriodDomain.FINANCE)) continue;
+            if (!extraFilter.test(header)) continue;
 
             if (!DocumentReservationRegistry.tryReserve(String.valueOf(vchcode))) continue;
 
@@ -277,8 +310,9 @@ public class DbGeneralVoucherRevertDataSource implements TestDataSource<MergedFi
 
         Optional<Long> claimed = claimOneClosedPeriodVoucher(jdbi, claimedThisRun);
         if (claimed.isEmpty()) {
-            Log.warn("[DB] GeneralVoucherRevert: no closed-period Posted General Voucher available for the "
-                    + "CANNOT_REVERT_MONTH_CLOSED negative scenario — skipping it (nothing to backfill against).");
+            Log.warn("[DB] GeneralVoucherRevert: No documents found for the criteria: vchtype='G', "
+                    + "release_status='P', not already BRS'd, own accounting year/financial month closed "
+                    + "— CANNOT_REVERT_MONTH_CLOSED negative scenario skipped (nothing to backfill against).");
             return Optional.empty();
         }
 
@@ -331,7 +365,11 @@ public class DbGeneralVoucherRevertDataSource implements TestDataSource<MergedFi
             "SELECT DISTINCT m.vchcode FROM finvchmain m " +
             "WHERE m.vchtype = 'G' AND m.release_status = 'P' " +
             "AND NOT EXISTS (SELECT 1 FROM finvchdet d2 WHERE d2.vchcode = m.vchcode AND d2.brsdt IS NOT NULL) " +
-            "ORDER BY m.vchcode";
+            // ycode/vchdt, never vchcode (an insert-order surrogate with no guaranteed
+            // relationship to accounting period — see AccountingPeriodResolver#findCurrentYear's
+            // Javadoc); direction is unimportant here (any closed year is equally valid for this
+            // negative scenario) but kept consistent with the positive claim above.
+            "ORDER BY m.ycode ASC, m.vchdt ASC";
 
         List<Long> candidates = jdbi.withHandle(handle -> handle.createQuery(sql).mapTo(Long.class).list());
 

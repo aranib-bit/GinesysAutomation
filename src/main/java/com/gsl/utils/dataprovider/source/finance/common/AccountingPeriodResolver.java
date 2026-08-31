@@ -5,12 +5,14 @@ import com.gsl.database.dao.adm.AdmOuMonthDao;
 import com.gsl.database.dao.adm.AdmOuYearDao;
 import com.gsl.database.dao.adm.AdmSiteOuDao;
 import com.gsl.database.dao.adm.AdmYearDao;
+import com.gsl.database.dao.finance.FinVchMainDao;
 import com.gsl.enums.PeriodDomain;
 import com.gsl.model.adm.AdmMonth;
 import com.gsl.model.adm.AdmOuMonth;
 import com.gsl.model.adm.AdmOuYear;
 import com.gsl.model.adm.AdmYear;
 import com.gsl.model.finance.FinVchMain;
+import com.gsl.reports.VoucherReportUtils;
 import com.gsl.utils.dataprovider.fixture.finance.VoucherEditDateVariant;
 import org.jdbi.v3.core.Jdbi;
 
@@ -62,6 +64,67 @@ public final class AccountingPeriodResolver {
     public static boolean isYearOpen(Jdbi jdbi, long ycode, long ouCode) {
         Optional<AdmOuYear> ouYear = jdbi.onDemand(AdmOuYearDao.class).findByYcodeAndOu(ycode, ouCode);
         return ouYear.map(y -> "O".equalsIgnoreCase(y.getAdmyearStatus())).orElse(false);
+    }
+
+    /**
+     * Resolves the {@link AdmYear} that CONTAINS {@code date} and is open for {@code ouCode} —
+     * purely date-based (never derives anything from a document's {@code vchcode}, which is only
+     * an insert-order surrogate key with no guaranteed relationship to accounting period or
+     * document date — a backdated/corrective entry can carry a high vchcode but an old
+     * {@code ycode}/{@code vchdt}; see the "GV Revert picks documents in a now-closed accounting
+     * period, + closed-period negative-test coverage" plan, follow-up round 2). Used by
+     * candidate-claim methods to prefer the CURRENT year's documents over older-but-still-open
+     * ones, addressing the "why is an older year's document being picked when the current year
+     * has plenty" gap. Same inclusive-both-ends {@code atStartOfDay()} rule
+     * {@link #findContainingMonth} already uses. Empty (fail-safe, same convention as
+     * {@link #isYearOpen}/{@link #isMonthOpen}) if {@code date} falls in a gap in the
+     * {@code admyear} calendar, or its containing year is closed.
+     */
+    public static Optional<AdmYear> findCurrentYear(Jdbi jdbi, LocalDate date, long ouCode) {
+        List<AdmYear> years = jdbi.onDemand(AdmYearDao.class).findAll();
+        return years.stream()
+                .filter(y -> !date.atStartOfDay().isBefore(y.getDtfr()) && !date.atStartOfDay().isAfter(y.getDtto()))
+                .filter(y -> isYearOpen(jdbi, y.getYcode(), ouCode))
+                .findFirst();
+    }
+
+    /**
+     * Resolves today's accounting year (via {@link #findCurrentYear}, using the OU of the first
+     * candidate whose header can be read — OU is consistent per tenant in practice, and any
+     * candidate's header is sufficient to resolve it), appends a diagnostic line to
+     * {@code gatheringLog} describing what was found, and returns the resolved {@code ycode} (or
+     * {@code null} if no candidate exists to resolve an OU from, or today falls outside every
+     * open year). Shared by every candidate-claim data source that wants to prefer the current
+     * year over an older-but-open one (GV Revert/Edit/Delete, AR Edit) — see the "GV Revert picks
+     * documents in a now-closed accounting period, + closed-period negative-test coverage" plan,
+     * follow-up round 2.
+     */
+    public static Long logAndResolveCurrentYcode(Jdbi jdbi, FinVchMainDao headerDao,
+            List<Long> candidates, List<String> gatheringLog) {
+        LocalDate today = LocalDate.now();
+        for (Long vchcode : candidates) {
+            FinVchMain header = headerDao.findByVoucherCode(vchcode).orElse(null);
+            if (header == null) continue;
+
+            long ouCode = resolveOuCode(jdbi, header.getAdmsiteCodeOwner());
+            Optional<AdmYear> currentYear = findCurrentYear(jdbi, today, ouCode);
+            if (currentYear.isPresent()) {
+                AdmYear y = currentYear.get();
+                gatheringLog.add("  Current date: " + today.format(VoucherReportUtils.DATE_FMT)
+                        + " — falls within admyear ycode=" + y.getYcode() + " '" + y.getYname() + "' ("
+                        + firstValidDay(y).format(VoucherReportUtils.DATE_FMT)
+                        + " to " + lastValidDay(y).format(VoucherReportUtils.DATE_FMT)
+                        + ") for admou_code=" + ouCode + " — preferring this year's candidates first");
+                return y.getYcode();
+            }
+            gatheringLog.add("  Current date: " + today.format(VoucherReportUtils.DATE_FMT)
+                    + " — no open admyear found containing today for admou_code=" + ouCode
+                    + "; falling back to any open year");
+            return null;
+        }
+        gatheringLog.add("  Current date: " + today.format(VoucherReportUtils.DATE_FMT)
+                + " — no candidate available to resolve an OU from; no current-year preference applied");
+        return null;
     }
 
     /**

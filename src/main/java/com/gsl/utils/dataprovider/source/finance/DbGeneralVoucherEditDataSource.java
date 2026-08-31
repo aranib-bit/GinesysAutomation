@@ -165,7 +165,7 @@ public class DbGeneralVoucherEditDataSource implements TestDataSource<MergedFina
         DbQueryBuffer.start();
         Long vchcode;
         try {
-            vchcode = claimCandidate(jdbi, variant, claimedThisRun);
+            vchcode = claimCandidate(jdbi, variant, claimedThisRun, gatheringLog);
         } finally {
             List<String> executedQueries = DbQueryBuffer.flush();
             if (!executedQueries.isEmpty()) {
@@ -197,11 +197,24 @@ public class DbGeneralVoucherEditDataSource implements TestDataSource<MergedFina
                     + DocumentMessageBoxMessage.REVERT_MONTH_ALREADY_CLOSED.getText() + "\"");
             gatheringLog.add("═══════════════════════════════════════════════════════════");
 
+            // documentInformation must be non-null even though this scenario never opens the UI
+            // form — EditGeneralVoucher.runEditFlow calls GeneralVoucherExtentDescriptionLogger
+            // .log(data) unconditionally at the very top, before Step 0, and that shared AR/AP/GV
+            // base class (VoucherExtentDescriptionLogger) reads
+            // data.getDocumentInformation().getDocumentdate() with NO null check (confirmed live,
+            // report 20260831_163724: FIN-GV-EDIT-HEADER-05 NullPointerException). Built straight
+            // from the header's own current values — no DB lookups needed since nothing downstream
+            // reads ownersite/cashbank for this early-return scenario.
+            DocumentInformation minimalDocInfo = new DocumentInformation(
+                    variant.getVariantId(), header.getSchemeDocno(), header.getVchdt(),
+                    header.getRefno(), null, header.getNartext());
+
             return MergedFinanceGeneralVoucherData.builder()
                     .scenarioTypeLabel(variant.getVariantId())
                     .existingVoucherNo(header.getSchemeDocno())
                     .releaseStatus(header.getReleaseStatus())
                     .currentDocDate(header.getVchdt())
+                    .documentInformation(minimalDocInfo)
                     .reservedDocumentKey(String.valueOf(vchcode))
                     .operationMode(GeneralVoucherOperationMode.EDIT)
                     .expenseIncomeDetailList(List.of())
@@ -832,21 +845,26 @@ public class DbGeneralVoucherEditDataSource implements TestDataSource<MergedFina
      * and a same-second "already logged in from some other browser" collision plus an unexplained
      * no-op Save on a claimed voucher were both observed in the same live run.
      */
-    private static Long claimCandidate(Jdbi jdbi, GeneralVoucherEditVariant variant, Set<Long> claimedThisRun) {
+    private static Long claimCandidate(Jdbi jdbi, GeneralVoucherEditVariant variant, Set<Long> claimedThisRun,
+            List<String> gatheringLog) {
         if (variant.getSourceStatus() == GeneralVoucherEditVariant.SourceStatus.UNPOSTED) {
             return DataAvailabilityGuard.selectOrBackfill(
-                    () -> claimOne(jdbi, "U", variant, claimedThisRun)
+                    () -> claimOne(jdbi, "U", variant, claimedThisRun, gatheringLog)
                             .orElseThrow(() -> new SkipException(
-                                    "Skipped due to lack of data: no unclaimed Unposted (release_status='U') "
-                                    + "General Voucher found" + glLineTypeSuffix(variant) + " — need 1.")),
+                                    "No documents found for the criteria: vchtype='G', release_status='U'"
+                                    + glLineTypeSuffix(variant) + ", own accounting year/financial month "
+                                    + (variant.isRequireClosedPeriod() ? "closed" : "open")
+                                    + ", unclaimed this run — need 1.")),
                     1,
                     new GeneralVoucherEditRevertBackfillStrategy());
         }
 
-        return claimOne(jdbi, "P", variant, claimedThisRun)
+        return claimOne(jdbi, "P", variant, claimedThisRun, gatheringLog)
                 .orElseThrow(() -> new SkipException(
-                        "Skipped due to lack of data: no unclaimed Posted (release_status='P') General Voucher "
-                        + "found" + glLineTypeSuffix(variant) + " — need 1."));
+                        "No documents found for the criteria: vchtype='G', release_status='P'"
+                        + glLineTypeSuffix(variant) + ", own accounting year/financial month "
+                        + (variant.isRequireClosedPeriod() ? "closed" : "open")
+                        + ", unclaimed this run — need 1."));
     }
 
     private static String glLineTypeSuffix(GeneralVoucherEditVariant variant) {
@@ -857,7 +875,7 @@ public class DbGeneralVoucherEditDataSource implements TestDataSource<MergedFina
     }
 
     private static Optional<Long> claimOne(Jdbi jdbi, String status, GeneralVoucherEditVariant variant,
-            Set<Long> claimedThisRun) {
+            Set<Long> claimedThisRun, List<String> gatheringLog) {
 
         List<Long> candidates;
         if (variant.getScenarioType() == GeneralVoucherEditVariant.ScenarioType.DETAIL_LINE && variant.isRequireSharedGlcodeSibling()) {
@@ -876,7 +894,7 @@ public class DbGeneralVoucherEditDataSource implements TestDataSource<MergedFina
                     "AND NOT EXISTS (SELECT 1 FROM finvchdet d2 WHERE d2.vchcode = m.vchcode AND d2.brsdt IS NOT NULL) " +
                     "AND EXISTS (SELECT 1 FROM finvchdet d3 WHERE d3.vchcode = m.vchcode " +
                     "AND d3.glcode = d.glcode AND d3.slcode <> d.slcode) " +
-                    "ORDER BY m.vchcode";
+                    "ORDER BY m.ycode DESC, m.vchdt DESC";
             candidates = jdbi.withHandle(h -> h.createQuery(sql).bind("status", status).mapTo(Long.class).list());
         } else if (variant.getScenarioType() == GeneralVoucherEditVariant.ScenarioType.DETAIL_LINE && variant.getGlLineType() != null) {
             String slapp = variant.getGlLineType().isSubLedgerApplicable() ? "Y" : "N";
@@ -888,7 +906,7 @@ public class DbGeneralVoucherEditDataSource implements TestDataSource<MergedFina
                     "WHERE m.vchtype = 'G' AND m.release_status = :status " +
                     "AND g.slapp = :slapp AND g.costapp = :costapp " +
                     "AND NOT EXISTS (SELECT 1 FROM finvchdet d2 WHERE d2.vchcode = m.vchcode AND d2.brsdt IS NOT NULL) " +
-                    "ORDER BY m.vchcode";
+                    "ORDER BY m.ycode DESC, m.vchdt DESC";
             candidates = jdbi.withHandle(h -> h.createQuery(sql)
                     .bind("status", status).bind("slapp", slapp).bind("costapp", costapp)
                     .mapTo(Long.class).list());
@@ -897,48 +915,81 @@ public class DbGeneralVoucherEditDataSource implements TestDataSource<MergedFina
                     "SELECT m.vchcode FROM finvchmain m " +
                     "WHERE m.vchtype = 'G' AND m.release_status = :status " +
                     "AND NOT EXISTS (SELECT 1 FROM finvchdet d2 WHERE d2.vchcode = m.vchcode AND d2.brsdt IS NOT NULL) " +
-                    "ORDER BY m.vchcode";
+                    "ORDER BY m.ycode DESC, m.vchdt DESC";
             candidates = jdbi.withHandle(h -> h.createQuery(sql).bind("status", status).mapTo(Long.class).list());
         }
+        // ORDER BY above uses ycode/vchdt, never vchcode — an insert-order surrogate key with no
+        // guaranteed relationship to accounting period or document date (a backdated/corrective
+        // entry can carry a high vchcode but an old ycode/vchdt); see
+        // AccountingPeriodResolver#findCurrentYear's Javadoc.
 
-        // Candidate eligibility guard (plan "GV Edit: accounting-year-aware dates..."): a document
-        // sitting in a closed accounting year or closed financial month cannot be edited at all in
-        // the live app — skip such candidates rather than claiming one a positive test could never
-        // actually save against. Requires a per-candidate header fetch since the claim query above
-        // doesn't (and can't cheaply) filter on admou_year/admou_month itself.
         FinVchMainDao headerDao = jdbi.onDemand(FinVchMainDao.class);
         boolean requiresFutureDateRoom = variant.getDateVariant() == VoucherEditDateVariant.FUTURE_DATE;
 
-        for (Long vchcode : candidates) {
-            if (claimedThisRun.contains(vchcode)) continue;
+        // requireClosedPeriod variants deliberately want a NON-current (closed) year — current-
+        // year preference only applies to ordinary, open-period-seeking variants.
+        Long currentYcode = variant.isRequireClosedPeriod()
+                ? null
+                : AccountingPeriodResolver.logAndResolveCurrentYcode(jdbi, headerDao, candidates, gatheringLog);
 
-            FinVchMain header = headerDao.findByVoucherCode(vchcode).orElse(null);
-            if (header == null) continue;
+        java.util.function.Predicate<FinVchMain> baseFilter = header -> {
             boolean periodOpen = AccountingPeriodResolver.isEditable(jdbi, header, PeriodDomain.FINANCE);
             // Every ordinary variant needs an OPEN period; the one requireClosedPeriod negative
             // variant (GV_EDIT_HEADER_POSTED_MONTH_CLOSED_NEGATIVE) needs the exact inverse — a
             // CLOSED period — so it can exercise EditGeneralVoucher's "Unpost if Posted" prep step
             // hitting the app's own closed-period rejection.
-            if (variant.isRequireClosedPeriod() ? periodOpen : !periodOpen) continue;
-
+            if (variant.isRequireClosedPeriod() ? !periodOpen : periodOpen) {
+                // continues below
+            } else {
+                return false;
+            }
             // FUTURE_DATE additionally needs a fiscal year still "in progress" (room after today)
             // — a past/fully-elapsed year would make "date > today" indistinguishable from simply
             // crossing into a different (later) year.
             if (requiresFutureDateRoom) {
                 AdmYear year = jdbi.onDemand(AdmYearDao.class).findByYcode(header.getYcode()).orElse(null);
-                if (year == null || !AccountingPeriodResolver.supportsFutureDateVariant(year)) continue;
+                return year != null && AccountingPeriodResolver.supportsFutureDateVariant(year);
             }
+            return true;
+        };
 
-            // claimedThisRun above only protects this one load() call — editGeneralVoucherHeader
-            // and editGeneralVoucherDetailLine each trigger their own separate load() call (and
-            // testng-gv-edit.xml/testng-gv-edit-mandatory.xml run them with thread-count="2"), so
-            // nothing stops both from independently claiming and editing the SAME vchcode at once.
-            // DocumentReservationRegistry — the same JVM-wide, cross-thread reservation registry
-            // AR/AP's document-adjustment flows already use (com.gsl.database, domain-agnostic by
-            // design: keyed on a plain String, released via WebTest's own
-            // @AfterMethod(alwaysRun=true) tearDown, which EditGeneralVoucher already inherits) —
-            // is what actually prevents that: if another thread/test method already reserved this
-            // vchcode, try the next candidate instead.
+        // Pass 1: current-year candidates only (skipped entirely for requireClosedPeriod variants
+        // — currentYcode is null for those, so this pass is a guaranteed no-op).
+        if (currentYcode != null) {
+            Optional<Long> claimed = scanAndClaim(headerDao, candidates, claimedThisRun,
+                    baseFilter.and(header -> header.getYcode() == currentYcode));
+            if (claimed.isPresent()) return claimed;
+        }
+        // Pass 2 (fallback): any candidate matching baseFilter, same ycode DESC/vchdt DESC order.
+        return scanAndClaim(headerDao, candidates, claimedThisRun, baseFilter);
+    }
+
+    /**
+     * Shared claim scan (mirrors {@code DbGeneralVoucherRevertDataSource#scanForClaim}): walks
+     * {@code candidates} in their already-fetched order, accepting the first one not already
+     * claimed this run whose header satisfies {@code filter} — reserving it via
+     * {@link DocumentReservationRegistry} before returning.
+     *
+     * <p>{@code claimedThisRun} above only protects this one {@code load()} call —
+     * {@code editGeneralVoucherHeader} and {@code editGeneralVoucherDetailLine} each trigger
+     * their own separate {@code load()} call (and {@code testng-gv-edit.xml}/
+     * {@code testng-gv-edit-mandatory.xml} run them with {@code thread-count="2"}), so nothing
+     * stops both from independently claiming and editing the SAME vchcode at once.
+     * {@link DocumentReservationRegistry} — the same JVM-wide, cross-thread reservation registry
+     * AR/AP's document-adjustment flows already use (domain-agnostic by design: keyed on a plain
+     * String, released via {@code WebTest}'s own {@code @AfterMethod(alwaysRun=true)} teardown,
+     * which {@code EditGeneralVoucher} already inherits) — is what actually prevents that: if
+     * another thread/test method already reserved this vchcode, try the next candidate instead.
+     */
+    private static Optional<Long> scanAndClaim(FinVchMainDao headerDao, List<Long> candidates,
+            Set<Long> claimedThisRun, java.util.function.Predicate<FinVchMain> filter) {
+        for (Long vchcode : candidates) {
+            if (claimedThisRun.contains(vchcode)) continue;
+
+            FinVchMain header = headerDao.findByVoucherCode(vchcode).orElse(null);
+            if (header == null) continue;
+            if (!filter.test(header)) continue;
+
             if (!DocumentReservationRegistry.tryReserve(String.valueOf(vchcode))) {
                 continue;
             }
