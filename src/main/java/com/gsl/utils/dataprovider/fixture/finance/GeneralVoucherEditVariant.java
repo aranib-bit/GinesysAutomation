@@ -51,6 +51,20 @@ public class GeneralVoucherEditVariant {
      *  applicable {@link #glLineType}. */
     boolean requireSharedGlcodeSibling;
 
+    /**
+     * {@code true} only for the one negative scenario that deliberately claims a Posted candidate
+     * whose own accounting year or financial month is already CLOSED — the exact inverse of the
+     * period-open guard {@link com.gsl.utils.dataprovider.source.finance.DbGeneralVoucherEditDataSource#claimOne}
+     * otherwise applies to every other variant. Such a candidate can't even be Unposted (the
+     * live app rejects Revert itself with "Finance month is already closed. Cannot be
+     * reverted." — see {@code GeneralVoucherRevertOutcome#CANNOT_REVERT_MONTH_CLOSED}), so
+     * {@code EditGeneralVoucher}'s own "Unpost if Posted" prep step is this scenario's actual,
+     * confirmed assertion point — it never reaches Save at all. {@code false} (default) for every
+     * other variant, which all require an OPEN period exactly as before.
+     */
+    @Builder.Default
+    boolean requireClosedPeriod = false;
+
     /** Which new document date to assign — {@code null} for {@link ScenarioType#DETAIL_LINE}
      *  scenarios (date isn't part of that scenario) and for any variant built before this field
      *  existed; {@code DbGeneralVoucherEditDataSource} treats a {@code null} value the same as

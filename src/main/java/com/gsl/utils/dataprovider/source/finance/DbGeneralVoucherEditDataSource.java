@@ -19,6 +19,7 @@ import com.gsl.database.dao.finance.FinVchDetDao;
 import com.gsl.database.dao.finance.FinVchMainDao;
 import com.gsl.database.finance.GeneralVoucherEditRevertBackfillStrategy;
 import com.gsl.driver.DriverManager;
+import com.gsl.enums.Finance.Operations.Common.DocumentMessageBoxMessage;
 import com.gsl.enums.Finance.Operations.GeneralVoucher.GlLineType;
 import com.gsl.enums.GlAccountType;
 import com.gsl.enums.PeriodDomain;
@@ -32,6 +33,7 @@ import com.gsl.model.finance.FinSlGl;
 import com.gsl.model.finance.FinSlGlSite;
 import com.gsl.model.finance.FinVchDet;
 import com.gsl.model.finance.FinVchMain;
+import com.gsl.pages.enums.Finance.Operations.GeneralVoucher.GeneralVoucherRevertOutcome;
 import com.gsl.testdata.Finance.Operations.Vouchers.GeneralVoucher.DetailLineEditTarget;
 import com.gsl.testdata.Finance.Operations.Vouchers.GeneralVoucher.DocumentInformation;
 import com.gsl.testdata.Finance.Operations.Vouchers.GeneralVoucher.ExpenseIncomeDetail;
@@ -182,6 +184,35 @@ public class DbGeneralVoucherEditDataSource implements TestDataSource<MergedFina
 
         gatheringLog.add("  Claimed voucher scheme_docno='" + header.getSchemeDocno() + "' (vchcode=" + vchcode
                 + "), release_status='" + header.getReleaseStatus() + "'");
+
+        if (variant.isRequireClosedPeriod()) {
+            // GV_EDIT_HEADER_POSTED_MONTH_CLOSED_NEGATIVE: this candidate's own accounting
+            // year/financial month is CONFIRMED closed (claimOne's inverted guard) — the live app
+            // refuses to even Unpost it, so EditGeneralVoucher never reaches detail-row resolution,
+            // date computation, or Save at all. Build the minimal row that scenario needs (mirrors
+            // DbGeneralVoucherRevertDataSource#resolveClosedPeriodNegativeCandidate's own minimal
+            // shape) rather than resolving the full detail matrix this variant will never use.
+            gatheringLog.add("  Own accounting year/financial month CONFIRMED closed; expecting "
+                    + "\"Unpost if Posted\" to be REJECTED with: \""
+                    + DocumentMessageBoxMessage.REVERT_MONTH_ALREADY_CLOSED.getText() + "\"");
+            gatheringLog.add("═══════════════════════════════════════════════════════════");
+
+            return MergedFinanceGeneralVoucherData.builder()
+                    .scenarioTypeLabel(variant.getVariantId())
+                    .existingVoucherNo(header.getSchemeDocno())
+                    .releaseStatus(header.getReleaseStatus())
+                    .currentDocDate(header.getVchdt())
+                    .reservedDocumentKey(String.valueOf(vchcode))
+                    .operationMode(GeneralVoucherOperationMode.EDIT)
+                    .expenseIncomeDetailList(List.of())
+                    .siteAllocationList(List.of())
+                    .entryMethod(variant.getEntryMethod())
+                    .expectedRevertOutcome(GeneralVoucherRevertOutcome.CANNOT_REVERT_MONTH_CLOSED)
+                    .dbGatheringLog(gatheringLog)
+                    .invocationIndex(1)
+                    .totalInvocations(1)
+                    .build();
+        }
 
         String siteName = jdbi.withHandle(h ->
                 h.createQuery("SELECT name FROM admsite WHERE code = :code")
@@ -883,7 +914,12 @@ public class DbGeneralVoucherEditDataSource implements TestDataSource<MergedFina
 
             FinVchMain header = headerDao.findByVoucherCode(vchcode).orElse(null);
             if (header == null) continue;
-            if (!AccountingPeriodResolver.isEditable(jdbi, header, PeriodDomain.FINANCE)) continue;
+            boolean periodOpen = AccountingPeriodResolver.isEditable(jdbi, header, PeriodDomain.FINANCE);
+            // Every ordinary variant needs an OPEN period; the one requireClosedPeriod negative
+            // variant (GV_EDIT_HEADER_POSTED_MONTH_CLOSED_NEGATIVE) needs the exact inverse — a
+            // CLOSED period — so it can exercise EditGeneralVoucher's "Unpost if Posted" prep step
+            // hitting the app's own closed-period rejection.
+            if (variant.isRequireClosedPeriod() ? periodOpen : !periodOpen) continue;
 
             // FUTURE_DATE additionally needs a fiscal year still "in progress" (room after today)
             // — a past/fully-elapsed year would make "date > today" indistinguishable from simply

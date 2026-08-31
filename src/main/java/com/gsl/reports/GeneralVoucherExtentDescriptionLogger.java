@@ -69,17 +69,18 @@ public final class GeneralVoucherExtentDescriptionLogger
         // Edit also sets existingVoucherNo, so operationMode must be checked first; a null
         // operationMode (rows built before that field existed) falls back to the
         // existingVoucherNo-based inference the description builder has always used.
-        boolean isEditOrRevert = data.getOperationMode() == GeneralVoucherOperationMode.EDIT
+        boolean operatesOnExistingVoucher = data.getOperationMode() == GeneralVoucherOperationMode.EDIT
                 || data.getOperationMode() == GeneralVoucherOperationMode.REVERT
+                || data.getOperationMode() == GeneralVoucherOperationMode.DELETE
                 || (data.getOperationMode() == null && data.getExistingVoucherNo() != null);
 
         // "Doc Scheme" (the base Header table's own row, sourced from documentInformation's
         // voucherno) is deliberately blank for Edit — see DbGeneralVoucherEditDataSource's
         // Javadoc: that field is left null so the UI's Voucher No. widget is never touched
         // during Edit. "Voucher No." here is a distinct, always-populated field: the actual
-        // identifying document number being edited/reverted (existingVoucherNo), needed since
-        // Doc Scheme can't stand in for it on these two operation modes.
-        if (isEditOrRevert) {
+        // identifying document number being edited/reverted/deleted (existingVoucherNo), needed
+        // since Doc Scheme can't stand in for it on these operation modes.
+        if (operatesOnExistingVoucher) {
             rows.add(new String[]{ "Voucher No.", nullSafe(data.getExistingVoucherNo()) });
         }
 
@@ -114,6 +115,10 @@ public final class GeneralVoucherExtentDescriptionLogger
         // to the same existingVoucherNo-based inference the description builder always used.
         if (data.getOperationMode() == GeneralVoucherOperationMode.EDIT) {
             logPositiveExpectedForEdit(data);
+            return;
+        }
+        if (data.getOperationMode() == GeneralVoucherOperationMode.DELETE) {
+            logPositiveExpectedForDelete();
             return;
         }
         if (data.getExistingVoucherNo() != null) {
@@ -200,6 +205,15 @@ public final class GeneralVoucherExtentDescriptionLogger
             { "DB — finvchdet",    "no record changes expected" },
             { "DB — finpost",      "no record changes expected" },
             { "DB — fincosttag",   "no record changes expected" },
+        });
+    }
+
+    private void logPositiveExpectedForDelete() {
+        ExtentLogger.infoTable(new String[][]{
+            { "Expected Outcome",  "Details" },
+            { "UI — Delete",       "Voucher removed from the list page; confirmation dialog dismissed" },
+            { "DB — finvchmain",   "row deleted (unposted first via Revert if it started Posted)" },
+            { "DB — aud2_finvchmain", "1 DELETE audit row recorded, matching the pre-delete finvchmain state" },
         });
     }
 

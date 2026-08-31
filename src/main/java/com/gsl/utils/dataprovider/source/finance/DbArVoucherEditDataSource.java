@@ -61,22 +61,12 @@ public class DbArVoucherEditDataSource implements TestDataSource<MergedFinanceAr
 
     @Override
     public List<MergedFinanceArVoucherData> load(String testMethodName) {
-        Long vchcode = DbIdQueue.getNextId(MenuOperationKey.build("FinanceARVoucher", "Modify"));
-        if (vchcode == null) {
-            throw new SkipException(
-                    "[DbArVoucherEditDataSource] No AR Voucher available for Edit. " +
-                    "Ensure finvchmain has rows WHERE vchtype='R' AND release_status IN ('N','U','P').");
-        }
-
-        Log.info("[DB-Edit] Fetching AR Voucher for Edit: vchcode={}", vchcode);
-
         Jdbi jdbi = DatabaseManager.getJdbi();
 
-        // 1. Header
-        FinVchMain header = jdbi.onDemand(FinVchMainDao.class)
-                .findByVoucherCode(vchcode)
-                .orElseThrow(() -> new IllegalStateException(
-                        "[DbArVoucherEditDataSource] finvchmain row not found for vchcode=" + vchcode));
+        final FinVchMain header = claimOpenPeriodCandidate(jdbi);
+        final long vchcode = header.getVchcode();
+
+        Log.info("[DB-Edit] Fetching AR Voucher for Edit: vchcode={}", vchcode);
 
         // 2. Site name (admsite.name WHERE code = admsite_code_owner)
         String siteName = jdbi.withHandle(h ->
@@ -148,6 +138,38 @@ public class DbArVoucherEditDataSource implements TestDataSource<MergedFinanceAr
                 vchcode, header.getSchemeDocno(), docInfo.getDocumentdate(), slRows.size());
 
         return List.of(editData);
+    }
+
+    /**
+     * Pulls candidates off {@link DbIdQueue} key {@code "FinanceARVoucher.Modify"} until one
+     * whose own accounting year AND financial month are both still open is found (closed-period
+     * guard, mirroring {@code DbGeneralVoucherEditDataSource#claimOne}'s own guard) — a document
+     * sitting in a closed period can't be edited at all in the live app, so it's skipped here
+     * rather than left for {@code EditArVoucher} to hit an app rejection at runtime. {@link DbIdQueue}
+     * has no "peek" API, so each popped id's header is fetched and checked via
+     * {@link AccountingPeriodResolver#isEditable} before being accepted; a rejected id is simply
+     * discarded (not returned to the queue) since {@code DbIdQueue}'s contract is pop-once-only.
+     */
+    private static FinVchMain claimOpenPeriodCandidate(Jdbi jdbi) {
+        while (true) {
+            Long vchcode = DbIdQueue.getNextId(MenuOperationKey.build("FinanceARVoucher", "Modify"));
+            if (vchcode == null) {
+                throw new SkipException(
+                        "[DbArVoucherEditDataSource] No AR Voucher available for Edit. " +
+                        "Ensure finvchmain has rows WHERE vchtype='R' AND release_status IN ('N','U','P') " +
+                        "in an open accounting year/financial month.");
+            }
+
+            FinVchMain header = jdbi.onDemand(FinVchMainDao.class)
+                    .findByVoucherCode(vchcode)
+                    .orElseThrow(() -> new IllegalStateException(
+                            "[DbArVoucherEditDataSource] finvchmain row not found for vchcode=" + vchcode));
+
+            if (AccountingPeriodResolver.isEditable(jdbi, header, PeriodDomain.FINANCE)) {
+                return header;
+            }
+            Log.info("[DB-Edit] Skipping vchcode={} — its own accounting year/financial month is closed.", vchcode);
+        }
     }
 
     /**

@@ -81,6 +81,22 @@ public enum DocumentMessageBoxMessage {
     ),
 
     /**
+     * Appears after clicking Revert on a document whose own accounting year or financial month
+     * is already closed ({@code admou_year.admyear_status='C'} or
+     * {@code admou_month.fin_month_status='C'} — see {@code AccountingPeriodResolver}) — single
+     * OK button, no state change; Revert is blocked. Live text
+     * <b>CONFIRMED</b> from a live test run's captured report (run {@code 20260831_140246},
+     * {@code FIN-GV-REVERT-05} through {@code 09}):
+     * {@code "Document No: <docno> - Finance month is already closed. Cannot be reverted."};
+     * this constant deliberately omits the dynamic "Document No: X - " prefix, same convention
+     * as {@link #REVERT_ALREADY_UNPOSTED_INFO}/{@link #REVERT_BRS_ALREADY_DONE}.
+     */
+    REVERT_MONTH_ALREADY_CLOSED(
+            "Finance month is already closed. Cannot be reverted.",
+            PopupType.INFO
+    ),
+
+    /**
      * Appears after confirming Yes on {@link #REVERT_UNPOST_CONFIRMATION} — a separate
      * "Result" dialog, single OK button, confirming the un-post actually completed. Live text
      * is {@code "Document No: <docno> - Reverted Successfully."}; this constant deliberately

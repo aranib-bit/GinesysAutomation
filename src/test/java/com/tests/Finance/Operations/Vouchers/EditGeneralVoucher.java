@@ -139,6 +139,7 @@ public class EditGeneralVoucher extends WebTest {
         final VoucherSnapshot[]        beforeRef  = new VoucherSnapshot[1];
         final VoucherSnapshot[]        afterRef   = new VoucherSnapshot[1];
         final String[]                 liveReleaseStatusRef = new String[1];
+        final GeneralVoucherRevertOutcome[] unpostOutcomeRef = new GeneralVoucherRevertOutcome[1];
 
         SnapshotService snapshotService = new SnapshotService(new Aud2SnapshotDao());
 
@@ -218,10 +219,17 @@ public class EditGeneralVoucher extends WebTest {
         StepExecutor.step("Unpost if Posted (release_status='P')", () -> {
             if ("P".equals(liveReleaseStatusRef[0])) {
                 GeneralVoucherRevertOutcome outcome = listRef[0].revertSelectedDocument();
+                unpostOutcomeRef[0] = outcome;
                 if (outcome == GeneralVoucherRevertOutcome.CANNOT_REVERT_BRS_DONE) {
                     ReportLogger.warn("Voucher's line(s) are already bank-reconciled — Revert (un-post) was "
                             + "blocked; voucher remains Posted. The subsequent Edit steps may behave "
                             + "differently against a still-Posted voucher.");
+                } else if (outcome == GeneralVoucherRevertOutcome.CANNOT_REVERT_MONTH_CLOSED) {
+                    // GV_EDIT_HEADER_POSTED_MONTH_CLOSED_NEGATIVE's actual assertion point — see the
+                    // early-return right after this step. Same shape as the BRS branch above: the
+                    // live app refused to un-post, so the voucher remains Posted.
+                    ReportLogger.warn("Voucher's own accounting year/financial month is already closed — "
+                            + "Revert (un-post) was blocked; voucher remains Posted.");
                 } else {
                     ReportLogger.business("Voucher unposted via Actions→Revert (was release_status='P'), outcome=" + outcome);
                 }
@@ -229,6 +237,26 @@ public class EditGeneralVoucher extends WebTest {
                 ReportLogger.business("Voucher status='" + liveReleaseStatusRef[0] + "' — unpost not required");
             }
         });
+
+        // ── Step 4b: Negative-outcome branch (closed accounting period) ──────────────
+        // A variant carrying an expectedRevertOutcome deliberately claimed a candidate whose own
+        // accounting year/financial month is already closed (GV_EDIT_HEADER_POSTED_MONTH_CLOSED_
+        // NEGATIVE) — Step 4 above is expected to hit that exact rejection while trying to un-post
+        // it, and Edit never gets any further: nothing was actually opened/changed, so Steps 5-14
+        // (document context, snapshots, opening the form, Save, post-save validation) don't apply.
+        // Mirrors Step 9b's expectedValidation early-return below, one prep step earlier.
+        if (testData.getExpectedRevertOutcome() != null) {
+            StepExecutor.step("Verify Negative Outcome (Unpost-if-Posted)", () -> {
+                Assert.assertEquals(unpostOutcomeRef[0], testData.getExpectedRevertOutcome(),
+                        "Expected \"Unpost if Posted\" outcome=" + testData.getExpectedRevertOutcome()
+                        + " for voucher " + testData.getExistingVoucherNo()
+                        + " (deliberately claimed to exercise that outcome), but got "
+                        + unpostOutcomeRef[0] + " instead.");
+                ReportLogger.pass("Negative outcome correctly triggered: " + unpostOutcomeRef[0]
+                        + " for voucher: " + testData.getExistingVoucherNo());
+            });
+            return;
+        }
 
         // ── Step 5: Resolve Document Context ──────────────────────────────────────
         StepExecutor.step("Resolve Document Context", () -> {

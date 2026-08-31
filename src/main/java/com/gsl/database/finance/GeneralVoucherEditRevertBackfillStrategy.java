@@ -6,6 +6,7 @@ import com.gsl.database.dao.finance.FinVchMainDao;
 import com.gsl.driver.Driver;
 import com.gsl.driver.SessionManager;
 import com.gsl.enums.ApiPlatform;
+import com.gsl.enums.PeriodDomain;
 import com.gsl.model.finance.FinVchMain;
 import com.gsl.pages.Finance.Operations.GeneralVoucherListPage;
 import com.gsl.pages.HomePage;
@@ -17,7 +18,10 @@ import com.gsl.testdata.UserCredential;
 import com.gsl.testdata.UserPool;
 import com.gsl.testdata.UserType;
 import com.gsl.utils.NavigationUtils;
+import com.gsl.utils.dataprovider.source.finance.common.AccountingPeriodResolver;
 import org.jdbi.v3.core.Jdbi;
+
+import java.util.List;
 
 /**
  * {@code DbGeneralVoucherEditDataSource}'s shortfall backfill for the "Posted source, needs
@@ -125,13 +129,28 @@ public final class GeneralVoucherEditRevertBackfillStrategy implements BackfillS
         }
     }
 
+    /**
+     * Closed-period guard (mirrors {@code DbGeneralVoucherRevertDataSource#claimOnePostedVoucher}'s
+     * own guard): a document sitting in a closed accounting year or closed financial month can't
+     * be reverted at all in the live app — driving {@link #revertViaUi} against one would just hit
+     * the same "Finance month is already closed" rejection this whole strategy exists to avoid.
+     * {@link #CLAIM_POSTED_SQL} can't cheaply filter on {@code admou_year}/{@code admou_month}
+     * itself, so each candidate's header is re-fetched and checked via
+     * {@link AccountingPeriodResolver#isEditable} before being returned.
+     */
     private Long claimOnePostedCandidate() {
         Jdbi jdbi = DatabaseManager.getJdbi();
-        return jdbi.withHandle(handle ->
-                handle.createQuery(CLAIM_POSTED_SQL)
-                        .mapTo(Long.class)
-                        .findFirst()
-                        .orElse(null));
+        List<Long> candidates = jdbi.withHandle(handle ->
+                handle.createQuery(CLAIM_POSTED_SQL).mapTo(Long.class).list());
+
+        FinVchMainDao headerDao = jdbi.onDemand(FinVchMainDao.class);
+        for (Long vchcode : candidates) {
+            FinVchMain header = headerDao.findByVoucherCode(vchcode).orElse(null);
+            if (header == null) continue;
+            if (!AccountingPeriodResolver.isEditable(jdbi, header, PeriodDomain.FINANCE)) continue;
+            return vchcode;
+        }
+        return null;
     }
 
     /** Reads back the just-reverted row and confirms it actually landed {@code release_status='U'}. */

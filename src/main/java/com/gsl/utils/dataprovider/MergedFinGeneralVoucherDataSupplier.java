@@ -5,6 +5,7 @@ import com.gsl.testdata.dto.MergedFinanceGeneralVoucherData;
 import com.gsl.utils.Log;
 import com.gsl.utils.dataprovider.source.TestDataSource;
 import com.gsl.utils.dataprovider.source.finance.DbGeneralVoucherDataSource;
+import com.gsl.utils.dataprovider.source.finance.DbGeneralVoucherDeleteDataSource;
 import com.gsl.utils.dataprovider.source.finance.DbGeneralVoucherEditDataSource;
 import com.gsl.utils.dataprovider.source.finance.DbGeneralVoucherRevertDataSource;
 import com.gsl.utils.dataprovider.source.finance.ExcelGeneralVoucherDataSource;
@@ -71,6 +72,7 @@ public class MergedFinGeneralVoucherDataSupplier {
                             case "revertGeneralVoucher" -> new DbGeneralVoucherRevertDataSource(xmlGroupParam, xmlTagParam);
                             case "editGeneralVoucherHeader", "editGeneralVoucherDetailLine" ->
                                     new DbGeneralVoucherEditDataSource(xmlEditGroupParam);
+                            case "deleteGeneralVoucher" -> new DbGeneralVoucherDeleteDataSource();
                             default -> new DbGeneralVoucherDataSource(xmlGroupParam, xmlTagParam);
                           }
                         : switch (method.getName()) {

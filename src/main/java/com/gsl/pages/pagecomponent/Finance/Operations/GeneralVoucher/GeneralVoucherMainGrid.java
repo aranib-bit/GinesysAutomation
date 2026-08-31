@@ -110,10 +110,16 @@ public class GeneralVoucherMainGrid extends VoucherMainGridBase {
             JavascriptExecutorUtils.waitForExtJS();
             return GeneralVoucherRevertOutcome.CANNOT_REVERT_BRS_DONE;
         }
+        if (messageText.contains(DocumentMessageBoxMessage.REVERT_MONTH_ALREADY_CLOSED.getText())) {
+            msgBox.clickOk();
+            JavascriptExecutorUtils.waitForExtJS();
+            return GeneralVoucherRevertOutcome.CANNOT_REVERT_MONTH_CLOSED;
+        }
         throw new IllegalStateException(
                 "GeneralVoucherMainGrid.confirmRevert(): unrecognized post-Revert dialog text: ["
                 + messageText + "]. Expected one of '" + DocumentMessageBoxMessage.REVERT_UNPOST_CONFIRMATION.getText()
                 + "', '" + DocumentMessageBoxMessage.REVERT_ALREADY_UNPOSTED_INFO.getText()
-                + "', or '" + DocumentMessageBoxMessage.REVERT_BRS_ALREADY_DONE.getText() + "'.");
+                + "', '" + DocumentMessageBoxMessage.REVERT_BRS_ALREADY_DONE.getText()
+                + "', or '" + DocumentMessageBoxMessage.REVERT_MONTH_ALREADY_CLOSED.getText() + "'.");
     }
 }

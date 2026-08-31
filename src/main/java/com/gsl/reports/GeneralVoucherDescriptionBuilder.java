@@ -47,6 +47,21 @@ public final class GeneralVoucherDescriptionBuilder {
             if (negDesc != null) return negDesc;
         }
 
+        // Closed-period negative scenarios (Revert/Edit/Delete all deliberately claim a candidate
+        // whose own accounting year/financial month is closed — see the "GV Revert picks
+        // documents in a now-closed accounting period, + closed-period negative-test coverage"
+        // plan) never reach a positive outcome at all, so describe the rejection being verified
+        // instead of falling through to the normal action-verb sentence below.
+        if (data.getExpectedRevertOutcome() != null) {
+            String actionLabel = switch (data.getOperationMode()) {
+                case EDIT -> "editing (Unpost prerequisite)";
+                case DELETE -> "deleting (Unpost prerequisite)";
+                default -> "reverting";
+            };
+            return "Verify that " + actionLabel + " a General Voucher whose own accounting year or "
+                    + "financial month is already closed is correctly REJECTED by the application.";
+        }
+
         // Checked BEFORE the isRevert fallback below, since Edit also sets existingVoucherNo —
         // without this, an Edit run would be mislabeled "reverted successfully" by the old
         // existingVoucherNo-based inference (see GeneralVoucherOperationMode's Javadoc).
@@ -63,6 +78,11 @@ public final class GeneralVoucherDescriptionBuilder {
             // buildDetailLineEditSummary's own precise before→after phrasing below.
             return "Verify that a General Voucher is edited successfully with an updated "
                     + headerFieldScopePhrase(data) + ".";
+        }
+
+        if (data.getOperationMode() == GeneralVoucherOperationMode.DELETE) {
+            return "Verify that an existing General Voucher (" + data.getExistingVoucherNo()
+                    + ") is deleted successfully.";
         }
 
         // Revert data sources populate existingVoucherNo (and only Revert does — see that

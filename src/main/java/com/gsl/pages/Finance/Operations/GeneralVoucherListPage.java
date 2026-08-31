@@ -20,7 +20,9 @@ import com.gsl.pages.pagecomponent.Finance.Operations.GeneralVoucher.GeneralVouc
  * Everything else ({@code clickAdd}/{@code searchByVoucherNo}/{@code clickEditForVoucher}/
  * {@code clickEditFromActions}/{@code doubleClickToEdit}/{@code clickDeleteForVoucher}/
  * {@code clickUnpost}/{@code confirmDelete}/{@code clickActions}/{@code clickRefresh}/
- * {@code clickClearFilter}/{@code clickNextPage}/{@code selectDocumentInListPage}) is inherited.
+ * {@code clickClearFilter}/{@code clickNextPage}/{@code selectDocumentInListPage}/
+ * {@code clickRelease}/{@code confirmRelease} — the latter two scaffold-only, see
+ * {@code VoucherMainGridBase}'s own Javadoc) is inherited.
  */
 public class GeneralVoucherListPage extends VoucherListPageBase<
         GeneralVoucherListGridHeader, GeneralVoucherMainGrid, GeneralVoucherListFooter,

@@ -18,5 +18,10 @@ public enum GeneralVoucherRevertOutcome {
     /** Document's line(s) are already bank-reconciled (BRS); the "cannot be reverted"
      *  informational dialog appeared and was dismissed — release_status is expected to stay
      *  unchanged, since Revert never proceeded. */
-    CANNOT_REVERT_BRS_DONE
+    CANNOT_REVERT_BRS_DONE,
+
+    /** Document's own accounting year or financial month is already closed; the "Finance month
+     *  is already closed. Cannot be reverted." informational dialog appeared and was dismissed —
+     *  release_status is expected to stay unchanged, since Revert never proceeded. */
+    CANNOT_REVERT_MONTH_CLOSED
 }

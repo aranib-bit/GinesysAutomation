@@ -8,12 +8,14 @@ import java.util.ArrayList;
 import java.util.List;
 
 /**
- * Enumerates the 21-scenario General Voucher Edit matrix (originally a fixed 7 — plan §7's
+ * Enumerates the 22-scenario General Voucher Edit matrix (originally a fixed 7 — plan §7's
  * table — expanded with accounting-year-aware header date variants, see the "GV Edit:
  * accounting-year-aware dates..." plan; #17 (formerly #14) added to verify the "finpost narration
  * change detection" fix — see the "Fix finpost/finvchdet narration-change detection" plan; #9-11
  * added for field-isolated header edits — see plan §4D; #18-20 added for the new detail-line edit
- * shapes — see plan §4B):
+ * shapes — see plan §4B; #22 added for the closed-accounting-period negative scenario — see the
+ * "GV Revert picks documents in a now-closed accounting period, + closed-period negative-test
+ * coverage" plan):
  *
  * <table>
  *     <caption>Edit scenario matrix</caption>
@@ -47,6 +49,9 @@ import java.util.List;
  *         same total amount, sitewise allocation redistributed</td></tr>
  *     <tr><td>21</td><td>REGRESSION_PHASE1</td><td>Detail-line edit, site-split-only (Type3), source Unposted —
  *         same total amount, sitewise allocation redistributed</td></tr>
+ *     <tr><td>22</td><td>MANDATORY</td><td>Negative: header-only, source Posted, claimed candidate's own
+ *         accounting year/financial month is already closed — expects the live app to refuse even the
+ *         "Unpost if Posted" prep step (never reaches Save)</td></tr>
  * </table>
  *
  * Unlike {@link GeneralVoucherCombinations}, this is a small, fixed, hand-enumerated list —
@@ -140,6 +145,24 @@ public final class GeneralVoucherEditCombinations {
                 .scenarioType(GeneralVoucherEditVariant.ScenarioType.HEADER_ONLY)
                 .sourceStatus(GeneralVoucherEditVariant.SourceStatus.UNPOSTED)
                 .dateVariant(VoucherEditDateVariant.FUTURE_DATE)
+                .executionGroup(GeneralVoucherEditExecutionGroup.MANDATORY)
+                .build());
+
+        // Negative: claims a Posted candidate whose own accounting year/financial month is
+        // already closed. sourceStatus=POSTED_NEEDS_REVERT so claimOne's "P"-status branch is
+        // used (never DataAvailabilityGuard/backfill-wrapped for that status — see
+        // claimCandidate), and requireClosedPeriod=true inverts claimOne's usual period-open
+        // guard. Unlike CROSS_YEAR_NEGATIVE above, this never reaches Save at all — the live app
+        // already refuses to even Unpost such a candidate (confirmed via
+        // FIN-GV-REVERT-05..09's live rejection text), so EditGeneralVoucher's Step 4 "Unpost if
+        // Posted" prep step IS this scenario's assertion point (see expectedRevertOutcome on the
+        // resulting MergedFinanceGeneralVoucherData row, resolved directly in resolveOne — no
+        // detail rows/new date are built for this variant at all).
+        out.add(GeneralVoucherEditVariant.builder()
+                .variantId("GV_EDIT_HEADER_POSTED_MONTH_CLOSED_NEGATIVE")
+                .scenarioType(GeneralVoucherEditVariant.ScenarioType.HEADER_ONLY)
+                .sourceStatus(GeneralVoucherEditVariant.SourceStatus.POSTED_NEEDS_REVERT)
+                .requireClosedPeriod(true)
                 .executionGroup(GeneralVoucherEditExecutionGroup.MANDATORY)
                 .build());
 

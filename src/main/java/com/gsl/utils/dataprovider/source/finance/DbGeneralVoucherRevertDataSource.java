@@ -6,8 +6,11 @@ import com.gsl.database.DbQueryBuffer;
 import com.gsl.database.DocumentReservationRegistry;
 import com.gsl.database.dao.finance.FinVchMainDao;
 import com.gsl.database.finance.GeneralVoucherApiBackfillStrategy;
+import com.gsl.enums.Finance.Operations.Common.DocumentMessageBoxMessage;
 import com.gsl.enums.GlAccountType;
+import com.gsl.enums.PeriodDomain;
 import com.gsl.model.finance.FinVchMain;
+import com.gsl.pages.enums.Finance.Operations.GeneralVoucher.GeneralVoucherRevertOutcome;
 import com.gsl.testdata.dto.GeneralVoucherOperationMode;
 import com.gsl.testdata.dto.MergedFinanceGeneralVoucherData;
 import com.gsl.utils.Log;
@@ -20,12 +23,14 @@ import com.gsl.utils.dataprovider.fixture.finance.GeneralVoucherScenarioType;
 import com.gsl.utils.dataprovider.fixture.finance.GeneralVoucherTag;
 import com.gsl.utils.dataprovider.fixture.finance.GeneralVoucherVariant;
 import com.gsl.utils.dataprovider.source.TestDataSource;
+import com.gsl.utils.dataprovider.source.finance.common.AccountingPeriodResolver;
 import org.jdbi.v3.core.Jdbi;
 import org.testng.SkipException;
 
 import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.List;
+import java.util.Optional;
 import java.util.Set;
 
 /**
@@ -35,8 +40,11 @@ import java.util.Set;
  * shape × side × reversal × payment matrix, filtered by {@code gv.group}/{@code gv.tag}), but
  * instead of building brand-new voucher data to create, each surviving combination resolves to an
  * <b>existing Posted ({@code release_status='P'}) General Voucher whose GL account type matches
- * the combination's {@link GlAccountType}, and which has not already been bank-reconciled (no
- * {@code finvchdet} line with a non-null {@code brsdt})</b>, to be reverted.
+ * the combination's {@link GlAccountType}, which has not already been bank-reconciled (no
+ * {@code finvchdet} line with a non-null {@code brsdt}), and whose own accounting year/financial
+ * month are both still open ({@link com.gsl.utils.dataprovider.source.finance.common.AccountingPeriodResolver#isEditable}
+ * — a document in a closed period is rejected by the live app itself, so it's excluded here
+ * rather than left for {@code RevertGeneralVoucher} to hit at runtime)</b>, to be reverted.
  *
  * <p>Single-phase (like {@code DbArVoucherDeleteDataSource}) — unlike Create's
  * {@link DbGeneralVoucherDataSource}, resolving a document to revert needs no live-browser-dependent
@@ -91,6 +99,16 @@ public class DbGeneralVoucherRevertDataSource implements TestDataSource<MergedFi
                 results.add(resolveOneRevertCandidate(jdbi, variant, claimedThisRun));
             }
         }
+
+        // Negative scenario: a document whose own accounting year/financial month is already
+        // closed — the live app rejects Revert outright (GeneralVoucherRevertOutcome
+        // .CANNOT_REVERT_MONTH_CLOSED / DocumentMessageBoxMessage.REVERT_MONTH_ALREADY_CLOSED).
+        // Deliberately NOT part of the GeneralVoucherVariant/GeneralVoucherCombinations matrix
+        // above (that matrix is entirely GL-shape/side/reversal/payment combinatorics, unrelated
+        // to accounting-period state) — always included exactly once, independent of
+        // gv.group/gv.tag filtering, the same way CreateGeneralVoucherNegativeBoundary's negative
+        // scenarios stand apart from the positive combination matrix.
+        resolveClosedPeriodNegativeCandidate(jdbi, claimedThisRun).ifPresent(results::add);
 
         int total = results.size();
         for (int i = 0; i < total; i++) {
@@ -185,6 +203,14 @@ public class DbGeneralVoucherRevertDataSource implements TestDataSource<MergedFi
      * document is blocked by the live app itself with a "cannot be reverted" dialog, so it's
      * excluded here rather than left for {@code RevertGeneralVoucher} to hit at runtime).
      *
+     * <p><b>Closed-period guard</b> (mirrors {@code DbGeneralVoucherEditDataSource#claimOne}'s
+     * own guard): a document sitting in a closed accounting year or closed financial month
+     * cannot be reverted at all in the live app either — it shows "Finance month is already
+     * closed. Cannot be reverted." instead of proceeding. The SQL above can't cheaply filter on
+     * {@code admou_year}/{@code admou_month} itself, so each candidate's header is re-fetched and
+     * checked via {@link AccountingPeriodResolver#isEditable} before being claimed — skip such
+     * candidates rather than handing a positive test a document it could never actually revert.
+     *
      * <p><b>No longer relies on "Revert never runs across parallel threads" alone</b> — that
      * assumption doesn't hold against {@code testng-gv-mandatory.xml}'s actual
      * {@code thread-count="2"} (Create/Revert run as parallel threads in that suite), and this
@@ -201,7 +227,7 @@ public class DbGeneralVoucherRevertDataSource implements TestDataSource<MergedFi
      * own live ad-hoc JDBI queries rather than going through that queue machinery, and this
      * registry-backed filter closes the actual gap without that larger migration.
      */
-    private static java.util.Optional<Long> claimOnePostedVoucher(
+    private static Optional<Long> claimOnePostedVoucher(
             Jdbi jdbi, GlAccountType type, Set<Long> claimedThisRun) {
         String sql =
             "SELECT DISTINCT m.vchcode FROM finvchmain m " +
@@ -217,13 +243,112 @@ public class DbGeneralVoucherRevertDataSource implements TestDataSource<MergedFi
                 .mapTo(Long.class)
                 .list()
         );
-        return candidates.stream()
-                .filter(vchcode -> !claimedThisRun.contains(vchcode))
-                .filter(vchcode -> DocumentReservationRegistry.tryReserve(String.valueOf(vchcode)))
-                .findFirst()
-                .map(vchcode -> {
-                    claimedThisRun.add(vchcode);
-                    return vchcode;
-                });
+
+        FinVchMainDao headerDao = jdbi.onDemand(FinVchMainDao.class);
+        for (Long vchcode : candidates) {
+            if (claimedThisRun.contains(vchcode)) continue;
+
+            FinVchMain header = headerDao.findByVoucherCode(vchcode).orElse(null);
+            if (header == null) continue;
+            if (!AccountingPeriodResolver.isEditable(jdbi, header, PeriodDomain.FINANCE)) continue;
+
+            if (!DocumentReservationRegistry.tryReserve(String.valueOf(vchcode))) continue;
+
+            claimedThisRun.add(vchcode);
+            return Optional.of(vchcode);
+        }
+        return Optional.empty();
+    }
+
+    /**
+     * Builds the one Revert negative scenario: claims an existing Posted General Voucher whose
+     * own accounting year or financial month is already closed — exactly the condition
+     * {@link #claimOnePostedVoucher}'s guard now excludes from every positive combination above
+     * — and tags the resulting row with {@code expectedRevertOutcome=CANNOT_REVERT_MONTH_CLOSED}
+     * so {@code RevertGeneralVoucher} asserts the live app actually refuses to revert it, rather
+     * than merely happening to steer clear of one. Returns empty (logged, not thrown) if no
+     * closed-period Posted candidate exists at all — there is no sensible backfill for
+     * "manufacture a document in a closed accounting period", unlike the positive path's
+     * {@link GeneralVoucherApiBackfillStrategy}, so a genuine shortfall here just skips the
+     * negative scenario rather than failing the whole {@link #load} call.
+     */
+    private static Optional<MergedFinanceGeneralVoucherData> resolveClosedPeriodNegativeCandidate(
+            Jdbi jdbi, Set<Long> claimedThisRun) {
+
+        Optional<Long> claimed = claimOneClosedPeriodVoucher(jdbi, claimedThisRun);
+        if (claimed.isEmpty()) {
+            Log.warn("[DB] GeneralVoucherRevert: no closed-period Posted General Voucher available for the "
+                    + "CANNOT_REVERT_MONTH_CLOSED negative scenario — skipping it (nothing to backfill against).");
+            return Optional.empty();
+        }
+
+        long vchcode = claimed.get();
+        FinVchMain header = jdbi.onDemand(FinVchMainDao.class).findByVoucherCode(vchcode)
+                .orElseThrow(() -> new IllegalStateException(
+                        "Claimed closed-period vchcode=" + vchcode + " vanished before its header could be re-read."));
+
+        List<String> gatheringLog = new ArrayList<>();
+        gatheringLog.add("═══════════════════════════════════════════════════════════");
+        gatheringLog.add("  DB DATA GATHERING — CLOSED-PERIOD VOUCHER CLAIM (GENERAL VOUCHER REVERT, NEGATIVE)");
+        gatheringLog.add("═══════════════════════════════════════════════════════════");
+        gatheringLog.add("  Claimed voucher scheme_docno='" + header.getSchemeDocno()
+                + "' (vchcode=" + vchcode + "), release_status='" + header.getReleaseStatus()
+                + "' — own accounting year/financial month CONFIRMED closed; expecting Revert to be REJECTED "
+                + "with: \"" + DocumentMessageBoxMessage.REVERT_MONTH_ALREADY_CLOSED.getText() + "\"");
+        gatheringLog.add("═══════════════════════════════════════════════════════════");
+
+        // documentInformation deliberately not populated here — same reasoning as
+        // resolveOneRevertCandidate: RevertGeneralVoucher's Step 1 "DB Pre-Check" re-reads
+        // finvchmain live and is the sole builder of the report-facing DocumentInformation.
+        // fixtureOptions deliberately left null — this row isn't part of the GL-shape combination
+        // matrix; GeneralVoucherDbValidator/GeneralVoucherDescriptionBuilder both already treat a
+        // null fixtureOptions as "not a combination-matrix row" and handle it gracefully.
+        return Optional.of(MergedFinanceGeneralVoucherData.builder()
+                .scenarioTypeLabel("GV_REVERT_NEGATIVE_MONTH_CLOSED")
+                .existingVoucherNo(header.getSchemeDocno())
+                .releaseStatus(header.getReleaseStatus())
+                .reservedDocumentKey(String.valueOf(vchcode))
+                .operationMode(GeneralVoucherOperationMode.REVERT)
+                .expectedRevertOutcome(GeneralVoucherRevertOutcome.CANNOT_REVERT_MONTH_CLOSED)
+                .expenseIncomeDetailList(List.of())
+                .siteAllocationList(List.of())
+                .dbGatheringLog(gatheringLog)
+                .invocationIndex(1)
+                .totalInvocations(1)
+                .build());
+    }
+
+    /**
+     * Claims one Posted {@code finvchmain} row whose own accounting year OR financial month is
+     * already CLOSED — the exact inverse of {@link #claimOnePostedVoucher}'s guard, used solely
+     * to build the one {@code CANNOT_REVERT_MONTH_CLOSED} negative scenario above. Same
+     * not-already-BRS'd exclusion and {@link DocumentReservationRegistry} reservation as the
+     * positive claim, so this can never collide with a positive combination's own claim within
+     * the same {@link #load} call or across concurrently-running test methods.
+     */
+    private static Optional<Long> claimOneClosedPeriodVoucher(Jdbi jdbi, Set<Long> claimedThisRun) {
+        String sql =
+            "SELECT DISTINCT m.vchcode FROM finvchmain m " +
+            "WHERE m.vchtype = 'G' AND m.release_status = 'P' " +
+            "AND NOT EXISTS (SELECT 1 FROM finvchdet d2 WHERE d2.vchcode = m.vchcode AND d2.brsdt IS NOT NULL) " +
+            "ORDER BY m.vchcode";
+
+        List<Long> candidates = jdbi.withHandle(handle -> handle.createQuery(sql).mapTo(Long.class).list());
+
+        FinVchMainDao headerDao = jdbi.onDemand(FinVchMainDao.class);
+        for (Long vchcode : candidates) {
+            if (claimedThisRun.contains(vchcode)) continue;
+
+            FinVchMain header = headerDao.findByVoucherCode(vchcode).orElse(null);
+            if (header == null) continue;
+            // Inverse of the positive guard: we WANT a closed year/month here.
+            if (AccountingPeriodResolver.isEditable(jdbi, header, PeriodDomain.FINANCE)) continue;
+
+            if (!DocumentReservationRegistry.tryReserve(String.valueOf(vchcode))) continue;
+
+            claimedThisRun.add(vchcode);
+            return Optional.of(vchcode);
+        }
+        return Optional.empty();
     }
 }

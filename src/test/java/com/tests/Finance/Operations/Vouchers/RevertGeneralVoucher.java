@@ -228,6 +228,20 @@ public class RevertGeneralVoucher extends WebTest {
             revertOutcomeRef[0] = listRef[0].confirmRevert();
             ReportLogger.pass("Revert confirmed for voucher: " + testData.getExistingVoucherNo()
                     + " — outcome: " + revertOutcomeRef[0]);
+
+            // A row deliberately claimed to hit a specific non-success outcome (e.g. a closed-
+            // accounting-period candidate) must actually land on that exact outcome — not just
+            // whatever happened to occur — otherwise a broken period-lock guard upstream (or in
+            // the live app itself) would silently pass as "reverted successfully".
+            if (testData.getExpectedRevertOutcome() != null) {
+                Assert.assertEquals(revertOutcomeRef[0], testData.getExpectedRevertOutcome(),
+                        "Expected Revert outcome=" + testData.getExpectedRevertOutcome()
+                        + " for voucher " + testData.getExistingVoucherNo()
+                        + " (deliberately claimed to exercise that outcome), but got "
+                        + revertOutcomeRef[0] + " instead.");
+                ReportLogger.pass("Negative outcome correctly triggered: " + revertOutcomeRef[0]
+                        + " for voucher: " + testData.getExistingVoucherNo());
+            }
         });
 
         // ── Step 10: Logout (deferred — session may be reused by a later test on this thread;
@@ -260,6 +274,20 @@ public class RevertGeneralVoucher extends WebTest {
                         + testData.getExistingVoucherNo() + ", but found '" + after + "'.");
                 ReportLogger.pass("DB validated — BRS correctly blocked Revert; release_status unchanged at '"
                         + after + "' for voucher: " + testData.getExistingVoucherNo());
+                return;
+            }
+
+            if (revertOutcomeRef[0] == GeneralVoucherRevertOutcome.CANNOT_REVERT_MONTH_CLOSED) {
+                // Same shape as the BRS branch above: the document's own accounting year/financial
+                // month is closed, the live app dismisses with a single-OK "already closed" info
+                // dialog, and release_status must stay exactly what it was immediately before the
+                // (rejected) Revert click.
+                Assert.assertEquals(after, immediateBefore,
+                        "Expected release_status to remain unchanged ('" + immediateBefore
+                        + "') when Revert is blocked by a closed accounting year/financial month for voucher "
+                        + testData.getExistingVoucherNo() + ", but found '" + after + "'.");
+                ReportLogger.pass("DB validated — closed period correctly blocked Revert; release_status "
+                        + "unchanged at '" + after + "' for voucher: " + testData.getExistingVoucherNo());
                 return;
             }
 

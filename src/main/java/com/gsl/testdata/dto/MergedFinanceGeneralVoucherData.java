@@ -1,6 +1,7 @@
 package com.gsl.testdata.dto;
 
 import com.gsl.flow.Finance.Operations.Common.PostSaveDialogHandler;
+import com.gsl.pages.enums.Finance.Operations.GeneralVoucher.GeneralVoucherRevertOutcome;
 import com.gsl.reports.GeneralVoucherIncomeExpenseRowView;
 import com.gsl.testdata.Finance.Operations.Vouchers.Common.VoucherPaymentInfo;
 import com.gsl.testdata.Finance.Operations.Vouchers.Common.VoucherSelectDocRow;
@@ -66,6 +67,16 @@ public class MergedFinanceGeneralVoucherData
 
     /** Non-null only for negative/boundary scenarios; null for positive tests. */
     private NegativeValidation expectedValidation;
+
+    /**
+     * Non-null only for a Revert row that was deliberately claimed to hit a specific
+     * non-success dialog outcome (e.g. a closed-accounting-period candidate, expected to produce
+     * {@code CANNOT_REVERT_MONTH_CLOSED}) — {@code RevertGeneralVoucher} asserts the live
+     * {@code confirmRevert()} outcome matches this exactly, rather than only branching DB
+     * validation on whatever outcome happened to occur. {@code null} for every ordinary positive
+     * Revert row, where any of the live-confirmed outcomes is legal.
+     */
+    private GeneralVoucherRevertOutcome expectedRevertOutcome;
 
     /**
      * DB mode scenario label — human-readable variant id/name, set for every DB-mode row

@@ -52,6 +52,15 @@ public abstract class VoucherMainGridBase {
     private static final By UNPOST_BUTTON  = By.xpath("//TODO-unpost-button");
     private static final By CONFIRM_DELETE = By.xpath("//TODO-confirm-delete-button");
 
+    /**
+     * TODO: entirely UNCONFIRMED — unlike this class's other {@code //TODO-} locators (which have
+     * at least a real, named UI element to eventually locate), {@code CommonVoucherActionsMenu
+     * .RELEASE} has never been clicked by any test in this codebase. This placeholder assumes a
+     * single OK/Yes-style confirm button follows the click, mirroring {@link #CONFIRM_DELETE}'s
+     * shape — that assumption itself is unverified. See {@link #confirmRelease()}'s Javadoc.
+     */
+    private static final By CONFIRM_RELEASE = By.xpath("//TODO-confirm-release-button");
+
     private final VoucherDomain domain;
 
     protected VoucherMainGridBase(VoucherDomain domain) {
@@ -153,6 +162,41 @@ public abstract class VoucherMainGridBase {
     @LogStep("Click Edit")
     public void clickEdit() {
         clickGridAction(CommonVoucherActionsMenu.EDIT.resolveFor(domain).orElseThrow());
+    }
+
+    /**
+     * Clicks "Release" in the open Actions dropdown — scaffold only (see the "GV Revert picks
+     * documents in a now-closed accounting period, + closed-period negative-test coverage" plan,
+     * Part D). The click mechanism itself reuses {@link #clickGridAction}, the SAME
+     * already-proven Actions-dropdown path {@link #clickRevert()}/{@link #clickEdit()} use — that
+     * part is NOT a guess. What genuinely IS unconfirmed: whether "Release" is even the
+     * Unposted→Posted counterpart to Revert (the working theory this scaffold is built around),
+     * what dialog(s) follow the click, and what their exact text is — none of that is asserted
+     * anywhere in this codebase yet. Does NOT confirm the follow-up dialog —
+     * {@link #confirmRelease()} is a separate, even-less-confirmed stub; call it only once its
+     * own TODO locator has been confirmed live.
+     */
+    @LogStep("Click Release")
+    public void clickRelease() {
+        clickGridAction(CommonVoucherActionsMenu.RELEASE.resolveFor(domain).orElseThrow());
+    }
+
+    /**
+     * Confirms whichever dialog follows a Release click — scaffold only, mirroring
+     * {@link #confirmDelete()}'s single-button shape as a best-effort guess, NOT a confirmed
+     * behavior. Unlike {@link com.gsl.pages.pagecomponent.Finance.Operations.GeneralVoucher.GeneralVoucherMainGrid#confirmRevert()}
+     * (which reads the dialog text and returns a real, live-confirmed outcome), this method asserts nothing about what
+     * actually happens — it exists purely so the click sequence is ready to wire up once a real
+     * discovery pass confirms: (1) {@link #CONFIRM_RELEASE}'s actual locator, (2) how many
+     * dialog(s) actually appear (Revert's own confirm flow needed two — a Yes/No THEN a separate
+     * Result dialog — Release may need the same), and (3) their exact text, so a
+     * {@code GeneralVoucherReleaseOutcome}-style enum (mirroring
+     * {@link com.gsl.pages.enums.Finance.Operations.GeneralVoucher.GeneralVoucherRevertOutcome})
+     * can be built against real evidence instead of guessed text.
+     */
+    @LogStep("Confirm Release Dialog")
+    public void confirmRelease() {
+        SeleniumUtils.click(CONFIRM_RELEASE, WaitType.CLICKABLE, "CONFIRM_RELEASE");
     }
 
     /**

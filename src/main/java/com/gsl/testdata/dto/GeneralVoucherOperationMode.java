@@ -9,5 +9,6 @@ package com.gsl.testdata.dto;
 public enum GeneralVoucherOperationMode {
     CREATE,
     REVERT,
-    EDIT
+    EDIT,
+    DELETE
 }
