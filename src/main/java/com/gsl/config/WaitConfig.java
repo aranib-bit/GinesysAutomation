@@ -97,6 +97,35 @@ public interface WaitConfig extends Config {
     @DefaultValue("60")
     long modulePackageLoadTimeoutSeconds();
 
+    /**
+     * Timeout for confirming a module's dashboard header actually rendered after the heavier
+     * module-bootstrap mask already cleared ({@code TopModuleMenuComponent.navigateToModule()})
+     * — covers only the post-mask ExtJS panel-render race, so it stays short (should resolve in
+     * seconds when healthy), unlike {@link #modulePackageLoadTimeoutSeconds()}.
+     */
+    @Key("dashboard.header.timeout.seconds")
+    @DefaultValue("15")
+    long dashboardHeaderTimeoutSeconds();
+
+    /**
+     * Global on/off switch for the post-menu-click dashboard-loaded verification. Defaults to
+     * enabled — set to false in an environment/suite where the dashboard is known to be
+     * disabled outright, to skip the check for every module without touching code.
+     */
+    @Key("dashboard.verification.enabled")
+    @DefaultValue("true")
+    boolean dashboardVerificationEnabled();
+
+    /**
+     * Comma-separated {@code MainModuleType} display names (e.g. "Finance,Inventory") excluded
+     * from dashboard-loaded verification even when the global switch above is enabled — for a
+     * particular module known to have its dashboard disabled/unsupported without disabling
+     * verification everywhere. Empty by default (no module excluded).
+     */
+    @Key("dashboard.verification.disabled.modules")
+    @DefaultValue("")
+    String dashboardVerificationDisabledModules();
+
     @Key("popup.detection.enabled")
     @DefaultValue("true")
     boolean popupDetectionEnabled();

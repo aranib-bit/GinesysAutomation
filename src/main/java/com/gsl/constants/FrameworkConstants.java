@@ -14,6 +14,7 @@ public final class FrameworkConstants {
 
     private static final By BY_LOADING_WINDOW = By.xpath("//div[@class='x-window vport x-layer x-window-default x-border-box x-window-maximized']");
     private static final By BY_LOADING_MASK = By.xpath("//div[contains(@class, 'x-mask-fixed')]");
+    private static final By BY_SPLASH_SCREEN = By.id("splashScreen");
     private static final By BY_SELECT_DOC_GRID_LOADER = By.xpath(
             "//div[contains(@class,'x-window') and not(contains(@class,'x-window-maximized'))]" +
             "//div[@role='progressbar' and @aria-valuetext='Loading...']");
@@ -59,6 +60,10 @@ public final class FrameworkConstants {
 
     public static By getLoadingMask() {
         return BY_LOADING_MASK;
+    }
+
+    public static By getSplashScreen() {
+        return BY_SPLASH_SCREEN;
     }
 
     public static By getSelectDocGridLoader() {

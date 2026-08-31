@@ -93,6 +93,44 @@ public final class ExtentLogger {
         if (ExtentManager.getShardTest()  != null) ExtentManager.getShardTest().warning(message);
     }
 
+    /** Amber WARNING status (does not fail the test) with a bracketed category/severity prefix
+     *  AND an attached screenshot — the warning-side counterpart to {@link #fail}'s screenshot
+     *  handling. Use when something recoverable just happened and the report needs visible
+     *  evidence without the test being marked as failed.
+     *  <p>Note: unlike {@link #infoCategorized}, this uses a plain-text bracket prefix (e.g.
+     *  {@code "[MODULE][HIGH] ..."}) rather than the colored HTML badge — the underlying
+     *  ExtentReports {@code warning(...)} API has no {@code (Markup, Media)} overload, only
+     *  {@code (String, Media)}, so a Markup-rendered badge can't be combined with a screenshot
+     *  on the same log entry. */
+    public static void warningCategorizedWithScreenshot(LogCategory category, ReportSeverity severity, String message) {
+        if (ExtentManager.getExtentTest() == null) return;
+        String prefixed = "[" + category.name() + "][" + severity.name() + "] " + message;
+        if (DriverManager.getDriver() != null) {
+            try {
+                String screenshotPath = ScreenshotUtils.saveScreenshot(message);
+                ExtentManager.getExtentTest().warning(prefixed,
+                        MediaEntityBuilder.createScreenCaptureFromPath(screenshotPath).build());
+                if (ExtentManager.getShardTest() != null) {
+                    ExtentManager.getShardTest().warning(prefixed,
+                            MediaEntityBuilder.createScreenCaptureFromPath(screenshotPath).build());
+                }
+                return;
+            } catch (org.openqa.selenium.WebDriverException wde) {
+                String msg = prefixed + " [screenshot unavailable: " + wde.getMessage().split("\n")[0] + "]";
+                ExtentManager.getExtentTest().warning(msg);
+                if (ExtentManager.getShardTest() != null) ExtentManager.getShardTest().warning(msg);
+                return;
+            } catch (Exception screenshotEx) {
+                String msg = prefixed + " [screenshot save failed: " + screenshotEx.getMessage() + "]";
+                ExtentManager.getExtentTest().warning(msg);
+                if (ExtentManager.getShardTest() != null) ExtentManager.getShardTest().warning(msg);
+                return;
+            }
+        }
+        ExtentManager.getExtentTest().warning(prefixed);
+        if (ExtentManager.getShardTest() != null) ExtentManager.getShardTest().warning(prefixed);
+    }
+
     public static void failWithBase64Screenshot(String message, String base64) {
         if (ExtentManager.getExtentTest() == null) return;
         try {
