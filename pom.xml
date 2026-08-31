@@ -488,6 +488,28 @@
             </build>
         </profile>
 
+        <!-- Throwaway smoke spike for GridColumnMenu — see testng-gridcolumnmenu-smoke.xml
+             header; remove once the mechanism is proven end-to-end and real voucher tests cover it. -->
+        <profile>
+            <id>gridcolumnmenu-smoke</id>
+            <build>
+                <plugins>
+                    <plugin>
+                        <groupId>org.apache.maven.plugins</groupId>
+                        <artifactId>maven-surefire-plugin</artifactId>
+                        <version>3.2.5</version>
+                        <configuration>
+                            <testFailureIgnore>true</testFailureIgnore>
+                            <suiteXmlFiles>
+                                <suiteXmlFile>testng-gridcolumnmenu-smoke.xml</suiteXmlFile>
+                            </suiteXmlFiles>
+                            <argLine>${test.jvm.args} --add-opens java.base/java.lang=ALL-UNNAMED -Drunmode=${runmode} -Dheadless=${headless} -Dbrowser=${browser}</argLine>
+                        </configuration>
+                    </plugin>
+                </plugins>
+            </build>
+        </profile>
+
         <!-- General Voucher — Regression Phase 1 (standalone) -->
         <profile>
             <id>regression-generalvoucher-phase1</id>

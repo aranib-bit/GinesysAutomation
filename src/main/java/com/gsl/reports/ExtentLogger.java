@@ -18,6 +18,37 @@ public final class ExtentLogger {
         if (ExtentManager.getShardTest()  != null) ExtentManager.getShardTest().pass(message);
     }
 
+    /** Attaches a screenshot to the CURRENT step's Extent node on PASS — the pass-side
+     *  counterpart to {@link #fail}/{@link #failWithScreenshotPath}. Every other screenshot
+     *  mechanism in this codebase is fail-only; this exists for
+     *  {@code GridColumnMenuSmokeVerification}'s per-step debugging (temporary, per explicit
+     *  user request) but is written generically enough for any test to reuse later. */
+    public static void passWithScreenshot(String message) {
+        if (ExtentManager.getExtentTest() == null) return;
+        if (DriverManager.getDriver() != null) {
+            try {
+                String screenshotPath = ScreenshotUtils.saveScreenshot(message);
+                ExtentManager.getExtentTest().pass(message,
+                        MediaEntityBuilder.createScreenCaptureFromPath(screenshotPath).build());
+                if (ExtentManager.getShardTest() != null) {
+                    ExtentManager.getShardTest().pass(message,
+                            MediaEntityBuilder.createScreenCaptureFromPath(screenshotPath).build());
+                }
+            } catch (org.openqa.selenium.WebDriverException wde) {
+                String msg = message + " [screenshot unavailable: " + wde.getMessage().split("\n")[0] + "]";
+                ExtentManager.getExtentTest().pass(msg);
+                if (ExtentManager.getShardTest() != null) ExtentManager.getShardTest().pass(msg);
+            } catch (Exception screenshotEx) {
+                String msg = message + " [screenshot save failed: " + screenshotEx.getMessage() + "]";
+                ExtentManager.getExtentTest().pass(msg);
+                if (ExtentManager.getShardTest() != null) ExtentManager.getShardTest().pass(msg);
+            }
+        } else {
+            ExtentManager.getExtentTest().pass(message);
+            if (ExtentManager.getShardTest() != null) ExtentManager.getShardTest().pass(message);
+        }
+    }
+
     public static void fail(String message) {
         if (ExtentManager.getExtentTest() == null) return;
         if (DriverManager.getDriver() != null) {

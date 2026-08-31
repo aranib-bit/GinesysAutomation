@@ -144,10 +144,18 @@ pipeline {
                                 sleep(time: 30, unit: 'SECONDS')
                                 if (!testsFinished) {
                                     catchError(buildResult: null, stageResult: null) {
+                                        // keepAll: false here on purpose — with keepAll: true, every
+                                        // periodic call in this loop persists its own separate sidebar
+                                        // "Extent Report" link instead of refreshing one link, so a long
+                                        // build ends up with N stale duplicates (one per poll) plus the
+                                        // final post.always publish. keepAll: false keeps only the latest
+                                        // poll's HTML, so this call just shows live progress; the
+                                        // authoritative, permanently kept report is the post.always
+                                        // publishHTML below (keepAll: true).
                                         publishHTML(target: [
                                             allowMissing: true,
                                             alwaysLinkToLastBuild: true,
-                                            keepAll: true,
+                                            keepAll: false,
                                             reportDir: 'reports/latest',
                                             reportFiles: 'index.html',
                                             reportName: 'Extent Report'
