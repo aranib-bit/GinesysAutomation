@@ -877,6 +877,17 @@ public class DbGeneralVoucherEditDataSource implements TestDataSource<MergedFina
     private static Optional<Long> claimOne(Jdbi jdbi, String status, GeneralVoucherEditVariant variant,
             Set<Long> claimedThisRun, List<String> gatheringLog) {
 
+        // requireClosedPeriod variants deliberately want an OLD, closed-period document — scanning
+        // newest-first (the default, correct for ordinary open-period variants) forces the scan
+        // through every currently-open candidate first. Confirmed live (Jenkins run
+        // 20260831_213639 / #13.txt): DbGeneralVoucherDeleteDataSource's identical shared-order
+        // bug took ~23 minutes / 2000+ rejected candidates to find one closed-period document.
+        // Oldest-first for requireClosedPeriod, mirroring
+        // DbGeneralVoucherRevertDataSource#claimOneClosedPeriodVoucher (round 5 fix).
+        String orderBy = variant.isRequireClosedPeriod()
+                ? "ORDER BY m.ycode ASC, m.vchdt ASC"
+                : "ORDER BY m.ycode DESC, m.vchdt DESC";
+
         List<Long> candidates;
         if (variant.getScenarioType() == GeneralVoucherEditVariant.ScenarioType.DETAIL_LINE && variant.isRequireSharedGlcodeSibling()) {
             // No fingl join / slapp+costapp filter here, unlike the glLineType branch below —
@@ -887,26 +898,38 @@ public class DbGeneralVoucherEditDataSource implements TestDataSource<MergedFina
             // not any of TYPE1_NONE/TYPE2_SITE_ONLY/TYPE3_SITE_AND_SUBLEDGER. Guarantees
             // buildEditedDetailLine's findRowWithSharedGlcodeSibling always finds a match rather
             // than skipping the scenario for lack of data.
+            //
+            // No DISTINCT (round 6 fix) — the "shares a glcode with a different slcode" match is
+            // expressed entirely inside an EXISTS subquery (two finvchdet aliases, d and d3),
+            // never a JOIN against the outer query, so m.vchcode stays unique per row. The
+            // previous SELECT DISTINCT m.vchcode ... JOIN finvchdet d ... ORDER BY m.ycode,
+            // m.vchdt shape was a hard PostgreSQL error (every ORDER BY expression must appear in
+            // the SELECT DISTINCT list) — confirmed live to have crashed this exact shape in
+            // DbGeneralVoucherRevertDataSource#claimOnePostedVoucher; this branch carried the
+            // identical latent bug, just not yet triggered by a MANDATORY-group run.
             String sql =
-                    "SELECT DISTINCT m.vchcode FROM finvchmain m " +
-                    "JOIN finvchdet d ON d.vchcode = m.vchcode " +
+                    "SELECT m.vchcode FROM finvchmain m " +
                     "WHERE m.vchtype = 'G' AND m.release_status = :status " +
                     "AND NOT EXISTS (SELECT 1 FROM finvchdet d2 WHERE d2.vchcode = m.vchcode AND d2.brsdt IS NOT NULL) " +
-                    "AND EXISTS (SELECT 1 FROM finvchdet d3 WHERE d3.vchcode = m.vchcode " +
-                    "AND d3.glcode = d.glcode AND d3.slcode <> d.slcode) " +
-                    "ORDER BY m.ycode DESC, m.vchdt DESC";
+                    "AND EXISTS (SELECT 1 FROM finvchdet d, finvchdet d3 WHERE d.vchcode = m.vchcode " +
+                    "AND d3.vchcode = m.vchcode AND d3.glcode = d.glcode AND d3.slcode <> d.slcode) " +
+                    orderBy;
             candidates = jdbi.withHandle(h -> h.createQuery(sql).bind("status", status).mapTo(Long.class).list());
         } else if (variant.getScenarioType() == GeneralVoucherEditVariant.ScenarioType.DETAIL_LINE && variant.getGlLineType() != null) {
             String slapp = variant.getGlLineType().isSubLedgerApplicable() ? "Y" : "N";
             String costapp = variant.getGlLineType().isSiteApplicable() ? "Y" : "N";
+            // No DISTINCT (round 6 fix) — same EXISTS rewrite as above. Confirmed live this exact
+            // shape (SELECT DISTINCT ... JOIN finvchdet ... JOIN fingl ... ORDER BY m.ycode,
+            // m.vchdt) crashed DbGeneralVoucherRevertDataSource#claimOnePostedVoucher with
+            // PSQLException "for SELECT DISTINCT, ORDER BY expressions must appear in select
+            // list" — this branch carries the identical latent bug.
             String sql =
-                    "SELECT DISTINCT m.vchcode FROM finvchmain m " +
-                    "JOIN finvchdet d ON d.vchcode = m.vchcode " +
-                    "JOIN fingl g ON g.glcode = d.glcode " +
+                    "SELECT m.vchcode FROM finvchmain m " +
                     "WHERE m.vchtype = 'G' AND m.release_status = :status " +
-                    "AND g.slapp = :slapp AND g.costapp = :costapp " +
+                    "AND EXISTS (SELECT 1 FROM finvchdet d JOIN fingl g ON g.glcode = d.glcode " +
+                    "WHERE d.vchcode = m.vchcode AND g.slapp = :slapp AND g.costapp = :costapp) " +
                     "AND NOT EXISTS (SELECT 1 FROM finvchdet d2 WHERE d2.vchcode = m.vchcode AND d2.brsdt IS NOT NULL) " +
-                    "ORDER BY m.ycode DESC, m.vchdt DESC";
+                    orderBy;
             candidates = jdbi.withHandle(h -> h.createQuery(sql)
                     .bind("status", status).bind("slapp", slapp).bind("costapp", costapp)
                     .mapTo(Long.class).list());
@@ -915,13 +938,14 @@ public class DbGeneralVoucherEditDataSource implements TestDataSource<MergedFina
                     "SELECT m.vchcode FROM finvchmain m " +
                     "WHERE m.vchtype = 'G' AND m.release_status = :status " +
                     "AND NOT EXISTS (SELECT 1 FROM finvchdet d2 WHERE d2.vchcode = m.vchcode AND d2.brsdt IS NOT NULL) " +
-                    "ORDER BY m.ycode DESC, m.vchdt DESC";
+                    orderBy;
             candidates = jdbi.withHandle(h -> h.createQuery(sql).bind("status", status).mapTo(Long.class).list());
         }
         // ORDER BY above uses ycode/vchdt, never vchcode — an insert-order surrogate key with no
         // guaranteed relationship to accounting period or document date (a backdated/corrective
         // entry can carry a high vchcode but an old ycode/vchdt); see
-        // AccountingPeriodResolver#findCurrentYear's Javadoc.
+        // AccountingPeriodResolver#findCurrentYear's Javadoc. Direction is ASC for
+        // requireClosedPeriod variants, DESC otherwise (round 5 fix) — see orderBy above.
 
         FinVchMainDao headerDao = jdbi.onDemand(FinVchMainDao.class);
         boolean requiresFutureDateRoom = variant.getDateVariant() == VoucherEditDateVariant.FUTURE_DATE;
@@ -960,7 +984,7 @@ public class DbGeneralVoucherEditDataSource implements TestDataSource<MergedFina
                     baseFilter.and(header -> header.getYcode() == currentYcode));
             if (claimed.isPresent()) return claimed;
         }
-        // Pass 2 (fallback): any candidate matching baseFilter, same ycode DESC/vchdt DESC order.
+        // Pass 2 (fallback): any candidate matching baseFilter, same order as fetched above.
         return scanAndClaim(headerDao, candidates, claimedThisRun, baseFilter);
     }
 

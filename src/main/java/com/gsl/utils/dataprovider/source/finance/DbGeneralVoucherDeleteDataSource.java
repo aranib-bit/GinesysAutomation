@@ -189,12 +189,19 @@ public class DbGeneralVoucherDeleteDataSource implements TestDataSource<MergedFi
      */
     private static Optional<Long> claimOneCandidate(Jdbi jdbi, Set<Long> claimedThisRun, boolean requireClosedPeriod,
             List<String> gatheringLog) {
+        // requireClosedPeriod wants an OLD, closed-period document — scanning newest-first (the
+        // default, correct for the positive open-period claim) forces the scan through every
+        // currently-open candidate first. Confirmed live (Jenkins run 20260831_213639 / #13.txt
+        // and #13 (1).txt): this exact shared-order bug took ~15-23 minutes / 2000+ rejected
+        // candidates to find one closed-period document. Oldest-first for requireClosedPeriod,
+        // mirroring DbGeneralVoucherRevertDataSource#claimOneClosedPeriodVoucher (round 5 fix).
+        String orderBy = requireClosedPeriod ? "ORDER BY ycode ASC, vchdt ASC" : "ORDER BY ycode DESC, vchdt DESC";
         String sql =
             "SELECT vchcode FROM finvchmain " +
             "WHERE vchtype = 'G' AND release_status IN ('U', 'P') " +
             // ycode/vchdt, never vchcode — see AccountingPeriodResolver#findCurrentYear's Javadoc
             // (an insert-order surrogate key, no guaranteed relationship to accounting period).
-            "ORDER BY ycode DESC, vchdt DESC";
+            orderBy;
 
         List<Long> candidates = jdbi.withHandle(handle -> handle.createQuery(sql).mapTo(Long.class).list());
         FinVchMainDao headerDao = jdbi.onDemand(FinVchMainDao.class);

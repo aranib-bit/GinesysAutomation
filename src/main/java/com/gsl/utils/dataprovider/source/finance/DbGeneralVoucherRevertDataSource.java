@@ -240,11 +240,19 @@ public class DbGeneralVoucherRevertDataSource implements TestDataSource<MergedFi
      */
     private static Optional<Long> claimOnePostedVoucher(
             Jdbi jdbi, GlAccountType type, Set<Long> claimedThisRun, List<String> gatheringLog) {
+        // No DISTINCT here (round 6 fix) — the account-type match is expressed as an EXISTS
+        // subquery rather than a JOIN, so m.vchcode is already unique per row (finvchmain is the
+        // base table, no fan-out). The previous SELECT DISTINCT m.vchcode ... JOIN finvchdet ...
+        // JOIN fingl ... ORDER BY m.ycode, m.vchdt shape was a hard PostgreSQL error — every
+        // ORDER BY expression must appear in the SELECT list when DISTINCT is used, and
+        // ycode/vchdt weren't selected — confirmed live (Jenkins run 20260831_213639): this
+        // crashed claimOnePostedVoucher on every call, skipping 100% of revertGeneralVoucher's
+        // rows via SkipException before a single one loaded.
         String sql =
-            "SELECT DISTINCT m.vchcode FROM finvchmain m " +
-            "JOIN finvchdet d ON d.vchcode = m.vchcode " +
-            "JOIN fingl g ON g.glcode = d.glcode " +
-            "WHERE m.vchtype = 'G' AND m.release_status = 'P' AND g.type = :type " +
+            "SELECT m.vchcode FROM finvchmain m " +
+            "WHERE m.vchtype = 'G' AND m.release_status = 'P' " +
+            "AND EXISTS (SELECT 1 FROM finvchdet d JOIN fingl g ON g.glcode = d.glcode " +
+            "WHERE d.vchcode = m.vchcode AND g.type = :type) " +
             "AND NOT EXISTS (SELECT 1 FROM finvchdet d2 WHERE d2.vchcode = m.vchcode AND d2.brsdt IS NOT NULL) " +
             "ORDER BY m.ycode DESC, m.vchdt DESC";
 
@@ -361,8 +369,12 @@ public class DbGeneralVoucherRevertDataSource implements TestDataSource<MergedFi
      * the same {@link #load} call or across concurrently-running test methods.
      */
     private static Optional<Long> claimOneClosedPeriodVoucher(Jdbi jdbi, Set<Long> claimedThisRun) {
+        // No DISTINCT here (round 6 fix) — no JOIN in this query at all, so m.vchcode was already
+        // unique per row; DISTINCT was never needed and, combined with the ORDER BY below, was a
+        // hard PostgreSQL error the moment execution reached this method (masked in the live run
+        // only because claimOnePostedVoucher's own copy of the same bug crashed first).
         String sql =
-            "SELECT DISTINCT m.vchcode FROM finvchmain m " +
+            "SELECT m.vchcode FROM finvchmain m " +
             "WHERE m.vchtype = 'G' AND m.release_status = 'P' " +
             "AND NOT EXISTS (SELECT 1 FROM finvchdet d2 WHERE d2.vchcode = m.vchcode AND d2.brsdt IS NOT NULL) " +
             // ycode/vchdt, never vchcode (an insert-order surrogate with no guaranteed

@@ -139,6 +139,7 @@ public class EditGeneralVoucher extends WebTest {
         final VoucherSnapshot[]        beforeRef  = new VoucherSnapshot[1];
         final VoucherSnapshot[]        afterRef   = new VoucherSnapshot[1];
         final String[]                 liveReleaseStatusRef = new String[1];
+        final String[]                 immediateBeforeReleaseStatusRef = new String[1];
         final GeneralVoucherRevertOutcome[] unpostOutcomeRef = new GeneralVoucherRevertOutcome[1];
 
         SnapshotService snapshotService = new SnapshotService(new Aud2SnapshotDao());
@@ -209,15 +210,45 @@ public class EditGeneralVoucher extends WebTest {
             }
         });
 
+        // ── Step 3b: DB Check — Release Status Immediately Before Unpost ─────────────
+        // A fresh, log-only read taken right before the state-changing click — Step 0's precheck
+        // ran before login/navigation/selection, leaving a race window in which another
+        // concurrent process can legitimately change the voucher's live release_status. This
+        // narrower read is the true pre-action snapshot; it drives Step 4's actual branch below
+        // (not Step 0's now-possibly-stale liveReleaseStatusRef[0]), and its divergence from
+        // Step 0's value (when it occurs) explains an otherwise-confusing later mismatch instead
+        // of masquerading as a product defect. Mirrors RevertGeneralVoucher's own Step 7 exactly
+        // (see the "GV Revert picks documents in a now-closed accounting period, + closed-period
+        // negative-test coverage" plan, follow-up round 3).
+        StepExecutor.step("DB Check — Release Status Immediately Before Unpost", () -> {
+            FinVchMain header = DatabaseManager.getJdbi().onDemand(FinVchMainDao.class)
+                    .findBySchemeDocno(testData.getExistingVoucherNo())
+                    .orElse(null);
+            Assert.assertNotNull(header,
+                    "[DB-Check] finvchmain row not found for scheme_docno=" + testData.getExistingVoucherNo()
+                    + " — target document disappeared before Unpost/Edit could be attempted.");
+            immediateBeforeReleaseStatusRef[0] = header.getReleaseStatus();
+            ReportLogger.business("Release status immediately before Unpost: '"
+                    + immediateBeforeReleaseStatusRef[0] + "' for voucher: " + testData.getExistingVoucherNo());
+            if (!immediateBeforeReleaseStatusRef[0].equals(liveReleaseStatusRef[0])) {
+                ReportLogger.warn("release_status changed between Step-0 precheck ('" + liveReleaseStatusRef[0]
+                        + "') and the immediate-before read ('" + immediateBeforeReleaseStatusRef[0] + "') for "
+                        + "voucher " + testData.getExistingVoucherNo() + " — a concurrent process modified this "
+                        + "document mid-test; this is expected to be benign as long as Edit still behaves "
+                        + "correctly for whichever state it actually landed in.");
+            }
+        });
+
         // ── Step 4: Unpost if posted ──────────────────────────────────────────────
         // General Voucher has no standalone "Unpost" button — confirmed on a live run
         // (VoucherMainGridBase.clickUnpost()'s UNPOST_BUTTON is an unconfirmed //TODO-
         // placeholder that doesn't exist in the DOM). Un-posting IS the Revert action here —
         // centralized as listRef[0].revertSelectedDocument() (plan §10), the same
         // Actions->Revert->confirm sequence RevertGeneralVoucher proves works, collapsed into
-        // one composite page-object method rather than re-derived inline.
+        // one composite page-object method rather than re-derived inline. Branches on Step 3b's
+        // immediate-before read, not Step 0's now-possibly-stale liveReleaseStatusRef[0].
         StepExecutor.step("Unpost if Posted (release_status='P')", () -> {
-            if ("P".equals(liveReleaseStatusRef[0])) {
+            if ("P".equals(immediateBeforeReleaseStatusRef[0])) {
                 GeneralVoucherRevertOutcome outcome = listRef[0].revertSelectedDocument();
                 unpostOutcomeRef[0] = outcome;
                 if (outcome == GeneralVoucherRevertOutcome.CANNOT_REVERT_BRS_DONE) {
@@ -234,7 +265,7 @@ public class EditGeneralVoucher extends WebTest {
                     ReportLogger.business("Voucher unposted via Actions→Revert (was release_status='P'), outcome=" + outcome);
                 }
             } else {
-                ReportLogger.business("Voucher status='" + liveReleaseStatusRef[0] + "' — unpost not required");
+                ReportLogger.business("Voucher status='" + immediateBeforeReleaseStatusRef[0] + "' — unpost not required");
             }
         });
 

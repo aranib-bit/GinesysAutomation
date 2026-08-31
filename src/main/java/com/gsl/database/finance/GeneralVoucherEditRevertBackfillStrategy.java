@@ -2,6 +2,7 @@ package com.gsl.database.finance;
 
 import com.gsl.database.BackfillStrategy;
 import com.gsl.database.DatabaseManager;
+import com.gsl.database.DocumentReservationRegistry;
 import com.gsl.database.dao.finance.FinVchMainDao;
 import com.gsl.driver.Driver;
 import com.gsl.driver.SessionManager;
@@ -90,6 +91,10 @@ public final class GeneralVoucherEditRevertBackfillStrategy implements BackfillS
                 ReportLogger.dataBackfillWarn(
                         "[GeneralVoucherEditRevertBackfillStrategy] UI-driven revert failed for vchcode={} — {}",
                         claimedVchcode, e.getMessage());
+                // Release even on failure — claimOnePostedCandidate() reserved this vchcode via
+                // DocumentReservationRegistry (see its own Javadoc); a failed attempt must not
+                // permanently strand the document as "reserved forever" with nothing ever using it.
+                DocumentReservationRegistry.release(String.valueOf(claimedVchcode));
                 continue;
             }
 
@@ -97,6 +102,17 @@ public final class GeneralVoucherEditRevertBackfillStrategy implements BackfillS
                 verifyLandedUnposted(claimedVchcode);
                 return null;
             });
+
+            // Release now that THIS strategy's own use of the document (the live UI revert) is
+            // complete — deliberately the single-key overload, not releaseCurrentThread(): this
+            // method runs mid-load(), on the same thread that may already hold other, unrelated
+            // successful reservations from earlier variants in the same pass, which must NOT be
+            // released early. Freeing this specific key now lets DbGeneralVoucherEditDataSource
+            // .claimOne's own retry (which runs right after backfill(), looking for the
+            // now-Unposted document) legitimately re-reserve it — if it stayed held here, that
+            // retry would find it "already reserved" and skip straight past it, defeating the
+            // whole point of this backfill.
+            DocumentReservationRegistry.release(String.valueOf(claimedVchcode));
         }
     }
 
@@ -137,6 +153,15 @@ public final class GeneralVoucherEditRevertBackfillStrategy implements BackfillS
      * {@link #CLAIM_POSTED_SQL} can't cheaply filter on {@code admou_year}/{@code admou_month}
      * itself, so each candidate's header is re-fetched and checked via
      * {@link AccountingPeriodResolver#isEditable} before being returned.
+     *
+     * <p><b>{@link DocumentReservationRegistry} guard, closed gap:</b> this claim previously
+     * skipped the registry entirely — not mutually exclusive with any other concurrently-running
+     * thread's own claim (`DbGeneralVoucherRevertDataSource`/`DbGeneralVoucherEditDataSource`
+     * both reserve everything they claim), so a different thread could start using the exact same
+     * document this strategy is independently reverting via its own live browser session.
+     * Reserved here via {@link DocumentReservationRegistry#tryReserve}; released by
+     * {@link #backfill} once this strategy's own use (the live UI revert) is complete — see that
+     * method's own comment for why release, not hold, is required.
      */
     private Long claimOnePostedCandidate() {
         Jdbi jdbi = DatabaseManager.getJdbi();
@@ -148,6 +173,7 @@ public final class GeneralVoucherEditRevertBackfillStrategy implements BackfillS
             FinVchMain header = headerDao.findByVoucherCode(vchcode).orElse(null);
             if (header == null) continue;
             if (!AccountingPeriodResolver.isEditable(jdbi, header, PeriodDomain.FINANCE)) continue;
+            if (!DocumentReservationRegistry.tryReserve(String.valueOf(vchcode))) continue;
             return vchcode;
         }
         return null;
