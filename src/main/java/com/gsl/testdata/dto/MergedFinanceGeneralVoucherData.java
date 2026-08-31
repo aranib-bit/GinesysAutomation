@@ -11,6 +11,7 @@ import com.gsl.testdata.Finance.Operations.Vouchers.GeneralVoucher.PaymentInform
 import com.gsl.testdata.Finance.Operations.Vouchers.GeneralVoucher.SiteAllocation;
 import com.gsl.testdata.InvocationData;
 import com.gsl.testdata.MasterTestData;
+import com.gsl.utils.dataprovider.fixture.finance.DocumentSearchStrategy;
 import com.gsl.utils.dataprovider.fixture.finance.GeneralVoucherEditVariant;
 import com.gsl.utils.dataprovider.fixture.finance.GeneralVoucherFixtureOptions;
 import com.gsl.utils.dataprovider.fixture.finance.GeneralVoucherScenarioType;
@@ -185,6 +186,16 @@ public class MergedFinanceGeneralVoucherData
      * {@link #operationMode}).
      */
     private VoucherEditEntryMethod entryMethod;
+
+    /**
+     * Which tier {@code VoucherListPageBase#selectDocumentFast}/{@code #doubleClickToEditFast}
+     * starts its cascade at — {@code null} (the common case) means
+     * {@link DocumentSearchStrategy#EXACT_MATCH}. A test only sets this explicitly when it
+     * already knows an earlier tier won't help for that scenario; whichever tier it starts at,
+     * failure still falls through to the remaining, more-reliable tiers (same null-safe-fallback
+     * convention as {@link #entryMethod}).
+     */
+    private DocumentSearchStrategy searchStrategy;
 
     // Explicit overrides to prevent Lombok from generating conflicting getter signatures —
     // see MergedFinanceApVoucherData for the rationale (Lombok aborts getter generation on a

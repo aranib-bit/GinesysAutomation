@@ -27,10 +27,15 @@ public enum GridColumnMenuItem {
 
     public String label() { return label; }
 
-    /** Locator for this menu item — valid only while the top-level column-header menu is open. */
+    /** Locator for this menu item — valid only while the top-level column-header menu is open.
+     *  Uses {@code @aria-hidden='false'} (not a {@code display: none} style check) to pick the
+     *  one truly-open {@code x-menu} — ExtJS keeps a previously-shown floating submenu instance
+     *  around hidden via {@code visibility: hidden} for reuse, and that stale instance can sit
+     *  later in DOM order than a freshly-opened real menu, so a plain "last non-hidden x-menu"
+     *  can pick the wrong one (confirmed live, run 20260828_162852). */
     public By locator() {
         return By.xpath("(//div[contains(concat(' ', normalize-space(@class), ' '), ' x-menu ')]"
-                + "[not(contains(@style,'display: none'))])[last()]"
+                + "[@aria-hidden='false'])[last()]"
                 + "//span[normalize-space()='" + label + "']");
     }
 }

@@ -373,7 +373,7 @@
             </build>
         </profile>
 
-        <!-- General Voucher — Mandatory (standalone) -->
+        <!-- General Voucher — Mandatory (standalone; Create/Revert + Edit) -->
         <profile>
             <id>gv-mandatory</id>
             <build>
@@ -390,6 +390,7 @@
                             <argLine>${test.jvm.args} --add-opens java.base/java.lang=ALL-UNNAMED -Drunmode=${runmode} -Dheadless=${headless} -Dbrowser=${browser}</argLine>
                             <systemPropertyVariables>
                                 <gv.group>MANDATORY</gv.group>
+                                <gv.edit.group>MANDATORY</gv.edit.group>
                             </systemPropertyVariables>
                         </configuration>
                     </plugin>

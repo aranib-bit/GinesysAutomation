@@ -6,11 +6,13 @@ package com.gsl.pages.enums.Finance.Operations.Common;
  * a partial/"contains anywhere" match and an exact match. Carries the flyout's placeholder text
  * for each input, used to build that input's locator.
  *
- * <p>[VERIFY step 0]: placeholder text confirmed by eye from a live screenshot of the app's
- * column-header menu (General Voucher list, hovering a column header) — not yet confirmed via
- * DevTools whether this is a real HTML5 {@code placeholder} attribute or an ExtJS synthetic
- * {@code emptyText} value. See {@code GridColumnMenu}'s Javadoc for how this affects the input
- * locator/typing strategy.
+ * <p>Placeholder text confirmed via live DevTools capture for both modes — a real HTML5
+ * {@code placeholder} attribute, not an ExtJS synthetic {@code emptyText} value:
+ * {@code textfield-1240} ({@code "Contains anywhere..."}) and {@code textfield-1151}
+ * ({@code "Exact match..."}). EXACT_MATCH's full type→commit→row-count-change cycle is proven
+ * live (see {@code GridColumnMenu.applyFilter}'s history); CONTAINS's own live exercise is
+ * covered by {@code GridColumnMenuSmokeVerification}'s dedicated "Contains-anywhere (partial
+ * match)" step.
  */
 public enum FilterMatchMode {
 

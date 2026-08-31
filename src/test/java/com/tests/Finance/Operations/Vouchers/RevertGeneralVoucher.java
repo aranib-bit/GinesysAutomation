@@ -32,6 +32,7 @@ import com.gsl.testdata.dto.MergedFinanceGeneralVoucherData;
 import com.gsl.utils.Log;
 import com.gsl.utils.NavigationUtils;
 import com.gsl.utils.dataprovider.MergedFinGeneralVoucherDataSupplier;
+import com.gsl.utils.dataprovider.fixture.finance.DocumentSearchStrategy;
 import com.gsl.validation.snapshot.DocumentContext;
 import com.gsl.validation.snapshot.TableRule;
 import com.gsl.validation.snapshot.audit.AuditAssertion;
@@ -175,9 +176,12 @@ public class RevertGeneralVoucher extends WebTest {
             ReportLogger.business("Filter cleared, list refreshed, reset to first page (if not already there)");
         });
 
-        // ── Step 5: Select document (paginated search) ────────────────────────────────
+        // ── Step 5: Select document (tiered fast search, falling back to page-by-page) ──
         StepExecutor.step("Select General Voucher in List Page", () -> {
-            listRef[0].selectDocumentInListPage(testData.getExistingVoucherNo());
+            DocumentSearchStrategy strategy = testData.getSearchStrategy() == null
+                    ? DocumentSearchStrategy.EXACT_MATCH
+                    : testData.getSearchStrategy();
+            listRef[0].selectDocumentFast(testData.getExistingVoucherNo(), strategy);
             ReportLogger.business("Selected voucher: " + testData.getExistingVoucherNo());
         });
 

@@ -1,10 +1,12 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE suite SYSTEM "http://testng.org/testng-1.0.dtd">
 <!--
-    General Voucher MANDATORY Suite — the MANDATORY-tagged CreateGeneralVoucher rows only
+    General Voucher MANDATORY Suite — the MANDATORY-tagged CreateGeneralVoucher rows
     (gv.group=MANDATORY, 9 combinations per GeneralVoucherExecutionGroup's javadoc), standalone
-    from the negative/boundary suite. DB-mode only (testdata.source=DB) — ExcelGeneralVoucherDataSource
-    has no group filtering.
+    from the negative/boundary suite; the MANDATORY-tagged RevertGeneralVoucher scenario; and the
+    MANDATORY-tagged EditGeneralVoucher rows (gv.edit.group=MANDATORY, 3 scenarios per
+    GeneralVoucherEditExecutionGroup's javadoc). DB-mode only (testdata.source=DB) —
+    ExcelGeneralVoucherDataSource/ExcelGeneralVoucherEditDataSource have no group filtering.
 
     Run: mvn clean test -Pgv-mandatory
 -->
@@ -22,6 +24,13 @@
         <classes>
             <class name="com.tests.Finance.Operations.Vouchers.CreateGeneralVoucher"/>
             <class name="com.tests.Finance.Operations.Vouchers.RevertGeneralVoucher"/>
+        </classes>
+    </test>
+
+    <test name="General Voucher Edit — Mandatory" parallel="methods" thread-count="2">
+        <parameter name="gv.edit.group" value="MANDATORY"/>
+        <classes>
+            <class name="com.tests.Finance.Operations.Vouchers.EditGeneralVoucher"/>
         </classes>
     </test>
 

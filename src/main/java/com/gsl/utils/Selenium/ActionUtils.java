@@ -35,6 +35,18 @@ public class ActionUtils {
         getActions().moveToElement(element).perform();
     }
 
+    /** Natively scrolls {@code locator}'s element into view — Selenium 4's W3C "scroll" action
+     *  (unlike a JS {@code scrollIntoView()} call, this walks up the element's actual scrolling-
+     *  container chain, so it correctly reveals an element hidden by a nested horizontally-
+     *  scrolling container, e.g. a wide ExtJS grid's own body scrollbar, not just the page/window
+     *  scroll). No JavaScript execution involved. Safe to call even when the element is already
+     *  fully visible — a no-op in that case. */
+    public static void scrollToElement(By locator) {
+        ReportLogger.uiAction("scrollToElement {}", locator);
+        WebElement element = DriverManager.getDriver().findElement(locator);
+        getActions().scrollToElement(element).perform();
+    }
+
     public static void rightClick(By locator) {
         ReportLogger.uiAction("rightClick {}", locator);
         WebElement element = DriverManager.getDriver().findElement(locator);

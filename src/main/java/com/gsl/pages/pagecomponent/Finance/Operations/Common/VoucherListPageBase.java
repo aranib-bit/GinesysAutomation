@@ -2,8 +2,12 @@ package com.gsl.pages.pagecomponent.Finance.Operations.Common;
 
 import com.gsl.annotations.LogStep;
 import com.gsl.pages.VerifiablePage;
+import com.gsl.pages.enums.Finance.Operations.Common.CommonVoucherListColumn;
 import com.gsl.pages.enums.Finance.Operations.Common.IVoucherListColumn;
+import com.gsl.reports.StepExecutor;
+import com.gsl.utils.dataprovider.fixture.finance.DocumentSearchStrategy;
 
+import java.util.NoSuchElementException;
 import java.util.Optional;
 
 /**
@@ -120,6 +124,43 @@ public abstract class VoucherListPageBase<
         return newAddPage();
     }
 
+    /** Double-click analogue of {@link #selectDocumentFast(String, DocumentSearchStrategy)} for
+     *  entry methods that open Edit via double-click rather than a checkbox — same cascade
+     *  semantics (starting tier, fall-through on failure), using
+     *  {@code doubleClickRowIfPresentOnCurrentPage} per tier and falling back to the proven
+     *  {@link #doubleClickToEdit(String)} traversal. Default entry point — always tries the full
+     *  cascade starting from {@link DocumentSearchStrategy#EXACT_MATCH}. */
+    public TAddPage doubleClickToEditFast(String documentNumber) {
+        return doubleClickToEditFast(documentNumber, DocumentSearchStrategy.EXACT_MATCH);
+    }
+
+    /** Starts the double-click cascade at {@code startingStrategy} instead of the top. */
+    public TAddPage doubleClickToEditFast(String documentNumber, DocumentSearchStrategy startingStrategy) {
+        if (startingStrategy.ordinal() <= DocumentSearchStrategy.EXACT_MATCH.ordinal()) {
+            boolean foundExact = StepExecutor.call("Open via Exact-Match Filter (double-click)", () ->
+                    GridColumnMenu.filterByExactMatch(CommonVoucherListColumn.VOUCHER_NO, documentNumber)
+                            && mainGrid.doubleClickRowIfPresentOnCurrentPage(documentNumber));
+            if (foundExact) {
+                return newAddPage();
+            }
+            clearFilterAndRefreshList();
+        }
+
+        if (startingStrategy.ordinal() <= DocumentSearchStrategy.PARTIAL_MATCH.ordinal()) {
+            boolean foundPartial = StepExecutor.call("Open via Partial-Match Filter (double-click)", () ->
+                    GridColumnMenu.filterByContains(CommonVoucherListColumn.VOUCHER_NO, documentNumber)
+                            && mainGrid.doubleClickRowIfPresentOnCurrentPage(documentNumber));
+            if (foundPartial) {
+                return newAddPage();
+            }
+            clearFilterAndRefreshList();
+        }
+
+        resetToFirstPageIfEnabled();
+        return StepExecutor.call("Open via Page-by-Page Traversal (double-click)",
+                () -> doubleClickToEdit(documentNumber));
+    }
+
     @LogStep("Search Voucher by Document Number")
     public TSelf searchByVoucherNo(String voucherNo) {
         mainGrid.searchByVoucherNo(voucherNo);
@@ -218,6 +259,49 @@ public abstract class VoucherListPageBase<
     public TSelf selectDocumentInListPage(String documentNumber) {
         VoucherGridPaginationFinder.selectDocumentAcrossPages(documentNumber, mainGrid, gridFooter);
         return self();
+    }
+
+    /**
+     * Tiered fast alternative to {@link #selectDocumentInListPage(String)} — tries an
+     * exact-match filter on Voucher No. first, falls back to a partial-match filter, and only
+     * falls all the way back to the proven page-by-page traversal if both filter tiers fail.
+     * Default entry point — always tries the full cascade starting from
+     * {@link DocumentSearchStrategy#EXACT_MATCH}.
+     *
+     * @param documentNumber the {@code scheme_docno} to select
+     * @return {@code this} (concrete subclass type) for fluent chaining
+     * @throws NoSuchElementException if the document isn't found by any tier
+     */
+    public TSelf selectDocumentFast(String documentNumber) {
+        return selectDocumentFast(documentNumber, DocumentSearchStrategy.EXACT_MATCH);
+    }
+
+    /**
+     * Starts the cascade at {@code startingStrategy} instead of the top — e.g. pass
+     * {@code PARTIAL_MATCH} or {@code PAGE_BY_PAGE} directly when a caller already knows an
+     * earlier tier won't help for this scenario (typically driven by a test-data-tagged
+     * {@link DocumentSearchStrategy}, default {@code EXACT_MATCH} when untagged/null). Whichever
+     * tier is started at, failure still falls through to the remaining, more-reliable tiers.
+     */
+    public TSelf selectDocumentFast(String documentNumber, DocumentSearchStrategy startingStrategy) {
+        for (DocumentSearchStrategy strategy : DocumentSearchStrategy.values()) {
+            if (strategy.ordinal() < startingStrategy.ordinal()) {
+                continue;
+            }
+            if (strategy == DocumentSearchStrategy.PAGE_BY_PAGE) {
+                resetToFirstPageIfEnabled();
+            }
+            if (strategy.attempt(this, documentNumber)) {
+                return self();
+            }
+            if (strategy != DocumentSearchStrategy.PAGE_BY_PAGE) {
+                clearFilterAndRefreshList();
+            }
+        }
+        // Unreachable in practice — PAGE_BY_PAGE's attempt always either returns true or throws
+        // NoSuchElementException itself — kept only so every path returns TSelf for the compiler.
+        throw new NoSuchElementException(
+                "selectDocumentFast: document [" + documentNumber + "] not found by any strategy.");
     }
 
     // --------------------------------------------------------------------------------------

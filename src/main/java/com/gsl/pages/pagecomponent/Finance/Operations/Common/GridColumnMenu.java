@@ -1,5 +1,6 @@
 package com.gsl.pages.pagecomponent.Finance.Operations.Common;
 
+import com.gsl.config.ConfigFactory;
 import com.gsl.driver.DriverManager;
 import com.gsl.enums.WaitType;
 import com.gsl.exceptions.MandatoryColumnException;
@@ -8,6 +9,7 @@ import com.gsl.pages.enums.Finance.Operations.Common.FilterMatchMode;
 import com.gsl.pages.enums.Finance.Operations.Common.FilterType;
 import com.gsl.pages.enums.Finance.Operations.Common.GridColumnMenuItem;
 import com.gsl.pages.enums.Finance.Operations.Common.IVoucherListColumn;
+import com.gsl.reports.ExtentLogger;
 import com.gsl.utils.Log;
 import com.gsl.utils.Selenium.ActionUtils;
 import com.gsl.utils.Selenium.JavascriptExecutorUtils;
@@ -15,10 +17,16 @@ import com.gsl.utils.Selenium.SeleniumUtils;
 import com.gsl.utils.Selenium.WaitUtils;
 import org.openqa.selenium.By;
 import org.openqa.selenium.Keys;
+import org.openqa.selenium.WebElement;
 
+import java.util.Comparator;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.OptionalInt;
+import java.util.function.Predicate;
+import java.util.stream.Collectors;
 
 /**
  * Domain-agnostic utility for driving an ExtJS voucher list-grid column header's floating menu
@@ -52,7 +60,6 @@ public final class GridColumnMenu {
 
     private static final int SHORT_TIMEOUT_SECONDS = 3;
     private static final int SORT_BADGE_CHECK_TIMEOUT_SECONDS = 2;
-    private static final int MAX_SHIFT_CLICK_ATTEMPTS = 3;
 
     /** One entry in a {@link #sortByPriority(List)} call — priority is the list position. */
     public record SortSpec(IVoucherListColumn column, boolean ascending) {}
@@ -62,10 +69,19 @@ public final class GridColumnMenu {
     // ------------------------------------------------------------------------------------------
 
     /** Whether {@code column} is currently visible in the live grid (not just declared
-     *  non-{@code mandatory()}) — queried directly from ExtJS component state, see
-     *  {@link JavascriptExecutorUtils#isGridColumnHidden(String)}. */
+     *  non-{@code mandatory()}) — checked via the header's own DOM presence and inline style,
+     *  the same {@code display: none} idiom already used throughout this class (see
+     *  {@link #visibleHeaderAtPosition}). No JavaScript execution involved;
+     *  {@code isElementPresent} polls up to {@code SHORT_TIMEOUT_SECONDS}, which also closes the
+     *  race the previous JS-based version had (a one-shot query with no retry). */
     public static boolean isColumnCurrentlyVisible(IVoucherListColumn column) {
-        return !JavascriptExecutorUtils.isGridColumnHidden(column.headerText());
+        return SeleniumUtils.isElementPresent(visibleHeaderDiv(column), SHORT_TIMEOUT_SECONDS);
+    }
+
+    /** {@code column}'s header div, only matching when it is NOT hidden (no
+     *  {@code display: none} in its inline style) — see {@link #headerDivXpath}. */
+    private static By visibleHeaderDiv(IVoucherListColumn column) {
+        return By.xpath(headerDivXpath(column) + "[not(contains(@style,'display: none'))]");
     }
 
     // ------------------------------------------------------------------------------------------
@@ -75,9 +91,13 @@ public final class GridColumnMenu {
     /** Hovers {@code column}'s header to reveal its dropdown trigger, then clicks it and waits
      *  for the floating {@code x-menu} to appear. {@code column} must currently be visible —
      *  callers needing to reach a hidden column's "Columns ▸" submenu should open the menu on a
-     *  currently-visible anchor column instead (see {@link #setColumnVisibility}). */
+     *  currently-visible anchor column instead (see {@link #setColumnVisibility}). Scrolls the
+     *  header into view first (native Selenium 4 action, not JS) — GV alone has far more columns
+     *  than fit in the viewport at once, so a caller-specified column may be scrolled out of view
+     *  in the grid's own horizontal scroll container; a no-op if it's already visible. */
     public static void openColumnMenu(IVoucherListColumn column) {
         closeAnyOpenMenu();
+        ActionUtils.scrollToElement(headerDiv(column));
         ActionUtils.moveToElement(headerDiv(column));
         WaitUtils.untilVisible(triggerEl(column), SHORT_TIMEOUT_SECONDS);
         SeleniumUtils.clickWithStaleRetry(triggerEl(column), WaitType.CLICKABLE,
@@ -93,6 +113,7 @@ public final class GridColumnMenu {
     private static void openColumnMenuOnFirstVisibleColumn() {
         closeAnyOpenMenu();
         By firstVisibleTrigger = visibleHeaderTriggerAtPosition(0);
+        ActionUtils.scrollToElement(visibleHeaderAtPosition(0));
         ActionUtils.moveToElement(visibleHeaderAtPosition(0));
         WaitUtils.untilVisible(firstVisibleTrigger, SHORT_TIMEOUT_SECONDS);
         SeleniumUtils.clickWithStaleRetry(firstVisibleTrigger, WaitType.CLICKABLE,
@@ -138,12 +159,15 @@ public final class GridColumnMenu {
         return true;
     }
 
-    /** Adds {@code column} as the NEXT sort priority (Shift+click directly on the header, not
-     *  through the menu) — preserves any existing sort instead of replacing it, the ExtJS
-     *  interaction used to build a multi-column sort chain (the {@code (1)}/{@code (2)} badges).
-     *  [VERIFY step 0]: confirm this app's grid actually uses standard Shift+click multi-sort
-     *  before trusting the direction-retry loop below. Returns {@code false} without touching
-     *  the DOM if the column isn't currently visible. */
+    /** Shift+clicks {@code column} directly on its header (not through the menu) to add it to the
+     *  grid's multi-sort — preserves any existing sort instead of replacing it (the ExtJS
+     *  interaction that builds the {@code (1)}/{@code (2)} badges), but confirmed live
+     *  (2026-08-28, two independent runs — one with a retry, one with a single click, identical
+     *  result) that the just-clicked column always becomes multi-sort PRIORITY 1, demoting
+     *  whatever was already sorted by one position each — not "appended as the next/last
+     *  priority" as the name might suggest. See {@link #sortByPriority(List, int)} for how this
+     *  affects that method's own click ordering. Returns {@code false} without touching the DOM
+     *  if the column isn't currently visible. */
     public static boolean addSortAscending(IVoucherListColumn column) {
         return addSortViaShiftClick(column, true);
     }
@@ -153,41 +177,80 @@ public final class GridColumnMenu {
         return addSortViaShiftClick(column, false);
     }
 
+    /**
+     * Performs exactly ONE Shift+click and never retries it. Confirmed live (2026-08-28, two
+     * independent runs): Shift+clicking a column with no existing multi-sort order always
+     * promotes it to priority 1, regardless of click count — re-clicking the same column again
+     * to try to correct its direction reassigns its order as a side effect instead (this is what
+     * previously caused a column to jump to priority 1 when a retry loop existed here). There is
+     * no known way to correct direction without re-clicking, and re-clicking corrupts the
+     * priority chain, so this method deliberately does not try — it logs a warning if the
+     * resulting direction doesn't match what was requested, but still returns {@code true} (the
+     * column IS validly part of the multi-sort, just possibly not in the requested direction).
+     */
     private static boolean addSortViaShiftClick(IVoucherListColumn column, boolean ascending) {
         if (!isColumnCurrentlyVisible(column)) {
             return false;
         }
         closeAnyOpenMenu();
+        // Shift+click bypasses openColumnMenu entirely (it targets the header directly, not the
+        // trigger), so it needs its own scroll-into-view — see openColumnMenu's own Javadoc for why.
+        ActionUtils.scrollToElement(headerDiv(column));
+        ActionUtils.shiftClick(headerDiv(column));
+        JavascriptExecutorUtils.waitForExtJS();
         String targetDirection = ascending ? "ascending" : "descending";
-        for (int attempt = 1; attempt <= MAX_SHIFT_CLICK_ATTEMPTS; attempt++) {
-            ActionUtils.shiftClick(headerDiv(column));
-            JavascriptExecutorUtils.waitForExtJS();
-            String actualDirection = SeleniumUtils.getAttribute(headerDiv(column), "aria-sort",
-                    column.headerText() + "_ARIA_SORT");
-            if (targetDirection.equalsIgnoreCase(actualDirection)) {
-                return true;
-            }
+        String actualDirection = getSortDirection(column).orElse("none");
+        if (!targetDirection.equalsIgnoreCase(actualDirection)) {
+            Log.warn("GridColumnMenu.addSort: column [{}] landed as aria-sort='{}' (requested '{}') — "
+                    + "not retried, since re-clicking an already-ordered column reassigns its "
+                    + "priority as a side effect (confirmed live 2026-08-28).",
+                    column.headerText(), actualDirection, targetDirection);
         }
-        Log.warn("GridColumnMenu.addSort: column [{}] did not reach aria-sort='{}' after {} Shift+click "
-                + "attempt(s) — [VERIFY step 0] confirm Shift+click-to-multi-sort behavior live.",
-                column.headerText(), targetDirection, MAX_SHIFT_CLICK_ATTEMPTS);
         return true;
     }
 
-    /** Convenience wrapper applying a list of sorts in priority order: the first entry
-     *  establishes priority 1 (via {@link #sortAscending}/{@link #sortDescending}, replacing any
-     *  prior sort), each subsequent entry appends as the next priority (via
-     *  {@link #addSortAscending}/{@link #addSortDescending}). Returns {@code false} (stopping
-     *  early) if any entry's column isn't currently visible. */
+    /** Convenience wrapper applying a list of sorts in priority order, capped at the common
+     *  {@link com.gsl.config.FrameworkConfig#gridMultiSortMaxColumns()} limit. A module whose
+     *  grid supports a different multi-sort limit than the application-wide default should call
+     *  {@link #sortByPriority(List, int)} instead, passing its own configured value. */
     public static boolean sortByPriority(List<SortSpec> sortsInPriorityOrder) {
+        return sortByPriority(sortsInPriorityOrder, ConfigFactory.getConfig().gridMultiSortMaxColumns());
+    }
+
+    /**
+     * Same as {@link #sortByPriority(List)}, but with an explicit {@code maxColumns} cap instead
+     * of the common default — for a module whose grid supports a different multi-sort limit.
+     * Delivers the documented contract (list entry 0 ends up priority 1, entry 1 priority 2, ...)
+     * by clicking columns in REVERSE list order internally: confirmed live (2026-08-28) that a
+     * Shift+click always promotes the just-clicked column to priority 1, demoting whatever was
+     * already sorted — so the intended-LOWEST-priority entry is applied first (via
+     * {@link #sortAscending}/{@link #sortDescending}, establishing the sort and replacing any
+     * prior one), each higher-priority entry after it (via {@link #addSortAscending}/
+     * {@link #addSortDescending}), ending with the intended-priority-1 entry clicked LAST so it
+     * lands on top. Returns {@code false} (stopping early) if any entry's column isn't currently
+     * visible.
+     *
+     * @throws IllegalArgumentException if {@code sortsInPriorityOrder} requests more columns than
+     *         {@code maxColumns} — confirmed live (2026-08-28) that this app caps multi-sort at a
+     *         fixed number of columns, and clicking a new column beyond that cap changes the
+     *         existing ordering in a way this class doesn't model; failing fast here is safer
+     *         than silently attempting an unsupported N-column sort.
+     */
+    public static boolean sortByPriority(List<SortSpec> sortsInPriorityOrder, int maxColumns) {
         if (sortsInPriorityOrder == null || sortsInPriorityOrder.isEmpty()) {
             return false;
         }
-        SortSpec first = sortsInPriorityOrder.get(0);
-        if (!(first.ascending() ? sortAscending(first.column()) : sortDescending(first.column()))) {
+        if (sortsInPriorityOrder.size() > maxColumns) {
+            throw new IllegalArgumentException("GridColumnMenu.sortByPriority: requested "
+                    + sortsInPriorityOrder.size() + " sort columns, but at most " + maxColumns
+                    + " are supported here.");
+        }
+        int lastIndex = sortsInPriorityOrder.size() - 1;
+        SortSpec lowestPriority = sortsInPriorityOrder.get(lastIndex);
+        if (!(lowestPriority.ascending() ? sortAscending(lowestPriority.column()) : sortDescending(lowestPriority.column()))) {
             return false;
         }
-        for (int i = 1; i < sortsInPriorityOrder.size(); i++) {
+        for (int i = lastIndex - 1; i >= 0; i--) {
             SortSpec spec = sortsInPriorityOrder.get(i);
             boolean applied = spec.ascending() ? addSortAscending(spec.column()) : addSortDescending(spec.column());
             if (!applied) {
@@ -213,6 +276,20 @@ public final class GridColumnMenu {
         return digits.isEmpty() ? Optional.empty() : Optional.of(Integer.parseInt(digits));
     }
 
+    /** The column's current sort direction ("ascending"/"descending"), if it's part of the
+     *  active sort at all. Empty if unsorted, or if the column isn't currently visible. */
+    public static Optional<String> getSortDirection(IVoucherListColumn column) {
+        if (!isColumnCurrentlyVisible(column)) {
+            return Optional.empty();
+        }
+        String ariaSort = SeleniumUtils.getAttribute(headerDiv(column), "aria-sort",
+                column.headerText() + "_ARIA_SORT");
+        if (ariaSort == null || "none".equalsIgnoreCase(ariaSort)) {
+            return Optional.empty();
+        }
+        return Optional.of(ariaSort);
+    }
+
     // ------------------------------------------------------------------------------------------
     // Column order — position is mutable independent of mandatory()/hidden state: a mandatory,
     // un-hideable column (Voucher No., Voucher Date) can still be dragged to a different
@@ -220,13 +297,66 @@ public final class GridColumnMenu {
     // a user has already dragged). Never assume a fixed position for any column.
     // ------------------------------------------------------------------------------------------
 
-    /** The 0-based left-to-right position of {@code column} among currently-VISIBLE columns.
-     *  Empty if {@code column} isn't currently visible (position is undefined while hidden). */
+    /** The 0-based left-to-right position of {@code column} among currently-visible REAL DATA
+     *  columns (excluding the row-selection checkbox column and any other structural header with
+     *  no sort/filter trigger — see {@link #VISIBLE_DATA_COLUMN_PREDICATE}). Empty if
+     *  {@code column} isn't currently visible (position is undefined while hidden). Scans every
+     *  currently-visible header's text (DOM order), stripping any multi-sort badge suffix (e.g.
+     *  {@code " (1)"}) the same way {@link #sortBadge} reads it — no JavaScript execution involved. */
     public static OptionalInt getColumnPosition(IVoucherListColumn column) {
         if (!isColumnCurrentlyVisible(column)) {
             return OptionalInt.empty();
         }
-        return OptionalInt.of(JavascriptExecutorUtils.getVisibleColumnPosition(column.headerText()));
+        List<WebElement> visibleHeaderTexts = DriverManager.getDriver().findElements(VISIBLE_HEADER_TEXT_SPANS);
+        for (int i = 0; i < visibleHeaderTexts.size(); i++) {
+            String text = visibleHeaderTexts.get(i).getText();
+            String stripped = text == null ? "" : text.replaceAll("\\s*\\(\\d+\\)\\s*$", "").trim();
+            if (stripped.startsWith(column.headerText())) {
+                return OptionalInt.of(i);
+            }
+        }
+        return OptionalInt.empty();
+    }
+
+    /** Every column in {@code allColumns} that's currently visible, returned in its ACTUAL live
+     *  left-to-right order (sorted by {@link #getColumnPosition}) — the real on-screen column
+     *  sequence, not the order {@code allColumns} happened to be passed in. Lets a caller assert
+     *  or log the whole grid's current column arrangement at once, rather than checking one
+     *  column's position at a time. */
+    public static List<IVoucherListColumn> getColumnOrder(List<IVoucherListColumn> allColumns) {
+        return allColumns.stream()
+                .filter(GridColumnMenu::isColumnCurrentlyVisible)
+                .sorted(Comparator.comparingInt(c -> getColumnPosition(c).orElse(Integer.MAX_VALUE)))
+                .collect(Collectors.toList());
+    }
+
+    /** Logs the current sort order, sort direction, and left-to-right position for every column
+     *  in {@code allColumns} that is currently visible in the live grid, as ONE readable table
+     *  (not a run of flat log lines) — reuses {@link ExtentLogger#infoLabeledTable}, the same
+     *  idiom already used elsewhere in this codebase for tabular report data. Columns not
+     *  currently visible are skipped entirely (position/sort are undefined while hidden). Rows
+     *  are in actual left-to-right order (via {@link #getColumnOrder}), so the table itself
+     *  doubles as the column-arrangement record. {@code allColumns} is supplied by the caller's
+     *  own domain (e.g. {@code GeneralVoucherMainGrid.allColumns()}) — this method has no
+     *  knowledge of any specific domain's column set. */
+    public static void logGridState(List<IVoucherListColumn> allColumns) {
+        List<IVoucherListColumn> orderedVisible = getColumnOrder(allColumns);
+
+        String[][] table = new String[orderedVisible.size() + 1][4];
+        table[0] = new String[]{"Column", "Position", "Sort Order", "Sort Direction"};
+        for (int i = 0; i < orderedVisible.size(); i++) {
+            IVoucherListColumn column = orderedVisible.get(i);
+            OptionalInt position = getColumnPosition(column);
+            Optional<Integer> sortOrder = getMultiSortOrder(column);
+            Optional<String> sortDirection = getSortDirection(column);
+            table[i + 1] = new String[]{
+                    column.headerText(),
+                    position.isPresent() ? String.valueOf(position.getAsInt() + 1) : "n/a",
+                    sortOrder.map(String::valueOf).orElse("none"),
+                    sortDirection.orElse("none")
+            };
+        }
+        ExtentLogger.infoLabeledTable("Grid Column State (left-to-right order)", table);
     }
 
     /**
@@ -246,16 +376,25 @@ public final class GridColumnMenu {
         if (!isColumnCurrentlyVisible(columnToMove)) {
             return false;
         }
-        int currentPosition = JavascriptExecutorUtils.getVisibleColumnPosition(columnToMove.headerText());
+        int currentPosition = getColumnPosition(columnToMove).orElseThrow(() -> new IllegalStateException(
+                "GridColumnMenu.reorderColumn: column [" + columnToMove.headerText()
+                + "] was just confirmed visible but its position could not be read."));
         if (currentPosition == targetPosition) {
             return true;
         }
 
         closeAnyOpenMenu();
+        // Scrolls the SOURCE header into view before dragging — see openColumnMenu's own Javadoc
+        // for why. If targetPosition's header is itself off-screen in a different part of the
+        // scroll range, that isn't separately guaranteed here — not yet a live-observed problem,
+        // since reorderColumn is currently unused in production; flagged, not solved.
+        ActionUtils.scrollToElement(headerDiv(columnToMove));
         ActionUtils.dragAndDrop(headerDiv(columnToMove), visibleHeaderAtPosition(targetPosition));
         JavascriptExecutorUtils.waitForExtJS();
 
-        int actualPosition = JavascriptExecutorUtils.getVisibleColumnPosition(columnToMove.headerText());
+        int actualPosition = getColumnPosition(columnToMove).orElseThrow(() -> new IllegalStateException(
+                "GridColumnMenu.reorderColumn: column [" + columnToMove.headerText()
+                + "] disappeared after the drag — could not read its post-move position."));
         if (actualPosition != targetPosition) {
             throw new IllegalStateException("GridColumnMenu.reorderColumn: dragging column ["
                     + columnToMove.headerText() + "] to position " + targetPosition
@@ -328,7 +467,7 @@ public final class GridColumnMenu {
      *  label per column, following the same shape confirmed for the top-level menu items. */
     private static By columnsSubmenuCheckbox(IVoucherListColumn column) {
         return By.xpath("(//div[contains(concat(' ', normalize-space(@class), ' '), ' x-menu ')]"
-                + "[not(contains(@style,'display: none'))])[last()]"
+                + "[@aria-hidden='false'])[last()]"
                 + "//span[normalize-space()='" + column.headerText() + "']");
     }
 
@@ -376,6 +515,11 @@ public final class GridColumnMenu {
         ActionUtils.moveToElement(GridColumnMenuItem.FILTERS.locator());
         By input = filterInput(mode);
         WaitUtils.untilVisible(input, SHORT_TIMEOUT_SECONDS);
+        // Continue the hover into the flyout itself before typing — ExtJS auto-collapses a
+        // hover-flyout a short time after the mouse stops moving toward it (confirmed live, run
+        // 20260828_130058: leaving the cursor parked on "Filters" let the flyout close before
+        // sendKeys ran, ~750ms later, producing ElementNotInteractableException every time).
+        ActionUtils.moveToElement(input);
         SeleniumUtils.sendKeysWithStaleRetry(input, WaitType.VISIBLE, value,
                 column.headerText() + "_" + mode + "_FILTER_INPUT");
         // Commits the filter and triggers the store reload — mirrors the existing codebase idiom
@@ -384,7 +528,26 @@ public final class GridColumnMenu {
         // field we just populated).
         DriverManager.getDriver().findElement(input).sendKeys(Keys.ENTER);
         JavascriptExecutorUtils.waitForExtJS();
-        closeAnyOpenMenu();
+        // waitForExtJS() alone only checks the global Ext.Ajax/isMasked component-flag signal —
+        // weaker than the real DOM/visual mask check already used for the grid's own refresh
+        // button (VoucherListFooterBase -> SeleniumUtils.click -> waitForExtMask). Matching that
+        // stronger check here too, since committing this filter triggers the same kind of
+        // grid-body reload/loader.
+        WaitUtils.waitForExtMask(column.headerText() + "_" + mode + "_FILTER_COMMIT");
+        // No closeAnyOpenMenu() here (removed 2026-08-28) — it sent Escape to the still-focused
+        // filter input, which reverted the just-committed value (confirmed live, run
+        // 20260828_145219: typing succeeded, Enter was sent, yet the row count never moved at
+        // all). Unnecessary anyway: openColumnMenu() already calls closeAnyOpenMenu() defensively
+        // at the start of every other GridColumnMenu operation, so leftover menu state here gets
+        // cleaned up safely by whatever runs next.
+
+        // Debugging aid (2026-08-28, per explicit user request), REPOSITIONED 2026-08-29 — was
+        // originally taken immediately after ENTER, before any wait ran, which meant it always
+        // showed the pre-update grid regardless of outcome. Moved to here (after the settle wait
+        // above) so it actually reflects the committed/settled state instead of a moment before
+        // anything visibly changed. Kept (not removed) since CONTAINS mode's live-commit behavior
+        // isn't proven yet — still useful evidence if a new bug turns up there.
+        ExtentLogger.passWithScreenshot(column.headerText() + "_" + mode + "_after_filter_committed");
         return true;
     }
 
@@ -397,32 +560,143 @@ public final class GridColumnMenu {
      *  before {@code sendKeysWithStaleRetry}, unlike an ExtJS synthetic-emptyText field would. */
     private static By filterInput(FilterMatchMode mode) {
         return By.xpath("(//div[contains(concat(' ', normalize-space(@class), ' '), ' x-menu ')]"
-                + "[not(contains(@style,'display: none'))])[last()]"
+                + "[@aria-hidden='false'])[last()]"
                 + "//input[@placeholder='" + mode.placeholderText() + "']");
+    }
+
+    // ------------------------------------------------------------------------------------------
+    // Column data-cell values (row-level content verification, current page only — see caveat
+    // below) — lets a caller check what a filter/sort actually rendered, not just trust the
+    // footer's total or a single known-document check.
+    // ------------------------------------------------------------------------------------------
+
+    /** The rendered text of every {@code column}'s data cell among rows currently loaded/rendered
+     *  on this page — NOT necessarily the grid's full cross-page total (see
+     *  {@code VoucherListFooterBase}'s "Displaying X-Y of Z" for that authoritative count; ExtJS
+     *  only renders the current page's rows into the DOM). Joins header → cells via
+     *  {@code data-columnid}, the same attribute ExtJS stamps on both a column's header div (its
+     *  own {@code id}) and every one of its data cells — confirmed live (run 20260828_193340:
+     *  Voucher No.'s header {@code id="gridcolumn-1133"} matches its data cells'
+     *  {@code data-columnid="gridcolumn-1133"}) — a structural ExtJS rendering convention, not
+     *  specific to General Voucher, so this works for any column in any voucher list grid without
+     *  per-domain overrides. Reads plain {@code getText()}; a column whose cells render as
+     *  something other than plain text (e.g. an icon-only renderer) isn't yet accommodated — none
+     *  has been observed to need this, so no speculative extractor override is added ahead of a
+     *  real case. */
+    public static List<String> getColumnCellValuesOnCurrentPage(IVoucherListColumn column) {
+        String headerId = SeleniumUtils.getAttribute(headerDiv(column), "id", column.headerText() + "_HEADER_ID");
+        if (headerId == null || headerId.isBlank()) {
+            throw new IllegalStateException("GridColumnMenu.getColumnCellValuesOnCurrentPage: column ["
+                    + column.headerText() + "] header has no id attribute — cannot join to its data cells.");
+        }
+        By dataCells = By.xpath("//td[@data-columnid='" + headerId + "']");
+        return DriverManager.getDriver().findElements(dataCells).stream()
+                .map(WebElement::getText)
+                .collect(Collectors.toList());
+    }
+
+    /** Counts, among rows currently rendered on this page, how many have {@code column}'s cell
+     *  text matching {@code predicate} — e.g. a Voucher No. cell containing a given substring. See
+     *  {@link #getColumnCellValuesOnCurrentPage}'s "current page only" caveat. */
+    public static long countMatchingRowsOnCurrentPage(IVoucherListColumn column, Predicate<String> predicate) {
+        return getColumnCellValuesOnCurrentPage(column).stream().filter(predicate).count();
+    }
+
+    /**
+     * Multi-column variant — counts, among rows currently rendered on this page, how many satisfy
+     * EVERY given column/predicate pair simultaneously (a logical AND across columns), e.g.
+     * Voucher No. contains "02182" AND Cash/Bank Name equals "HDFC Bank". Reads each column's
+     * cells via {@link #getColumnCellValuesOnCurrentPage} once, then walks rows by INDEX across
+     * those lists — safe because {@code findElements} returns matches in document order, and an
+     * ExtJS grid row's cells all render together inside one {@code <tr>} before the next row's,
+     * so index i in every column's cell list refers to the same physical row.
+     *
+     * <p>Not yet exercised by any live test (no current scenario needs a simultaneous
+     * multi-column filter) — built now as the provision requested ahead of a real multi-filter
+     * scenario; the underlying single-column mechanism generalizes directly with no new locator
+     * risk.
+     *
+     * @throws IllegalStateException if two columns' cell-value lists come back different lengths
+     *         — would mean the grid changed page/reloaded between reads; call this once per
+     *         stable render.
+     */
+    public static long countMatchingRowsOnCurrentPage(Map<IVoucherListColumn, Predicate<String>> columnPredicates) {
+        if (columnPredicates.isEmpty()) {
+            return 0;
+        }
+        Map<IVoucherListColumn, List<String>> valuesByColumn = new LinkedHashMap<>();
+        int rowCount = -1;
+        for (IVoucherListColumn column : columnPredicates.keySet()) {
+            List<String> values = getColumnCellValuesOnCurrentPage(column);
+            if (rowCount == -1) {
+                rowCount = values.size();
+            } else if (values.size() != rowCount) {
+                throw new IllegalStateException("GridColumnMenu.countMatchingRowsOnCurrentPage: column ["
+                        + column.headerText() + "] returned " + values.size() + " cell values, but a "
+                        + "previous column in this same call returned " + rowCount + " — the grid may "
+                        + "have changed page/reloaded between reads; call this once per stable render.");
+            }
+            valuesByColumn.put(column, values);
+        }
+        long matches = 0;
+        for (int row = 0; row < rowCount; row++) {
+            int r = row;
+            boolean allMatch = columnPredicates.entrySet().stream()
+                    .allMatch(e -> e.getValue().test(valuesByColumn.get(e.getKey()).get(r)));
+            if (allMatch) {
+                matches++;
+            }
+        }
+        return matches;
     }
 
     // ------------------------------------------------------------------------------------------
     // Locators — confirmed via live DevTools capture (see plan Step 0)
     // ------------------------------------------------------------------------------------------
 
+    // aria-hidden='false' (not the display:none-based hidden-element exclusion used for column
+    // headers below) — confirmed live, run 20260828_160502: ExtJS keeps a floating submenu
+    // instance around hidden-via-visibility:hidden (not display:none) for reuse after it's been
+    // shown once, and that stale instance can sit LATER in DOM order than a freshly-opened real
+    // menu, making a plain "last non-display:none x-menu" pick the wrong (stale) one.
+    // aria-hidden/aria-expanded are ExtJS's own semantic signal for "is this actually shown" and
+    // aren't tied to any one particular CSS hiding mechanism.
     private static final By OPEN_MENU = By.xpath(
             "(//div[contains(concat(' ', normalize-space(@class), ' '), ' x-menu ')]"
-            + "[not(contains(@style,'display: none'))])[last()]");
+            + "[@aria-hidden='false'])[last()]");
 
-    /** The column header (DOM order, among not-hidden ones only) at 0-based {@code position} —
-     *  used both for {@link #openColumnMenuOnFirstVisibleColumn} (position 0) and as the drop
-     *  target in {@link #reorderColumn}. Assumes an ExtJS-hidden column header carries
-     *  {@code display: none} in its inline style, consistent with the {@code OPEN_MENU}/
-     *  {@code GridColumnMenuItem} locators' own hidden-element exclusion idiom. */
+    /** A "real" data column header — visible AND carrying a {@code triggerEl} (sort/filter/columns
+     *  dropdown). Confirmed live (run 20260828_193340): this grid's header row also includes a
+     *  tree/expander column ({@code treecolumn-*}) and the row-selection checkbox column
+     *  ({@code checkcolumn-*}), BOTH before any real data column in DOM order — both pass a plain
+     *  "x-column-header, not hidden" check but carry no {@code triggerEl} (verified across every
+     *  header div in that capture: every real data column has one, only these 2 structural
+     *  columns don't). Excluding them keeps "position 0" meaning the same thing everywhere this
+     *  predicate is used — the anchor {@link #openColumnMenuOnFirstVisibleColumn} hovers, AND the
+     *  position {@link #getColumnPosition}/{@link #logGridState} report — rather than crashing on
+     *  (or silently miscounting from) a non-interactive structural header. */
+    private static final String VISIBLE_DATA_COLUMN_PREDICATE =
+            "[contains(concat(' ', normalize-space(@class), ' '), ' x-column-header ')]"
+            + "[not(contains(@style,'display: none'))]"
+            + "[.//div[@data-ref='triggerEl']]";
+
+    /** The real-data-column header (DOM order, among visible+triggerable ones only) at 0-based
+     *  {@code position} — used both for {@link #openColumnMenuOnFirstVisibleColumn} (position 0)
+     *  and as the drop target in {@link #reorderColumn}. See {@link #VISIBLE_DATA_COLUMN_PREDICATE}. */
     private static By visibleHeaderAtPosition(int position) {
-        return By.xpath("(//div[contains(concat(' ', normalize-space(@class), ' '), ' x-column-header ')]"
-                + "[not(contains(@style,'display: none'))])[" + (position + 1) + "]");
+        return By.xpath("(//div" + VISIBLE_DATA_COLUMN_PREDICATE + ")[" + (position + 1) + "]");
     }
 
     private static By visibleHeaderTriggerAtPosition(int position) {
-        return By.xpath("(//div[contains(concat(' ', normalize-space(@class), ' '), ' x-column-header ')]"
-                + "[not(contains(@style,'display: none'))])[" + (position + 1) + "]/div[@data-ref='triggerEl']");
+        return By.xpath("(//div" + VISIBLE_DATA_COLUMN_PREDICATE + ")[" + (position + 1)
+                + "]//div[@data-ref='triggerEl']");
     }
+
+    /** Every currently-visible real-data-column header's text-inner span, in DOM (left-to-right)
+     *  order — used by {@link #getColumnPosition} to compute a column's 0-based visible position
+     *  without any JavaScript execution. See {@link #VISIBLE_DATA_COLUMN_PREDICATE}. */
+    private static final By VISIBLE_HEADER_TEXT_SPANS = By.xpath(
+            "//div" + VISIBLE_DATA_COLUMN_PREDICATE + "//span[@data-ref='textInnerEl']");
 
     /**
      * Locates the outer {@code div#gridcolumn-NNNN.x-column-header} for {@code column}, matching
@@ -440,10 +714,14 @@ public final class GridColumnMenu {
                 + "/ancestor::div[contains(concat(' ', normalize-space(@class), ' '), ' x-column-header ')][1]";
     }
 
-    /** The hover-reveal dropdown-arrow trigger — a direct child of {@code headerDiv}, sibling
-     *  of its text container (confirmed live: {@code <div data-ref="triggerEl" class="x-column-header-trigger">}). */
+    /** The hover-reveal dropdown-arrow trigger. Confirmed live (run 20260828_123857's captured
+     *  HTML) to be nested one level deeper than originally assumed — a child of {@code titleEl},
+     *  sibling of {@code textContainerEl} (not a direct child of {@code headerDiv} itself):
+     *  {@code headerDiv > titleEl > (textContainerEl, triggerEl)}. Uses the descendant axis
+     *  ({@code //}) rather than hardcoding the {@code titleEl} hop, matching {@link #sortBadge}'s
+     *  existing idiom for reaching into a header's internals. */
     private static By triggerEl(IVoucherListColumn column) {
-        return By.xpath(headerDivXpath(column) + "/div[@data-ref='triggerEl']");
+        return By.xpath(headerDivXpath(column) + "//div[@data-ref='triggerEl']");
     }
 
     /** The multi-sort priority badge, e.g. {@code <small><span>(1)</span></small>} inside the

@@ -44,6 +44,7 @@ import com.gsl.testdata.dto.MergedFinanceGeneralVoucherData;
 import com.gsl.utils.Log;
 import com.gsl.utils.NavigationUtils;
 import com.gsl.utils.dataprovider.MergedFinGeneralVoucherDataSupplier;
+import com.gsl.utils.dataprovider.fixture.finance.DocumentSearchStrategy;
 import com.gsl.utils.dataprovider.fixture.finance.GeneralVoucherEditVariant;
 import com.gsl.utils.dataprovider.fixture.finance.VoucherEditEntryMethod;
 import com.gsl.validation.snapshot.DocumentContext;
@@ -122,6 +123,12 @@ public class EditGeneralVoucher extends WebTest {
 
         final MergedFinanceGeneralVoucherData testData = data;
 
+        // Null-safe default, same idiom as testData.getEntryMethod() below — a test only sets
+        // this explicitly when it already knows an earlier tier won't help for that scenario.
+        final DocumentSearchStrategy searchStrategy = testData.getSearchStrategy() == null
+                ? DocumentSearchStrategy.EXACT_MATCH
+                : testData.getSearchStrategy();
+
         final HomePage[]              homeRef    = new HomePage[1];
         final GeneralVoucherListPage[] listRef    = new GeneralVoucherListPage[1];
         final GeneralVoucherAdd[]      editRef    = new GeneralVoucherAdd[1];
@@ -193,7 +200,7 @@ public class EditGeneralVoucher extends WebTest {
             boolean checkboxNeeded = testData.getEntryMethod() != VoucherEditEntryMethod.DOUBLE_CLICK_EDIT
                     || "P".equals(liveReleaseStatusRef[0]);
             if (checkboxNeeded) {
-                listRef[0].selectDocumentInListPage(testData.getExistingVoucherNo());
+                listRef[0].selectDocumentFast(testData.getExistingVoucherNo(), searchStrategy);
                 ReportLogger.business("Selected voucher in list: " + testData.getExistingVoucherNo());
             } else {
                 ReportLogger.business("Entry method is DOUBLE_CLICK_EDIT and voucher is not Posted — "
@@ -249,15 +256,15 @@ public class EditGeneralVoucher extends WebTest {
         // ── Step 7: Open for Edit — branches on entry method (plan §9.5/9.6) ─────────
         StepExecutor.step("Open Voucher for Edit", () -> {
             if (testData.getEntryMethod() == VoucherEditEntryMethod.DOUBLE_CLICK_EDIT) {
-                editRef[0] = listRef[0].doubleClickToEdit(testData.getExistingVoucherNo());
+                editRef[0] = listRef[0].doubleClickToEditFast(testData.getExistingVoucherNo(), searchStrategy);
                 ReportLogger.business("Voucher opened for edit via double-click: " + testData.getExistingVoucherNo());
             } else {
                 // Re-select immediately before Actions→Edit rather than trusting Step 3's earlier
                 // selection to have survived: Step 4's Revert (when it ran) reloads the grid, which
                 // clears row selection, and a stale Step-3 selection would otherwise leave Edit
-                // disabled here. selectDocumentInListPage() is idempotent (no-ops if already
-                // checked), so this is safe to call again even when Step 4 didn't run.
-                listRef[0].selectDocumentInListPage(testData.getExistingVoucherNo());
+                // disabled here. selectDocumentFast() is idempotent (no-ops if already checked),
+                // so this is safe to call again even when Step 4 didn't run.
+                listRef[0].selectDocumentFast(testData.getExistingVoucherNo(), searchStrategy);
                 listRef[0].clickActions();
                 editRef[0] = listRef[0].clickEditFromActions();
                 ReportLogger.business("Voucher opened for edit via Actions→Edit: " + testData.getExistingVoucherNo());
