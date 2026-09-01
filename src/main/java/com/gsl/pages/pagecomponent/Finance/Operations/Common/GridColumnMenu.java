@@ -18,6 +18,7 @@ import com.gsl.utils.Selenium.WaitUtils;
 import org.openqa.selenium.By;
 import org.openqa.selenium.ElementNotInteractableException;
 import org.openqa.selenium.Keys;
+import org.openqa.selenium.NoSuchElementException;
 import org.openqa.selenium.StaleElementReferenceException;
 import org.openqa.selenium.WebElement;
 
@@ -531,9 +532,14 @@ public final class GridColumnMenu {
         // propagating) is safe because the caller (selectDocumentIfPresentOnCurrentPage, invoked
         // right after applyFilter returns) independently verifies whether the target row is
         // actually present — that's the real success signal, not whether this keystroke landed.
+        //
+        // NoSuchElementException joins the same tolerance list: if the flyout has already fully
+        // collapsed by the time this findElement runs (rather than merely going stale mid-send),
+        // the lookup itself fails to find the input at all — same underlying race, one step
+        // earlier, and the caller's independent row-presence check is just as valid a safety net.
         try {
             DriverManager.getDriver().findElement(input).sendKeys(Keys.ENTER);
-        } catch (ElementNotInteractableException | StaleElementReferenceException e) {
+        } catch (ElementNotInteractableException | StaleElementReferenceException | NoSuchElementException e) {
             Log.warn("[GridColumnMenu] applyFilter: Enter-send on '{}' hit {} (likely the documented "
                     + "hover-flyout auto-collapse race) — the filter value was very likely already "
                     + "committed via ExtJS's own live keyup handling; continuing rather than failing "

@@ -51,38 +51,49 @@ public class MergedFinGeneralVoucherDataSupplier {
     // open for the run's full duration). Sequential rows on the long-lived <test>-block worker
     // thread is the correct model here too — parallelism still comes from
     // parallel="methods" thread-count, one thread = one user = one browser iterating rows.
+    // Everything below — not just the loader.load() call — is wrapped in one try/catch. This
+    // method runs reflectively (test-data-supplier invokes it via org.joor.Reflect, per that
+    // library's ReflectionUtils.invokeDataSupplier), so ANY exception thrown from ANYWHERE in this
+    // method — including the source/param resolution above the old try block, and including a bare
+    // SkipException from loader.load() that used to be rethrown completely unlogged — gets wrapped
+    // by joor into a bare, contextless org.joor.ReflectException: InvocationTargetException at the
+    // TestNG layer, with duration=0 and NONE of this method's own logging having fired (confirmed
+    // live, run 20260901_151519, FIN-GV-EDIT-DETAIL: the ExtentReport captured only that one-line
+    // wrapper — zero stack trace, zero screenshot, no indication which data source or build-method
+    // actually threw). Logging every path here — before rethrowing unchanged — is the only way to
+    // make the *next* such failure diagnosable instead of a dead end.
     @DataSupplier(name = "FinanceGeneralVoucherData", flatMap = true, runInParallel = false)
     public StreamEx<Object[]> dataSupplier(Method method, ITestContext context) {
         String source = ConfigFactory.getConfig().testDataSource();
-        Log.info("[DataSupplier] testdata.source={}, method={}", source, method.getName());
-
-        // Read gv.group and gv.tag from TestNG XML <parameter> — used as fallback when
-        // the system property is absent (IntelliJ direct-run; Maven sets system props instead).
-        String xmlGroupParam = context.getCurrentXmlTest().getParameter("gv.group");
-        String xmlTagParam   = context.getCurrentXmlTest().getParameter("gv.tag");
-
-        // gv.edit.group — Edit's own execution-group gate, deliberately distinct from gv.group
-        // (Create's) since Edit's Mandatory/Regression membership differs — see
-        // GeneralVoucherEditExecutionGroup's Javadoc.
-        String xmlEditGroupParam = context.getCurrentXmlTest().getParameter("gv.edit.group");
-
-        TestDataSource<MergedFinanceGeneralVoucherData> loader =
-                "DB".equalsIgnoreCase(source)
-                        ? switch (method.getName()) {
-                            case "revertGeneralVoucher" -> new DbGeneralVoucherRevertDataSource(xmlGroupParam, xmlTagParam);
-                            case "editGeneralVoucherHeader", "editGeneralVoucherDetailLine" ->
-                                    new DbGeneralVoucherEditDataSource(xmlEditGroupParam);
-                            case "deleteGeneralVoucher" -> new DbGeneralVoucherDeleteDataSource();
-                            default -> new DbGeneralVoucherDataSource(xmlGroupParam, xmlTagParam);
-                          }
-                        : switch (method.getName()) {
-                            case "revertGeneralVoucher" -> new ExcelGeneralVoucherRevertDataSource();
-                            case "editGeneralVoucherHeader", "editGeneralVoucherDetailLine" ->
-                                    new ExcelGeneralVoucherEditDataSource();
-                            default -> new ExcelGeneralVoucherDataSource();
-                          };
-
         try {
+            Log.info("[DataSupplier] testdata.source={}, method={}", source, method.getName());
+
+            // Read gv.group and gv.tag from TestNG XML <parameter> — used as fallback when
+            // the system property is absent (IntelliJ direct-run; Maven sets system props instead).
+            String xmlGroupParam = context.getCurrentXmlTest().getParameter("gv.group");
+            String xmlTagParam   = context.getCurrentXmlTest().getParameter("gv.tag");
+
+            // gv.edit.group — Edit's own execution-group gate, deliberately distinct from gv.group
+            // (Create's) since Edit's Mandatory/Regression membership differs — see
+            // GeneralVoucherEditExecutionGroup's Javadoc.
+            String xmlEditGroupParam = context.getCurrentXmlTest().getParameter("gv.edit.group");
+
+            TestDataSource<MergedFinanceGeneralVoucherData> loader =
+                    "DB".equalsIgnoreCase(source)
+                            ? switch (method.getName()) {
+                                case "revertGeneralVoucher" -> new DbGeneralVoucherRevertDataSource(xmlGroupParam, xmlTagParam);
+                                case "editGeneralVoucherHeader", "editGeneralVoucherDetailLine" ->
+                                        new DbGeneralVoucherEditDataSource(xmlEditGroupParam);
+                                case "deleteGeneralVoucher" -> new DbGeneralVoucherDeleteDataSource();
+                                default -> new DbGeneralVoucherDataSource(xmlGroupParam, xmlTagParam);
+                              }
+                            : switch (method.getName()) {
+                                case "revertGeneralVoucher" -> new ExcelGeneralVoucherRevertDataSource();
+                                case "editGeneralVoucherHeader", "editGeneralVoucherDetailLine" ->
+                                        new ExcelGeneralVoucherEditDataSource();
+                                default -> new ExcelGeneralVoucherDataSource();
+                              };
+
             List<MergedFinanceGeneralVoucherData> scenarios = loader.load(method.getName());
 
             Log.info("[DataSupplier] Emitting {} General Voucher scenario row(s) for '{}' — "
@@ -92,6 +103,7 @@ public class MergedFinGeneralVoucherDataSupplier {
             return StreamEx.of(scenarios).map(data -> new Object[]{null, data});
 
         } catch (org.testng.SkipException se) {
+            Log.warn("[DataSupplier] SKIPPED '{}' (source={}) — {}", method.getName(), source, se.getMessage());
             throw se;
         } catch (Throwable e) {
             Throwable root = e;

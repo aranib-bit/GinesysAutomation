@@ -679,8 +679,15 @@ public class GeneralVoucherExpenseIncomeDetail extends VoucherSubLedgerInformati
     }
 
     public String getIsReversal(int rowIndex) {
-        return SeleniumUtils.getAttribute(rowCellByPosition(rowIndex, "Is Reversal"), "textContent",
+        // Trimmed here so this read-back is comparable both ways it's actually used: setIsReversal's
+        // skip-check already trims + case-insensitively compares it, but fillAndVerifyCommit's own
+        // pass/fail check is a strict value.equals(actual) — an untrimmed "Yes " vs "Yes" (ExtJS
+        // grid cells commonly render incidental surrounding whitespace) would visually read as
+        // correct yet fail that strict check after MAX_COMMIT_ATTEMPTS retries (confirmed live, run
+        // 20260901_151519, FIN-GV-ADD-COMBO-09).
+        String value = SeleniumUtils.getAttribute(rowCellByPosition(rowIndex, "Is Reversal"), "textContent",
                 "GV_IS_REVERSAL_ROW_" + rowIndex);
+        return value == null ? null : value.trim();
     }
 
     public BigDecimal getExpenseAmount(int rowIndex) {

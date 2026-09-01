@@ -170,6 +170,19 @@ public abstract class VoucherMainGridBase {
     public void clickGridAction(IVoucherGridAction action) {
         boolean enabled = SeleniumUtils.isElementPresent(action.enabledLocator(), ACTION_STATE_CHECK_TIMEOUT_SECONDS);
         if (!enabled) {
+            // isChecked()'s DOM/ARIA "checked" signal and this Actions item's aria-disabled binding
+            // are two independent reads with nothing syncing their timing — a caller that just
+            // finished clickCheckbox()'s own waitUntilChecked poll (which can itself consume most/
+            // all of ACTION_STATE_CHECK_TIMEOUT_SECONDS-worth of real time confirming the checkbox)
+            // may reach here with the row genuinely selected but the menu's enabled-state binding
+            // still catching up. Re-run the SAME real condition check once more — a bounded, honest
+            // retry of the live DOM state, not a blind timeout increase — before failing.
+            Log.warn("{}VoucherMainGrid: Actions→{} not yet enabled after first check — retrying once "
+                            + "in case the row-selection→menu-enabled binding is still catching up",
+                    domain.name(), action.label());
+            enabled = SeleniumUtils.isElementPresent(action.enabledLocator(), ACTION_STATE_CHECK_TIMEOUT_SECONDS);
+        }
+        if (!enabled) {
             throw new IllegalStateException(domain.name() + "VoucherMainGrid: Actions→" + action.label()
                     + " is disabled — is a row selected? (checkbox selection may not have registered)");
         }
@@ -568,26 +581,29 @@ public abstract class VoucherMainGridBase {
      * ever absent for some reason — not because either is expected to fire.
      */
     private boolean isChecked(WebElement checkbox) {
-        WebElement row;
+        // Every DOM read below — not just the initial ancestor lookup — is wrapped in one
+        // try/catch: an exact-match filter apply (or any other grid rebuild) can invalidate the
+        // checkbox/row handles at any point between locating them and reading their attributes,
+        // not only at the first lookup (confirmed live — run 20260901_151519's REVERT-01 failure
+        // was a StaleElementReferenceException from the row-class read below, which previously had
+        // no stale-guard). Treat any such failure as "not yet checked" so waitUntilChecked's poll
+        // loop retries against a freshly-resolved element on its next iteration, instead of the
+        // exception escaping the loop uncaught.
         try {
-            row = checkbox.findElement(By.xpath("./ancestor::tr[1]"));
-        } catch (Exception ignored) {
-            return false; // element went stale — treat as not-yet-checked, caller keeps polling
-        }
-        String ariaSelected = row.getAttribute("aria-selected");
-        if ("true".equals(ariaSelected)) {
-            return true;
-        }
-        try {
+            WebElement row = checkbox.findElement(By.xpath("./ancestor::tr[1]"));
+            String ariaSelected = row.getAttribute("aria-selected");
+            if ("true".equals(ariaSelected)) {
+                return true;
+            }
             String cssClass = checkbox.getAttribute("class");
             if (cssClass != null && cssClass.contains("checkcolumn-checked")) {
                 return true;
             }
+            String rowClass = row.getAttribute("class");
+            return rowClass != null && rowClass.contains("x-grid-row-selected");
         } catch (Exception ignored) {
-            // fall through to the row-class fallback
+            return false; // element went stale mid-read — treat as not-yet-checked, caller keeps polling
         }
-        String rowClass = row.getAttribute("class");
-        return rowClass != null && rowClass.contains("x-grid-row-selected");
     }
 
     /** Polls {@link #isChecked(WebElement)} (short timeout, no threshold-widening) — re-resolves

@@ -7,6 +7,7 @@ import com.gsl.utils.BigDecimalUtils;
 import com.gsl.utils.Selenium.JavascriptExecutorUtils;
 import com.gsl.utils.Selenium.SeleniumUtils;
 import com.gsl.utils.Selenium.WaitUtils;
+import com.google.common.util.concurrent.Uninterruptibles;
 import org.openqa.selenium.By;
 import org.openqa.selenium.TimeoutException;
 import org.openqa.selenium.WebElement;
@@ -14,6 +15,7 @@ import org.openqa.selenium.support.ui.ExpectedConditions;
 
 import java.math.BigDecimal;
 import java.util.List;
+import java.util.concurrent.TimeUnit;
 
 /**
  * Page object for the "Allocate Sites" popup — opened from a General Voucher
@@ -167,11 +169,26 @@ public class AllocateSitesPopup {
      * Failing here, at the point of the miss, with the options that were actually on offer, is the
      * difference between a one-line diagnosis and a three-step reconstruction.
      */
+    /** Bounded poll used only to give the picker's own selection-commit callback time to actually
+     *  write the Site field's value after the dialog closes — {@code waitForExtJS()} confirms
+     *  ExtJS is idle/unmasked, not that this specific input's value has been updated yet, so a
+     *  single point-in-time read can catch the field mid-propagation (confirmed live, run
+     *  20260901_151519, FIN-GV-ADD-COMBO-08: the field read back a plausible *previous*
+     *  allocation's site name — this popup instance is reused across multiple site rows on one
+     *  line — rather than garbage/empty, consistent with a slow-to-land update, not a wrong click). */
+    private static final int SITE_COMMIT_POLL_TIMEOUT_SECONDS = 2;
+    private static final long SITE_COMMIT_POLL_INTERVAL_MS = 200L;
+
     private void verifySiteCommitted(String siteName) {
-        String actual = SeleniumUtils.getAttribute(SITE_SEARCH_INPUT, "value", "AllocateSites_SiteSearch");
-        if (actual != null && actual.trim().equalsIgnoreCase(siteName.trim())) {
-            return;
-        }
+        String actual = null;
+        long deadline = System.currentTimeMillis() + SITE_COMMIT_POLL_TIMEOUT_SECONDS * 1000L;
+        do {
+            actual = SeleniumUtils.getAttribute(SITE_SEARCH_INPUT, "value", "AllocateSites_SiteSearch");
+            if (actual != null && actual.trim().equalsIgnoreCase(siteName.trim())) {
+                return;
+            }
+            Uninterruptibles.sleepUninterruptibly(SITE_COMMIT_POLL_INTERVAL_MS, TimeUnit.MILLISECONDS);
+        } while (System.currentTimeMillis() < deadline);
         throw new IllegalStateException(
                 "Allocate Sites: failed to select site '" + siteName + "' — the Site field holds "
                 + (actual == null || actual.isBlank() ? "nothing" : "'" + actual + "'")
