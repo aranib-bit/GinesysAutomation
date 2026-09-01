@@ -235,6 +235,18 @@ public class DocumentPopup {
         WebDriver driver = DriverManager.getDriver();
         WebDriverWait wait = WaitUtils.webDriverWait();
 
+        // Wait for the ExtJS loading mask to genuinely clear BEFORE waiting on the result
+        // popup element itself — Save can trigger a server-side computation (e.g. a ledger-
+        // balance refresh) that keeps a mask up for a while first. Without this, a slow-but-
+        // successful Save risks exceeding fluentWaitBuilder()'s own timeout with a bare,
+        // undiagnosable NoSuchElementException, and a genuinely-broken backend call surfaces as
+        // the same uninformative timeout instead of a clear "loader never cleared" diagnosis
+        // (confirmed live, run 20260901_170830, FIN-GV-ADD-MIXED-01/FIN-GV-ADD-COMBO-01: both
+        // failed here with exactly that bare timeout while a mask was up). Reuses the same
+        // already-proven mechanism GridColumnMenu.applyFilter uses after committing a filter —
+        // no new wait utility, just wiring this path into the existing one.
+        WaitUtils.waitForExtMask("post-save-messagebox-wait");
+
         System.out.println("Waiting for message box after save");
         WaitUtils.fluentWaitBuilder().until(ExpectedConditions.visibilityOfElementLocated(Loc.MESSAGE_TEXT));
         System.out.println("Messagebox is now visible");

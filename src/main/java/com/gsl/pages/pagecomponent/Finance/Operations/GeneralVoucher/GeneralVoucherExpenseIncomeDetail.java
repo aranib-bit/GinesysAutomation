@@ -93,9 +93,6 @@ public class GeneralVoucherExpenseIncomeDetail extends VoucherSubLedgerInformati
     private static final String BOUNDLIST_ROOT =
             "//div[contains(@class,'x-boundlist-floating') and not(contains(@style,'display: none'))]";
 
-    /** The open dropdown's container, as a standalone locator — "is a picker showing right now?". */
-    private static final By VISIBLE_BOUNDLIST = By.xpath(BOUNDLIST_ROOT);
-
     /**
      * The arrow/picker trigger of the currently-open cell editor. Scoped to the active editor for
      * the same reason as {@link #ACTIVE_EDITOR_INPUT} — ExtJS floats the editor at document level,
@@ -586,30 +583,47 @@ public class GeneralVoucherExpenseIncomeDetail extends VoucherSubLedgerInformati
                     + current + "' — skipping update");
             return;
         }
+        By cell = rowCellByPosition(rowIndex, "Is Reversal");
         SeleniumUtils.fillAndVerifyCommit("GV_IS_REVERSAL_ROW_" + rowIndex, value, () -> {
-            openCellForEdit(rowCellByPosition(rowIndex, "Is Reversal"), "GV_ISREVERSAL_CELL_ROW_" + rowIndex);
+            // Native UI, direct double-click every time — mirrors
+            // APVoucherSubLedgerInformation.setDeductTdsNative (this codebase's one
+            // live-confirmed closed Yes/No grid-cell combo), rather than openCellForEdit's
+            // single-click-then-probe. The preceding field (Ledger Narration) commits via a Tab
+            // keystroke, which ExtJS's default CellEditing auto-advances to the row's next
+            // column — plausibly this very cell — so openCellForEdit's "is SOME editor visible?"
+            // check can't tell a genuinely-fresh Is Reversal editor from that leftover
+            // auto-advanced one; it reported "success" while the picker never actually, freshly
+            // opened (confirmed live, run 20260901_170830, FIN-GV-ADD-COMBO-09: the boundlist
+            // option never rendered across all 3 fillAndVerifyCommit retries). Driving the
+            // double-click directly here — the same real interaction a user gives this closed
+            // combo — sidesteps that ambiguity entirely instead of trusting a prior click's side
+            // effect.
+            WaitUtils.fluentWaitBuilder()
+                    .withMessage("Is Reversal cell (row " + rowIndex + ") to accept a double-click "
+                            + "— locator: " + cell)
+                    .until(driver -> {
+                        new Actions(driver).doubleClick(driver.findElement(cell)).perform();
+                        return true;
+                    });
+            JavascriptExecutorUtils.waitForExtJS();
 
-            // Open the list via its arrow trigger, NOT by typing the value.
-            //
-            // This is a closed Yes/No combo whose cell already renders the default "No", so
-            // sendKeys("No") writes the value that is already there, fires no change event, and ExtJS
-            // never expands the picker. Confirmed in run 20260807_105226: the editor sat at
-            // aria-expanded="false" with every x-boundlist-floating still display:none while the wait
-            // burned its full timeout. With only two options there is nothing to filter anyway — open
-            // and pick is both simpler and correct for either value.
-            //
-            // Guarded rather than unconditional: openCellForEdit's click may already have expanded the
-            // picker, and the trigger toggles, so clicking it blindly could close the list we need.
-            // Same self-correcting shape as openCellForEdit's single-then-double-click fallback.
-            int shortWaitSeconds = (int) ConfigFactory.getWaitConfig().shortWaitSeconds();
-            if (!SeleniumUtils.isElementPresent(VISIBLE_BOUNDLIST, shortWaitSeconds)) {
-                SeleniumUtils.click(ACTIVE_EDITOR_PICKER_TRIGGER, WaitType.CLICKABLE, "GV_ISREVERSAL_TRIGGER");
-                JavascriptExecutorUtils.waitForExtJS();
-            }
+            // Unconditional trigger click — no "already open?" guard, unlike the previous
+            // version. That guard risked matching a STALE boundlist left over from General
+            // Ledger/Sub Ledger's own combos if ExtJS hadn't yet set inline display:none on it by
+            // the time the check ran — the same root failure class as above, one step later.
+            // Always driving the trigger click matches setDeductTdsNative's proven shape; with
+            // only two options, nothing is lost by re-opening a dropdown that (rarely) was
+            // already open.
+            SeleniumUtils.click(ACTIVE_EDITOR_PICKER_TRIGGER, WaitType.CLICKABLE, "GV_ISREVERSAL_TRIGGER");
+            JavascriptExecutorUtils.waitForExtJS();
+
             // Option row shape still unconfirmed — the picker has never been seen open, so it is
             // unknown whether it renders <li> items or grid-style x-boundlist-item divs.
             // simpleBoundlistOption() matches either element name, and Yes/No needs no second column to
-            // disambiguate, so the text match holds either way.
+            // disambiguate, so the text match holds either way. Kept BOUNDLIST_ROOT-scoped rather
+            // than combo-instance-scoped (the way setDeductTdsNative's
+            // data-boundview='comboDeductTDS-picker' is) pending a live DOM capture of this
+            // combo's own scoping attribute.
             By option = simpleBoundlistOption(value);
             WaitUtils.fluentWaitBuilder()
                     .withMessage("Is Reversal option '" + value + "' to be clickable in the open combo "
