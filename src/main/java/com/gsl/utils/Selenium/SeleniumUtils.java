@@ -504,6 +504,11 @@ public class SeleniumUtils {
             String token = msg.substring(idx).split("[\\s\"'<>]")[0]; // first word-boundary character
             return " (by #" + token + ")";
         }
+        // App-level splash screen mid CSS opacity fade-out — genuinely transient, not a stable
+        // layout element. Report 20260901_112001 misclassified <div id="splashScreen"
+        // style="opacity: 0.0296854;"> as "part of the page layout" and failed fast instead of
+        // retrying, because none of the branches here matched it.
+        if (msg.contains("splashScreen"))  return " (by #splashScreen)";
         if (msg.contains("x-mask"))        return " (by .x-mask)";
         if (msg.contains("x-mask-msg"))    return " (by .x-mask-msg)";
         if (msg.contains("modal"))         return " (by modal overlay)";

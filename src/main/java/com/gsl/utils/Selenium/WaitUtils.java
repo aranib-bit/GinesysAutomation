@@ -1,6 +1,8 @@
 package com.gsl.utils.Selenium;
 
 import com.gsl.config.ConfigFactory;
+import com.gsl.config.WaitConfig;
+import com.gsl.constants.FrameworkConstants;
 import com.gsl.driver.DriverManager;
 import com.gsl.enums.WaitType;
 import com.gsl.popup.PopupMonitor;
@@ -171,25 +173,61 @@ public final class WaitUtils {
         try {
             List<WebElement> elements = driver.findElements(locator);
             if (elements.isEmpty()) return false;
-            JavascriptExecutor js = (JavascriptExecutor) driver;
             for (WebElement el : elements) {
-                try {
-                    Boolean visible = (Boolean) js.executeScript(
-                            "var el=arguments[0];" +
-                            "var r=el.getBoundingClientRect();" +
-                            "if(r.width<=0||r.height<=0) return false;" +
-                            "if(r.bottom<=0||r.right<=0||r.top>=window.innerHeight||r.left>=window.innerWidth) return false;" +
-                            "var s=window.getComputedStyle(el);" +
-                            "if(s.display==='none'||s.visibility==='hidden'||parseFloat(s.opacity)===0) return false;" +
-                            "return true;", el);
-                    if (Boolean.TRUE.equals(visible)) return true;
-                } catch (StaleElementReferenceException stale) {
-                    // element already left the DOM mid-check — genuinely gone, check the rest
-                }
+                if (isGenuinelyVisibleElement(driver, el)) return true;
             }
             return false;
         } catch (Exception e) {
             return false;
+        }
+    }
+
+    /**
+     * Per-element half of {@link #isGenuinelyVisible(WebDriver, By)} — same bounding-box +
+     * on-screen + {@code display}/{@code visibility}/{@code opacity} check, extracted so
+     * {@link #untilAnyVisible(By, long)} can reuse it while also returning *which* element it
+     * found visible (the {@code By}-only variant only ever needed a boolean). A {@link
+     * StaleElementReferenceException} means the element already left the DOM mid-check —
+     * correctly treated as "not visible", not a failure.
+     */
+    private static boolean isGenuinelyVisibleElement(WebDriver driver, WebElement el) {
+        try {
+            Boolean visible = (Boolean) ((JavascriptExecutor) driver).executeScript(
+                    "var el=arguments[0];" +
+                    "var r=el.getBoundingClientRect();" +
+                    "if(r.width<=0||r.height<=0) return false;" +
+                    "if(r.bottom<=0||r.right<=0||r.top>=window.innerHeight||r.left>=window.innerWidth) return false;" +
+                    "var s=window.getComputedStyle(el);" +
+                    "if(s.display==='none'||s.visibility==='hidden'||parseFloat(s.opacity)===0) return false;" +
+                    "return true;", el);
+            return Boolean.TRUE.equals(visible);
+        } catch (StaleElementReferenceException stale) {
+            return false;
+        }
+    }
+
+    /**
+     * Waits for at least one element matching {@code by} to become genuinely visible (same
+     * bounding-box/on-screen/opacity discipline as {@link #isGenuinelyVisible(WebDriver, By)})
+     * and returns that element. Unlike {@link ExpectedConditions#visibilityOfElementLocated},
+     * which only ever inspects the *first* DOM match, this checks every match — for locators
+     * that can transiently resolve to more than one element (e.g. a stale/leftover node
+     * alongside the live one, only one of which is actually rendered), the naive first-match-only
+     * wait can time out even while the real element is visible elsewhere in the matches.
+     * Confirmed live on {@code FinanceHomePage}'s dashboard-header locator: the first DOM match
+     * was a stale node, and the visible "Finance Dashboard" header was a later match.
+     */
+    public static WebElement untilAnyVisible(By by, long seconds) {
+        ReportLogger.uiAction("waitUntilAnyVisible {}s {}", seconds, by);
+        try {
+            return webDriverWait(seconds).until(driver -> {
+                for (WebElement el : driver.findElements(by)) {
+                    if (isGenuinelyVisibleElement(driver, el)) return el;
+                }
+                return null;
+            });
+        } catch (TimeoutException e) {
+            throw PopupMonitor.diagnoseFailure(e, "waitUntilAnyVisible " + by, seconds);
         }
     }
 
@@ -364,8 +402,14 @@ public final class WaitUtils {
      * disappear before a click retry.
      *
      * <p>Phase 1 — {@code .x-mask} / {@code .x-mask-msg}: standard ExtJS loading masks.
-     * <p>Phase 2 — {@code div[id^='ext-element-']}: dynamic ExtJS modal backdrop elements.
-     * <p>Phase 3 — ExtJS AJAX / layout cycle.
+     * <p>Phase 2 — {@code #splashScreen}: app-level splash screen, which disappears via a CSS
+     * opacity fade-out rather than {@code display:none}/removal — a naive {@code isDisplayed()}
+     * check (as Phase 1's {@code ExpectedConditions.invisibilityOfElementLocated} uses) reports
+     * it "displayed" throughout the fade, so this phase uses the same "genuinely visible"
+     * bounding-box + computed-style discipline as {@link #untilInvisible(By)} instead, staged and
+     * logged via {@link #waitForSplashScreenClear()} rather than one opaque timeout.
+     * <p>Phase 3 — {@code div[id^='ext-element-']}: dynamic ExtJS modal backdrop elements.
+     * <p>Phase 4 — ExtJS AJAX / layout cycle.
      */
     public static void waitForClickOverlay() {
         long startMs = System.currentTimeMillis();
@@ -378,7 +422,14 @@ public final class WaitUtils {
                         ));
             } catch (Exception ignored) { /* not present — proceed */ }
 
-            // Phase 2: ext-element-* backdrop divs (JS check for isDisplayed())
+            // Phase 2: #splashScreen genuine-visibility fade-out — opacity-based, so Phase 1's
+            // isDisplayed()-only check never catches it. Polls in named stages with a log line
+            // per stage instead of one opaque timeout — confirmed necessary live in report
+            // 20260901_112001, where a fading splashScreen intercepted a click with no
+            // diagnostic trail of how long it had already been fading.
+            waitForSplashScreenClear();
+
+            // Phase 3: ext-element-* backdrop divs (JS check for isDisplayed())
             try {
                 webDriverWait(extJsTimeout())
                         .until(driver -> {
@@ -394,10 +445,60 @@ public final class WaitUtils {
                         });
             } catch (Exception ignored) { /* timeout — best-effort, let click retry proceed */ }
 
-            // Phase 3: ExtJS AJAX + layout cycle
+            // Phase 4: ExtJS AJAX + layout cycle
             JavascriptExecutorUtils.waitForExtJS();
         } finally {
             recordIfEnabled("waitForClickOverlay", startMs, "waitForClickOverlay");
+        }
+    }
+
+    /**
+     * Waits for {@code #splashScreen} to genuinely disappear (see {@link #isGenuinelyVisible}),
+     * in named stages, logging progress at each stage instead of one opaque timeout: an initial
+     * {@code splashscreen.initial.wait.seconds} (default 30s) wait, then up to {@code
+     * splashscreen.poll.max.retries} (default 4) further polls of {@code
+     * splashscreen.poll.seconds} (default 15s) each. Never throws — this is a best-effort
+     * clearance step inside {@link #waitForClickOverlay()}; if the splash screen never clears,
+     * the click retry that follows will simply be intercepted again, and {@code
+     * SeleniumUtils.clickWithOverlayRetry}'s own retry budget (independently, up to {@code
+     * click.overlay.retry.max} times) decides when to fail.
+     *
+     * <p>Note this phase runs inside that same outer retry loop, so the real worst case for a
+     * splash screen that never clears is {@code click.overlay.retry.max} times this method's own
+     * total wait — accepted deliberately (see {@code wait.properties}' comment on these keys)
+     * in exchange for a full, logged timeline instead of a silent timeout.
+     */
+    private static void waitForSplashScreenClear() {
+        WaitConfig wc = ConfigFactory.getWaitConfig();
+        long initialSeconds = wc.splashscreenInitialWaitSeconds();
+        int maxPolls = wc.splashscreenPollMaxRetries();
+        long pollSeconds = wc.splashscreenPollSeconds();
+
+        if (waitForSplashInvisible(initialSeconds)) return;
+        ReportLogger.warn(String.format(
+                "#splashScreen still visible after %ds — polling up to %d more time(s) at %ds each…",
+                initialSeconds, maxPolls, pollSeconds));
+
+        for (int poll = 1; poll <= maxPolls; poll++) {
+            if (waitForSplashInvisible(pollSeconds)) {
+                ReportLogger.info(String.format("#splashScreen cleared on poll %d/%d", poll, maxPolls));
+                return;
+            }
+            ReportLogger.warn(String.format("#splashScreen still visible after poll %d/%d (%ds each)",
+                    poll, maxPolls, pollSeconds));
+        }
+        ReportLogger.warn(String.format(
+                "#splashScreen never cleared after %ds total (%ds initial + %dx%ds polls)",
+                initialSeconds + (long) maxPolls * pollSeconds, initialSeconds, maxPolls, pollSeconds));
+    }
+
+    /** Single genuinely-invisible wait for {@code #splashScreen}, capped at {@code seconds} — never throws. */
+    private static boolean waitForSplashInvisible(long seconds) {
+        try {
+            webDriverWait(seconds).until(driver -> !isGenuinelyVisible(driver, FrameworkConstants.getSplashScreen()));
+            return true;
+        } catch (Exception e) {
+            return false;
         }
     }
 

@@ -88,6 +88,30 @@ public interface WaitConfig extends Config {
     int clickOverlayRetryMax();
 
     /**
+     * Initial wait (seconds) for {@code #splashScreen} to genuinely disappear, inside {@code
+     * WaitUtils.waitForClickOverlay()}'s splash-screen phase — see {@link #splashscreenPollSeconds()}
+     * for the staged polls that follow if the splash screen is still visible after this.
+     */
+    @Key("splashscreen.initial.wait.seconds")
+    @DefaultValue("30")
+    long splashscreenInitialWaitSeconds();
+
+    /**
+     * Length (seconds) of each follow-up poll if {@link #splashscreenInitialWaitSeconds()}
+     * wasn't enough — logged individually (see {@code WaitUtils.waitForSplashScreenClear}) so a
+     * genuinely-stuck splash screen leaves a full timeline in the report instead of one opaque
+     * timeout.
+     */
+    @Key("splashscreen.poll.seconds")
+    @DefaultValue("15")
+    long splashscreenPollSeconds();
+
+    /** Number of {@link #splashscreenPollSeconds()} polls attempted before giving up. */
+    @Key("splashscreen.poll.max.retries")
+    @DefaultValue("4")
+    int splashscreenPollMaxRetries();
+
+    /**
      * Timeout for the post-module-click "Loading Package" bootstrap wait
      * ({@code TopModuleMenuComponent.navigateToModule()}) — deliberately separate from the
      * generic {@code timeout} and {@code extjs.timeout} tiers since this one-off, heavier

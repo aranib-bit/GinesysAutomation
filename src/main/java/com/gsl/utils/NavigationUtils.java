@@ -78,7 +78,7 @@ public final class NavigationUtils {
 
         // Always clear a leftover mask before the next click, even on the cache-hit path above —
         // otherwise session reuse has no clearance point between "already loaded" and this click.
-        SeleniumUtils.elementDisappear(FrameworkConstants.getLoadingMask(), "Loading Mask");
+        waitForSideMenuClickable();
 
         // 4. Click the final side menu item (e.g., Group)
         T page = productDefinitionHomePage.getProductDefinitionSideMenuComponent()
@@ -136,7 +136,7 @@ public final class NavigationUtils {
 
         // Always clear a leftover mask before the next click, even on the cache-hit path above —
         // otherwise session reuse has no clearance point between "already loaded" and this click.
-        SeleniumUtils.elementDisappear(FrameworkConstants.getLoadingMask(), "Loading Mask");
+        waitForSideMenuClickable();
 
         // 4. Click the final side menu item — scoped to Procurement container
         T page = operationsHomePage.getOperationsSideMenuComponent()
@@ -191,7 +191,7 @@ public final class NavigationUtils {
 
         // Always clear a leftover mask before the next click, even on the cache-hit path above —
         // otherwise session reuse has no clearance point between "already loaded" and this click.
-        SeleniumUtils.elementDisappear(FrameworkConstants.getLoadingMask(), "Loading Mask");
+        waitForSideMenuClickable();
 
         // 5. Click the final side menu item — scoped to Finance container only
         T page = operationsHomePage.getOperationsSideMenuComponent()
@@ -245,7 +245,7 @@ public final class NavigationUtils {
 
         // Always clear a leftover mask before the next click, even on the cache-hit path above —
         // otherwise session reuse has no clearance point between "already loaded" and this click.
-        SeleniumUtils.elementDisappear(FrameworkConstants.getLoadingMask(), "Loading Mask");
+        waitForSideMenuClickable();
 
         T page = setupHomePage.getSetupSideMenuComponent()
                 .clickMenuItem(sideMenu, expectedPage);
@@ -259,6 +259,30 @@ public final class NavigationUtils {
         ExecutionManager.logState("navigation:FinanceSetup/" + subMenu.name() + "/" + sideMenu.getName());
         finishColdStartIfInProgress(ctx, navStart);
         return page;
+    }
+
+    /**
+     * Clears both loading-overlay flavors that can still be blocking the side-menu tree node
+     * about to be clicked. {@code getLoadingMask()} (.x-mask-fixed) is the routine ExtJS loading
+     * mask; {@code getSplashScreen()} (#splashScreen) is the app-level splash screen, which
+     * disappears via a CSS opacity fade rather than being removed/hidden outright. Nothing waited
+     * on the latter before the side-menu click, which produced 3 hard failures in report
+     * 20260901_112001 (editGeneralVoucherHeader x1, deleteGeneralVoucher x2) — ChromeDriver
+     * reported {@code <div id="splashScreen" style="opacity: 0.0296854;">} intercepting the click
+     * right after the preceding module navigation, mid fade-out, and it was misreported as "part
+     * of the page layout" (see {@code SeleniumUtils.detectInterceptingOverlay} for the matching
+     * defensive-backstop fix). {@code elementDisappear} already uses the "genuinely visible"
+     * opacity-aware check (see {@code WaitUtils.isGenuinelyVisible}), so it correctly waits out
+     * the fade instead of treating near-zero-but-nonzero opacity as already gone.
+     *
+     * <p>Single choke point for all four {@code navigateTo*SideMenu} flows — {@code
+     * clickMenuItem} is not a shared method (Finance/Inventory/Procurement/FinanceSetup each have
+     * their own, independent side-menu component), so this is the one place all four flows
+     * actually share.
+     */
+    private static void waitForSideMenuClickable() {
+        SeleniumUtils.elementDisappear(FrameworkConstants.getLoadingMask(), "Loading Mask");
+        SeleniumUtils.elementDisappear(FrameworkConstants.getSplashScreen(), "SplashScreen");
     }
 
     /**

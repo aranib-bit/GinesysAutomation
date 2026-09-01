@@ -8,10 +8,6 @@ import org.openqa.selenium.By;
 
 public class FinanceHomePage implements VerifiablePage {
 
-    private static final By DASHBOARD_HEADER = By.xpath(
-            "//div[contains(concat(' ',normalize-space(@class),' '),' dashboardHeading ')]"
-                    + "//div[contains(@class,'x-title-text')]");
-
     private FinanceTopMenuComponent financeTopMenuComponent;
 
     public FinanceHomePage() {
@@ -26,10 +22,27 @@ public class FinanceHomePage implements VerifiablePage {
      * Confirms the Finance Dashboard panel actually rendered its header — see
      * {@code TopModuleMenuComponent.navigateToModule()} for how a failure here triggers a
      * refresh-based recovery attempt before being treated as a real failure.
+     *
+     * <p>The locator embeds the expected title text (rather than matching any {@code
+     * dashboardHeading} node generically) because the app can momentarily render more than one
+     * such node during a module transition — confirmed live via DevTools: the xpath without the
+     * text predicate matched 3 elements, and the first DOM match (what {@code
+     * ExpectedConditions.visibilityOfElementLocated} inspects) was not the live "Finance
+     * Dashboard" panel, so the wait timed out even though the real header was visible among the
+     * other matches. Baking the title into the locator makes a stale/other node structurally
+     * unable to match.
      */
     @Override
     public void verifyOnThisPage() {
-        DashboardHeaderUtils.verifyDashboardHeader(DASHBOARD_HEADER, DashboardTitle.FINANCE.getExpectedTitle(),
+        String expectedTitle = DashboardTitle.FINANCE.getExpectedTitle();
+        By header = By.xpath(
+                "//div[contains(concat(' ',normalize-space(@class),' '),' dashboardHeading ')]"
+                        // normalize-space(.) (whole-element string-value), not normalize-space(text())
+                        // (first direct text-node child only) — matches what el.getText().trim() checks
+                        // downstream in DashboardHeaderUtils even if the title wraps its text in an inline node.
+                        + "//div[contains(@class,'x-title-text') and normalize-space(.)='"
+                        + expectedTitle + "']");
+        DashboardHeaderUtils.verifyDashboardHeader(header, expectedTitle,
                 ConfigFactory.getWaitConfig().dashboardHeaderTimeoutSeconds());
     }
 }
