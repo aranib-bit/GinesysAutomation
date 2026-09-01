@@ -61,13 +61,16 @@ import java.util.Map;
  *       negative scenario confirms) — Delete is never actually attempted.</li>
  * </ol>
  *
- * <h3>Pre-existing blocker (not introduced by this class)</h3>
- * {@code VoucherMainGridBase.DELETE_ICON}/{@code CONFIRM_DELETE} are still {@code //TODO-}
- * placeholder locators, unconfirmed against the live DOM — the exact same pre-existing gap that
- * already blocks {@code DeleteArVoucher} from running end-to-end (see that class's own Javadoc).
- * The negative scenario above is unaffected by this (it never reaches the Delete click at all),
- * but the positive scenario's final Delete+Confirm step needs those locators confirmed live
- * before it can pass.
+ * <h3>Delete click/confirm — confirmed live 2026-09-01</h3>
+ * {@code VoucherMainGridBase.clickDeleteForVoucher()}/{@code confirmDelete()} previously used
+ * unconfirmed {@code //TODO-} placeholder locators (the same pre-existing gap that still blocks
+ * {@code DeleteArVoucher} — see that class's own Javadoc) and were missing a checkbox
+ * re-selection after Unpost/Revert clears it (see Step 6c below). Both are now wired to the real,
+ * live-confirmed flow: {@code clickDeleteForVoucher()} reuses the same {@code clickGridAction}
+ * mechanism {@code clickEdit()}/{@code clickRevert()} already prove out, and
+ * {@code confirmDelete()} handles the real two-dialog Yes→Result/OK sequence (see
+ * {@link com.gsl.enums.Finance.Operations.Common.DocumentMessageBoxMessage#DELETE_CONFIRMATION}/
+ * {@link com.gsl.enums.Finance.Operations.Common.DocumentMessageBoxMessage#DELETE_SUCCESS_RESULT}).
  */
 @ApiFlow(FinanceApiPattern.GENERAL_VOUCHER)
 public class DeleteGeneralVoucher extends WebTest {
@@ -232,6 +235,21 @@ public class DeleteGeneralVoucher extends WebTest {
             return;
         }
 
+        // ── Step 6c: Re-select Voucher (checkbox selection is lost after Unpost/Revert) ──────
+        // Confirmed live (report 20260901_130916, GV_DELETE_POSITIVE): a successful Revert
+        // refreshes the grid's row data (visibly showing the updated "Unposted" status), which
+        // resets ExtJS's row-selection/checkbox state along with it. Step 5 selected the checkbox
+        // before Revert ran, but nothing re-selected it afterward — so Step 8's Actions→Delete
+        // found "Delete" rendered but disabled (no row selected) and failed with a bare
+        // NoSuchElementException on the old placeholder locator, which masked this real cause.
+        // selectDocumentFast's checkbox click is idempotent (VoucherMainGridBase.clickCheckbox
+        // skips the click if already checked), so this is always safe to call — a no-op when
+        // Step 6 didn't touch the UI (voucher was already Unposted) or the selection survived.
+        StepExecutor.step("Re-select Voucher After Unpost (checkbox may have reset)", () -> {
+            listRef[0].selectDocumentFast(testData.getExistingVoucherNo(), DocumentSearchStrategy.EXACT_MATCH);
+            ReportLogger.business("Re-confirmed voucher selection before Delete: " + testData.getExistingVoucherNo());
+        });
+
         // ── Step 7: Resolve Document Context + Capture Pre-Delete State ──────────────
         // Captured while the row still exists — needed both to resolve the audit table's business
         // key and, per the framework's confirmed design decision, as the ground truth "old" state
@@ -262,10 +280,32 @@ public class DeleteGeneralVoucher extends WebTest {
         StepExecutor.step("Logout (deferred)", () ->
                 ReportLogger.session("Logout deferred — session may be reused by a later test on this thread."));
 
+        // ── Step 9b: Database Validation — Live Row Removed ──────────────────────────
+        // The audit-trail check below only confirms aud2_finvchmain recorded a DELETE row
+        // matching the pre-delete state — it does not independently confirm the live finvchmain
+        // row is actually gone (previously assumed "gone by construction" rather than asserted).
+        // Closes that gap explicitly: the UI's "Deleted Successfully" Result dialog is a claim,
+        // not proof, that the live row was actually removed.
+        StepExecutor.step("Database Validation — Live Row Removed", () -> {
+            DbQueryBuffer.start();
+            java.util.Optional<FinVchMain> stillPresent;
+            try {
+                stillPresent = DatabaseManager.getJdbi().onDemand(FinVchMainDao.class)
+                        .findBySchemeDocno(testData.getExistingVoucherNo());
+            } finally {
+                List<String> queries = DbQueryBuffer.flush();
+                queries.forEach(ReportLogger::db);
+            }
+            Assert.assertTrue(stillPresent.isEmpty(),
+                    "[DeleteGeneralVoucher] finvchmain row for scheme_docno=" + testData.getExistingVoucherNo()
+                    + " still exists after Delete was confirmed in the UI — the live row was not actually removed.");
+            ReportLogger.business("Confirmed finvchmain row removed for voucher: " + testData.getExistingVoucherNo());
+        });
+
         // ── Step 10: Database Validation — Audit Trail ─────────────────────────────
-        // finvchmain's row is gone from the live table by construction (the delete already
-        // happened above) — this validates that aud2_finvchmain recorded a DELETE row whose
-        // captured state matches what the record held immediately before deletion.
+        // finvchmain's row is confirmed gone from the live table by Step 9b above — this
+        // validates that aud2_finvchmain recorded a DELETE row whose captured state matches what
+        // the record held immediately before deletion.
         StepExecutor.step("Database Validation — Audit Trail", () -> {
             TableRule finvchmainRule = contextRef[0].getPersistenceMap().findByTableName("finvchmain");
             AuditAssertion.assertAuditDeleted(contextRef[0], auditDao, finvchmainRule, beforeFinvchmainRowRef[0]);

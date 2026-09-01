@@ -63,6 +63,9 @@ public final class GridColumnMenu {
     private static final int SHORT_TIMEOUT_SECONDS = 3;
     private static final int SORT_BADGE_CHECK_TIMEOUT_SECONDS = 2;
 
+    /** Retry budget for {@link #openFilterFlyoutAndType} — see its Javadoc for what this guards. */
+    private static final int FLYOUT_OPEN_MAX_ATTEMPTS = 2;
+
     /** One entry in a {@link #sortByPriority(List)} call — priority is the list position. */
     public record SortSpec(IVoucherListColumn column, boolean ascending) {}
 
@@ -509,21 +512,8 @@ public final class GridColumnMenu {
             return false;
         }
 
-        openColumnMenu(column);
-        // "Filters" reveals its Contains-anywhere/Exact-match inputs on HOVER, not a click —
-        // "Filters" also carries its own enable/disable checkbox (a separate concern from
-        // expanding the flyout), so clicking it risks toggling that checkbox instead of opening
-        // the flyout. Hover, then wait for the input to actually render before typing into it.
-        ActionUtils.moveToElement(GridColumnMenuItem.FILTERS.locator());
         By input = filterInput(mode);
-        WaitUtils.untilVisible(input, SHORT_TIMEOUT_SECONDS);
-        // Continue the hover into the flyout itself before typing — ExtJS auto-collapses a
-        // hover-flyout a short time after the mouse stops moving toward it (confirmed live, run
-        // 20260828_130058: leaving the cursor parked on "Filters" let the flyout close before
-        // sendKeys ran, ~750ms later, producing ElementNotInteractableException every time).
-        ActionUtils.moveToElement(input);
-        SeleniumUtils.sendKeysWithStaleRetry(input, WaitType.VISIBLE, value,
-                column.headerText() + "_" + mode + "_FILTER_INPUT");
+        openFilterFlyoutAndType(column, mode, input, value);
         // Commits the filter and triggers the store reload — mirrors the existing codebase idiom
         // of sending ENTER to the same locator after typing (see AccountGroupListPage's cell
         // editor). Uses the driver directly (not ActionUtils.sendKeys, which would re-clear the
@@ -531,8 +521,8 @@ public final class GridColumnMenu {
         //
         // Tolerates ElementNotInteractableException/StaleElementReferenceException here —
         // confirmed live (report 20260831_163724, FIN-GV-EDIT-HEADER-01/02/03): the same
-        // documented hover-flyout auto-collapse race (see the comment above this block) can still
-        // close the flyout in the narrow window between sendKeysWithStaleRetry finishing and this
+        // documented hover-flyout auto-collapse race (see openFilterFlyoutAndType's Javadoc) can
+        // still close the flyout in the narrow window between the type call finishing and this
         // Enter send starting, even with the continued-hover mitigation already in place. The
         // failure screenshot for that exact run showed the grid ALREADY correctly filtered down to
         // the target row at the moment of failure — i.e. ExtJS's own live keyup/change filtering
@@ -576,6 +566,73 @@ public final class GridColumnMenu {
         // isn't proven yet — still useful evidence if a new bug turns up there.
         ExtentLogger.passWithScreenshot(column.headerText() + "_" + mode + "_after_filter_committed");
         return true;
+    }
+
+    /**
+     * Opens {@code column}'s "Filters" hover-flyout and types {@code value} into {@code input} —
+     * retried up to {@value #FLYOUT_OPEN_MAX_ATTEMPTS} times, RE-OPENING the flyout from scratch
+     * on each attempt rather than re-waiting on the same locator. That distinction matters: the
+     * failure mode this guards is the flyout auto-collapsing entirely (see the hover-continuation
+     * comment below) — once that happens the just-confirmed-visible {@code input} is permanently
+     * gone from the DOM, so re-waiting on it can never succeed; only re-running the hover sequence
+     * brings a fresh input back.
+     *
+     * <p>Confirmed live (report 20260901_130916, FIN-GV-EDIT-HEADER-01/03/04 — 3 of 6 failures in
+     * that run): the input's visibility was already confirmed with a fast
+     * {@link #SHORT_TIMEOUT_SECONDS} wait below, but the previous implementation then typed via
+     * {@code SeleniumUtils.sendKeysWithStaleRetry(input, WaitType.VISIBLE, ...)}, whose own
+     * internal re-verification of visibility has no timeout override and so silently fell back to
+     * the framework's default 30-second wait — burning a full 30s waiting for an input that had
+     * already auto-collapsed and would never reappear. Worse, that method's retry only catches
+     * {@code StaleElementReferenceException}/{@code ElementNotInteractableException} — not the
+     * {@code TimeoutException}/{@code NoSuchElementException} a fully-collapsed flyout actually
+     * produces — so its retry never even engaged for this failure mode; the test simply burned
+     * 30s and then failed outright. This method fixes both: every wait uses the same short,
+     * explicit timeout the initial check already used, and a genuine retry re-opens the flyout
+     * instead of re-waiting on a locator that's already permanently gone.
+     */
+    private static void openFilterFlyoutAndType(IVoucherListColumn column, FilterMatchMode mode, By input, String value) {
+        RuntimeException lastFailure = null;
+        for (int attempt = 1; attempt <= FLYOUT_OPEN_MAX_ATTEMPTS; attempt++) {
+            try {
+                openColumnMenu(column);
+                // "Filters" reveals its Contains-anywhere/Exact-match inputs on HOVER, not a
+                // click — "Filters" also carries its own enable/disable checkbox (a separate
+                // concern from expanding the flyout), so clicking it risks toggling that
+                // checkbox instead of opening the flyout. Hover, then wait for the input to
+                // actually render before typing into it.
+                ActionUtils.moveToElement(GridColumnMenuItem.FILTERS.locator());
+                WaitUtils.untilVisible(input, SHORT_TIMEOUT_SECONDS);
+                // Continue the hover into the flyout itself before typing — ExtJS auto-collapses
+                // a hover-flyout a short time after the mouse stops moving toward it (confirmed
+                // live, run 20260828_130058: leaving the cursor parked on "Filters" let the
+                // flyout close before typing ran, ~750ms later, producing
+                // ElementNotInteractableException every time).
+                ActionUtils.moveToElement(input);
+                // Fetch + type directly at the SAME short timeout as the visibility check just
+                // above — deliberately not SeleniumUtils.sendKeysWithStaleRetry(..., WaitType
+                // .VISIBLE, ...), whose default 30s re-verification is exactly the bug this
+                // method exists to fix (see class Javadoc).
+                WebElement inputEl = WaitUtils.untilVisible(input, SHORT_TIMEOUT_SECONDS);
+                inputEl.clear();
+                inputEl.sendKeys(value);
+                return; // typed successfully
+            } catch (RuntimeException e) {
+                lastFailure = e;
+                if (attempt < FLYOUT_OPEN_MAX_ATTEMPTS) {
+                    Log.warn("[GridColumnMenu] applyFilter: '{}_{}' Filters flyout closed/never "
+                            + "opened before typing (attempt {}/{}) — {}: {}. Re-opening and retrying…",
+                            column.headerText(), mode, attempt, FLYOUT_OPEN_MAX_ATTEMPTS,
+                            e.getClass().getSimpleName(), e.getMessage());
+                    ExtentLogger.warning(String.format(
+                            "[Filters-Flyout Retry %d/%d] '%s_%s' flyout closed/never opened before "
+                            + "typing — re-opening and retrying",
+                            attempt, FLYOUT_OPEN_MAX_ATTEMPTS, column.headerText(), mode));
+                    closeAnyOpenMenu();
+                }
+            }
+        }
+        throw lastFailure;
     }
 
     /** CONFIRMED via live DevTools capture: the "Contains anywhere..."/"Exact match..." text is a

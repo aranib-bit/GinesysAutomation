@@ -133,6 +133,33 @@ public enum DocumentMessageBoxMessage {
     RELEASE_AFTER_SAVE_CONFIRMATION(
             "Document will be released after save. Do you want to release?",
             PopupType.CONFIRM
+    ),
+
+    /**
+     * Appears after clicking "Delete" in the Actions dropdown — "Delete General Voucher" dialog,
+     * Yes/No buttons; Yes permanently deletes the document. Live text CONFIRMED via screenshot
+     * (2026-09-01): {@code "Document once deleted cannot be retrieved. Do you want to delete
+     * this document?"}. No separate post-confirm "Result" dialog has been observed yet (unlike
+     * {@link #REVERT_SUCCESS_RESULT}'s two-dialog Revert flow) — add one here if a future live
+     * run shows Delete needs the same treatment.
+     */
+    DELETE_CONFIRMATION(
+            "Document once deleted cannot be retrieved. Do you want to delete this document?",
+            PopupType.CONFIRM
+    ),
+
+    /**
+     * Appears after confirming Yes on {@link #DELETE_CONFIRMATION} — a separate "Result" dialog,
+     * single OK button, confirming the delete actually completed; clicking OK returns to the List
+     * Page. Live text CONFIRMED via screenshot (2026-09-01): {@code "Document No: <docno> -
+     * Deleted Successfully."}; this constant deliberately omits the dynamic "Document No: X - "
+     * prefix, same convention as {@link #REVERT_SUCCESS_RESULT}. Must be dismissed here (not left
+     * open) for the same reason {@link #REVERT_SUCCESS_RESULT} must be — an un-dismissed dialog
+     * blocks the grid for whatever runs next (session reuse by a later test on this thread).
+     */
+    DELETE_SUCCESS_RESULT(
+            "Deleted Successfully.",
+            PopupType.INFO
     );
 
     private final String text;

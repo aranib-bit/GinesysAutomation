@@ -3,8 +3,11 @@ package com.gsl.pages.pagecomponent.Finance.Operations.Common;
 import com.gsl.annotations.LogStep;
 import com.gsl.config.ConfigFactory;
 import com.gsl.driver.DriverManager;
+import com.gsl.enums.Finance.Operations.Common.DocumentMessageBoxMessage;
 import com.gsl.enums.VoucherDomain;
 import com.gsl.enums.WaitType;
+import com.gsl.pages.Common.DocumentMessageBox;
+import com.gsl.pages.enums.CommonButton;
 import com.gsl.pages.enums.Finance.Operations.Common.CommonVoucherActionsMenu;
 import com.gsl.pages.enums.Finance.Operations.Common.IVoucherGridAction;
 import com.gsl.utils.Log;
@@ -48,16 +51,15 @@ public abstract class VoucherMainGridBase {
     private static final By SEARCH_BOX     = By.xpath("//TODO-search-input");
     private static final By SEARCH_BUTTON  = By.xpath("//TODO-search-button");
     private static final By EDIT_ICON      = By.xpath("//TODO-edit-icon-first-row");
-    private static final By DELETE_ICON    = By.xpath("//TODO-delete-icon-first-row");
     private static final By UNPOST_BUTTON  = By.xpath("//TODO-unpost-button");
-    private static final By CONFIRM_DELETE = By.xpath("//TODO-confirm-delete-button");
 
     /**
      * TODO: entirely UNCONFIRMED — unlike this class's other {@code //TODO-} locators (which have
      * at least a real, named UI element to eventually locate), {@code CommonVoucherActionsMenu
      * .RELEASE} has never been clicked by any test in this codebase. This placeholder assumes a
-     * single OK/Yes-style confirm button follows the click, mirroring {@link #CONFIRM_DELETE}'s
-     * shape — that assumption itself is unverified. See {@link #confirmRelease()}'s Javadoc.
+     * single OK/Yes-style confirm button follows the click, mirroring {@link #confirmDelete()}'s
+     * now-confirmed Yes/No dialog shape — that assumption itself is unverified. See
+     * {@link #confirmRelease()}'s Javadoc.
      */
     private static final By CONFIRM_RELEASE = By.xpath("//TODO-confirm-release-button");
 
@@ -94,10 +96,21 @@ public abstract class VoucherMainGridBase {
         SeleniumUtils.click(EDIT_ICON, WaitType.CLICKABLE, "EDIT_ICON");
     }
 
-    /** Clicks the Delete icon on the first (expected: only) row after a search. Does NOT confirm. */
+    /**
+     * Clicks "Delete" in the open Actions dropdown — reuses the same proven
+     * {@link #clickGridAction} mechanism {@link #clickEdit()}/{@link #clickRevert()} already use
+     * (real, generic, label-driven locator + explicit enabled-check), rather than the previous
+     * permanent placeholder ({@code //TODO-delete-icon-first-row}, which could never have
+     * matched anything). Confirmed live 2026-09-01 via screenshot: the Actions dropdown's
+     * "Delete" item is exactly {@code //span[text()='Delete']} — {@link
+     * CommonVoucherActionsMenu#DELETE}'s default {@link IVoucherGridAction#locator()} — and it is
+     * only enabled once the target row's checkbox is checked (the same screenshot's earlier frame
+     * showed "Delete" visibly greyed out with no row selected, matching {@link #clickGridAction}'s
+     * own "is a row selected?" diagnostic).
+     */
     @LogStep("Click Delete for Voucher")
     public void clickDeleteForVoucher() {
-        SeleniumUtils.click(DELETE_ICON, WaitType.CLICKABLE, "DELETE_ICON");
+        clickGridAction(CommonVoucherActionsMenu.DELETE.resolveFor(domain).orElseThrow());
     }
 
     /** Clicks the Unpost button for a posted ({@code release_status='P'}) voucher. */
@@ -106,10 +119,32 @@ public abstract class VoucherMainGridBase {
         SeleniumUtils.click(UNPOST_BUTTON, WaitType.CLICKABLE, "UNPOST_BUTTON");
     }
 
-    /** Confirms the delete confirmation dialog (OK / Yes button). */
+    /**
+     * Confirms the delete confirmation dialog (Yes), then dismisses the follow-up "Result"
+     * dialog (OK) — mirrors {@code GeneralVoucherMainGrid.confirmRevert()}'s two-dialog handling
+     * pattern via the shared {@link DocumentMessageBox}/{@link CommonButton#YES} mechanism,
+     * replacing the previous permanent placeholder ({@code //TODO-confirm-delete-button}).
+     * Confirmed live 2026-09-01 via screenshot: a "Delete General Voucher" dialog reading
+     * "Document once deleted cannot be retrieved. Do you want to delete this document?" with
+     * Yes/No buttons (see {@link DocumentMessageBoxMessage#DELETE_CONFIRMATION}), followed by a
+     * separate "Result" dialog reading "Document No: &lt;docno&gt; - Deleted Successfully." with
+     * a single OK button (see {@link DocumentMessageBoxMessage#DELETE_SUCCESS_RESULT}) — clicking
+     * OK returns to the List Page. The Result dialog MUST be dismissed here, not left open — an
+     * un-dismissed dialog blocks the grid for whatever runs next, the same bug
+     * {@code confirmRevert()}'s own Javadoc documents for {@code REVERT_SUCCESS_RESULT}.
+     */
     @LogStep("Confirm Delete Dialog")
     public void confirmDelete() {
-        SeleniumUtils.click(CONFIRM_DELETE, WaitType.CLICKABLE, "CONFIRM_DELETE");
+        DocumentMessageBox msgBox = new DocumentMessageBox();
+        msgBox.verifyMessage(DocumentMessageBoxMessage.DELETE_CONFIRMATION);
+        SeleniumUtils.click(CommonButton.YES.locator(), WaitType.CLICKABLE,
+                domain.name() + "_DELETE_CONFIRM_YES");
+        JavascriptExecutorUtils.waitForExtJS();
+
+        DocumentMessageBox resultBox = new DocumentMessageBox();
+        resultBox.verifyMessage(DocumentMessageBoxMessage.DELETE_SUCCESS_RESULT);
+        resultBox.clickOk();
+        JavascriptExecutorUtils.waitForExtJS();
     }
 
     /**
