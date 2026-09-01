@@ -1,6 +1,8 @@
 package com.gsl.utils.dataprovider;
 
+import com.aventstack.extentreports.ExtentTest;
 import com.gsl.config.ConfigFactory;
+import com.gsl.reports.ExtentReport;
 import com.gsl.testdata.dto.MergedFinanceGeneralVoucherData;
 import com.gsl.utils.Log;
 import com.gsl.utils.dataprovider.source.TestDataSource;
@@ -103,7 +105,10 @@ public class MergedFinGeneralVoucherDataSupplier {
             return StreamEx.of(scenarios).map(data -> new Object[]{null, data});
 
         } catch (org.testng.SkipException se) {
-            Log.warn("[DataSupplier] SKIPPED '{}' (source={}) — {}", method.getName(), source, se.getMessage());
+            String msg = String.format("[DataSupplier] SKIPPED '%s' (source=%s) — %s",
+                    method.getName(), source, se.getMessage());
+            Log.warn(msg);
+            reportDataSupplierFailure(method.getName(), msg);
             throw se;
         } catch (Throwable e) {
             Throwable root = e;
@@ -117,7 +122,32 @@ public class MergedFinGeneralVoucherDataSupplier {
                     "                    or switch testdata.source=EXCEL to run without DB.",
                     method.getName(), source, e.getMessage(), root.getMessage());
             Log.error(msg);
+            reportDataSupplierFailure(method.getName(), msg);
             throw new org.testng.SkipException(msg);
+        }
+    }
+
+    /**
+     * Gets a data-provider-level failure INTO the HTML report itself, not just SLF4J logs.
+     * This method runs before TestNG ever calls {@code onTestStart} for the invocation being
+     * supplied, so {@code ExtentManager.getExtentTest()} is null here — every {@code ExtentLogger}
+     * method is a silent no-op with no active test node (confirmed live, run 20260901_185011,
+     * FIN-GV-EDIT-DETAIL: the Round-1 {@code Log.error} fix logged correctly to SLF4J, but the
+     * ExtentReport HTML still showed only the bare {@code org.joor.ReflectException} wrapper with
+     * zero further detail). Creates its own standalone top-level test node instead — the same
+     * {@code ExtentReports.createTest(...)} idiom {@code PreSuiteHealthCheck.checkUrl} already
+     * uses for infrastructure failures that similarly happen outside the normal per-test flow.
+     * Best-effort and defensive: must never let a reporting problem mask the real
+     * {@code SkipException}/failure being thrown by the caller.
+     */
+    private static void reportDataSupplierFailure(String methodName, String message) {
+        try {
+            var extent = ExtentReport.getExtentReports();
+            if (extent == null) return;
+            ExtentTest node = extent.createTest("[DataProvider Failure] " + methodName);
+            node.skip(message);
+        } catch (Exception reportingFailure) {
+            Log.warn("[DataSupplier] Could not attach failure to report: {}", reportingFailure.getMessage());
         }
     }
 }

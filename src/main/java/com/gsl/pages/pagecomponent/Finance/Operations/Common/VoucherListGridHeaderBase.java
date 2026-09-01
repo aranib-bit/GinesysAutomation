@@ -1,11 +1,14 @@
 package com.gsl.pages.pagecomponent.Finance.Operations.Common;
 
 import com.gsl.annotations.LogStep;
+import com.gsl.config.ConfigFactory;
 import com.gsl.enums.VoucherDomain;
 import com.gsl.enums.WaitType;
 import com.gsl.utils.PageHeaderUtils;
 import com.gsl.utils.Selenium.SeleniumUtils;
+import com.gsl.utils.Selenium.WaitUtils;
 import org.openqa.selenium.By;
+import org.openqa.selenium.support.ui.ExpectedConditions;
 
 /**
  * Common list-page toolbar/header region shared by AR, AP, GV (and future Contra) voucher
@@ -72,10 +75,36 @@ public abstract class VoucherListGridHeaderBase {
         SeleniumUtils.click(addButtonLocator(), WaitType.CLICKABLE, domain.name() + "_VOUCHER_ADD");
     }
 
-    /** Opens the list page's "Actions" dropdown. */
+    /**
+     * The open Actions dropdown's own floating menu container — same confirmed-live
+     * {@code x-menu}/{@code aria-hidden='false'} idiom {@code GridColumnMenu.OPEN_MENU} already
+     * uses for the identical "is a floating ExtJS menu genuinely open right now?" question
+     * (that class's own comment notes ExtJS keeps a stale, previously-shown menu instance around
+     * via {@code visibility:hidden} rather than removing it, so a plain "last x-menu in DOM
+     * order" pick can resolve to the wrong one — {@code aria-hidden} is the semantic signal that
+     * isn't tied to any one particular CSS-hiding mechanism).
+     */
+    private static final By OPEN_ACTIONS_MENU = By.xpath(
+            "(//div[contains(concat(' ', normalize-space(@class), ' '), ' x-menu ')]"
+            + "[@aria-hidden='false'])[last()]");
+
+    /**
+     * Opens the list page's "Actions" dropdown, and waits for its menu container to actually
+     * render before returning — {@code SeleniumUtils.click} on the Actions button only confirms
+     * the click landed, not that the resulting dropdown has finished rendering its items.
+     * Without this, a caller that polls for one specific item's enabled state
+     * (e.g. {@code VoucherMainGridBase.clickGridAction}) immediately after this method returns
+     * could be racing the menu's OWN render/bind cycle rather than the grid's row-selection
+     * state — a different, previously-unexamined explanation for
+     * "Actions→Edit/Delete is disabled" failures confirmed live across multiple runs
+     * (20260901_170830, 20260901_185011) where the checkbox visibly registered as selected yet
+     * the specific menu item stayed disabled through several retry windows.
+     */
     @LogStep("Click Actions")
     public void clickActions() {
         SeleniumUtils.click(actionsButtonLocator(), WaitType.CLICKABLE, domain.name() + "_VOUCHER_ACTIONS_BUTTON");
+        WaitUtils.webDriverWait(ConfigFactory.getWaitConfig().shortWaitSeconds())
+                .until(ExpectedConditions.visibilityOfElementLocated(OPEN_ACTIONS_MENU));
     }
 
     /** Clicks "Clear Filter" in the list page's header toolbar. */

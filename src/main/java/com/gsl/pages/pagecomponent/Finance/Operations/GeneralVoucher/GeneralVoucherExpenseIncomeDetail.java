@@ -1,6 +1,8 @@
 package com.gsl.pages.pagecomponent.Finance.Operations.GeneralVoucher;
 
 import com.gsl.config.ConfigFactory;
+import com.gsl.diagnostics.section.HtmlCaptureSection;
+import com.gsl.driver.DriverManager;
 import com.gsl.enums.Finance.Operations.GeneralVoucher.GlLineType;
 import com.gsl.enums.PaymentSelectionType;
 import com.gsl.enums.VoucherDomain;
@@ -616,6 +618,19 @@ public class GeneralVoucherExpenseIncomeDetail extends VoucherSubLedgerInformati
             // already open.
             SeleniumUtils.click(ACTIVE_EDITOR_PICKER_TRIGGER, WaitType.CLICKABLE, "GV_ISREVERSAL_TRIGGER");
             JavascriptExecutorUtils.waitForExtJS();
+
+            // TEMPORARY diagnostic capture — remove once the option locator below is confirmed
+            // against a live DOM and made combo-instance-scoped (see this method's Javadoc
+            // reference to setDeductTdsNative's data-boundview scoping). Captures the full page
+            // source RIGHT NOW, while the picker is actually open — the failure-time capture
+            // this framework already takes elsewhere (HtmlCaptureSection, e.g.
+            // reports/.../html-captures/editGeneralVoucherHeader_*.html) happens after
+            // fillAndVerifyCommit's final retry fails, by which point this floating boundlist has
+            // very likely already closed — too late to see its real shape. This gives the next
+            // COMBO-09 failure an actual open-picker DOM snapshot to inspect instead of another
+            // guess (confirmed live, run 20260901_185011: the trigger click succeeds every
+            // attempt, but the option click that follows never commits).
+            new HtmlCaptureSection(DriverManager.getDriver(), "IsReversalPicker_row" + rowIndex);
 
             // Option row shape still unconfirmed — the picker has never been seen open, so it is
             // unknown whether it renders <li> items or grid-style x-boundlist-item divs.
