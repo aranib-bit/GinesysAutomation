@@ -1,14 +1,11 @@
 package com.gsl.pages.pagecomponent.Finance.Operations.Common;
 
 import com.gsl.annotations.LogStep;
-import com.gsl.config.ConfigFactory;
 import com.gsl.enums.VoucherDomain;
 import com.gsl.enums.WaitType;
 import com.gsl.utils.PageHeaderUtils;
 import com.gsl.utils.Selenium.SeleniumUtils;
-import com.gsl.utils.Selenium.WaitUtils;
 import org.openqa.selenium.By;
-import org.openqa.selenium.support.ui.ExpectedConditions;
 
 /**
  * Common list-page toolbar/header region shared by AR, AP, GV (and future Contra) voucher
@@ -76,35 +73,26 @@ public abstract class VoucherListGridHeaderBase {
     }
 
     /**
-     * The open Actions dropdown's own floating menu container — same confirmed-live
-     * {@code x-menu}/{@code aria-hidden='false'} idiom {@code GridColumnMenu.OPEN_MENU} already
-     * uses for the identical "is a floating ExtJS menu genuinely open right now?" question
-     * (that class's own comment notes ExtJS keeps a stale, previously-shown menu instance around
-     * via {@code visibility:hidden} rather than removing it, so a plain "last x-menu in DOM
-     * order" pick can resolve to the wrong one — {@code aria-hidden} is the semantic signal that
-     * isn't tied to any one particular CSS-hiding mechanism).
-     */
-    private static final By OPEN_ACTIONS_MENU = By.xpath(
-            "(//div[contains(concat(' ', normalize-space(@class), ' '), ' x-menu ')]"
-            + "[@aria-hidden='false'])[last()]");
-
-    /**
-     * Opens the list page's "Actions" dropdown, and waits for its menu container to actually
-     * render before returning — {@code SeleniumUtils.click} on the Actions button only confirms
-     * the click landed, not that the resulting dropdown has finished rendering its items.
-     * Without this, a caller that polls for one specific item's enabled state
-     * (e.g. {@code VoucherMainGridBase.clickGridAction}) immediately after this method returns
-     * could be racing the menu's OWN render/bind cycle rather than the grid's row-selection
-     * state — a different, previously-unexamined explanation for
-     * "Actions→Edit/Delete is disabled" failures confirmed live across multiple runs
-     * (20260901_170830, 20260901_185011) where the checkbox visibly registered as selected yet
-     * the specific menu item stayed disabled through several retry windows.
+     * Opens the list page's "Actions" dropdown.
+     *
+     * <p>A previous version of this method also waited here for "any open {@code x-menu}"
+     * (mirroring {@code GridColumnMenu.OPEN_MENU}'s idiom) before returning, on the theory that
+     * a caller polling a specific item's enabled state right after this call could be racing the
+     * menu's own render cycle. That wait turned out to be exactly the risk
+     * {@code GridColumnMenu.OPEN_MENU}'s own Javadoc already warns about for its column-filter
+     * flyouts: ExtJS keeps a previously-shown menu instance around via {@code visibility:hidden}
+     * rather than removing it, so an unscoped "last {@code aria-hidden='false'} x-menu" pick can
+     * resolve to a stale, UNRELATED menu — e.g. a leftover "Voucher No." exact-match filter
+     * flyout from the row-selection step that runs just before this call — rather than genuinely
+     * confirming the Actions dropdown rendered anything. Confirmed live (run 20260902_121853):
+     * the wait added zero measurable effect on the "Actions→Edit/Delete is disabled" failures it
+     * was meant to fix. Removed; the real fix is a PRECISE, action-specific render-wait in
+     * {@link VoucherMainGridBase#clickGridAction}, which knows which item it's actually polling
+     * for and isn't vulnerable to this ambiguity.
      */
     @LogStep("Click Actions")
     public void clickActions() {
         SeleniumUtils.click(actionsButtonLocator(), WaitType.CLICKABLE, domain.name() + "_VOUCHER_ACTIONS_BUTTON");
-        WaitUtils.webDriverWait(ConfigFactory.getWaitConfig().shortWaitSeconds())
-                .until(ExpectedConditions.visibilityOfElementLocated(OPEN_ACTIONS_MENU));
     }
 
     /** Clicks "Clear Filter" in the list page's header toolbar. */

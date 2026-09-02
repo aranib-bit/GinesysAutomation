@@ -609,46 +609,84 @@ public class GeneralVoucherExpenseIncomeDetail extends VoucherSubLedgerInformati
                     });
             JavascriptExecutorUtils.waitForExtJS();
 
-            // Unconditional trigger click — no "already open?" guard, unlike the previous
-            // version. That guard risked matching a STALE boundlist left over from General
-            // Ledger/Sub Ledger's own combos if ExtJS hadn't yet set inline display:none on it by
-            // the time the check ran — the same root failure class as above, one step later.
-            // Always driving the trigger click matches setDeductTdsNative's proven shape; with
-            // only two options, nothing is lost by re-opening a dropdown that (rarely) was
-            // already open.
-            SeleniumUtils.click(ACTIVE_EDITOR_PICKER_TRIGGER, WaitType.CLICKABLE, "GV_ISREVERSAL_TRIGGER");
-            JavascriptExecutorUtils.waitForExtJS();
-
-            // TEMPORARY diagnostic capture — remove once the option locator below is confirmed
-            // against a live DOM and made combo-instance-scoped (see this method's Javadoc
-            // reference to setDeductTdsNative's data-boundview scoping). Captures the full page
-            // source RIGHT NOW, while the picker is actually open — the failure-time capture
-            // this framework already takes elsewhere (HtmlCaptureSection, e.g.
-            // reports/.../html-captures/editGeneralVoucherHeader_*.html) happens after
-            // fillAndVerifyCommit's final retry fails, by which point this floating boundlist has
-            // very likely already closed — too late to see its real shape. This gives the next
-            // COMBO-09 failure an actual open-picker DOM snapshot to inspect instead of another
-            // guess (confirmed live, run 20260901_185011: the trigger click succeeds every
-            // attempt, but the option click that follows never commits).
-            new HtmlCaptureSection(DriverManager.getDriver(), "IsReversalPicker_row" + rowIndex);
-
-            // Option row shape still unconfirmed — the picker has never been seen open, so it is
-            // unknown whether it renders <li> items or grid-style x-boundlist-item divs.
-            // simpleBoundlistOption() matches either element name, and Yes/No needs no second column to
-            // disambiguate, so the text match holds either way. Kept BOUNDLIST_ROOT-scoped rather
-            // than combo-instance-scoped (the way setDeductTdsNative's
-            // data-boundview='comboDeductTDS-picker' is) pending a live DOM capture of this
-            // combo's own scoping attribute.
+            // Option row shape confirmed live (run 20260902_121853's html-captures): a clean
+            // <li role="option" data-recordindex="0|1" data-boundview="combo-NNNN-picker">Yes/No</li>
+            // — exactly what simpleBoundlistOption() already expects, correctly isolated from
+            // two other stale boundlists on the same page by the existing display:none filter.
+            // So the option locator itself is NOT the defect. What the same captures also showed:
+            // the option <li>'s own DOM id churned between fillAndVerifyCommit's 3 outer retries
+            // — consistent with the picker's list being torn down/rebuilt each retry while the
+            // option click reports "success" (no exception) without ever registering with ExtJS.
+            //
+            // Best-supported explanation: the trigger click TOGGLES open/closed, and the previous
+            // version clicked it unconditionally on every retry. If an option click technically
+            // didn't throw but also didn't commit (leaving the picker still open), the NEXT
+            // retry's unconditional trigger click would CLOSE it instead of opening it — and a
+            // subsequent findElement(option).click() could still resolve a closing, about-to-be-
+            // removed <li> and "succeed" without committing anything. Repeated identically 3/3
+            // times matches this exactly.
+            //
+            // Fix: read the combo's own aria-expanded state (a genuine ARIA/DOM attribute on the
+            // active editor's input, not Ext.ComponentQuery/internal-state — see
+            // feedback_native_ui_over_extjs) to decide whether the trigger genuinely needs
+            // clicking, instead of clicking it unconditionally. Then verify each option click by
+            // reading the CELL'S ACTUAL VALUE back — not just "the click didn't throw" — retrying
+            // the open(if needed)+click sequence up to 2 more times inside this same
+            // fillAndVerifyCommit attempt before falling through to the outer retry.
             By option = simpleBoundlistOption(value);
-            WaitUtils.fluentWaitBuilder()
-                    .withMessage("Is Reversal option '" + value + "' to be clickable in the open combo "
-                            + "dropdown (row " + rowIndex + ") — locator: " + option)
-                    .until(driver -> {
-                        driver.findElement(option).click();
-                        return true;
-                    });
-            JavascriptExecutorUtils.waitForExtJS();
+            boolean committed = false;
+            for (int innerAttempt = 1; innerAttempt <= 3 && !committed; innerAttempt++) {
+                if (!isReversalPickerOpen()) {
+                    SeleniumUtils.click(ACTIVE_EDITOR_PICKER_TRIGGER, WaitType.CLICKABLE, "GV_ISREVERSAL_TRIGGER");
+                    JavascriptExecutorUtils.waitForExtJS();
+                }
+
+                int attemptRef = innerAttempt;
+                WaitUtils.fluentWaitBuilder()
+                        .withMessage("Is Reversal option '" + value + "' to be clickable in the open combo "
+                                + "dropdown (row " + rowIndex + ", inner attempt " + attemptRef + ") — locator: "
+                                + option)
+                        .until(driver -> {
+                            driver.findElement(option).click();
+                            return true;
+                        });
+                JavascriptExecutorUtils.waitForExtJS();
+
+                String readBack = getIsReversal(rowIndex);
+                committed = readBack != null && readBack.equalsIgnoreCase(value);
+                if (!committed) {
+                    // Capture only on an actual inner-attempt failure now — the always-fires
+                    // capture served its purpose (produced the DOM evidence that led to this
+                    // fix); keeping it failure-only avoids permanent report clutter while still
+                    // giving the next investigation round fresh evidence if this fix is also wrong.
+                    new HtmlCaptureSection(DriverManager.getDriver(),
+                            "IsReversalPicker_row" + rowIndex + "_innerAttempt" + innerAttempt);
+                    ExtentLogger.info("[GV ExpenseIncomeDetail] Row " + rowIndex + ": Is Reversal option "
+                            + "click (inner attempt " + innerAttempt + ") did not register — cell still "
+                            + "reads '" + readBack + "', picker now "
+                            + (isReversalPickerOpen() ? "still open, retrying" : "closed, will reopen"));
+                }
+            }
         }, () -> getIsReversal(rowIndex));
+    }
+
+    /**
+     * True if the Is Reversal combo's own picker is genuinely open right now, read via the ARIA
+     * combobox pattern's {@code aria-expanded} attribute on the active editor's input — a
+     * component-specific signal (not {@code Ext.ComponentQuery}/internal-state — see
+     * feedback_native_ui_over_extjs), not a generic "is any boundlist visible" guess (which risked
+     * matching a stale leftover picker from a different combo — see {@link #BOUNDLIST_ROOT}'s
+     * Javadoc). Used to decide whether the trigger genuinely needs clicking: the trigger TOGGLES
+     * open/closed, so clicking it while already open would close it instead of opening it.
+     */
+    private boolean isReversalPickerOpen() {
+        try {
+            String expanded = SeleniumUtils.getAttribute(ACTIVE_EDITOR_INPUT, "aria-expanded",
+                    "GV_ISREVERSAL_EXPANDED_STATE");
+            return "true".equalsIgnoreCase(expanded);
+        } catch (Exception e) {
+            return false;
+        }
     }
 
     private void setExpenseAmount(int rowIndex, BigDecimal amount) {

@@ -2,6 +2,7 @@ package com.gsl.pages.pagecomponent.Finance.Operations.Common;
 
 import com.gsl.annotations.LogStep;
 import com.gsl.config.ConfigFactory;
+import com.gsl.diagnostics.section.HtmlCaptureSection;
 import com.gsl.driver.DriverManager;
 import com.gsl.enums.Finance.Operations.Common.DocumentMessageBoxMessage;
 import com.gsl.enums.VoucherDomain;
@@ -172,9 +173,29 @@ public abstract class VoucherMainGridBase {
      * carries for its other not-yet-confirmed locators, e.g.
      * {@code VoucherListFooterBase#firstPageEnabledLocator}); confirm it the same way the
      * checkbox's own checked-state attribute was confirmed, if this ever misfires on a live run.
+     *
+     * <p>Before that check, waits for the action's OWN menu-item {@code <span>}
+     * ({@link IVoucherGridAction#locator()}) to render at all — a precise, action-specific signal
+     * that the Actions dropdown genuinely opened. This replaces a prior generic
+     * "is any {@code x-menu} open" wait that used to live in
+     * {@link VoucherListGridHeaderBase#clickActions()}: that check was vulnerable to matching a
+     * stale, unrelated menu instance left over from an earlier step (e.g. the row-selection
+     * exact-match filter's own flyout, which — per {@code GridColumnMenu.OPEN_MENU}'s own
+     * documented caveat — ExtJS can leave in the DOM via {@code visibility:hidden} rather than
+     * removing it), and confirmed live (run 20260902_121853) to have zero measurable effect on
+     * this method's failures. Waiting for the SPECIFIC item's own label text can't be satisfied
+     * by an unrelated menu.
      */
     @LogStep("Click Grid Action")
     public void clickGridAction(IVoucherGridAction action) {
+        boolean itemRendered = SeleniumUtils.isElementPresent(action.locator(), ACTION_STATE_CHECK_TIMEOUT_SECONDS);
+        if (!itemRendered) {
+            throw new IllegalStateException(domain.name() + "VoucherMainGrid: Actions→" + action.label()
+                    + " menu item never rendered at all — the Actions dropdown may not have genuinely "
+                    + "opened (checkbox selection may not have registered, or the dropdown click didn't "
+                    + "land). Diagnostics: " + JavascriptExecutorUtils.getGridDiagnostics());
+        }
+
         boolean enabled = SeleniumUtils.isElementPresent(action.enabledLocator(), ACTION_STATE_CHECK_TIMEOUT_SECONDS);
         if (!enabled) {
             // isChecked()'s DOM/ARIA "checked" signal and this Actions item's aria-disabled binding
@@ -190,8 +211,25 @@ public abstract class VoucherMainGridBase {
             enabled = SeleniumUtils.isElementPresent(action.enabledLocator(), ACTION_STATE_CHECK_TIMEOUT_SECONDS);
         }
         if (!enabled) {
+            // Cross-check against disabledLocator() (defined alongside enabledLocator() but never
+            // actually used until now) to distinguish two very different situations: the item IS
+            // present and ExtJS has explicitly marked it aria-disabled='true' (a real, confirmed
+            // disabled state — a genuine row-selection problem), versus NEITHER locator matching
+            // (meaning the aria-disabled attribute assumption itself may be wrong, and this is a
+            // broken-locator problem, not a disabled-state problem). Also captures the open
+            // dropdown's live DOM — the same HtmlCaptureSection mechanism that resolved the
+            // equivalent ambiguity for FIN-GV-ADD-COMBO-09's Is-Reversal picker — so if this
+            // enabled/disabled read is ALSO wrong, the next run gives real evidence instead of
+            // another guess.
+            boolean confirmedDisabled = SeleniumUtils.isElementPresent(action.disabledLocator(), 1);
+            new HtmlCaptureSection(DriverManager.getDriver(),
+                    "ActionsMenu_" + domain.name() + "_" + action.label());
             throw new IllegalStateException(domain.name() + "VoucherMainGrid: Actions→" + action.label()
-                    + " is disabled — is a row selected? (checkbox selection may not have registered)");
+                    + " is disabled — is a row selected? (checkbox selection may not have registered)"
+                    + (confirmedDisabled
+                        ? " [confirmed via disabledLocator(): aria-disabled='true']"
+                        : " [disabledLocator() did NOT match either — the aria-disabled attribute "
+                          + "assumption may be wrong; see the new html-capture for the live DOM]"));
         }
         SeleniumUtils.click(action.locator(), WaitType.CLICKABLE, domain.name() + "_ACTION_" + action.label());
     }
