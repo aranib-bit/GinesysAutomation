@@ -26,6 +26,7 @@ import org.openqa.selenium.support.ui.ExpectedConditions;
 import java.util.Map;
 import java.util.Objects;
 import java.util.concurrent.TimeUnit;
+import java.util.function.BooleanSupplier;
 
 /**
  * Common list-page data-grid region shared by AR, AP, GV (and future Contra) voucher list
@@ -598,88 +599,67 @@ public abstract class VoucherMainGridBase {
      * <p>So instead of "exactly one click, no retry" (the previous design, whose stated reasoning —
      * a false-negative on the SAME check could cause a double-toggle — no longer applies: the retry
      * here only re-clicks when the top-of-loop {@link #isChecked} read is itself false, the exact
-     * same idempotency guard as before, never blindly), this method now loops up to
+     * same idempotency guard as before, never blindly), this method loops up to
      * {@code selectdoc.max.select.attempts} (default 3) times: click if needed, confirm checked,
      * THEN re-confirm with a fresh read after {@code selectdoc.stability.recheck.delay.ms} (default
      * 400ms) — only returning success once both reads agree. A stability-check failure loops back
      * to a genuine re-click+re-verify, not a re-poll of the same already-lost state.
+     *
+     * <p>Round 12 (§25): this act-check-recheck-retry shape is now the shared
+     * {@link SeleniumUtils#actAndConfirmStable} — the same idiom this method pioneered was needed
+     * again for the boundlist-option-absence race ({@code SeleniumUtils.clickBoundlistOptionAcrossPages})
+     * and the site-picker commit race ({@code AllocateSitesPopup.searchSite}), so it's retrofitted
+     * here too rather than leaving three copies to drift apart.
      */
     private void clickCheckbox(String documentNumber) {
         By checkboxBy = checkboxLocator(documentNumber);
         int maxAttempts = ConfigFactory.getWaitConfig().selectDocMaxSelectAttempts();
-        int stabilityDelayMs = ConfigFactory.getWaitConfig().selectDocStabilityRecheckDelayMs();
+        long stabilityDelayMs = ConfigFactory.getWaitConfig().selectDocStabilityRecheckDelayMs();
 
-        for (int attempt = 1; attempt <= maxAttempts; attempt++) {
+        // Click via the By locator, not a resolved WebElement, so a grid re-render between the
+        // idempotency check and this click is recovered by re-resolving fresh on retry —
+        // clickWithStaleRetry is the established fix for exactly this ExtJS re-render race (see
+        // CashBankPopup/AllocateSitesPopup/GeneralVoucherExpenseIncomeDetail for the same idiom).
+        //
+        // NOTE (Round 9, run 20260903_100559 DOM forensics): a second click on a neutral row cell —
+        // previously added here on the theory that the checkbox toggle alone might not drive the
+        // grid's real Ext.selection.CheckboxModel — was REMOVED. Fresh captures proved the opposite
+        // of that theory: the row genuinely was unselected at failure time, and under CheckboxModel
+        // a second click on an already-selected row toggles it back OFF. Do not re-add a second
+        // click here without fresh evidence it doesn't deselect.
+        Runnable ensureChecked = () -> {
             WebElement checkbox = WaitUtils.webDriverWait(ConfigFactory.getFinanceConfig().extjsMinTimeout())
                     .until(ExpectedConditions.visibilityOfElementLocated(checkboxBy));
-
             if (isChecked(checkbox)) {
                 Log.debug("{}VoucherMainGrid: Checkbox for [{}] already checked — selection is idempotent, "
-                                + "skipping click (attempt {}/{})",
-                        domain.name(), documentNumber, attempt, maxAttempts);
-            } else {
-                Uninterruptibles.sleepUninterruptibly(
-                        ConfigFactory.getWaitConfig().selectDocClickBufferMs(), TimeUnit.MILLISECONDS);
-
-                // Click via the By locator, not the WebElement resolved above, so a grid re-render
-                // between the idempotency check and this click is recovered by re-resolving fresh on
-                // retry — the previous catch-and-JS-click fallback reused that same (possibly now-
-                // stale) WebElement, so it could never actually recover from a
-                // StaleElementReferenceException; clickWithStaleRetry is the established fix for
-                // exactly this ExtJS re-render race (see CashBankPopup/AllocateSitesPopup/
-                // GeneralVoucherExpenseIncomeDetail for the same idiom).
-                SeleniumUtils.clickWithStaleRetry(checkboxBy, WaitType.CLICKABLE,
-                        domain.name() + "_VOUCHER_SELECT_CHECKBOX_" + documentNumber);
-                JavascriptExecutorUtils.waitForExtJS();
-
-                // NOTE (Round 9, run 20260903_100559 DOM forensics): a second click on a neutral row
-                // cell — previously added here on the theory that the checkbox toggle alone might not
-                // drive the grid's real Ext.selection.CheckboxModel — was REMOVED. Fresh captures
-                // proved the opposite of that theory: the row genuinely was unselected at failure
-                // time, and under CheckboxModel a second click on an already-selected row toggles it
-                // back OFF. Do not re-add a second click here without fresh evidence it doesn't
-                // deselect.
-                if (!waitUntilChecked(checkboxBy)) {
-                    if (attempt < maxAttempts) {
-                        Log.warn("{}VoucherMainGrid: Checkbox for [{}] did not become checked after click — "
-                                        + "retrying (attempt {}/{})",
-                                domain.name(), documentNumber, attempt, maxAttempts);
-                        continue;
-                    }
-                    throw new IllegalStateException(domain.name() + "VoucherMainGrid: Checkbox for ["
-                            + documentNumber + "] did not become checked after " + maxAttempts
-                            + " attempt(s) — Actions→Edit/Revert would silently no-op from here. Diagnostics: "
-                            + JavascriptExecutorUtils.getGridDiagnostics());
-                }
+                                + "skipping click", domain.name(), documentNumber);
+                return;
             }
-
-            // RC-11 stability re-check: confirm the selection SURVIVES a short real gap, not just
-            // that it existed at one instant — see this method's Javadoc for the async-reload race
-            // this closes.
-            Uninterruptibles.sleepUninterruptibly(stabilityDelayMs, TimeUnit.MILLISECONDS);
-            boolean stillChecked;
+            Uninterruptibles.sleepUninterruptibly(
+                    ConfigFactory.getWaitConfig().selectDocClickBufferMs(), TimeUnit.MILLISECONDS);
+            SeleniumUtils.clickWithStaleRetry(checkboxBy, WaitType.CLICKABLE,
+                    domain.name() + "_VOUCHER_SELECT_CHECKBOX_" + documentNumber);
+            JavascriptExecutorUtils.waitForExtJS();
+            waitUntilChecked(checkboxBy); // best-effort short poll for the click to register;
+            // actAndConfirmStable's own check+stability-recheck below is the authoritative gate.
+        };
+        BooleanSupplier checked = () -> {
             try {
-                stillChecked = isChecked(DriverManager.getDriver().findElement(checkboxBy));
+                return isChecked(DriverManager.getDriver().findElement(checkboxBy));
             } catch (NoSuchElementException e) {
-                stillChecked = false; // row not rendered at this instant — treat as lost, retry
+                return false; // row not rendered at this instant — treat as not-yet-checked
             }
+        };
 
-            if (stillChecked) {
-                return; // genuinely stable — selection survived the gap
-            }
+        boolean stable = SeleniumUtils.actAndConfirmStable(ensureChecked, checked, stabilityDelayMs,
+                maxAttempts, domain.name() + "_VOUCHER_SELECT_CHECKBOX_" + documentNumber);
 
-            if (attempt < maxAttempts) {
-                Log.warn("{}VoucherMainGrid: Checkbox for [{}] read as checked immediately after click but "
-                                + "was found UNCHECKED again {}ms later (attempt {}/{}) — an async grid reload "
-                                + "likely cleared selection; re-selecting",
-                        domain.name(), documentNumber, stabilityDelayMs, attempt, maxAttempts);
-                continue;
-            }
+        if (!stable) {
             throw new IllegalStateException(domain.name() + "VoucherMainGrid: Checkbox for [" + documentNumber
-                    + "] kept losing its checked state after " + maxAttempts + " select+stability-recheck "
-                    + "attempt(s) — an async grid reload is likely clearing selection faster than it can be "
-                    + "confirmed stable. Actions→Edit/Revert would silently no-op from here. Diagnostics: "
-                    + JavascriptExecutorUtils.getGridDiagnostics());
+                    + "] did not settle into a stable checked state after " + maxAttempts
+                    + " select+stability-recheck attempt(s) — an async grid reload is likely clearing "
+                    + "selection faster than it can be confirmed stable. Actions→Edit/Revert would "
+                    + "silently no-op from here. Diagnostics: " + JavascriptExecutorUtils.getGridDiagnostics());
         }
     }
 

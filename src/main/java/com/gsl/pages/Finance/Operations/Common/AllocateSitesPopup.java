@@ -7,7 +7,6 @@ import com.gsl.utils.BigDecimalUtils;
 import com.gsl.utils.Selenium.JavascriptExecutorUtils;
 import com.gsl.utils.Selenium.SeleniumUtils;
 import com.gsl.utils.Selenium.WaitUtils;
-import com.google.common.util.concurrent.Uninterruptibles;
 import org.openqa.selenium.By;
 import org.openqa.selenium.TimeoutException;
 import org.openqa.selenium.WebElement;
@@ -15,7 +14,7 @@ import org.openqa.selenium.support.ui.ExpectedConditions;
 
 import java.math.BigDecimal;
 import java.util.List;
-import java.util.concurrent.TimeUnit;
+import java.util.function.BooleanSupplier;
 
 /**
  * Page object for the "Allocate Sites" popup — opened from a General Voucher
@@ -128,6 +127,14 @@ public class AllocateSitesPopup {
      * See {@link #SITE_PICKER_TRIGGER} for why the previous combo/boundlist approach could never
      * have worked.
      */
+    /** Round 12 (§25): gap before re-confirming the Site field's committed value is STILL correct
+     *  after it was already read as correct once — see {@link #searchSite} for why. */
+    private static final long SITE_COMMIT_STABILITY_DELAY_MS = 400;
+
+    /** Round 12 (§24): bounded attempts to (re-)drive the whole picker sequence before giving up —
+     *  see {@link #searchSite} for why a longer poll alone cannot recover this failure. */
+    private static final int MAX_SITE_SELECT_ATTEMPTS = 3;
+
     public AllocateSitesPopup searchSite(String siteName) {
         // REVERTED (Round 7): a previous version cleared this popup's own Site field here first,
         // and probed the picker row for `x-grid-item-selected` before pressing OK, on the theory
@@ -140,79 +147,86 @@ public class AllocateSitesPopup {
         //     read 'HAPPY SPROUTS-KP Road' across 17 polls. So the value is not a leftover this
         //     code can clear — either the app rewrites it, or (most likely) SeleniumUtils.clear()'s
         //     Ctrl+A+DELETE is a no-op against a read-only ExtJS picklist input, leaving only the
-        //     extra interaction's side effects behind.
-        // Deliberately back to the shape that had these two tests green: drive the picker, then let
-        // verifySiteCommitted's poll-until-match (Round 1) be the single authoritative check.
+        //     extra interaction's side effects behind. Do not re-add a pre-clear here.
+        //
+        // Round 12 (§24): confirmed a DIFFERENT mechanism than the above — not a reused-instance
+        // stale carry-over (this method's own caller, GeneralVoucherExpenseIncomeDetail
+        // .clickSiteButton, always constructs a FRESH AllocateSitesPopup per row; a run with
+        // exactly one row/one allocation still hit this). The wrong value was stable from the
+        // very first read (not slowly converging), while the identical flow with the identical
+        // data succeeded ~8 times immediately before/after in the same session — the same
+        // async-reload-after-a-search-action race already proven real for the main voucher grid
+        // (RC-11): this class's own comment below already documents "the grid reloads from the
+        // server after each search," and a click that lands just ahead of that reload landing can
+        // have its selection silently overwritten before OK commits it. Since a wrong value here
+        // is stable, not converging, no amount of extra polling inside one attempt can recover it
+        // (Round 1's poll-until-match is structurally unable to catch this class of failure) — only
+        // redoing the whole selection after the race has already resolved can, exactly the
+        // recovery `VoucherMainGridBase.clickCheckbox` already uses for the analogous grid-selection
+        // race. Routed through the shared `SeleniumUtils.actAndConfirmStable` (§25) instead of a
+        // bespoke retry loop here.
         //
         // clickWithStaleRetry/sendKeysWithStaleRetry, not the plain variants: this flow is the
         // most DOM-churning interaction in the whole GV UI (nested picker dialog opens, a
         // server-reloaded search grid, a result-row click, an OK click that closes the dialog and
         // updates the popup's own Site field) — see SeleniumUtils' own Javadoc on these methods.
-        SeleniumUtils.clickWithStaleRetry(SITE_PICKER_TRIGGER, WaitType.CLICKABLE, "AllocateSites_SiteSearchTrigger");
-        JavascriptExecutorUtils.waitForExtJS();
+        Runnable selectSite = () -> {
+            SeleniumUtils.clickWithStaleRetry(SITE_PICKER_TRIGGER, WaitType.CLICKABLE, "AllocateSites_SiteSearchTrigger");
+            JavascriptExecutorUtils.waitForExtJS();
 
-        SeleniumUtils.sendKeysWithStaleRetry(PICKER_SEARCH_INPUT, WaitType.VISIBLE, siteName, "AllocateSites_SitePickerSearch");
-        JavascriptExecutorUtils.waitForExtJS();
+            SeleniumUtils.sendKeysWithStaleRetry(PICKER_SEARCH_INPUT, WaitType.VISIBLE, siteName, "AllocateSites_SitePickerSearch");
+            JavascriptExecutorUtils.waitForExtJS();
 
-        // popupWaitSeconds, not shortWait: the grid reloads from the server after each search.
-        By row = By.xpath(String.format(PICKER_ROW_XPATH, siteName));
-        WaitUtils.webDriverWait(ConfigFactory.getWaitConfig().popupWaitSeconds())
-                .until(ExpectedConditions.visibilityOfElementLocated(row));
-        SeleniumUtils.clickWithStaleRetry(row, WaitType.CLICKABLE, "AllocateSites_SiteRow_" + siteName);
+            // popupWaitSeconds, not shortWait: the grid reloads from the server after each search.
+            By row = By.xpath(String.format(PICKER_ROW_XPATH, siteName));
+            WaitUtils.webDriverWait(ConfigFactory.getWaitConfig().popupWaitSeconds())
+                    .until(ExpectedConditions.visibilityOfElementLocated(row));
+            SeleniumUtils.clickWithStaleRetry(row, WaitType.CLICKABLE, "AllocateSites_SiteRow_" + siteName);
 
-        SeleniumUtils.clickWithStaleRetry(PICKER_OK_BUTTON, WaitType.CLICKABLE, "AllocateSites_SitePickerOK");
-        JavascriptExecutorUtils.waitForExtJS();
+            SeleniumUtils.clickWithStaleRetry(PICKER_OK_BUTTON, WaitType.CLICKABLE, "AllocateSites_SitePickerOK");
+            JavascriptExecutorUtils.waitForExtJS();
+        };
+        BooleanSupplier siteCommitted = () -> {
+            String actual = SeleniumUtils.getAttribute(SITE_SEARCH_INPUT, "value", "AllocateSites_SiteSearch");
+            return actual != null && actual.trim().equalsIgnoreCase(siteName.trim());
+        };
 
-        verifySiteCommitted(siteName);
+        boolean committed = SeleniumUtils.actAndConfirmStable(selectSite, siteCommitted,
+                SITE_COMMIT_STABILITY_DELAY_MS, MAX_SITE_SELECT_ATTEMPTS, "AllocateSites_Site_" + siteName);
+
+        if (!committed) {
+            String actual = SeleniumUtils.getAttribute(SITE_SEARCH_INPUT, "value", "AllocateSites_SiteSearch");
+            throw new IllegalStateException(
+                    "Allocate Sites: failed to select site '" + siteName + "' — the Site field holds "
+                    + (actual == null || actual.isBlank() ? "nothing" : "'" + actual + "'")
+                    + " after " + MAX_SITE_SELECT_ATTEMPTS + " attempt(s). Check that the site exists "
+                    + "and is selectable in this voucher's context (admsite.name), and that the "
+                    + "picker's Name column still matches PICKER_ROW_XPATH. Continuing would hit the "
+                    + "app's own \"Site selection is mandatory.\" error at Add, whose modal mask then "
+                    + "blocks this popup's OK button — so the failure would surface two steps away "
+                    + "from its cause.");
+        }
         return this;
     }
 
     /**
-     * Confirms the Site field actually holds {@code siteName} after selection.
-     *
-     * <p><b>Why this exists.</b> The original {@code searchSite} caught every exception from the
-     * option click, pressed TAB, and logged "committed via TAB (boundlist auto-collapsed)" — an
-     * unconditional success message for what was often a silent miss. When the combo has
-     * {@code forceSelection}, blurring on text that matched no option makes ExtJS <i>clear the
-     * field</i>, so the run continued with an empty Site, set the Amount, clicked Add, and surfaced
-     * as the app's own "Site selection is mandatory." error two steps downstream — whose modal mask
-     * then blocked the popup's OK button and burned the full overlay-retry budget. Run
-     * 20260807_110215 is that failure end to end; the report cheerfully logged
-     * "AllocateSites_Option_CNSStore committed via TAB" while the field sat empty.
-     *
-     * <p>The site was never the problem there — {@code admsite} has {@code CNSStore} (code 1102).
-     * Failing here, at the point of the miss, with the options that were actually on offer, is the
-     * difference between a one-line diagnosis and a three-step reconstruction.
+     * Why {@link #searchSite} verifies the committed value at all (history, kept for context):
+     * the original version caught every exception from the option click, pressed TAB, and logged
+     * "committed via TAB (boundlist auto-collapsed)" — an unconditional success message for what
+     * was often a silent miss. When the combo has {@code forceSelection}, blurring on text that
+     * matched no option makes ExtJS <i>clear the field</i>, so the run continued with an empty
+     * Site, set the Amount, clicked Add, and surfaced as the app's own "Site selection is
+     * mandatory." error two steps downstream — whose modal mask then blocked the popup's OK
+     * button and burned the full overlay-retry budget. Run 20260807_110215 is that failure end to
+     * end; the report cheerfully logged "AllocateSites_Option_CNSStore committed via TAB" while
+     * the field sat empty. The site was never the problem there — {@code admsite} has
+     * {@code CNSStore} (code 1102). Failing at the point of the miss, with the options that were
+     * actually on offer, is the difference between a one-line diagnosis and a three-step
+     * reconstruction. (Round 12: the verification itself, and its retry-on-failure, now lives
+     * inline in {@link #searchSite} via {@code SeleniumUtils.actAndConfirmStable} — see that
+     * method's Javadoc for why a longer poll alone can't recover the newer race it was extended
+     * to cover.)
      */
-    /** Bounded poll used only to give the picker's own selection-commit callback time to actually
-     *  write the Site field's value after the dialog closes — {@code waitForExtJS()} confirms
-     *  ExtJS is idle/unmasked, not that this specific input's value has been updated yet, so a
-     *  single point-in-time read can catch the field mid-propagation (confirmed live, run
-     *  20260901_151519, FIN-GV-ADD-COMBO-08: the field read back a plausible *previous*
-     *  allocation's site name — this popup instance is reused across multiple site rows on one
-     *  line — rather than garbage/empty, consistent with a slow-to-land update, not a wrong click). */
-    private static final int SITE_COMMIT_POLL_TIMEOUT_SECONDS = 2;
-    private static final long SITE_COMMIT_POLL_INTERVAL_MS = 200L;
-
-    private void verifySiteCommitted(String siteName) {
-        String actual = null;
-        long deadline = System.currentTimeMillis() + SITE_COMMIT_POLL_TIMEOUT_SECONDS * 1000L;
-        do {
-            actual = SeleniumUtils.getAttribute(SITE_SEARCH_INPUT, "value", "AllocateSites_SiteSearch");
-            if (actual != null && actual.trim().equalsIgnoreCase(siteName.trim())) {
-                return;
-            }
-            Uninterruptibles.sleepUninterruptibly(SITE_COMMIT_POLL_INTERVAL_MS, TimeUnit.MILLISECONDS);
-        } while (System.currentTimeMillis() < deadline);
-        throw new IllegalStateException(
-                "Allocate Sites: failed to select site '" + siteName + "' — the Site field holds "
-                + (actual == null || actual.isBlank() ? "nothing" : "'" + actual + "'")
-                + " after the picklist dialog closed. Check that the site exists and is selectable "
-                + "in this voucher's context (admsite.name), and that the picker's Name column still "
-                + "matches PICKER_ROW_XPATH. Continuing would hit the app's own "
-                + "\"Site selection is mandatory.\" error at Add, whose modal mask then blocks this "
-                + "popup's OK button — so the failure would surface two steps away from its cause.");
-    }
 
     /** Types into the Quick Site Allocate "Amount" field. */
     public AllocateSitesPopup setAmount(BigDecimal amount) {

@@ -82,6 +82,51 @@ public class SeleniumUtils {
                 + "' after " + MAX_COMMIT_ATTEMPTS + " attempts — UI fill/commit likely failed.");
     }
 
+    /**
+     * Round 12 (§25): generalizes the "act, then confirm the result is STABLE — not just true
+     * once, but true again after a real gap — retrying the whole action if not" idiom this
+     * codebase had begun re-implementing separately at multiple call sites (the checkbox
+     * selection race fixed in {@code VoucherMainGridBase.clickCheckbox}, the boundlist-option
+     * absence conclusion in {@link #clickBoundlistOptionAcrossPages}, and the site-commit
+     * verification in {@code AllocateSitesPopup.searchSite}) — all three are the same shape: an
+     * ExtJS component can silently reload/re-render shortly after an action or a quick read, so a
+     * single instantaneous check cannot tell a genuinely-settled state from one about to be
+     * overwritten a moment later. One real implementation instead of several copies that could
+     * quietly drift to different retry counts/delays.
+     *
+     * @param action           what to (re)do each attempt — a no-op ({@code () -> {}}) is valid
+     *                         when there is nothing to redo and only the check itself needs
+     *                         re-polling (e.g. confirming a genuine absence)
+     * @param check            does the desired state currently hold?
+     * @param stabilityDelayMs real gap before re-checking — long enough for an async reload this
+     *                         action might have triggered to land and be observed, if it's going to
+     * @param maxAttempts      total attempts (each: run action, check, wait, re-check) before
+     *                         giving up
+     * @param logTag           identifies this call site in the retry warning
+     * @return {@code true} once {@code check} holds on two consecutive reads separated by
+     *         {@code stabilityDelayMs}; {@code false} after {@code maxAttempts} attempts — never
+     *         throws itself, so the caller decides what a final {@code false} means (throw, fall
+     *         through to another strategy, etc.)
+     */
+    public static boolean actAndConfirmStable(Runnable action, java.util.function.BooleanSupplier check,
+            long stabilityDelayMs, int maxAttempts, String logTag) {
+        for (int attempt = 1; attempt <= maxAttempts; attempt++) {
+            action.run();
+            if (check.getAsBoolean()) {
+                com.google.common.util.concurrent.Uninterruptibles.sleepUninterruptibly(
+                        stabilityDelayMs, java.util.concurrent.TimeUnit.MILLISECONDS);
+                if (check.getAsBoolean()) {
+                    return true;
+                }
+            }
+            if (attempt < maxAttempts) {
+                Log.warn("[SeleniumUtils] {}: not yet stable on attempt {}/{} — retrying",
+                        logTag, attempt, maxAttempts);
+            }
+        }
+        return false;
+    }
+
     public static void click(By by, String elementName) {
         click(by, elementName, LogCategory.UI_ACTION);
     }
@@ -344,6 +389,18 @@ public class SeleniumUtils {
         int maxPages = 50;
         for (int page = 1; page <= maxPages; page++) {
             if (isElementPresent(option, perPageProbeSeconds)) {
+                click(option, WaitType.CLICKABLE, logTag);
+                return;
+            }
+            // Round 12 (§23): a single ~2s miss isn't proof the option is genuinely absent on this
+            // page — confirmed live that this combo's own debounced live-search request can still
+            // be rendering its filtered result well after JavascriptExecutorUtils.waitForExtJS()
+            // (which only checks Ext.Ajax.isLoading()/masked components, not this specific
+            // combo's search debounce) has already returned. Re-confirm with the shared
+            // act-and-confirm-stable idiom (no action to redo here — only the check itself is
+            // re-polled) before concluding the option isn't on this page at all.
+            if (actAndConfirmStable(() -> {}, () -> isElementPresent(option, perPageProbeSeconds),
+                    perPageProbeSeconds * 1000L, 2, logTag)) {
                 click(option, WaitType.CLICKABLE, logTag);
                 return;
             }
