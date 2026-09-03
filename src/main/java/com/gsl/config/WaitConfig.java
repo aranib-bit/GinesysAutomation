@@ -83,6 +83,29 @@ public interface WaitConfig extends Config {
     @DefaultValue("3")
     int selectDocLoaderMaxRetries();
 
+    /**
+     * Round 10 (RC-11): gap before re-confirming a checkbox is STILL checked after {@code
+     * waitUntilChecked} already returned true once. Closes a confirmed race where an async grid
+     * reload (triggered by a preceding Unpost/Revert round-trip, and/or the exact-match filter's
+     * own documented "asynchronous settle" behavior) silently clears row selection moments after
+     * it was genuinely registered — a single instantaneous "checked" read cannot catch this, only
+     * a second, gap-separated read can. Mirrors the same re-confirmed-stability idiom already
+     * proven for the GV Edit scroll false-positive fix ({@link #selectDocScrollNoProgressConfirmWaitMs()}).
+     */
+    @Key("selectdoc.stability.recheck.delay.ms")
+    @DefaultValue("400")
+    int selectDocStabilityRecheckDelayMs();
+
+    /**
+     * Round 10 (RC-11): max select+stability-recheck attempts in {@code
+     * VoucherMainGridBase.clickCheckbox} before giving up — bounded recovery from the async
+     * reload race above, not a blind timeout increase (each attempt is a real re-click + a real
+     * re-verify, never just re-reading the same already-lost state).
+     */
+    @Key("selectdoc.max.select.attempts")
+    @DefaultValue("3")
+    int selectDocMaxSelectAttempts();
+
     @Key("click.overlay.retry.max")
     @DefaultValue("3")
     int clickOverlayRetryMax();
@@ -110,6 +133,22 @@ public interface WaitConfig extends Config {
     @Key("splashscreen.poll.max.retries")
     @DefaultValue("4")
     int splashscreenPollMaxRetries();
+
+    /**
+     * Round 8: length (seconds) of each follow-up poll if the ExtJS {@code .x-mask}/{@code
+     * .x-mask-msg} wait's initial {@code extjs.timeout} (40s) wasn't enough — mirrors {@link
+     * #splashscreenPollSeconds()}'s already-proven staged-poll shape, applied to the mask wait
+     * ({@code WaitUtils.waitForExtMaskInternal}) instead of only the splash screen.
+     */
+    @Key("mask.poll.seconds")
+    @DefaultValue("15")
+    long maskPollSeconds();
+
+    /** Number of {@link #maskPollSeconds()} polls attempted before giving up (worst case:
+     *  {@code extjs.timeout} + {@code maskPollMaxRetries() x maskPollSeconds()} = 40+4x15=100s). */
+    @Key("mask.poll.max.retries")
+    @DefaultValue("4")
+    int maskPollMaxRetries();
 
     /**
      * Timeout for the post-module-click "Loading Package" bootstrap wait

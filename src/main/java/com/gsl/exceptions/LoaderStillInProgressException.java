@@ -40,7 +40,7 @@ public final class LoaderStillInProgressException extends TimeoutException {
      */
     public LoaderStillInProgressException(String actionName, long timeoutSeconds, long elapsedMs,
                                           Throwable cause) {
-        super(buildMessage(actionName, timeoutSeconds, elapsedMs), cause);
+        this(actionName, timeoutSeconds, elapsedMs, 1, cause);
     }
 
     /**
@@ -49,31 +49,48 @@ public final class LoaderStillInProgressException extends TimeoutException {
      * whenever the wait aborted early (see {@link #buildMessage}).
      */
     public LoaderStillInProgressException(String actionName, long timeoutSeconds, Throwable cause) {
-        this(actionName, timeoutSeconds, -1L, cause);
+        this(actionName, timeoutSeconds, -1L, 1, cause);
+    }
+
+    /**
+     * Round 8: also carries the real ATTEMPT count (initial wait + retry polls) — {@code
+     * WaitUtils.waitForExtMaskInternal} now retries a genuinely-stuck mask instead of giving up
+     * after one 40s attempt, so a failure here can mean anywhere from 1 to 5 real attempts. Prefer
+     * this constructor whenever the caller knows its own attempt count; the 4-arg form above stays
+     * for callers that don't (reported as a single attempt).
+     *
+     * @param attempts how many real wait attempts were made (initial + polls) before giving up
+     */
+    public LoaderStillInProgressException(String actionName, long timeoutSeconds, long elapsedMs,
+                                          int attempts, Throwable cause) {
+        super(buildMessage(actionName, timeoutSeconds, elapsedMs, attempts), cause);
     }
 
     /**
      * Reports the REAL elapsed time, falling back to the configured ceiling only when the caller
-     * couldn't measure it.
+     * couldn't measure it — and, when more than one attempt was made, the real attempt count.
      *
      * <p>This previously printed {@code timeoutSeconds} unconditionally and labelled it
      * "Waited:" — so a wait that aborted after 6s still reported "Waited: 40 second(s)", because 40
      * is simply {@code extjs.timeout}. That made every mask failure look like it had exhausted the
      * full budget and made the number useless for judging whether the app was slow or the wait
-     * aborted early.
+     * aborted early. Round 8 adds the attempt count for the same reason: a wait made of 5 attempts
+     * (40s initial + 4x15s polls) is a very different diagnosis from one 100s single wait, and that
+     * distinction was previously invisible here.
      */
-    private static String buildMessage(String actionName, long timeoutSeconds, long elapsedMs) {
+    private static String buildMessage(String actionName, long timeoutSeconds, long elapsedMs, int attempts) {
         String waited = elapsedMs >= 0
                 ? String.format("%.1f second(s) actual (ceiling %d s)", elapsedMs / 1000.0, timeoutSeconds)
                 : String.format("unmeasured — configured ceiling was %d second(s)", timeoutSeconds);
+        String attemptsNote = attempts > 1 ? String.format(" (%d attempts)", attempts) : "";
         return String.format("""
                 Loader Still In Progress
 
                 Action:  %s
-                Waited:  %s
+                Waited:  %s%s
                 Detail:  An ExtJS loading mask (.x-mask / .x-mask-msg) was still visible when the \
                 wait expired — the application had not finished loading/processing in time.
                 """,
-                actionName, waited);
+                actionName, waited, attemptsNote);
     }
 }

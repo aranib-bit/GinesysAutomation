@@ -121,6 +121,12 @@ public abstract class VoucherMainGridBase {
         clickGridAction(CommonVoucherActionsMenu.DELETE.resolveFor(domain).orElseThrow());
     }
 
+    /** Round 10 (RC-11) overload — see {@link #clickGridAction(IVoucherGridAction, Runnable)}. */
+    @LogStep("Click Delete for Voucher")
+    public void clickDeleteForVoucher(Runnable reselect) {
+        clickGridAction(CommonVoucherActionsMenu.DELETE.resolveFor(domain).orElseThrow(), reselect);
+    }
+
     /** Clicks the Unpost button for a posted ({@code release_status='P'}) voucher. */
     @LogStep("Unpost Voucher")
     public void clickUnpost() {
@@ -204,6 +210,30 @@ public abstract class VoucherMainGridBase {
     }
 
     /**
+     * Document-number-aware overload of {@link #clickGridAction(IVoucherGridAction)} (Round 10,
+     * RC-11) — on a confirmed "menu open but item disabled" (or "menu not open") failure, runs
+     * {@code reselect} (re-select the row + re-open Actions) and retries the whole check-and-click
+     * once before giving up, instead of the plain overload's re-poll of the same already-lost
+     * state. DOM forensics (run 20260903_161425) confirmed the plain overload's existing "retry"
+     * (lines above) can only fail identically when selection was genuinely lost — re-checking an
+     * unchanged condition cannot recover it; only a real re-selection can.
+     *
+     * @param reselect re-runs selection + re-opens Actions — supplied by
+     *                 {@link VoucherListPageBase}, the one place with both
+     *                 {@code selectDocumentFast} and {@code clickActions()} available
+     */
+    public void clickGridAction(IVoucherGridAction action, Runnable reselect) {
+        try {
+            clickGridAction(action);
+        } catch (IllegalStateException e) {
+            Log.warn("{}VoucherMainGrid: Actions→{} failed ({}) — re-selecting the row and retrying once "
+                            + "before giving up", domain.name(), action.label(), e.getMessage());
+            reselect.run();
+            clickGridAction(action);
+        }
+    }
+
+    /**
      * Clicks "Revert" in the open Actions dropdown (plan §12 — moved here from
      * {@code GeneralVoucherMainGrid}, which had it as a domain-hardcoded copy; the only
      * GV-specific part was {@code VoucherDomain.GV}, replaced here with this instance's own
@@ -224,6 +254,12 @@ public abstract class VoucherMainGridBase {
     @LogStep("Click Edit")
     public void clickEdit() {
         clickGridAction(CommonVoucherActionsMenu.EDIT.resolveFor(domain).orElseThrow());
+    }
+
+    /** Round 10 (RC-11) overload — see {@link #clickGridAction(IVoucherGridAction, Runnable)}. */
+    @LogStep("Click Edit")
+    public void clickEdit(Runnable reselect) {
+        clickGridAction(CommonVoucherActionsMenu.EDIT.resolveFor(domain).orElseThrow(), reselect);
     }
 
     /**
@@ -536,56 +572,114 @@ public abstract class VoucherMainGridBase {
      * Waits for visibility, then clicks the already-located checkbox — shared tail of both
      * {@link #selectDocumentInListPage(String)} and {@link #selectDocumentIfPresentOnCurrentPage(String)}.
      *
-     * <p><b>Idempotent</b>: if the checkbox already reads as checked, this is a no-op — no click
-     * fires at all. This matters because ExtJS check-columns <i>toggle</i> on click: clicking an
-     * already-checked box would uncheck it. Making "select this document" safe to call more than
-     * once (e.g. once before Revert, again before Actions→Edit, in case the grid reloaded and
+     * <p><b>Idempotent per attempt</b>: if the checkbox already reads as checked, no click fires
+     * for that attempt. This matters because ExtJS check-columns <i>toggle</i> on click: clicking
+     * an already-checked box would uncheck it. Making "select this document" safe to call more
+     * than once (e.g. once before Revert, again before Actions→Edit, in case the grid reloaded and
      * cleared selection in between) requires never clicking a box that's already in the wanted
      * state.
      *
-     * <p>Exactly ONE click is attempted — deliberately no blind retry-on-not-detected. A retry
-     * would be safe only if the checked-state detection below were 100% certain; if it instead has
-     * a false negative (the click actually worked but the detection missed it), a second click
-     * would toggle a correctly-checked box back OFF, which is worse than just failing loudly on
-     * the first attempt. Verifies afterward and fails fast with a clear diagnostic instead of
-     * letting the caller proceed as if selection succeeded.
+     * <p><b>Round 10 (RC-11):</b> a single "checked" read only proves selection at one instant —
+     * it does not prove the selection still holds a moment later. DOM forensics (run
+     * 20260903_161425) confirmed a real, still-unfixed failure mode: {@code EditGeneralVoucher}'s
+     * ACTIONS_EDIT path re-selects and opens Actions with literally ZERO code-level gap between
+     * the two, and still intermittently found the row unselected when Actions opened — ruling out
+     * "add a re-select step" as sufficient (it was already true). The actual cause is an
+     * asynchronous grid reload (from a preceding Unpost/Revert round-trip that Edit/Delete's own
+     * flows run first when the target voucher started Posted, and/or the exact-match filter's own
+     * documented "asynchronous settle" behavior) that can silently clear selection shortly AFTER
+     * {@link #waitUntilChecked} already returned {@code true}. This is the same class of bug
+     * already fixed once in this codebase for a structurally identical race — a per-page scroll
+     * fallback trusting a single quick "no progress" read (see
+     * {@link com.gsl.config.WaitConfig#selectDocScrollNoProgressConfirmWaitMs()}'s Javadoc) — fixed
+     * there, and here, by requiring a re-confirmed, gap-separated stability check instead of
+     * trusting one read.
+     *
+     * <p>So instead of "exactly one click, no retry" (the previous design, whose stated reasoning —
+     * a false-negative on the SAME check could cause a double-toggle — no longer applies: the retry
+     * here only re-clicks when the top-of-loop {@link #isChecked} read is itself false, the exact
+     * same idempotency guard as before, never blindly), this method now loops up to
+     * {@code selectdoc.max.select.attempts} (default 3) times: click if needed, confirm checked,
+     * THEN re-confirm with a fresh read after {@code selectdoc.stability.recheck.delay.ms} (default
+     * 400ms) — only returning success once both reads agree. A stability-check failure loops back
+     * to a genuine re-click+re-verify, not a re-poll of the same already-lost state.
      */
     private void clickCheckbox(String documentNumber) {
         By checkboxBy = checkboxLocator(documentNumber);
-        WebElement checkbox = WaitUtils.webDriverWait(ConfigFactory.getFinanceConfig().extjsMinTimeout())
-                .until(ExpectedConditions.visibilityOfElementLocated(checkboxBy));
+        int maxAttempts = ConfigFactory.getWaitConfig().selectDocMaxSelectAttempts();
+        int stabilityDelayMs = ConfigFactory.getWaitConfig().selectDocStabilityRecheckDelayMs();
 
-        if (isChecked(checkbox)) {
-            Log.debug("{}VoucherMainGrid: Checkbox for [{}] already checked — selection is idempotent, skipping click",
-                    domain.name(), documentNumber);
-            return;
-        }
+        for (int attempt = 1; attempt <= maxAttempts; attempt++) {
+            WebElement checkbox = WaitUtils.webDriverWait(ConfigFactory.getFinanceConfig().extjsMinTimeout())
+                    .until(ExpectedConditions.visibilityOfElementLocated(checkboxBy));
 
-        Uninterruptibles.sleepUninterruptibly(
-                ConfigFactory.getWaitConfig().selectDocClickBufferMs(), TimeUnit.MILLISECONDS);
+            if (isChecked(checkbox)) {
+                Log.debug("{}VoucherMainGrid: Checkbox for [{}] already checked — selection is idempotent, "
+                                + "skipping click (attempt {}/{})",
+                        domain.name(), documentNumber, attempt, maxAttempts);
+            } else {
+                Uninterruptibles.sleepUninterruptibly(
+                        ConfigFactory.getWaitConfig().selectDocClickBufferMs(), TimeUnit.MILLISECONDS);
 
-        // Click via the By locator, not the WebElement resolved above, so a grid re-render between
-        // the idempotency check and this click is recovered by re-resolving fresh on retry — the
-        // previous catch-and-JS-click fallback reused that same (possibly now-stale) WebElement, so
-        // it could never actually recover from a StaleElementReferenceException; clickWithStaleRetry
-        // is the established fix for exactly this ExtJS re-render race (see CashBankPopup/
-        // AllocateSitesPopup/GeneralVoucherExpenseIncomeDetail for the same idiom).
-        SeleniumUtils.clickWithStaleRetry(checkboxBy, WaitType.CLICKABLE,
-                domain.name() + "_VOUCHER_SELECT_CHECKBOX_" + documentNumber);
-        JavascriptExecutorUtils.waitForExtJS();
+                // Click via the By locator, not the WebElement resolved above, so a grid re-render
+                // between the idempotency check and this click is recovered by re-resolving fresh on
+                // retry — the previous catch-and-JS-click fallback reused that same (possibly now-
+                // stale) WebElement, so it could never actually recover from a
+                // StaleElementReferenceException; clickWithStaleRetry is the established fix for
+                // exactly this ExtJS re-render race (see CashBankPopup/AllocateSitesPopup/
+                // GeneralVoucherExpenseIncomeDetail for the same idiom).
+                SeleniumUtils.clickWithStaleRetry(checkboxBy, WaitType.CLICKABLE,
+                        domain.name() + "_VOUCHER_SELECT_CHECKBOX_" + documentNumber);
+                JavascriptExecutorUtils.waitForExtJS();
 
-        // NOTE (Round 9, run 20260903_100559 DOM forensics): a second click on a neutral row
-        // cell — previously added here on the theory that the checkbox toggle alone might not
-        // drive the grid's real Ext.selection.CheckboxModel — was REMOVED. Fresh captures proved
-        // the opposite of that theory: the row genuinely was unselected at failure time, and
-        // under CheckboxModel a second click on an already-selected row toggles it back OFF. That
-        // second click was therefore the actual cause of the FIN-GV-DELETE-01/EDIT-HEADER-03/
-        // EDIT-DETAIL-01 "Actions→Edit/Delete is disabled" failures it was originally added to
-        // fix. Do not re-add a second click here without fresh evidence it doesn't deselect.
-        if (!waitUntilChecked(checkboxBy)) {
+                // NOTE (Round 9, run 20260903_100559 DOM forensics): a second click on a neutral row
+                // cell — previously added here on the theory that the checkbox toggle alone might not
+                // drive the grid's real Ext.selection.CheckboxModel — was REMOVED. Fresh captures
+                // proved the opposite of that theory: the row genuinely was unselected at failure
+                // time, and under CheckboxModel a second click on an already-selected row toggles it
+                // back OFF. Do not re-add a second click here without fresh evidence it doesn't
+                // deselect.
+                if (!waitUntilChecked(checkboxBy)) {
+                    if (attempt < maxAttempts) {
+                        Log.warn("{}VoucherMainGrid: Checkbox for [{}] did not become checked after click — "
+                                        + "retrying (attempt {}/{})",
+                                domain.name(), documentNumber, attempt, maxAttempts);
+                        continue;
+                    }
+                    throw new IllegalStateException(domain.name() + "VoucherMainGrid: Checkbox for ["
+                            + documentNumber + "] did not become checked after " + maxAttempts
+                            + " attempt(s) — Actions→Edit/Revert would silently no-op from here. Diagnostics: "
+                            + JavascriptExecutorUtils.getGridDiagnostics());
+                }
+            }
+
+            // RC-11 stability re-check: confirm the selection SURVIVES a short real gap, not just
+            // that it existed at one instant — see this method's Javadoc for the async-reload race
+            // this closes.
+            Uninterruptibles.sleepUninterruptibly(stabilityDelayMs, TimeUnit.MILLISECONDS);
+            boolean stillChecked;
+            try {
+                stillChecked = isChecked(DriverManager.getDriver().findElement(checkboxBy));
+            } catch (NoSuchElementException e) {
+                stillChecked = false; // row not rendered at this instant — treat as lost, retry
+            }
+
+            if (stillChecked) {
+                return; // genuinely stable — selection survived the gap
+            }
+
+            if (attempt < maxAttempts) {
+                Log.warn("{}VoucherMainGrid: Checkbox for [{}] read as checked immediately after click but "
+                                + "was found UNCHECKED again {}ms later (attempt {}/{}) — an async grid reload "
+                                + "likely cleared selection; re-selecting",
+                        domain.name(), documentNumber, stabilityDelayMs, attempt, maxAttempts);
+                continue;
+            }
             throw new IllegalStateException(domain.name() + "VoucherMainGrid: Checkbox for [" + documentNumber
-                    + "] did not become checked after click — Actions→Edit/Revert would silently no-op "
-                    + "from here. Diagnostics: " + JavascriptExecutorUtils.getGridDiagnostics());
+                    + "] kept losing its checked state after " + maxAttempts + " select+stability-recheck "
+                    + "attempt(s) — an async grid reload is likely clearing selection faster than it can be "
+                    + "confirmed stable. Actions→Edit/Revert would silently no-op from here. Diagnostics: "
+                    + JavascriptExecutorUtils.getGridDiagnostics());
         }
     }
 

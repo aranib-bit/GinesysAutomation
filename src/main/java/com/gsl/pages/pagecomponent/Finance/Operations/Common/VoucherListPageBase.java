@@ -106,6 +106,26 @@ public abstract class VoucherListPageBase<
     }
 
     /**
+     * Document-number-aware overload (Round 10, RC-11) — on a confirmed "Actions→Edit disabled"
+     * failure, re-selects {@code documentNumber} and re-opens Actions once before giving up,
+     * instead of failing outright on an async grid reload that silently cleared selection between
+     * the caller's own select step and this click (see
+     * {@code VoucherMainGridBase.clickCheckbox}'s Javadoc for the confirmed root cause). Prefer
+     * this overload at any Actions→Edit call site that already has the document number/strategy
+     * in scope.
+     */
+    @LogStep("Open Voucher for Edit via Actions")
+    public TAddPage clickEditFromActions(String documentNumber, DocumentSearchStrategy strategy) {
+        Runnable reselect = () -> {
+            selectDocumentFast(documentNumber, strategy);
+            clickActions();
+        };
+        reselect.run(); // initial select + open Actions — same as the previous inline call-site sequence
+        mainGrid.clickEdit(reselect); // clicks Edit; on failure, reselect.run() then one retry
+        return newAddPage();
+    }
+
+    /**
      * Opens the given voucher for edit by double-clicking its row — the second live entry path
      * the app supports besides Actions→Edit. Page-turns to find it first (the double-click
      * analogue of {@link #selectDocumentInListPage(String)}/
@@ -170,6 +190,22 @@ public abstract class VoucherListPageBase<
     @LogStep("Click Delete for Voucher")
     public TSelf clickDeleteForVoucher() {
         mainGrid.clickDeleteForVoucher();
+        return self();
+    }
+
+    /**
+     * Document-number-aware overload (Round 10, RC-11) — see
+     * {@link #clickEditFromActions(String, DocumentSearchStrategy)} for the rationale; same
+     * re-select-and-retry-once recovery, for Actions→Delete.
+     */
+    @LogStep("Click Delete for Voucher")
+    public TSelf clickDeleteForVoucher(String documentNumber, DocumentSearchStrategy strategy) {
+        Runnable reselect = () -> {
+            selectDocumentFast(documentNumber, strategy);
+            clickActions();
+        };
+        reselect.run(); // initial select + open Actions — same as the previous inline call-site sequence
+        mainGrid.clickDeleteForVoucher(reselect); // clicks Delete; on failure, reselect.run() then one retry
         return self();
     }
 

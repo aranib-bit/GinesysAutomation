@@ -292,23 +292,25 @@ public final class WaitUtils {
      */
     public static void waitForExtMask() {
         long startMs = System.currentTimeMillis();
+        int[] attempts = {1};
         try {
-            waitForExtMaskInternal("waitForExtMask", startMs);
+            waitForExtMaskInternal("waitForExtMask", startMs, attempts);
         } finally {
-            recordIfEnabled("waitForExtMask", startMs, "waitForExtMask");
+            recordIfEnabled("waitForExtMask", startMs, "waitForExtMask", attempts[0]);
         }
     }
 
     public static void waitForExtMask(String contextLabel) {
         long startMs = System.currentTimeMillis();
+        int[] attempts = {1};
         try {
             // contextLabel is now FORWARDED into the failure diagnosis, not merely recorded in the
             // wait buffer. It used to be dropped here, so every mask failure in the report read
             // "Action: Loader wait (ExtJS mask)" regardless of which call site produced it —
             // indistinguishable, and the single biggest reason these failures were hard to place.
-            waitForExtMaskInternal(contextLabel, startMs);
+            waitForExtMaskInternal(contextLabel, startMs, attempts);
         } finally {
-            recordIfEnabled(contextLabel, startMs, "waitForExtMask");
+            recordIfEnabled(contextLabel, startMs, "waitForExtMask", attempts[0]);
         }
     }
 
@@ -377,36 +379,85 @@ public final class WaitUtils {
      * Core mask-wait logic — shared by {@link #waitForExtMask()} and
      * {@link #waitForExtJsApp()} to avoid double-counting in the wait buffer.
      *
+     * <p>Round 8: restructured to mirror {@link #waitForSplashScreenClear()}'s already-proven
+     * staged shape — an initial {@code extJsTimeout()} wait (unchanged tier, e.g. 40s), then up
+     * to {@code mask.poll.max.retries} (default 4) further polls of {@code mask.poll.seconds}
+     * (default 15s) each, each logged individually — instead of one single attempt with no retry
+     * timeline at all (confirmed absent live: {@code FIN-GV-ADD-COMBO-01} kept failing after
+     * exactly one 40.3s attempt across three consecutive runs). Worst case for a THROWING mask
+     * wait grows from 40s to 40+4x15=100s; {@link #waitForPostSaveMask} and
+     * {@link #waitForExtMaskBestEffort} deliberately stay single-attempt (see their own Javadoc
+     * for why) — this is not a blanket threshold increase, only this one throwing path retries.
+     *
      * @param actionLabel the CALLER's own context label, forwarded into the failure diagnosis so
      *                    the report names the actual call site instead of a generic constant
      * @param startMs     when the wait began, so the failure can report REAL elapsed time
+     * @param attemptsOut single-element out-parameter, updated as attempts happen so the caller's
+     *                    {@code finally} block can record the real attempt count in the Wait
+     *                    Analysis section even on the throwing path
      */
-    private static void waitForExtMaskInternal(String actionLabel, long startMs) {
-        try {
-            webDriverWait(extJsTimeout()).until(driver -> !isGenuineMaskVisible(driver));
-        } catch (TimeoutException e) {
-            long elapsedMs = System.currentTimeMillis() - startMs;
-            boolean dialogBlocking = !DriverManager.getDriver()
-                    .findElements(By.xpath(
-                            "//div[contains(@class,'x-message-box') and not(contains(@class,'x-hide-display'))]"))
-                    .isEmpty();
-            if (dialogBlocking) {
-                // Previously a bare `return` — completely silent. A mask wait that burned its full
-                // budget and then gave up because a dialog was on screen left NO trace anywhere in
-                // the report, so that time simply vanished from the record. Still non-throwing
-                // (a blocking dialog is a legitimate reason to stop waiting), but no longer silent.
-                ReportLogger.warn("Loader wait [" + actionLabel + "] gave up after " + elapsedMs
-                        + "ms — an x-message-box dialog is on screen, so the mask may never clear "
-                        + "until it is dismissed. Not failing the wait.");
+    private static void waitForExtMaskInternal(String actionLabel, long startMs, int[] attemptsOut) {
+        WaitConfig wc = ConfigFactory.getWaitConfig();
+        int maxPolls = wc.maskPollMaxRetries();
+        long pollSeconds = wc.maskPollSeconds();
+
+        attemptsOut[0] = 1;
+        if (waitForMaskClearedOnce(extJsTimeout())) {
+            return;
+        }
+
+        ReportLogger.warn(String.format(
+                "Loader wait [%s]: ExtJS mask still visible after %ds initial wait — polling up to %d "
+                        + "more time(s) at %ds each…",
+                actionLabel, extJsTimeout(), maxPolls, pollSeconds));
+
+        for (int poll = 1; poll <= maxPolls; poll++) {
+            attemptsOut[0] = 1 + poll;
+            if (waitForMaskClearedOnce(pollSeconds)) {
+                ReportLogger.info(String.format("Loader wait [%s]: mask cleared on poll %d/%d",
+                        actionLabel, poll, maxPolls));
                 return;
             }
-            throw PopupMonitor.diagnoseFailure(e, actionLabel, extJsTimeout(), elapsedMs);
+            ReportLogger.warn(String.format("Loader wait [%s]: mask still visible after poll %d/%d (%ds each)",
+                    actionLabel, poll, maxPolls, pollSeconds));
+        }
+
+        long elapsedMs = System.currentTimeMillis() - startMs;
+        boolean dialogBlocking = !DriverManager.getDriver()
+                .findElements(By.xpath(
+                        "//div[contains(@class,'x-message-box') and not(contains(@class,'x-hide-display'))]"))
+                .isEmpty();
+        if (dialogBlocking) {
+            // Previously a bare `return` — completely silent. A mask wait that burned its full
+            // budget and then gave up because a dialog was on screen left NO trace anywhere in
+            // the report, so that time simply vanished from the record. Still non-throwing
+            // (a blocking dialog is a legitimate reason to stop waiting), but no longer silent.
+            ReportLogger.warn("Loader wait [" + actionLabel + "] gave up after " + elapsedMs
+                    + "ms (" + attemptsOut[0] + " attempts: " + extJsTimeout() + "s initial + " + maxPolls
+                    + "x" + pollSeconds + "s polls) — an x-message-box dialog is on screen, so the mask "
+                    + "may never clear until it is dismissed. Not failing the wait.");
+            return;
+        }
+        throw PopupMonitor.diagnoseFailure(
+                new TimeoutException("ExtJS mask (.x-mask/.x-mask-msg) still visible after "
+                        + attemptsOut[0] + " attempt(s)"),
+                actionLabel, extJsTimeout(), elapsedMs, attemptsOut[0]);
+    }
+
+    /** Single genuinely-mask-cleared wait, capped at {@code seconds} — never throws, returns
+     *  {@code false} on timeout instead so the caller's staged-poll loop can decide what's next. */
+    private static boolean waitForMaskClearedOnce(long seconds) {
+        try {
+            webDriverWait(seconds).until(driver -> !isGenuineMaskVisible(driver));
+            return true;
+        } catch (TimeoutException e) {
+            return false;
         }
     }
 
     /** Back-compat overload for callers with no label/timing of their own. */
     private static void waitForExtMaskInternal() {
-        waitForExtMaskInternal("Loader wait (ExtJS mask)", System.currentTimeMillis());
+        waitForExtMaskInternal("Loader wait (ExtJS mask)", System.currentTimeMillis(), new int[1]);
     }
 
     public static void waitForExtJsApp() {
@@ -528,6 +579,11 @@ public final class WaitUtils {
     /**
      * Opt-in, best-effort variant of {@link #waitForExtMask()} for use after a {@code fluentClick}.
      *
+     * <p>Deliberately kept single-attempt (unlike {@link #waitForExtMaskInternal}'s Round-8
+     * staged-poll retry) — this method never fails the test either way, so retrying would only
+     * ever silently add minutes across a run for zero benefit; a genuinely-stuck mask here is
+     * already tolerated, not diagnosed.
+     *
      * <p>Two differences from {@link #waitForExtMaskInternal()}:
      * <ul>
      *   <li>Only treats a mask as blocking when it is actually <b>visible and has a non-zero
@@ -568,6 +624,11 @@ public final class WaitUtils {
      * save is already confirmed by the post-save dialog before this is called — a long timeout is
      * unnecessary and inflates "Verify Save Result" step duration when the mask lingers briefly.
      * Returns as soon as the mask clears; never throws (best-effort).
+     *
+     * <p>Deliberately kept single-attempt (unlike {@link #waitForExtMaskInternal}'s Round-8
+     * staged-poll retry) — the save it's confirming already succeeded, so this wait only cleans
+     * up a lingering mask; a longer retried wait here would only inflate this step's duration for
+     * no diagnostic benefit.
      */
     public static void waitForPostSaveMask(String contextLabel) {
         long startMs = System.currentTimeMillis();
@@ -608,6 +669,14 @@ public final class WaitUtils {
     private static void recordIfEnabled(String label, long startMs, String method) {
         if (ConfigFactory.getDiagnosticsConfig().waitAnalysisEnabled()) {
             WaitDurationBuffer.record(label, System.currentTimeMillis() - startMs, method);
+        }
+    }
+
+    /** Attempts-aware overload — Round 8's mask-retry makes multi-attempt waits real; this is
+     *  what actually populates the Wait Analysis section's Attempts column with a value > 1. */
+    private static void recordIfEnabled(String label, long startMs, String method, int attempts) {
+        if (ConfigFactory.getDiagnosticsConfig().waitAnalysisEnabled()) {
+            WaitDurationBuffer.record(label, System.currentTimeMillis() - startMs, method, attempts);
         }
     }
 

@@ -323,9 +323,13 @@ public class EditGeneralVoucher extends WebTest {
                 // clears row selection, and a stale Step-3 selection would otherwise leave Edit
                 // disabled here. selectDocumentFast() is idempotent (no-ops if already checked),
                 // so this is safe to call again even when Step 4 didn't run.
-                listRef[0].selectDocumentFast(testData.getExistingVoucherNo(), searchStrategy);
-                listRef[0].clickActions();
-                editRef[0] = listRef[0].clickEditFromActions();
+                //
+                // Round 10 (RC-11): even with that immediate re-select, DOM forensics confirmed the
+                // row can still be found unselected when Actions opens (an async grid reload racing
+                // the click, not a code-level gap this method's own zero-gap sequence already
+                // closes) — clickEditFromActions(documentNumber, strategy) now re-selects and
+                // retries once itself on that failure, instead of failing outright.
+                editRef[0] = listRef[0].clickEditFromActions(testData.getExistingVoucherNo(), searchStrategy);
                 ReportLogger.business("Voucher opened for edit via Actions→Edit: " + testData.getExistingVoucherNo());
             }
         });

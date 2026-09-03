@@ -254,32 +254,24 @@ public class DeleteGeneralVoucher extends WebTest {
                     + testData.getExistingVoucherNo());
         });
 
-        // ── Step 6c: Re-select Voucher (checkbox selection is lost after Unpost/Revert — and,
-        // confirmed live in run 20260903_100559's DOM captures, can ALSO be lost with no revert
-        // at all, apparently via the exact-match filter's own asynchronous settle behavior
-        // silently clearing a just-registered selection) ────────────────────────────────────
-        // Confirmed live (report 20260901_130916, GV_DELETE_POSITIVE): a successful Revert
-        // refreshes the grid's row data (visibly showing the updated "Unposted" status), which
-        // resets ExtJS's row-selection/checkbox state along with it. Step 5 selected the checkbox
-        // before Revert ran, but nothing re-selected it afterward — so Step 8's Actions→Delete
-        // found "Delete" rendered but disabled (no row selected) and failed. Moved to run
-        // IMMEDIATELY before Step 8 now (Step 7's DB-only work above no longer sits between this
-        // re-select and the Actions click) — confirmed live that even that DB-only gap was enough
-        // for the selection to be lost again by the time Step 8 ran.
-        // selectDocumentFast's checkbox click is idempotent (VoucherMainGridBase.clickCheckbox
-        // skips the click if already checked), so this is always safe to call unconditionally — a
-        // no-op when Step 6 didn't touch the UI (voucher was already Unposted) or the selection
-        // survived.
-        StepExecutor.step("Re-select Voucher Immediately Before Actions (checkbox may have reset)", () -> {
-            listRef[0].selectDocumentFast(testData.getExistingVoucherNo(), DocumentSearchStrategy.EXACT_MATCH);
-            ReportLogger.business("Re-confirmed voucher selection before Delete: " + testData.getExistingVoucherNo());
-        });
-
-        // ── Step 8: Click Actions + Delete + Confirm ──────────────────────────────
-        StepExecutor.step("Click Delete and Confirm", () -> {
-            listRef[0].clickActions();
+        // ── Step 8: Re-select Voucher + Click Actions + Delete + Confirm ──────────────────────
+        // Re-select (checkbox selection is lost after Unpost/Revert — and, confirmed live in run
+        // 20260903_100559's DOM captures, can ALSO be lost with no revert at all, apparently via
+        // the exact-match filter's own asynchronous settle behavior silently clearing a
+        // just-registered selection) is now folded into THIS step, immediately before the Actions
+        // click, rather than a separate preceding step — Round 9 already closed the DB-only gap
+        // that used to sit between them (see prior history), and Round 10 (RC-11) confirmed even a
+        // zero-gap re-select-then-click sequence can still race the async reload above. So
+        // clickDeleteForVoucher(documentNumber, strategy) below both re-selects immediately before
+        // clicking Actions AND retries the whole select+click-Actions sequence once more if the
+        // first attempt still finds Delete disabled — see VoucherMainGridBase.clickCheckbox's and
+        // VoucherListPageBase.clickDeleteForVoucher(String, DocumentSearchStrategy)'s Javadoc for
+        // the confirmed root cause this closes. selectDocumentFast's checkbox click is idempotent
+        // (VoucherMainGridBase.clickCheckbox skips the click if already checked), so calling it
+        // here is always safe — a no-op when Step 6 didn't touch the UI or the selection survived.
+        StepExecutor.step("Re-select and Click Delete and Confirm", () -> {
             listRef[0]
-                    .clickDeleteForVoucher()
+                    .clickDeleteForVoucher(testData.getExistingVoucherNo(), DocumentSearchStrategy.EXACT_MATCH)
                     .confirmDelete();
             ReportLogger.pass("Deletion confirmed for voucher: " + testData.getExistingVoucherNo());
         });

@@ -126,6 +126,18 @@ public final class PopupMonitor {
      */
     public static RuntimeException diagnoseFailure(RuntimeException original, String actionName,
                                                    long timeoutSeconds, long elapsedMs) {
+        return diagnoseFailure(original, actionName, timeoutSeconds, elapsedMs, 1);
+    }
+
+    /**
+     * Overload that also carries the REAL attempt count (initial wait + retry polls) — Round 8's
+     * mask-retry makes multi-attempt waits real ({@code WaitUtils.waitForExtMaskInternal}), and a
+     * failure should say how many attempts were actually made, not just report one opaque ceiling.
+     * Callers that retry should prefer this; the 4-arg form above stays for those that don't
+     * (reported as a single attempt).
+     */
+    public static RuntimeException diagnoseFailure(RuntimeException original, String actionName,
+                                                   long timeoutSeconds, long elapsedMs, int attempts) {
         if (ConfigFactory.getWaitConfig().popupDetectionEnabled()) {
             PopupResult popup = PopupHandler.detectPopup();
             if (popup != null) {
@@ -143,7 +155,7 @@ public final class PopupMonitor {
         }
 
         if (WaitUtils.isExtMaskPresent(DriverManager.getDriver())) {
-            throw new LoaderStillInProgressException(actionName, timeoutSeconds, elapsedMs, original);
+            throw new LoaderStillInProgressException(actionName, timeoutSeconds, elapsedMs, attempts, original);
         }
 
         throw original;
