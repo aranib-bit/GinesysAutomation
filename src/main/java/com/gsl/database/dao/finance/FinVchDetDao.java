@@ -14,10 +14,18 @@ import java.util.List;
 @RegisterBeanMapper(FinVchDet.class)
 public interface FinVchDetDao {
 
+    // ORDER BY f.code (Round 9, RC-10): finvchdet has no line-sequence column at all, so without
+    // an explicit order Postgres's fetch order is undefined and needn't match the app's actual
+    // grid row order. DbGeneralVoucherEditDataSource fabricates LineNo purely from this fetch's
+    // position, then maps LineNo back to a DOM grid-row index — so an unordered fetch here
+    // silently causes the edit to land on the wrong row. Verified live against the exact failing
+    // voucher (VG/00375/26-27, vchcode 562638): ORDER BY code ASC reproduces the app's real grid
+    // order (glcode=33 'Interest on Loan CC. A/c.' first), confirmed against the live DOM.
     @SqlQuery("SELECT f.*, a.name AS ref_admsite_name " +
               "FROM finvchdet f " +
               "LEFT JOIN admsite a ON a.code = f.ref_admsite_code " +
-              "WHERE f.vchcode = :vchcode")
+              "WHERE f.vchcode = :vchcode " +
+              "ORDER BY f.code")
     List<FinVchDet> findByVoucherCode(@Bind("vchcode") long vchcode);
 
     @SqlQuery("SELECT COUNT(*) FROM finvchdet WHERE vchcode = :vchcode")

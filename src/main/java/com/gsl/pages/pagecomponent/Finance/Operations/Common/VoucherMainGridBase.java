@@ -574,21 +574,14 @@ public abstract class VoucherMainGridBase {
                 domain.name() + "_VOUCHER_SELECT_CHECKBOX_" + documentNumber);
         JavascriptExecutorUtils.waitForExtJS();
 
-        // Native UI, no ExtJS internal-state reads (per feedback_native_ui_over_extjs): the
-        // checkbox column is confirmed to be an x-grid-checkcolumn — ExtJS's per-record
-        // boolean-toggle column — and it's not proven that toggling it is the SAME interaction
-        // that drives the grid's real row-selection model the Actions→Edit/Delete menu items
-        // actually key off (confirmed live, run 20260901_170830, FIN-GV-EDIT-HEADER-03/
-        // DELETE-01: the checkbox visibly registers as checked, yet Actions→Edit/Delete stayed
-        // disabled through two full retry windows). DOUBLE_CLICK_EDIT — a native double-click
-        // directly on the row — reliably opens Edit without ever depending on that enabled
-        // state at all, the strongest evidence a plain checkbox click may not be it. Give the
-        // row the same extra click a real user selecting it would naturally give: the
-        // document-number cell already used to locate this row.
-        SeleniumUtils.clickWithStaleRetry(rowAnchorLocator(documentNumber), WaitType.CLICKABLE,
-                domain.name() + "_VOUCHER_SELECT_ROW_" + documentNumber);
-        JavascriptExecutorUtils.waitForExtJS();
-
+        // NOTE (Round 9, run 20260903_100559 DOM forensics): a second click on a neutral row
+        // cell — previously added here on the theory that the checkbox toggle alone might not
+        // drive the grid's real Ext.selection.CheckboxModel — was REMOVED. Fresh captures proved
+        // the opposite of that theory: the row genuinely was unselected at failure time, and
+        // under CheckboxModel a second click on an already-selected row toggles it back OFF. That
+        // second click was therefore the actual cause of the FIN-GV-DELETE-01/EDIT-HEADER-03/
+        // EDIT-DETAIL-01 "Actions→Edit/Delete is disabled" failures it was originally added to
+        // fix. Do not re-add a second click here without fresh evidence it doesn't deselect.
         if (!waitUntilChecked(checkboxBy)) {
             throw new IllegalStateException(domain.name() + "VoucherMainGrid: Checkbox for [" + documentNumber
                     + "] did not become checked after click — Actions→Edit/Revert would silently no-op "
