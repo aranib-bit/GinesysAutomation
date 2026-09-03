@@ -161,75 +161,44 @@ public abstract class VoucherMainGridBase {
      * {@link #clickUnpost()}. {@link #clickEdit()}/{@link #clickRevert()} are thin named
      * wrappers delegating to this.
      *
-     * <p>Verifies the action is actually enabled before clicking — {@link WaitType#CLICKABLE}
-     * alone only checks Selenium's native visible/enabled state, which doesn't see ExtJS's own
-     * disabled styling (e.g. a menu item left disabled because no row is selected). Clicking a
-     * disabled ExtJS menu item is a silent no-op that otherwise leaves the flow stuck on the list
-     * page while later steps proceed as if a new page had opened — surfacing a confusing failure
-     * far from the real cause. Failing fast here instead gives a direct diagnostic.
+     * <p>Checks {@link IVoucherGridAction#itemInOpenMenuLocator()} — open dropdown + this item
+     * genuinely enabled, per that locator's own Javadoc on why the enabled-check is back after an
+     * intermediate version dropped it — then clicks the item's plain text {@code <span>}
+     * ({@link IVoucherGridAction#locator()}), not the {@code <a>} the enabled-check resolves to;
+     * that anchor carries {@code href="#"} and would add a hash-navigation side effect on click.
      *
-     * <p>Checked via {@link IVoucherGridAction#enabledLocator()}'s {@code aria-disabled} xpath —
-     * not yet explicitly confirmed against this app's live DOM (same caveat this codebase already
-     * carries for its other not-yet-confirmed locators, e.g.
-     * {@code VoucherListFooterBase#firstPageEnabledLocator}); confirm it the same way the
-     * checkbox's own checked-state attribute was confirmed, if this ever misfires on a live run.
-     *
-     * <p>Before that check, waits for the action's OWN menu-item {@code <span>}
-     * ({@link IVoucherGridAction#locator()}) to render at all — a precise, action-specific signal
-     * that the Actions dropdown genuinely opened. This replaces a prior generic
-     * "is any {@code x-menu} open" wait that used to live in
-     * {@link VoucherListGridHeaderBase#clickActions()}: that check was vulnerable to matching a
-     * stale, unrelated menu instance left over from an earlier step (e.g. the row-selection
-     * exact-match filter's own flyout, which — per {@code GridColumnMenu.OPEN_MENU}'s own
-     * documented caveat — ExtJS can leave in the DOM via {@code visibility:hidden} rather than
-     * removing it), and confirmed live (run 20260902_121853) to have zero measurable effect on
-     * this method's failures. Waiting for the SPECIFIC item's own label text can't be satisfied
-     * by an unrelated menu.
+     * <p>If the check fails, the message distinguishes the two situations DOM forensics showed are
+     * genuinely different (see {@link IVoucherGridAction#itemInOpenMenuLocator()}): the dropdown
+     * may simply not be open (nothing to click yet), or it may be open with this item confirmed
+     * {@code aria-disabled="true"} — a real "no row selected" state, not a locator artifact. The
+     * actual fix for the latter lives at the call sites that select a row before opening this menu
+     * (see {@code DeleteGeneralVoucher}/{@code EditGeneralVoucher}'s re-select-immediately-
+     * before-Actions steps) — this method's job is only to report which situation it hit, clearly.
      */
     @LogStep("Click Grid Action")
     public void clickGridAction(IVoucherGridAction action) {
-        boolean itemRendered = SeleniumUtils.isElementPresent(action.locator(), ACTION_STATE_CHECK_TIMEOUT_SECONDS);
-        if (!itemRendered) {
-            throw new IllegalStateException(domain.name() + "VoucherMainGrid: Actions→" + action.label()
-                    + " menu item never rendered at all — the Actions dropdown may not have genuinely "
-                    + "opened (checkbox selection may not have registered, or the dropdown click didn't "
-                    + "land). Diagnostics: " + JavascriptExecutorUtils.getGridDiagnostics());
-        }
-
-        boolean enabled = SeleniumUtils.isElementPresent(action.enabledLocator(), ACTION_STATE_CHECK_TIMEOUT_SECONDS);
-        if (!enabled) {
-            // isChecked()'s DOM/ARIA "checked" signal and this Actions item's aria-disabled binding
-            // are two independent reads with nothing syncing their timing — a caller that just
-            // finished clickCheckbox()'s own waitUntilChecked poll (which can itself consume most/
-            // all of ACTION_STATE_CHECK_TIMEOUT_SECONDS-worth of real time confirming the checkbox)
-            // may reach here with the row genuinely selected but the menu's enabled-state binding
-            // still catching up. Re-run the SAME real condition check once more — a bounded, honest
-            // retry of the live DOM state, not a blind timeout increase — before failing.
-            Log.warn("{}VoucherMainGrid: Actions→{} not yet enabled after first check — retrying once "
-                            + "in case the row-selection→menu-enabled binding is still catching up",
-                    domain.name(), action.label());
-            enabled = SeleniumUtils.isElementPresent(action.enabledLocator(), ACTION_STATE_CHECK_TIMEOUT_SECONDS);
-        }
-        if (!enabled) {
-            // Cross-check against disabledLocator() (defined alongside enabledLocator() but never
-            // actually used until now) to distinguish two very different situations: the item IS
-            // present and ExtJS has explicitly marked it aria-disabled='true' (a real, confirmed
-            // disabled state — a genuine row-selection problem), versus NEITHER locator matching
-            // (meaning the aria-disabled attribute assumption itself may be wrong, and this is a
-            // broken-locator problem, not a disabled-state problem). Also captures the open
-            // dropdown's live DOM — the same HtmlCaptureSection mechanism that resolved the
-            // equivalent ambiguity for FIN-GV-ADD-COMBO-09's Is-Reversal picker — so if this
-            // enabled/disabled read is ALSO wrong, the next run gives real evidence instead of
-            // another guess.
-            boolean confirmedDisabled = SeleniumUtils.isElementPresent(action.disabledLocator(), 1);
-            new HtmlCaptureSection(DriverManager.getDriver(),
-                    "ActionsMenu_" + domain.name() + "_" + action.label());
-            throw new IllegalStateException(domain.name() + "VoucherMainGrid: Actions→" + action.label()
-                    + " is disabled — is a row selected? (checkbox selection may not have registered)"
-                    + (confirmedDisabled
-                        ? " [confirmed via disabledLocator(): aria-disabled='true']"
-                        : " [disabledLocator() did NOT match either — the aria-disabled attribute "
-                          + "assumption may be wrong; see the new html-capture for the live DOM]"));
+        By itemEnabledInOpenMenu = action.itemInOpenMenuLocator();
+        if (!SeleniumUtils.isElementPresent(itemEnabledInOpenMenu, ACTION_STATE_CHECK_TIMEOUT_SECONDS)) {
+            // One bounded re-check: clickActions() already verifies the dropdown opened, and the
+            // caller may have just re-selected the row a moment ago — the enabled-state binding
+            // can lag that by a little. Re-reading the same real condition is cheap and honest,
+            // not a blind timeout inflation.
+            Log.warn("{}VoucherMainGrid: Actions→{} not found enabled in an open actionmenu on first "
+                            + "check — re-checking once before failing", domain.name(), action.label());
+            if (!SeleniumUtils.isElementPresent(itemEnabledInOpenMenu, ACTION_STATE_CHECK_TIMEOUT_SECONDS)) {
+                boolean menuOpen = SeleniumUtils.isElementPresent(
+                        By.xpath("//div[contains(@class,'actionmenu')][@aria-expanded='true']"),
+                        1);
+                new HtmlCaptureSection(DriverManager.getDriver(),
+                        "ActionsMenu_" + domain.name() + "_" + action.label());
+                throw new IllegalStateException(domain.name() + "VoucherMainGrid: Actions→" + action.label()
+                        + " "
+                        + (menuOpen
+                            ? "is disabled — is a row selected? (confirmed: the dropdown is open but "
+                              + "this item's aria-disabled='true')"
+                            : "— the Actions dropdown is not open at all")
+                        + ". Diagnostics: " + JavascriptExecutorUtils.getGridDiagnostics());
+            }
         }
         SeleniumUtils.click(action.locator(), WaitType.CLICKABLE, domain.name() + "_ACTION_" + action.label());
     }
@@ -649,18 +618,24 @@ public abstract class VoucherMainGridBase {
         // no stale-guard). Treat any such failure as "not yet checked" so waitUntilChecked's poll
         // loop retries against a freshly-resolved element on its next iteration, instead of the
         // exception escaping the loop uncaught.
+        //
+        // Both signals below are confirmed present in real captured DOM. The two fallbacks this
+        // method used to carry were NOT: `checkcolumn-checked` on the checkbox span and
+        // `x-grid-row-selected` on the row each have ZERO occurrences across every captured
+        // snapshot in this repo — the checkbox span is rendered bare
+        // (`<span class="x-grid-checkcolumn">`) and selection is signalled only on its ancestors.
+        // They were dead code giving false confidence, so they are replaced with the real
+        // secondary signal: `x-grid-item-selected` on the row's own <table> wrapper (which appears
+        // alongside aria-selected="true" in every confirmed-selected capture).
         try {
             WebElement row = checkbox.findElement(By.xpath("./ancestor::tr[1]"));
             String ariaSelected = row.getAttribute("aria-selected");
             if ("true".equals(ariaSelected)) {
                 return true;
             }
-            String cssClass = checkbox.getAttribute("class");
-            if (cssClass != null && cssClass.contains("checkcolumn-checked")) {
-                return true;
-            }
-            String rowClass = row.getAttribute("class");
-            return rowClass != null && rowClass.contains("x-grid-row-selected");
+            WebElement rowTable = checkbox.findElement(By.xpath("./ancestor::table[1]"));
+            String rowTableClass = rowTable.getAttribute("class");
+            return rowTableClass != null && rowTableClass.contains("x-grid-item-selected");
         } catch (Exception ignored) {
             return false; // element went stale mid-read — treat as not-yet-checked, caller keeps polling
         }

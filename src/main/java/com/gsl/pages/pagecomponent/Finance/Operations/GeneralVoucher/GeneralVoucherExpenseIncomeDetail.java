@@ -491,14 +491,14 @@ public class GeneralVoucherExpenseIncomeDetail extends VoucherSubLedgerInformati
             SeleniumUtils.sendKeys(ACTIVE_EDITOR_INPUT, WaitType.VISIBLE, generalLedger, "GV_GL_COMBO");
             JavascriptExecutorUtils.waitForExtJS();
 
+            // Pages forward through the picker's own Next-Page control if the exact match isn't
+            // on the currently-rendered page — a live-typed search here is a CONTAINS match, not
+            // exact, and can return more rows than fit on one page (confirmed live, run
+            // 20260903_100559, FIN-GV-EDIT-DETAIL-02: "Page 1 of 4" with Next Page enabled while
+            // the old single-page wait below timed out at 30s). See
+            // SeleniumUtils.clickBoundlistOptionAcrossPages's own Javadoc.
             By option = gridBoundlistOption(generalLedger, null);
-            WaitUtils.fluentWaitBuilder()
-                    .withMessage("General Ledger option '" + generalLedger + "' to be clickable in the "
-                            + "open combo dropdown (row " + rowIndex + ") — locator: " + option)
-                    .until(driver -> {
-                        driver.findElement(option).click();
-                        return true;
-                    });
+            SeleniumUtils.clickBoundlistOptionAcrossPages(BOUNDLIST_ROOT, option, "GV_GL_OPTION_" + generalLedger);
             ExtentLogger.info("GV_GL_OPTION_" + generalLedger + " clicked successfully");
             JavascriptExecutorUtils.waitForExtJS();
             JavascriptExecutorUtils.waitForPageLoad();
@@ -542,16 +542,10 @@ public class GeneralVoucherExpenseIncomeDetail extends VoucherSubLedgerInformati
 
             // Sub Ledger names are not guaranteed unique — disambiguate by Id when provided. Both
             // branches hit the SAME grid-style picker, so both use the data-qtip locator; the Id is
-            // only an extra column predicate, never a different element shape.
+            // only an extra column predicate, never a different element shape. Same cross-page
+            // reasoning as setGeneralLedger above — this picker is the identical paged widget.
             By option = gridBoundlistOption(subLedger, subLedgerId);
-            WaitUtils.fluentWaitBuilder()
-                    .withMessage("Sub Ledger option '" + subLedger
-                            + (subLedgerId != null && !subLedgerId.isBlank() ? "' (id=" + subLedgerId + ")" : "'")
-                            + " to be clickable in the open combo dropdown (row " + rowIndex + ") — locator: " + option)
-                    .until(driver -> {
-                        driver.findElement(option).click();
-                        return true;
-                    });
+            SeleniumUtils.clickBoundlistOptionAcrossPages(BOUNDLIST_ROOT, option, "GV_SL_OPTION_" + subLedger);
             ExtentLogger.info("GV_SL_OPTION_" + subLedger + " clicked successfully");
             JavascriptExecutorUtils.waitForExtJS();
             JavascriptExecutorUtils.waitForPageLoad();
@@ -609,30 +603,34 @@ public class GeneralVoucherExpenseIncomeDetail extends VoucherSubLedgerInformati
                     });
             JavascriptExecutorUtils.waitForExtJS();
 
-            // Option row shape confirmed live (run 20260902_121853's html-captures): a clean
-            // <li role="option" data-recordindex="0|1" data-boundview="combo-NNNN-picker">Yes/No</li>
-            // — exactly what simpleBoundlistOption() already expects, correctly isolated from
-            // two other stale boundlists on the same page by the existing display:none filter.
-            // So the option locator itself is NOT the defect. What the same captures also showed:
-            // the option <li>'s own DOM id churned between fillAndVerifyCommit's 3 outer retries
-            // — consistent with the picker's list being torn down/rebuilt each retry while the
-            // option click reports "success" (no exception) without ever registering with ExtJS.
+            // ROOT CAUSE (finally established, run 20260902_224915 — 9 DOM captures + 9 matching
+            // log lines): the option click was ALWAYS working. Every capture taken at the moment
+            // this method reported failure contains
+            //     <li role="option" class="x-boundlist-item x-boundlist-selected" ...>Yes</li>
+            // i.e. "Yes" WAS selected in the combo — while the grid CELL still read "No".
             //
-            // Best-supported explanation: the trigger click TOGGLES open/closed, and the previous
-            // version clicked it unconditionally on every retry. If an option click technically
-            // didn't throw but also didn't commit (leaving the picker still open), the NEXT
-            // retry's unconditional trigger click would CLOSE it instead of opening it — and a
-            // subsequent findElement(option).click() could still resolve a closing, about-to-be-
-            // removed <li> and "succeed" without committing anything. Repeated identically 3/3
-            // times matches this exactly.
+            // In ExtJS CellEditing, selecting a combo option sets the EDITOR's value; the cell's
+            // rendered text only repaints once the edit is COMMITTED (editor blur / ENTER / TAB).
+            // This method never committed — nothing blurred the editor before getIsReversal()
+            // read the cell (the input still carries x-form-focus in every capture) — so the
+            // readback returned the stale "No" forever and all 3 outer retries reproduced it
+            // identically. Every earlier theory (locator scoping, boundlist rebuild churn, the
+            // trigger's open/close toggle) was chasing a symptom: the 9 log lines all said
+            // "picker now closed", which disproves the toggle theory outright and confirms the
+            // aria-expanded read below is trustworthy.
             //
-            // Fix: read the combo's own aria-expanded state (a genuine ARIA/DOM attribute on the
-            // active editor's input, not Ext.ComponentQuery/internal-state — see
-            // feedback_native_ui_over_extjs) to decide whether the trigger genuinely needs
-            // clicking, instead of clicking it unconditionally. Then verify each option click by
-            // reading the CELL'S ACTUAL VALUE back — not just "the click didn't throw" — retrying
-            // the open(if needed)+click sequence up to 2 more times inside this same
-            // fillAndVerifyCommit attempt before falling through to the outer retry.
+            // Why the sibling fields never hit this: setLedgerNarration presses TAB, and AP's
+            // proven setDeductTdsNative presses TAB too; setGeneralLedger/setSubLedger get away
+            // with no keystroke only because selecting a GL triggers an app-side server
+            // round-trip that repaints the whole row (hence their waitForPageLoad()).
+            //
+            // So: select the option, then EXPLICITLY COMMIT. ENTER is preferred over TAB because
+            // Ext.grid.CellEditor's completeOnEnter closes the editor in place, whereas TAB also
+            // auto-advances to the next editable column — and that auto-advance is precisely what
+            // made this method's own entry state ambiguous in the first place (the preceding
+            // field's TAB lands the active editor on this very cell). The self-verifying inner
+            // loop is kept as the safety net: it reads the CELL back after committing, and if
+            // ENTER didn't take, escalates to TAB on the next attempt.
             By option = simpleBoundlistOption(value);
             boolean committed = false;
             for (int innerAttempt = 1; innerAttempt <= 3 && !committed; innerAttempt++) {
@@ -652,18 +650,30 @@ public class GeneralVoucherExpenseIncomeDetail extends VoucherSubLedgerInformati
                         });
                 JavascriptExecutorUtils.waitForExtJS();
 
+                // THE FIX: commit the cell edit so the grid cell actually repaints. ENTER first
+                // (commit in place); if a previous attempt already proved ENTER insufficient on
+                // this build, escalate to TAB — a two-strategy escalation validated by the real
+                // cell readback below, not a blind guess.
+                if (innerAttempt == 1) {
+                    SeleniumUtils.pressEnter(ACTIVE_EDITOR_INPUT, "GV_ISREVERSAL_COMMIT_ENTER");
+                } else {
+                    SeleniumUtils.pressTab(ACTIVE_EDITOR_INPUT, "GV_ISREVERSAL_COMMIT_TAB");
+                }
+                JavascriptExecutorUtils.waitForExtJS();
+
                 String readBack = getIsReversal(rowIndex);
                 committed = readBack != null && readBack.equalsIgnoreCase(value);
                 if (!committed) {
-                    // Capture only on an actual inner-attempt failure now — the always-fires
-                    // capture served its purpose (produced the DOM evidence that led to this
-                    // fix); keeping it failure-only avoids permanent report clutter while still
-                    // giving the next investigation round fresh evidence if this fix is also wrong.
+                    // Capture only on an actual inner-attempt failure — the always-fires capture
+                    // served its purpose (it produced the evidence that led to this fix); keeping
+                    // it failure-only avoids permanent report clutter while still giving the next
+                    // investigation round fresh evidence if this fix is somehow also wrong.
                     new HtmlCaptureSection(DriverManager.getDriver(),
                             "IsReversalPicker_row" + rowIndex + "_innerAttempt" + innerAttempt);
-                    ExtentLogger.info("[GV ExpenseIncomeDetail] Row " + rowIndex + ": Is Reversal option "
-                            + "click (inner attempt " + innerAttempt + ") did not register — cell still "
-                            + "reads '" + readBack + "', picker now "
+                    ExtentLogger.info("[GV ExpenseIncomeDetail] Row " + rowIndex + ": Is Reversal did not "
+                            + "commit on inner attempt " + innerAttempt + " (committed with "
+                            + (innerAttempt == 1 ? "ENTER" : "TAB") + ") — cell still reads '" + readBack
+                            + "', picker now "
                             + (isReversalPickerOpen() ? "still open, retrying" : "closed, will reopen"));
                 }
             }

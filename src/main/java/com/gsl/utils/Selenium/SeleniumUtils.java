@@ -14,6 +14,7 @@ import org.openqa.selenium.By;
 import org.openqa.selenium.ElementClickInterceptedException;
 import org.openqa.selenium.ElementNotInteractableException;
 import org.openqa.selenium.Keys;
+import org.openqa.selenium.NoSuchElementException;
 import org.openqa.selenium.StaleElementReferenceException;
 import org.openqa.selenium.WebElement;
 import org.openqa.selenium.support.ui.ExpectedConditions;
@@ -278,6 +279,89 @@ public class SeleniumUtils {
         WebElement element = waitUntilElementPresent(by);
         element.sendKeys(Keys.TAB);
         ExtentLogger.info("Tab key pressed on element: " + elementName);
+    }
+
+    /**
+     * Sends ENTER to {@code by} — the commit-in-place counterpart to {@link #pressTab}.
+     *
+     * <p>For an ExtJS grid cell editor, ENTER completes the edit and closes the editor WITHOUT
+     * advancing to the next editable column ({@code Ext.grid.CellEditor} defaults
+     * {@code completeOnEnter: true}), whereas TAB commits AND auto-advances. Prefer this wherever
+     * the auto-advance would leave an unwanted editor open on the following column — see
+     * {@code GeneralVoucherExpenseIncomeDetail.setIsReversal}, whose own entry state was made
+     * ambiguous by exactly that side effect from the preceding field's TAB commit.
+     */
+    public static void pressEnter(By by, String elementName) {
+        WebElement element = waitUntilElementPresent(by);
+        element.sendKeys(Keys.ENTER);
+        ExtentLogger.info("Enter key pressed on element: " + elementName);
+    }
+
+    /**
+     * Clicks {@code option} inside a paged ExtJS grid-style boundlist combo, paging FORWARD
+     * through the picker's own Next-Page control when {@code option} isn't on the currently
+     * rendered page — instead of a single wait-and-click that can only ever see page 1.
+     *
+     * <p><b>Why this exists.</b> Several combo pickers across GV/AR/AP (General Ledger and Sub
+     * Ledger selection) share one ExtJS widget: a live-typed search that performs a
+     * CONTAINS-style match and returns every matching row, paginated via a real
+     * First/Previous/Next/Last toolbar embedded inside the floating boundlist — confirmed live
+     * (run 20260903_100559, FIN-GV-EDIT-DETAIL-02): the open combo's picker showed "Page 1 of 4"
+     * with Next Page enabled while the framework's old single-page lookup timed out after 30s,
+     * because the exact match happened to be on a later page. Every one of these call sites
+     * previously drove the exact same bare
+     * {@code fluentWaitBuilder().until(driver -> {driver.findElement(option).click(); ...})} loop
+     * — one page, no paging — so this is one shared fix for GV's own picker (formerly
+     * {@code gridBoundlistOption}) and AR's/AP's {@code subLedgerPickerRow}, not three separate
+     * ones (generic mechanics belong in one utility, per this repo's own layering convention;
+     * see docs/conventions/utility-layering.md).
+     *
+     * <p>Generic on purpose: takes the boundlist's own root XPath as a plain {@code String} (each
+     * caller already has one — GV's {@code BOUNDLIST_ROOT}, AR/AP's inline
+     * {@code x-boundlist-floating} root) and the target option as a plain {@link By}, so the Next
+     * Page button below is scoped inside THAT specific boundlist and can never be confused with
+     * the main list-page grid's own, structurally-identical footer (both can coexist in the DOM
+     * at once).
+     *
+     * <p>Stops and fails clearly only once Next Page itself is confirmed absent/disabled — i.e.
+     * the last page was reached without a match — rather than on a fixed timeout that can't tell
+     * "still searching further pages" from "genuinely not present." {@code maxPages} is a bound
+     * on page COUNT (a sanity ceiling against a pathological infinite-paging state), not a
+     * disguised wait-longer timeout.
+     *
+     * @param boundlistRootXpath the open boundlist's own root XPath (e.g.
+     *                           {@code "//div[contains(@class,'x-boundlist-floating') and ...]"})
+     * @param option             the target option's locator, scoped inside that same boundlist
+     * @param logTag             label used in step logging and the eventual failure message
+     */
+    public static void clickBoundlistOptionAcrossPages(String boundlistRootXpath, By option, String logTag) {
+        By nextPageEnabled = By.xpath(boundlistRootXpath
+                + "//span[contains(@class,'x-tbar-page-next')]/ancestor::a[1][@aria-disabled='false']");
+        By nextPageDisabled = By.xpath(boundlistRootXpath
+                + "//span[contains(@class,'x-tbar-page-next')]/ancestor::a[1][@aria-disabled='true']");
+
+        int perPageProbeSeconds = 2;
+        int maxPages = 50;
+        for (int page = 1; page <= maxPages; page++) {
+            if (isElementPresent(option, perPageProbeSeconds)) {
+                click(option, WaitType.CLICKABLE, logTag);
+                return;
+            }
+            if (isElementPresent(nextPageEnabled, perPageProbeSeconds)) {
+                click(nextPageEnabled, WaitType.CLICKABLE, logTag + "_NEXT_PAGE");
+                JavascriptExecutorUtils.waitForExtJS();
+                continue;
+            }
+            boolean confirmedLastPage = isElementPresent(nextPageDisabled, 1);
+            throw new NoSuchElementException("[SeleniumUtils] " + logTag + ": option not found on page "
+                    + page + ", and Next Page is not enabled — "
+                    + (confirmedLastPage
+                        ? "reached the last page without a match."
+                        : "the boundlist/paging toolbar did not render as expected.")
+                    + " Locator: " + option);
+        }
+        throw new NoSuchElementException("[SeleniumUtils] " + logTag + ": exceeded " + maxPages
+                + " pages without finding " + option);
     }
 
     public static void clear(By by,String elementName){

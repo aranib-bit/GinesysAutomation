@@ -29,28 +29,49 @@ public interface IVoucherGridAction {
     }
 
     /**
-     * Locator matching this action's menu item ONLY when ExtJS currently renders it enabled —
-     * mirrors {@link com.gsl.pages.pagecomponent.Finance.Operations.Common.VoucherListFooterBase}'s
-     * proven {@code aria-disabled} pattern for the pagination toolbar's Next/Last/First/Previous
-     * controls, applied here to the Actions dropdown. Selenium's native {@code isEnabled()}/
-     * {@code elementToBeClickable} can't see ExtJS's own disabled styling (no HTML
-     * {@code disabled} attribute on a {@code <span>}/{@code <a>}), which is how a disabled "Edit"
-     * can otherwise be "clicked" as a silent no-op — see
-     * {@link com.gsl.pages.pagecomponent.Finance.Operations.Common.VoucherMainGridBase#clickGridAction}.
+     * Locator matching this action's menu item ONLY while the Actions dropdown is genuinely OPEN
+     * AND ExtJS currently renders the item enabled.
      *
-     * <p>TODO: inferred, not yet explicitly confirmed against the live DOM (same caveat as
-     * {@code VoucherListFooterBase#firstPageEnabledLocator} carries for its own inferred
-     * controls) — confirm the menu item's wrapping {@code <a>} actually carries
-     * {@code aria-disabled} the same way the pagination toolbar does.
+     * <p><b>History: a previous version of this locator dropped the {@code aria-disabled} check
+     * entirely, on a premise that a later run's DOM forensics disproved.</b> That version's
+     * reasoning was: five captured DOM snapshots across four runs (including one with the
+     * dropdown genuinely open) all showed {@code aria-disabled="false"} on
+     * {@code a.x-menu-item-link}, so the attribute looked like a permanent no-op. But every one of
+     * those five captures was taken <i>after</i> a selection had already succeeded (the menu was
+     * captured post-success, action already enabled by then) — none was a genuine in-progress
+     * failure. A later run's {@code ActionsMenu_*.html} captures, taken at the actual moment of
+     * an "Actions→Edit/Delete disabled" failure, showed the opposite: {@code aria-disabled="true"}
+     * genuinely present on every row-dependent item (Edit/Delete/Release/Revert/Print), with only
+     * the row-independent "Export to Excel" enabled — and the voucher grid's own row, in that same
+     * capture, explicitly carried {@code aria-describedby="...-cell-description-not-selected"}, no
+     * {@code aria-selected}, no {@code x-grid-item-selected}. So the attribute is real and
+     * correctly tracks row selection; the root cause of those failures was the grid genuinely
+     * losing its selection between the checkbox check and the Actions click, not a broken
+     * disabled-state signal. (A stray "selected" row elsewhere in those same captures belonged to
+     * an unrelated navigation-tree component — a coincidence worth remembering when reading this
+     * app's DOM: always confirm which {@code data-boundview}/component a "selected" match actually
+     * belongs to before trusting it.)
+     *
+     * <p>What stays from that intermediate version: open-vs-closed lives on the menu container,
+     * which carries the distinguishing {@code actionmenu} class (exactly one such element in the
+     * DOM) and flips {@code aria-hidden}/{@code aria-expanded}/inline {@code visibility} together.
+     * Scoping to it excludes the leftover grid column-filter flyouts, which ExtJS keeps in the DOM
+     * via {@code visibility:hidden} rather than removing (one of them holds the "Exact match…"
+     * field from the row-search step) — the exact ambiguity that made an even earlier generic
+     * "last open {@code x-menu}" check worthless.
+     *
+     * <p>Menu items render as {@code div.x-menu-item > a.x-menu-item-link > span.x-menu-item-text}
+     * — there is no {@code <li>} in this markup, and the {@code aria-disabled} attribute lives on
+     * the {@code <a>}, not the {@code <span>}.
+     *
+     * <p><b>Caveat:</b> the {@code actionmenu} container does not exist in the DOM at all until the
+     * Actions button is clicked the first time (ExtJS lazy render). This is therefore a valid
+     * "wait until the dropdown is open and this item enabled" check, never a pre-existence check.
      */
-    default By enabledLocator() {
-        return By.xpath("//span[text()='" + label() + "']/ancestor::a[1][@aria-disabled='false']");
-    }
-
-    /** Locator matching this action's menu item ONLY when ExtJS currently renders it disabled —
-     *  see {@link #enabledLocator()}. */
-    default By disabledLocator() {
-        return By.xpath("//span[text()='" + label() + "']/ancestor::a[1][@aria-disabled='true']");
+    default By itemInOpenMenuLocator() {
+        return By.xpath("//div[contains(@class,'actionmenu')][@aria-expanded='true']"
+                + "//span[normalize-space()='" + label() + "']"
+                + "/ancestor::a[1][@aria-disabled='false']");
     }
 
     /**

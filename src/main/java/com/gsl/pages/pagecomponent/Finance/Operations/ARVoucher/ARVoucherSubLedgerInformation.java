@@ -288,11 +288,15 @@ public class ARVoucherSubLedgerInformation extends VoucherSubLedgerInformationBa
         SeleniumUtils.sendKeys(comboInput, WaitType.VISIBLE, subledgerName, "SL_COMBO_INPUT");
         JavascriptExecutorUtils.waitForExtJS();
 
+        // Pages forward through the picker's own Next-Page control if the exact match isn't on
+        // the currently-rendered page — this is the same paged grid-style boundlist as GV's own
+        // General Ledger/Sub Ledger picker (confirmed live there, run 20260903_100559,
+        // FIN-GV-EDIT-DETAIL-02, and structurally identical here: a live-typed CONTAINS-match
+        // search returning rows across a real First/Previous/Next/Last toolbar). See
+        // SeleniumUtils.clickBoundlistOptionAcrossPages's own Javadoc.
         By option = subLedgerPickerRow(subledgerName, id);
-        WaitUtils.fluentWaitBuilder().until(driver -> {
-            driver.findElement(option).click();
-            return true;
-        });
+        SeleniumUtils.clickBoundlistOptionAcrossPages(
+                "//div[contains(@class,'x-boundlist-floating')]", option, "SL_OPTION_" + subledgerName);
         ExtentLogger.info("SL_OPTION_" + subledgerName + " is clicked successfully");
         JavascriptExecutorUtils.waitForExtJS();
         JavascriptExecutorUtils.waitForPageLoad();
