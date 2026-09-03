@@ -30,19 +30,50 @@ import org.openqa.selenium.TimeoutException;
  */
 public final class LoaderStillInProgressException extends TimeoutException {
 
-    public LoaderStillInProgressException(String actionName, long timeoutSeconds, Throwable cause) {
-        super(buildMessage(actionName, timeoutSeconds), cause);
+    /**
+     * @param actionName      what was being waited for — pass the CALLER's own context label where
+     *                        one exists, not a generic constant; a failure that only ever says
+     *                        "Loader wait (ExtJS mask)" is indistinguishable between call sites.
+     * @param timeoutSeconds  the configured ceiling for this wait
+     * @param elapsedMs       how long the wait ACTUALLY ran before aborting, or a negative value if
+     *                        the caller genuinely doesn't know
+     */
+    public LoaderStillInProgressException(String actionName, long timeoutSeconds, long elapsedMs,
+                                          Throwable cause) {
+        super(buildMessage(actionName, timeoutSeconds, elapsedMs), cause);
     }
 
-    private static String buildMessage(String actionName, long timeoutSeconds) {
+    /**
+     * Kept for callers that genuinely have no elapsed-time measurement. Prefer the 4-arg
+     * constructor: this overload can only print the configured ceiling, which is misleading
+     * whenever the wait aborted early (see {@link #buildMessage}).
+     */
+    public LoaderStillInProgressException(String actionName, long timeoutSeconds, Throwable cause) {
+        this(actionName, timeoutSeconds, -1L, cause);
+    }
+
+    /**
+     * Reports the REAL elapsed time, falling back to the configured ceiling only when the caller
+     * couldn't measure it.
+     *
+     * <p>This previously printed {@code timeoutSeconds} unconditionally and labelled it
+     * "Waited:" — so a wait that aborted after 6s still reported "Waited: 40 second(s)", because 40
+     * is simply {@code extjs.timeout}. That made every mask failure look like it had exhausted the
+     * full budget and made the number useless for judging whether the app was slow or the wait
+     * aborted early.
+     */
+    private static String buildMessage(String actionName, long timeoutSeconds, long elapsedMs) {
+        String waited = elapsedMs >= 0
+                ? String.format("%.1f second(s) actual (ceiling %d s)", elapsedMs / 1000.0, timeoutSeconds)
+                : String.format("unmeasured — configured ceiling was %d second(s)", timeoutSeconds);
         return String.format("""
                 Loader Still In Progress
 
                 Action:  %s
-                Waited:  %d second(s)
+                Waited:  %s
                 Detail:  An ExtJS loading mask (.x-mask / .x-mask-msg) was still visible when the \
                 wait expired — the application had not finished loading/processing in time.
                 """,
-                actionName, timeoutSeconds);
+                actionName, waited);
     }
 }

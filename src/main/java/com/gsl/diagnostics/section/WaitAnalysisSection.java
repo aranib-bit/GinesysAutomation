@@ -93,11 +93,17 @@ public final class WaitAnalysisSection implements DiagnosticSection {
                 .append(td(esc(r.waitLabel())))
                 .append(td(esc(r.waitMethod())))
                 .append(td(r.durationMs() + "ms"))
+                // Attempts > 1 means a retry loop consumed this time — a 120s wait made of
+                // 3 × 40s attempts is a very different diagnosis from one 120s wait, and that
+                // distinction was previously invisible here.
+                .append(td(r.attempts() > 1
+                        ? "<b style='color:#e65100;'>" + r.attempts() + "</b>"
+                        : String.valueOf(r.attempts())))
                 .append(td(slow ? "<b style='color:#b71c1c;'>YES</b>" : ""))
                 .append("</tr>");
         }
         String table = tableWrap("All Wait Records",
-                new String[]{"#", "Label", "Method", "Duration", "Slow?"},
+                new String[]{"#", "Label", "Method", "Duration", "Attempts", "Slow?"},
                 rows.toString());
         return "<details style='margin-top:8px;'>"
                 + "<summary style='cursor:pointer;font-size:11px;font-weight:600;color:#444;'>"

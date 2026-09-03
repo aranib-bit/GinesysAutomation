@@ -6,6 +6,7 @@ import com.gsl.constants.FrameworkConstants;
 import com.gsl.driver.DriverManager;
 import com.gsl.enums.WaitType;
 import com.gsl.pages.enums.CommonButton;
+import com.gsl.reports.ReportLogger;
 import com.gsl.utils.Selenium.ActionUtils;
 import com.gsl.utils.Selenium.JavascriptExecutorUtils;
 import com.gsl.utils.Selenium.SeleniumUtils;
@@ -256,15 +257,38 @@ public class SelectDocumentPopup {
 
     private void waitForSelectDocGridLoaderToClear() {
         int maxRetries = ConfigFactory.getWaitConfig().selectDocLoaderMaxRetries();
+        long startMs = System.currentTimeMillis();
         for (int attempt = 1; attempt <= maxRetries; attempt++) {
             try {
                 WaitUtils.webDriverWait(ConfigFactory.getFinanceConfig().extjsTimeout())
                         .until(ExpectedConditions.invisibilityOfElementLocated(
                                 FrameworkConstants.getSelectDocGridLoader()));
+                com.gsl.reports.WaitDurationBuffer.record(
+                        "SelectDoc grid loader (before Select click)",
+                        System.currentTimeMillis() - startMs,
+                        "waitForSelectDocGridLoaderToClear", attempt);
                 return;
             } catch (TimeoutException te) {
-                if (attempt == maxRetries) throw te;
-                Log.warn("SelectDocumentPopup: loader still visible before Select click, attempt [{}], retrying...", attempt);
+                long elapsedMs = System.currentTimeMillis() - startMs;
+                if (attempt == maxRetries) {
+                    // Report the full picture before rethrowing: this loop can burn
+                    // maxRetries × extjsTimeout() (3 × 40s by default = 120s), and none of that
+                    // was previously visible in the HTML report — only in the SLF4J log file.
+                    // Also record it in the wait buffer (this loop bypassed WaitUtils'
+                    // recordIfEnabled entirely, so its time never reached Wait Analysis either).
+                    com.gsl.reports.WaitDurationBuffer.record(
+                            "SelectDoc grid loader (before Select click)", elapsedMs,
+                            "waitForSelectDocGridLoaderToClear", attempt);
+                    ReportLogger.warn("[Select-Doc Loader Retry " + attempt + "/" + maxRetries
+                            + "] loader still visible after " + elapsedMs + "ms total — giving up.");
+                    throw te;
+                }
+                // ReportLogger, not Log: Log.* is SLF4J-only and never reaches the Extent report,
+                // which is why these retries were invisible there while clickWithOverlayRetry's
+                // equivalent "[Overlay Retry N/M]" lines showed up fine.
+                ReportLogger.warn("[Select-Doc Loader Retry " + attempt + "/" + maxRetries
+                        + "] loader still visible before Select click after " + elapsedMs
+                        + "ms total — retrying.");
             }
         }
     }

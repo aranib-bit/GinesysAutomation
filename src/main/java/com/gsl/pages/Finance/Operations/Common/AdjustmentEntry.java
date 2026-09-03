@@ -12,6 +12,7 @@ import com.gsl.constants.FrameworkConstants;
 import com.gsl.driver.DriverManager;
 import com.gsl.pages.pagecomponent.Finance.Common.AdjustmentEntryParent;
 import com.gsl.reports.ExtentLogger;
+import com.gsl.reports.ReportLogger;
 import com.gsl.utils.Log;
 import com.gsl.utils.Selenium.ActionUtils;
 import com.gsl.utils.Selenium.JavascriptExecutorUtils;
@@ -115,14 +116,34 @@ public class AdjustmentEntry {
         Log.warn("AdjustmentEntry.selectDocument: grid diagnostics BEFORE loader wait — {}",
                 JavascriptExecutorUtils.getGridDiagnostics());
         int maxRetries = ConfigFactory.getWaitConfig().selectDocLoaderMaxRetries();
+        long loaderWaitStartMs = System.currentTimeMillis();
         for (int attempt = 1; attempt <= maxRetries; attempt++) {
             try {
                 WaitUtils.webDriverWait(ConfigFactory.getFinanceConfig().extjsTimeout())
                     .until(ExpectedConditions.invisibilityOfElementLocated(
                         FrameworkConstants.getSelectDocGridLoader()));
+                long elapsedMs = System.currentTimeMillis() - loaderWaitStartMs;
+                // Record into the wait buffer regardless: this loop calls WaitUtils.webDriverWait
+                // directly, bypassing recordIfEnabled, so its time never reached Wait Analysis.
+                com.gsl.reports.WaitDurationBuffer.record(
+                        "SelectDoc grid loader (adjustment entry)", elapsedMs,
+                        "AdjustmentEntry.selectDocument", attempt);
+                if (attempt > 1 || elapsedMs > 1000) {
+                    // Only worth a report line when the wait was non-trivial — otherwise this
+                    // fires on every fast, healthy call and just adds noise.
+                    ReportLogger.warn("[Select-Doc Loader] cleared at attempt " + attempt + "/"
+                            + maxRetries + " after " + elapsedMs + "ms total.");
+                }
                 Log.warn("AdjustmentEntry.selectDocument: loader gone at attempt [{}]", attempt);
                 break;
             } catch (TimeoutException te) {
+                long elapsedMs = System.currentTimeMillis() - loaderWaitStartMs;
+                // ReportLogger, not Log: Log.* is SLF4J-only and never reaches the Extent report,
+                // so this loop's retries — worth up to maxRetries × extjsTimeout() (3 × 40s = 120s
+                // by default) — were entirely invisible in the HTML report.
+                ReportLogger.warn("[Select-Doc Loader Retry " + attempt + "/" + maxRetries
+                        + "] loader still visible after " + elapsedMs + "ms total"
+                        + (attempt == maxRetries ? " — giving up." : " — retrying."));
                 if (attempt == maxRetries) throw te;
                 Log.warn("AdjustmentEntry.selectDocument: loader still visible after attempt [{}], retrying...", attempt);
             }

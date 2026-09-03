@@ -293,7 +293,7 @@ public final class WaitUtils {
     public static void waitForExtMask() {
         long startMs = System.currentTimeMillis();
         try {
-            waitForExtMaskInternal();
+            waitForExtMaskInternal("waitForExtMask", startMs);
         } finally {
             recordIfEnabled("waitForExtMask", startMs, "waitForExtMask");
         }
@@ -302,7 +302,11 @@ public final class WaitUtils {
     public static void waitForExtMask(String contextLabel) {
         long startMs = System.currentTimeMillis();
         try {
-            waitForExtMaskInternal();
+            // contextLabel is now FORWARDED into the failure diagnosis, not merely recorded in the
+            // wait buffer. It used to be dropped here, so every mask failure in the report read
+            // "Action: Loader wait (ExtJS mask)" regardless of which call site produced it —
+            // indistinguishable, and the single biggest reason these failures were hard to place.
+            waitForExtMaskInternal(contextLabel, startMs);
         } finally {
             recordIfEnabled(contextLabel, startMs, "waitForExtMask");
         }
@@ -372,18 +376,37 @@ public final class WaitUtils {
     /**
      * Core mask-wait logic — shared by {@link #waitForExtMask()} and
      * {@link #waitForExtJsApp()} to avoid double-counting in the wait buffer.
+     *
+     * @param actionLabel the CALLER's own context label, forwarded into the failure diagnosis so
+     *                    the report names the actual call site instead of a generic constant
+     * @param startMs     when the wait began, so the failure can report REAL elapsed time
      */
-    private static void waitForExtMaskInternal() {
+    private static void waitForExtMaskInternal(String actionLabel, long startMs) {
         try {
             webDriverWait(extJsTimeout()).until(driver -> !isGenuineMaskVisible(driver));
         } catch (TimeoutException e) {
+            long elapsedMs = System.currentTimeMillis() - startMs;
             boolean dialogBlocking = !DriverManager.getDriver()
                     .findElements(By.xpath(
                             "//div[contains(@class,'x-message-box') and not(contains(@class,'x-hide-display'))]"))
                     .isEmpty();
-            if (dialogBlocking) return;
-            throw PopupMonitor.diagnoseFailure(e, "Loader wait (ExtJS mask)", extJsTimeout());
+            if (dialogBlocking) {
+                // Previously a bare `return` — completely silent. A mask wait that burned its full
+                // budget and then gave up because a dialog was on screen left NO trace anywhere in
+                // the report, so that time simply vanished from the record. Still non-throwing
+                // (a blocking dialog is a legitimate reason to stop waiting), but no longer silent.
+                ReportLogger.warn("Loader wait [" + actionLabel + "] gave up after " + elapsedMs
+                        + "ms — an x-message-box dialog is on screen, so the mask may never clear "
+                        + "until it is dismissed. Not failing the wait.");
+                return;
+            }
+            throw PopupMonitor.diagnoseFailure(e, actionLabel, extJsTimeout(), elapsedMs);
         }
+    }
+
+    /** Back-compat overload for callers with no label/timing of their own. */
+    private static void waitForExtMaskInternal() {
+        waitForExtMaskInternal("Loader wait (ExtJS mask)", System.currentTimeMillis());
     }
 
     public static void waitForExtJsApp() {
@@ -524,8 +547,15 @@ public final class WaitUtils {
                     Duration.ofSeconds(extJsTimeout()),
                     Duration.ofMillis(ConfigFactory.getWaitConfig().pollingMillis()))
                     .until(driver -> !isGenuineMaskVisible(driver));
-        } catch (Exception ignored) {
-            // best-effort: a stuck/zero-size mask must never fail the test
+        } catch (Exception e) {
+            // best-effort: a stuck/zero-size mask must never fail the test — but "never fails" is
+            // not the same as "never reports". This used to be `catch (Exception ignored) {}`, so
+            // a wait that burned the full extJsTimeout() ceiling (40s by default) produced ZERO
+            // output anywhere in the HTML report. That silence is a large part of why mask-related
+            // slowness looked like it "sometimes" logged and sometimes didn't.
+            ReportLogger.warn("Loader wait [" + contextLabel + "] (best-effort) gave up after "
+                    + (System.currentTimeMillis() - startMs) + "ms with the mask still visible — "
+                    + "continuing without failing. (" + e.getClass().getSimpleName() + ")");
         } finally {
             recordIfEnabled(contextLabel, startMs, "waitForExtMaskBestEffort");
         }
@@ -548,8 +578,14 @@ public final class WaitUtils {
                     .ignoring(NoSuchElementException.class)
                     .ignoring(StaleElementReferenceException.class)
                     .until(driver -> !isGenuineMaskVisible(driver));
-        } catch (Exception ignored) {
-            // best-effort: timed-out mask must never fail the test
+        } catch (Exception e) {
+            // best-effort: timed-out mask must never fail the test — but see
+            // waitForExtMaskBestEffort above: silence here hid up to 10s of post-save mask time
+            // from the report on exactly the step ("Verify Save Result") where that delay matters
+            // most for diagnosing a slow/failed save.
+            ReportLogger.warn("Post-save loader wait [" + contextLabel + "] gave up after "
+                    + (System.currentTimeMillis() - startMs) + "ms with the mask still visible — "
+                    + "continuing without failing. (" + e.getClass().getSimpleName() + ")");
         } finally {
             recordIfEnabled(contextLabel, startMs, "waitForPostSaveMask");
         }

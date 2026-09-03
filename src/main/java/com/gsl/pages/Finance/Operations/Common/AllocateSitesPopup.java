@@ -129,26 +129,21 @@ public class AllocateSitesPopup {
      * have worked.
      */
     public AllocateSitesPopup searchSite(String siteName) {
-        // Clear the popup's own Site field FIRST. commitSiteAllocations reuses one
-        // AllocateSitesPopup instance for every allocation on a line, so this field arrives
-        // holding the PREVIOUS allocation's site — and if the picker's OK then fails to write a
-        // new value, that stale value is what verifySiteCommitted reads back. Confirmed live
-        // (FIN-GV-ADD-COMBO-08, seen again in run 20260902_224915): the field held
-        // 'HAPPY SPROUTS-KP Road' — a real site from an earlier allocation — while we were
-        // selecting 'Hena Embroidery', which is why the failure looked like a wrong-row click
-        // rather than a no-op. Clearing first makes the two cases distinguishable (empty = OK
-        // never wrote anything; non-empty and wrong = the picker really did select the wrong row)
-        // and removes the false-pass risk where a carried-over value happens to equal the site we
-        // wanted anyway.
-        try {
-            SeleniumUtils.clear(SITE_SEARCH_INPUT, "AllocateSites_SiteSearch_PreClear");
-        } catch (Exception e) {
-            // Non-fatal: the field may legitimately be empty/not-yet-rendered on the first
-            // allocation of a line. The picker selection below is what actually sets the value.
-            ExtentLogger.info("[AllocateSites] Pre-clear of the Site field skipped ("
-                    + e.getClass().getSimpleName() + ") — continuing to the picker.");
-        }
-
+        // REVERTED (Round 7): a previous version cleared this popup's own Site field here first,
+        // and probed the picker row for `x-grid-item-selected` before pressing OK, on the theory
+        // that a stale value from the PREVIOUS allocation on the same reused popup instance was
+        // what verifySiteCommitted read back. Both additions were removed because the live
+        // evidence refuted the theory and the change regressed two tests:
+        //   * FIN-GV-ADD-COMBO-07 and -08 both PASSED in run 20260903_100559 (pre-change) and
+        //     both FAILED in run 20260903_120345 (post-change) with the site-selection error.
+        //   * The pre-clear's own read-back disproved its premise: the field was cleared and STILL
+        //     read 'HAPPY SPROUTS-KP Road' across 17 polls. So the value is not a leftover this
+        //     code can clear — either the app rewrites it, or (most likely) SeleniumUtils.clear()'s
+        //     Ctrl+A+DELETE is a no-op against a read-only ExtJS picklist input, leaving only the
+        //     extra interaction's side effects behind.
+        // Deliberately back to the shape that had these two tests green: drive the picker, then let
+        // verifySiteCommitted's poll-until-match (Round 1) be the single authoritative check.
+        //
         // clickWithStaleRetry/sendKeysWithStaleRetry, not the plain variants: this flow is the
         // most DOM-churning interaction in the whole GV UI (nested picker dialog opens, a
         // server-reloaded search grid, a result-row click, an OK click that closes the dialog and
@@ -164,21 +159,6 @@ public class AllocateSitesPopup {
         WaitUtils.webDriverWait(ConfigFactory.getWaitConfig().popupWaitSeconds())
                 .until(ExpectedConditions.visibilityOfElementLocated(row));
         SeleniumUtils.clickWithStaleRetry(row, WaitType.CLICKABLE, "AllocateSites_SiteRow_" + siteName);
-
-        // Confirm the row click actually REGISTERED as a selection before pressing OK — the same
-        // lesson RC-1 taught on the Is-Reversal picker: a click that throws nothing is not proof
-        // the widget accepted it, and OK reads the picker grid's selection, not the last thing
-        // clicked. `x-grid-item-selected` on the row's <table> wrapper is this app's confirmed
-        // selected-row signal (verified in captured grid DOM). Logged rather than thrown: this
-        // specific picker grid's markup hasn't been DOM-confirmed, so a missing signal must not
-        // become a new hard failure — verifySiteCommitted below remains the authoritative check.
-        if (!SeleniumUtils.isElementPresent(
-                By.xpath(String.format(PICKER_ROW_XPATH, siteName)
-                        + "/ancestor::table[1][contains(@class,'x-grid-item-selected')]"), 2)) {
-            ExtentLogger.info("[AllocateSites] Row '" + siteName + "' did not report as selected "
-                    + "(x-grid-item-selected) after the click — pressing OK anyway; "
-                    + "verifySiteCommitted will catch it if the selection did not take.");
-        }
 
         SeleniumUtils.clickWithStaleRetry(PICKER_OK_BUTTON, WaitType.CLICKABLE, "AllocateSites_SitePickerOK");
         JavascriptExecutorUtils.waitForExtJS();

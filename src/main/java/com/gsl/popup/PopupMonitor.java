@@ -114,6 +114,18 @@ public final class PopupMonitor {
      *         can write {@code throw PopupMonitor.diagnoseFailure(e, "...", seconds);}
      */
     public static RuntimeException diagnoseFailure(RuntimeException original, String actionName, long timeoutSeconds) {
+        return diagnoseFailure(original, actionName, timeoutSeconds, -1L);
+    }
+
+    /**
+     * Overload that also carries the REAL elapsed wait time, so
+     * {@link LoaderStillInProgressException}'s "Waited:" line reports what actually happened
+     * rather than just the configured ceiling (a wait aborting at 6s used to report the full
+     * 40s). Callers that can measure their own elapsed time should prefer this; the 3-arg form
+     * above stays for those that genuinely can't.
+     */
+    public static RuntimeException diagnoseFailure(RuntimeException original, String actionName,
+                                                   long timeoutSeconds, long elapsedMs) {
         if (ConfigFactory.getWaitConfig().popupDetectionEnabled()) {
             PopupResult popup = PopupHandler.detectPopup();
             if (popup != null) {
@@ -131,7 +143,7 @@ public final class PopupMonitor {
         }
 
         if (WaitUtils.isExtMaskPresent(DriverManager.getDriver())) {
-            throw new LoaderStillInProgressException(actionName, timeoutSeconds, original);
+            throw new LoaderStillInProgressException(actionName, timeoutSeconds, elapsedMs, original);
         }
 
         throw original;

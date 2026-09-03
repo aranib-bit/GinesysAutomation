@@ -186,7 +186,7 @@ public class TestListener implements ITestListener, ISuiteListener {
         TestContextManager.setEnv(ConfigFactory.getConfig().env());
         com.gsl.reports.ActionTrailBuffer.clear();
         StepDurationBuffer.clear();
-        WaitDurationBuffer.clear();
+        WaitDurationBuffer.startNewTest();   // preserves @BeforeMethod/login waits as "[pre-test]" instead of dropping them
         RetryHistoryBuffer.clear();
         PopupTrailBuffer.clear();
         Log.info("TEST STARTED: {}", methodName);

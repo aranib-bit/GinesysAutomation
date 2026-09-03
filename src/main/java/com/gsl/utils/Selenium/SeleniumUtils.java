@@ -364,10 +364,31 @@ public class SeleniumUtils {
                 + " pages without finding " + option);
     }
 
-    public static void clear(By by,String elementName){
+    /**
+     * Clears a field via Ctrl+A then DELETE, and logs the outcome.
+     *
+     * <p>The log line is not cosmetic: {@code elementName} used to be accepted and silently
+     * ignored, which made this method's effect completely unobservable in the HTML report. That
+     * cost a full investigation round — a caller passed {@code "AllocateSites_SiteSearch_PreClear"}
+     * expecting to see it in the report, and its absence was initially read as "the clear never
+     * ran" when in fact it ran every time and simply never logged.
+     *
+     * <p>Also logs the value that was actually there beforehand, because Ctrl+A+DELETE is a
+     * <b>no-op on a read-only input</b> (e.g. an ExtJS picklist field whose value only the picker
+     * may write) — in that case this method succeeds, changes nothing, and only the before/after
+     * values reveal it.
+     */
+    public static void clear(By by, String elementName) {
         WebElement element = waitUntilElementVisible(by);
+        String before = element.getAttribute("value");
         element.sendKeys(Keys.chord(Keys.CONTROL, "a"));
         element.sendKeys(Keys.DELETE);
+        String after = element.getAttribute("value");
+        ExtentLogger.info("Cleared " + elementName + " — value before: '" + before + "', after: '"
+                + after + "'"
+                + (after != null && !after.isEmpty() && after.equals(before)
+                    ? " (UNCHANGED — the field is likely read-only; Ctrl+A+DELETE had no effect)"
+                    : ""));
     }
     public static String getAttribute(By by, String attributeName, String elementName) {
         WebElement element = waitUntilElementVisible(by);
