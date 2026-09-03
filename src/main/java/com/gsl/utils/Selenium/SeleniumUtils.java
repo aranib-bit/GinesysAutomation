@@ -614,6 +614,11 @@ public class SeleniumUtils {
                 element.click();
                 return; // clicked successfully
             } catch (ElementNotInteractableException e) {
+                // Note: ElementClickInterceptedException (the exception ChromeDriver actually
+                // throws for "another element would receive the click", e.g. an x-mask overlay)
+                // is itself a subclass of ElementNotInteractableException in this Selenium
+                // version, so this one catch already covers both — confirmed by the compiler
+                // when a redundant explicit multi-catch was tried here.
                 if (attempt > maxRetries) {
                     Log.error("[OVERLAY-RETRY] '{}' still intercepted after {} retr{}. Giving up.",
                             elementName, maxRetries, maxRetries == 1 ? "y" : "ies");

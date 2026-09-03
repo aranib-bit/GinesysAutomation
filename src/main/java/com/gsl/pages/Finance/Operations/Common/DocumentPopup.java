@@ -11,6 +11,7 @@ import com.gsl.reports.ReportLogger;
 import com.gsl.utils.Selenium.SeleniumUtils;
 import com.gsl.utils.Selenium.WaitUtils;
 import org.openqa.selenium.By;
+import org.openqa.selenium.TimeoutException;
 import org.openqa.selenium.WebDriver;
 import org.openqa.selenium.WebElement;
 import org.openqa.selenium.support.ui.ExpectedConditions;
@@ -248,7 +249,29 @@ public class DocumentPopup {
         WaitUtils.waitForExtMask("post-save-messagebox-wait");
 
         System.out.println("Waiting for message box after save");
-        WaitUtils.fluentWaitBuilder().until(ExpectedConditions.visibilityOfElementLocated(Loc.MESSAGE_TEXT));
+        try {
+            WaitUtils.fluentWaitBuilder().until(ExpectedConditions.visibilityOfElementLocated(Loc.MESSAGE_TEXT));
+        } catch (TimeoutException initialTimeout) {
+            // Round 12: a single ~30s wait for the message box's own visibility can still race an
+            // ExtJS Window.show()/afterShow sequence that stalls even after the mask above has
+            // genuinely cleared — confirmed live, run 20260904_001518, FIN-GV-ADD-COMBO-01/-05:
+            // both timed out here, yet the DOM capture taken moments later showed messagebox-1001
+            // already present — the same "backdrop drawn but window never revealed" pattern found
+            // for this exact element in an earlier run's forensics. Mirrors the already-proven
+            // initial-wait-plus-bounded-shorter-polls shape (the ExtJS mask retry) via the shared
+            // act-and-confirm-stable idiom — there is no action to redo here (re-clicking Save
+            // would risk a double-submit), so each attempt is just a short best-effort re-settle
+            // before re-checking visibility.
+            boolean appeared = SeleniumUtils.actAndConfirmStable(
+                    () -> WaitUtils.waitForExtMaskBestEffort("post-save-messagebox-wait-retry"),
+                    () -> SeleniumUtils.isElementPresent(Loc.MESSAGE_TEXT, 5),
+                    200L, 3, "post-save-messagebox-visibility");
+            if (!appeared) {
+                throw initialTimeout;
+            }
+            ReportLogger.warn("Post-save message box appeared on a follow-up poll after the initial "
+                    + "wait timed out — a genuinely slow ExtJS render, not a lost save.");
+        }
         System.out.println("Messagebox is now visible");
 
         // If the (role-dependent) release-after-save confirmation is showing, click No —
