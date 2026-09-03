@@ -15,6 +15,7 @@ import org.openqa.selenium.WebDriver;
 import org.testng.ITestResult;
 
 import java.util.List;
+import java.util.Optional;
 
 /**
  * Lightweight, immutable evidence holder consumed by {@link RootCauseClassifier}.
@@ -26,7 +27,9 @@ import java.util.List;
  *       exception type + message pattern);</li>
  *   <li>failed HTTP requests (status &ge; 400) — read from the in-memory network capture, free;</li>
  *   <li>critical JS errors — a single forced {@link AdvancedLogFetcher#fetchLogs()} round-trip
- *       (low-yield in this app, but requested) plus the reused {@link JsErrorClassificationEngine};</li>
+ *       (low-yield in this app, but requested) plus the reused {@link JsErrorClassificationEngine},
+ *       filtered to only the one (if any) temporally correlated with this failure — see
+ *       {@link #JS_ERROR_CORRELATION_WINDOW_MS};</li>
  *   <li>whether an ExtJS mask is currently visible;</li>
  *   <li>the last recorded action-trail step.</li>
  * </ul>
@@ -34,9 +37,21 @@ import java.util.List;
  */
 public final class RootCauseInputs {
 
+    /**
+     * Round 11 (§22): how close (before "now", the moment evidence is collected — right after the
+     * failure) a CRITICAL JS error's own timestamp must be for it to be treated as a candidate
+     * cause. Confirmed live (run 20260903_173520) that without this, a JS error from 68 seconds
+     * earlier — recurring harmlessly in dozens of historical runs, including passing tests — was
+     * mis-attributed as the cause of an unrelated `TimeoutException`. Not exposed as a wait
+     * threshold (per feedback_no_threshold_masking) — this is a diagnostics-correlation window,
+     * not a wait ceiling; it never makes a test wait longer or pass/fail differently.
+     */
+    private static final long JS_ERROR_CORRELATION_WINDOW_MS = 15_000;
+
     private final Throwable                 throwable;
     private final List<NetworkLogRecord>    failedRequests;
     private final List<BrowserLogRecord>    criticalJsLogs;
+    private final BrowserLogRecord          correlatedJsError; // null if none within the recency window
     private final JsErrorClassification     jsClassification;
     private final boolean                   extMaskPresent;
     private final String                    failedStep;
@@ -44,15 +59,17 @@ public final class RootCauseInputs {
     private RootCauseInputs(Throwable throwable,
                             List<NetworkLogRecord> failedRequests,
                             List<BrowserLogRecord> criticalJsLogs,
+                            BrowserLogRecord correlatedJsError,
                             JsErrorClassification jsClassification,
                             boolean extMaskPresent,
                             String failedStep) {
-        this.throwable        = throwable;
-        this.failedRequests   = failedRequests;
-        this.criticalJsLogs   = criticalJsLogs;
-        this.jsClassification = jsClassification;
-        this.extMaskPresent   = extMaskPresent;
-        this.failedStep       = failedStep;
+        this.throwable         = throwable;
+        this.failedRequests    = failedRequests;
+        this.criticalJsLogs    = criticalJsLogs;
+        this.correlatedJsError = correlatedJsError;
+        this.jsClassification  = jsClassification;
+        this.extMaskPresent    = extMaskPresent;
+        this.failedStep        = failedStep;
     }
 
     public static RootCauseInputs collect(ITestResult result) {
@@ -81,13 +98,23 @@ public final class RootCauseInputs {
             }
         }
 
-        JsErrorClassification jsClass = JsErrorClassificationEngine.classifyFirst(critical);
+        // Round 11 (§22): only a JS error temporally correlated with THIS failure is a candidate
+        // cause — see JS_ERROR_CORRELATION_WINDOW_MS's Javadoc. "Now" is captured right here,
+        // immediately after the forced log fetch above, since collect() itself runs right after
+        // the failure (TestListener.onTestFailure(), before the full diagnostics bundle).
+        long collectedAtMs = System.currentTimeMillis();
+        BrowserLogRecord correlated = JsErrorClassificationEngine
+                .mostRecentWithin(critical, collectedAtMs, JS_ERROR_CORRELATION_WINDOW_MS)
+                .orElse(null);
+        JsErrorClassification jsClass = (correlated != null)
+                ? JsErrorClassificationEngine.classify(correlated)
+                : JsErrorClassification.unknown();
         boolean mask = WaitUtils.isExtMaskPresent(driver);
 
         List<String> trail = ActionTrailBuffer.getForDisplay();
         String step = (trail == null || trail.isEmpty()) ? "" : trail.get(trail.size() - 1);
 
-        return new RootCauseInputs(t, failed, critical, jsClass, mask, step);
+        return new RootCauseInputs(t, failed, critical, correlated, jsClass, mask, step);
     }
 
     private static WebDriver safeDriver() {
@@ -106,10 +133,19 @@ public final class RootCauseInputs {
         return (throwable != null && throwable.getMessage() != null) ? throwable.getMessage() : "";
     }
 
-    public boolean hasCriticalJsError() { return !criticalJsLogs.isEmpty(); }
+    /**
+     * Round 11 (§22): {@code true} only when a CRITICAL JS error was found temporally correlated
+     * with this failure (see {@link #JS_ERROR_CORRELATION_WINDOW_MS}) — NOT merely "were any
+     * critical JS errors logged anywhere during this test." A stale, unrelated error earlier in
+     * the test no longer causes {@link RootCauseClassifier} to attribute the failure to it.
+     */
+    public boolean hasCriticalJsError() { return correlatedJsError != null; }
 
+    /** The message of the temporally-correlated JS error (see {@link #hasCriticalJsError()}) —
+     *  empty when none was found within the correlation window, even if uncorrelated ones exist
+     *  in {@link #criticalJsLogs}. */
     public String firstCriticalJsErrorMessage() {
-        return criticalJsLogs.isEmpty() ? "" : criticalJsLogs.get(0).message();
+        return correlatedJsError != null ? correlatedJsError.message() : "";
     }
 
     public JsErrorClassification jsClassification() { return jsClassification; }

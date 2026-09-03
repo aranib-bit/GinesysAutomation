@@ -353,8 +353,14 @@ public final class NavigationUtils {
      *
      * <p>Purely additive diagnostics — never throws itself, and always rethrows the original
      * failure unchanged so no test's behavior changes.
+     *
+     * <p>Round 11 (§21): made {@code public} so {@code OperationsSideMenuComponent.clickMenuItem}
+     * can reuse it directly on its own retry-exhaustion path — that failure previously propagated
+     * straight out of {@code clickMenuItem} without ever reaching {@link #verifyAndRecordPage},
+     * the only place this used to be wired in, leaving that failure mode with no diagnostic
+     * capture at all.
      */
-    private static void logVerificationFailureDiagnostics(String pageLabel, RuntimeException failure) {
+    public static void logVerificationFailureDiagnostics(String pageLabel, RuntimeException failure) {
         try {
             WebDriver driver = DriverManager.getDriver();
             boolean maskVisible = WaitUtils.isExtMaskPresent(driver);

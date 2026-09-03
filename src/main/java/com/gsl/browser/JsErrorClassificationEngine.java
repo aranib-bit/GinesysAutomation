@@ -1,6 +1,8 @@
 package com.gsl.browser;
 
+import java.util.Comparator;
 import java.util.List;
+import java.util.Optional;
 
 /**
  * Classifies a CRITICAL BrowserLogRecord into a semantic root-cause category.
@@ -80,12 +82,39 @@ public final class JsErrorClassificationEngine {
         return JsErrorClassification.unknown();
     }
 
-    /** Classifies the first CRITICAL record in the list; returns UNKNOWN if none. */
+    /**
+     * Classifies the first CRITICAL record in the list; returns UNKNOWN if none.
+     *
+     * @deprecated Round 11 (§22): picking the FIRST critical error in a test's whole browser-log
+     * history has no relationship to WHEN a failure actually happened — confirmed live (run
+     * 20260903_173520) mis-attributing a `TimeoutException` to a JS error that last fired 68s
+     * earlier, during an unrelated step. That exact stale error recurs in dozens of historical
+     * runs (including passing tests) — it's normal background noise whenever it isn't actually
+     * close to the failure in time. Prefer {@link #mostRecentWithin(List, long, long)}, which only
+     * considers errors temporally correlated with the failure.
+     */
+    @Deprecated
     public static JsErrorClassification classifyFirst(List<BrowserLogRecord> logs) {
         return logs.stream()
                 .filter(r -> r.level() == LogSeverity.CRITICAL)
                 .findFirst()
                 .map(JsErrorClassificationEngine::classify)
                 .orElse(JsErrorClassification.unknown());
+    }
+
+    /**
+     * Round 11 (§22): the most recent CRITICAL record whose {@code timestamp} falls within
+     * {@code windowMs} of {@code nowMs} — {@code nowMs} should be the moment evidence was
+     * collected (i.e. right after the failure). Returns empty when no CRITICAL record falls
+     * inside the window, rather than falling back to an older, uncorrelated one — an app-side JS
+     * error that fired long before the failure and isn't temporally connected to it should not be
+     * treated as its cause.
+     */
+    public static Optional<BrowserLogRecord> mostRecentWithin(
+            List<BrowserLogRecord> logs, long nowMs, long windowMs) {
+        return logs.stream()
+                .filter(r -> r.level() == LogSeverity.CRITICAL)
+                .filter(r -> r.timestamp() > 0 && (nowMs - r.timestamp()) <= windowMs)
+                .max(Comparator.comparingLong(BrowserLogRecord::timestamp));
     }
 }

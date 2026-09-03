@@ -1,11 +1,14 @@
 package com.gsl.pages.pagecomponent.Finance.Operations;
 
+import com.gsl.constants.FrameworkConstants;
+import com.gsl.driver.RecoveryManager;
 import com.gsl.enums.ISubModule;
 import com.gsl.enums.LogCategory;
 import com.gsl.enums.WaitType;
 import com.gsl.pages.VerifiablePage;
 import com.gsl.reports.ReportLogger;
 import com.gsl.utils.Log;
+import com.gsl.utils.NavigationUtils;
 import com.gsl.utils.Selenium.SeleniumUtils;
 import org.openqa.selenium.By;
 
@@ -33,7 +36,33 @@ public class OperationsSideMenuComponent {
                 Log.warn("OperationsSideMenuComponent: '{}' didn't land after the first click ({}) — "
                                 + "retrying the click once", name, firstAttemptFailure.getClass().getSimpleName());
                 SeleniumUtils.click(itemLocator, WaitType.CLICKABLE, name, LogCategory.SUB_MENU);
-                verifiable.verifyOnThisPage(); // let this one's exception propagate if it fails again
+                try {
+                    verifiable.verifyOnThisPage();
+                } catch (RuntimeException secondAttemptFailure) {
+                    // Round 11 (§21, run 20260903_173520): the identical two-click retry above still
+                    // failed 30s+30s on a live run — a mechanically identical second attempt cannot
+                    // recover a condition still true a moment later. Two real gaps closed here rather
+                    // than adding a third identical attempt (which would just be a longer blind wait):
+                    // 1. Capture the same diagnostics NavigationUtils.verifyAndRecordPage already
+                    //    provides one layer up — never reached before, since this exception used to
+                    //    propagate straight past it.
+                    // 2. Escalate through RecoveryManager's refresh+restore, the same accepted recovery
+                    //    tier TopModuleMenuComponent.verifyDashboardLoaded already uses one level up
+                    //    for a structurally identical "page didn't render after the menu click" race —
+                    //    reusing a proven mechanism, not inventing a new one.
+                    NavigationUtils.logVerificationFailureDiagnostics(name, secondAttemptFailure);
+
+                    boolean recovered = RecoveryManager.refreshAndRestore(name, () -> {
+                        SeleniumUtils.elementDisappear(FrameworkConstants.getLoadingMask(), "Loading Mask");
+                        SeleniumUtils.elementDisappear(FrameworkConstants.getSplashScreen(), "SplashScreen");
+                        SeleniumUtils.click(itemLocator, WaitType.CLICKABLE, name, LogCategory.SUB_MENU);
+                        verifiable.verifyOnThisPage();
+                    });
+
+                    if (!recovered) {
+                        throw secondAttemptFailure; // let the original, now-diagnosed failure propagate
+                    }
+                }
             }
         }
         return page;
