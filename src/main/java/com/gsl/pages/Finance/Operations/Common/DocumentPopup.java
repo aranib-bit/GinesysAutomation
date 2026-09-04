@@ -19,6 +19,7 @@ import org.openqa.selenium.support.ui.WebDriverWait;
 
 import java.time.Duration;
 import java.util.List;
+import java.util.function.BooleanSupplier;
 
 public class DocumentPopup {
 
@@ -68,6 +69,43 @@ public class DocumentPopup {
         static final By MESSAGE_TEXT = By.xpath("//*[@id='messagebox-1001-msg']");
     }
 
+    /**
+     * Round 14 (§27a): shared retry wrapper for a wait on any {@code messagebox-1001}-family
+     * dialog — extracted from Round 13's one-off fix in {@link #waitForMessageBox()} so every
+     * bare wait on this same dialog family gets the same protection instead of just the one call
+     * site that happened to fail first (confirmed live, run 20260904_091356: {@link
+     * #clickProceed}'s IDENTICAL bare wait failed on FIN-GV-ADD-COMBO-03, one call away from the
+     * already-fixed {@link #waitForMessageBox()}).
+     *
+     * <p>Tries {@code initialWait} once at the caller's own timeout; on timeout, falls back to a
+     * bounded best-effort re-settle-and-recheck (mirrors the ExtJS mask retry's
+     * initial-wait-plus-bounded-polls shape) before re-throwing the ORIGINAL timeout if that also
+     * fails — the caller's own exception propagates unchanged, only the visibility bar gets a
+     * second, friendlier chance. No action to redo here (re-clicking Save/Proceed would risk a
+     * double-submit), so each retry attempt is just a short re-settle.
+     *
+     * @param initialWait the caller's own first-attempt wait (e.g.
+     *                     {@code () -> WaitUtils.fluentWaitBuilder().until(...)})
+     * @param recheck      a cheap, non-throwing re-check of the SAME condition (e.g.
+     *                     {@code () -> SeleniumUtils.isElementPresent(locator, 5)})
+     * @param logTag       identifies this call site in the retry warning/report
+     */
+    private static void waitForDialogWithRetry(Runnable initialWait, BooleanSupplier recheck, String logTag) {
+        try {
+            initialWait.run();
+        } catch (TimeoutException initialTimeout) {
+            boolean appeared = SeleniumUtils.actAndConfirmStable(
+                    () -> WaitUtils.waitForExtMaskBestEffort(logTag + "-retry"),
+                    recheck,
+                    200L, 3, logTag);
+            if (!appeared) {
+                throw initialTimeout;
+            }
+            ReportLogger.warn("[" + logTag + "] appeared on a follow-up poll after the initial wait "
+                    + "timed out — a genuinely slow ExtJS render, not a lost dialog.");
+        }
+    }
+
     // ── Save-confirmation path ────────────────────────────────────────────────
 
     /**
@@ -83,7 +121,10 @@ public class DocumentPopup {
         WebDriverWait wait = WaitUtils.webDriverWait();
 
         ReportLogger.business("Waiting for payment-info-check warning dialog (" + warning + ")...");
-        WaitUtils.fluentWaitBuilder().until(ExpectedConditions.visibilityOfElementLocated(warning.proceedLocator()));
+        waitForDialogWithRetry(
+                () -> WaitUtils.fluentWaitBuilder().until(ExpectedConditions.visibilityOfElementLocated(warning.proceedLocator())),
+                () -> SeleniumUtils.isElementPresent(warning.proceedLocator(), 5),
+                "payment-info-warning-visibility");
         ReportLogger.business("Payment info warning dialog confirmed visible for " + warning);
         com.gsl.reports.ActualResultsHolder.get().setUiPaymentInfoWarningAppeared(true);
 
@@ -179,7 +220,10 @@ public class DocumentPopup {
         WebDriverWait wait = WaitUtils.webDriverWait();
 
         ReportLogger.business("Waiting for validation error popup to appear...");
-        WaitUtils.fluentWaitBuilder().until(ExpectedConditions.visibilityOfElementLocated(Loc.MESSAGE_TEXT));
+        waitForDialogWithRetry(
+                () -> WaitUtils.fluentWaitBuilder().until(ExpectedConditions.visibilityOfElementLocated(Loc.MESSAGE_TEXT)),
+                () -> SeleniumUtils.isElementPresent(Loc.MESSAGE_TEXT, 5),
+                "verify-error-message-visibility");
 
         // Same role-dependent release-after-save confirmation waitForMessageBox()/clickProceed()
         // already handle — missing here caused a negative date-validation scenario (Edit's
@@ -210,9 +254,12 @@ public class DocumentPopup {
      */
     public String verifyErrorHeader(String expectedHeader) {
         WebDriver driver = DriverManager.getDriver();
-        WaitUtils.fluentWaitBuilder().until(
-                ExpectedConditions.visibilityOfElementLocated(By.id("messagebox-1001_header-title-textEl")));
-        String actual = driver.findElement(By.id("messagebox-1001_header-title-textEl")).getText().trim();
+        By headerLocator = By.id("messagebox-1001_header-title-textEl");
+        waitForDialogWithRetry(
+                () -> WaitUtils.fluentWaitBuilder().until(ExpectedConditions.visibilityOfElementLocated(headerLocator)),
+                () -> SeleniumUtils.isElementPresent(headerLocator, 5),
+                "verify-error-header-visibility");
+        String actual = driver.findElement(headerLocator).getText().trim();
         if (!actual.contains(expectedHeader)) {
             throw new AssertionError(
                     "Expected error popup header to contain: [" + expectedHeader + "] but got: [" + actual + "]");
@@ -249,29 +296,18 @@ public class DocumentPopup {
         WaitUtils.waitForExtMask("post-save-messagebox-wait");
 
         System.out.println("Waiting for message box after save");
-        try {
-            WaitUtils.fluentWaitBuilder().until(ExpectedConditions.visibilityOfElementLocated(Loc.MESSAGE_TEXT));
-        } catch (TimeoutException initialTimeout) {
-            // Round 12: a single ~30s wait for the message box's own visibility can still race an
-            // ExtJS Window.show()/afterShow sequence that stalls even after the mask above has
-            // genuinely cleared — confirmed live, run 20260904_001518, FIN-GV-ADD-COMBO-01/-05:
-            // both timed out here, yet the DOM capture taken moments later showed messagebox-1001
-            // already present — the same "backdrop drawn but window never revealed" pattern found
-            // for this exact element in an earlier run's forensics. Mirrors the already-proven
-            // initial-wait-plus-bounded-shorter-polls shape (the ExtJS mask retry) via the shared
-            // act-and-confirm-stable idiom — there is no action to redo here (re-clicking Save
-            // would risk a double-submit), so each attempt is just a short best-effort re-settle
-            // before re-checking visibility.
-            boolean appeared = SeleniumUtils.actAndConfirmStable(
-                    () -> WaitUtils.waitForExtMaskBestEffort("post-save-messagebox-wait-retry"),
-                    () -> SeleniumUtils.isElementPresent(Loc.MESSAGE_TEXT, 5),
-                    200L, 3, "post-save-messagebox-visibility");
-            if (!appeared) {
-                throw initialTimeout;
-            }
-            ReportLogger.warn("Post-save message box appeared on a follow-up poll after the initial "
-                    + "wait timed out — a genuinely slow ExtJS render, not a lost save.");
-        }
+        // Round 12/14: a single ~30s wait for the message box's own visibility can still race an
+        // ExtJS Window.show()/afterShow sequence that stalls even after the mask above has
+        // genuinely cleared — confirmed live, run 20260904_001518, FIN-GV-ADD-COMBO-01/-05: both
+        // timed out here, yet the DOM capture taken moments later showed messagebox-1001 already
+        // present — the same "backdrop drawn but window never revealed" pattern found for this
+        // exact element in an earlier run's forensics. Routed through the shared
+        // waitForDialogWithRetry (§27a) so this and every other bare wait on the same dialog
+        // family get identical protection.
+        waitForDialogWithRetry(
+                () -> WaitUtils.fluentWaitBuilder().until(ExpectedConditions.visibilityOfElementLocated(Loc.MESSAGE_TEXT)),
+                () -> SeleniumUtils.isElementPresent(Loc.MESSAGE_TEXT, 5),
+                "post-save-messagebox-visibility");
         System.out.println("Messagebox is now visible");
 
         // If the (role-dependent) release-after-save confirmation is showing, click No —
@@ -280,6 +316,11 @@ public class DocumentPopup {
 
         // If the app unexpectedly shows the payment-info-check warning dialog,
         // auto-detect AR vs AP variant and click the appropriate proceed button.
+        //
+        // Round 14 (§27a): narrowed from a blanket `catch (Exception)` — that swallowed a 30s
+        // TimeoutException from the post-click wait exactly as silently as it swallowed the
+        // expected "dialog isn't this one" NoSuchElementException from the initial read, so a
+        // genuine stall here left no trace anywhere in the report.
         try {
             String msgText = driver.findElement(Loc.MESSAGE_TEXT).getText();
             if (msgText != null && msgText.contains("instrument number")) {
@@ -289,11 +330,17 @@ public class DocumentPopup {
                         : PaymentInfoCheckWarning.AR_VOUCHER;
                 System.out.println("Payment info warning detected (" + detected + ") — clicking proceed");
                 SeleniumUtils.click(detected.proceedLocator(), WaitType.CLICKABLE, "PAYMENT_WARN_AUTO");
-                WaitUtils.fluentWaitBuilder().until(ExpectedConditions.visibilityOfElementLocated(Loc.MESSAGE_TEXT));
+                waitForDialogWithRetry(
+                        () -> WaitUtils.fluentWaitBuilder().until(ExpectedConditions.visibilityOfElementLocated(Loc.MESSAGE_TEXT)),
+                        () -> SeleniumUtils.isElementPresent(Loc.MESSAGE_TEXT, 5),
+                        "payment-info-auto-proceed-messagebox-visibility");
                 System.out.println("Messagebox visible after payment info proceed.");
             }
-        } catch (Exception e) {
+        } catch (org.openqa.selenium.NoSuchElementException e) {
             System.out.println("Instrument number dialog check skipped (non-fatal): " + e.getMessage());
+        } catch (TimeoutException e) {
+            ReportLogger.warn("Payment-info-warning auto-proceed: messagebox did not reappear after "
+                    + "clicking proceed (non-fatal, continuing): " + e.getMessage());
         }
 
         // If TDS Auto Journal prompt is showing, click Continue and wait for success popup.
@@ -324,7 +371,13 @@ public class DocumentPopup {
         System.out.println("Clicking proceed for " + warning + "...");
         SeleniumUtils.click(warning.proceedLocator(), WaitType.CLICKABLE, "PAYMENT_WARN_PROCEED");
 
-        WaitUtils.fluentWaitBuilder().until(ExpectedConditions.visibilityOfElementLocated(Loc.MESSAGE_TEXT));
+        // Round 14 (§27a): this bare wait on the SAME dialog waitForMessageBox() already
+        // retrofitted (Round 12/13) was the exact gap that failed FIN-GV-ADD-COMBO-03 (run
+        // 20260904_091356) — one call away from the already-fixed sibling.
+        waitForDialogWithRetry(
+                () -> WaitUtils.fluentWaitBuilder().until(ExpectedConditions.visibilityOfElementLocated(Loc.MESSAGE_TEXT)),
+                () -> SeleniumUtils.isElementPresent(Loc.MESSAGE_TEXT, 5),
+                "click-proceed-messagebox-visibility");
         System.out.println("Messagebox is now visible after payment info proceed.");
 
         // If the (role-dependent) release-after-save confirmation is showing, click No —

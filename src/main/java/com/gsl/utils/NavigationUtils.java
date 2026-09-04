@@ -282,7 +282,11 @@ public final class NavigationUtils {
      */
     private static void waitForSideMenuClickable() {
         SeleniumUtils.elementDisappear(FrameworkConstants.getLoadingMask(), "Loading Mask");
-        SeleniumUtils.elementDisappear(FrameworkConstants.getSplashScreen(), "SplashScreen");
+        // Round 14 (§27c): was a bare, single-attempt 30s elementDisappear on the same
+        // #splashScreen element WaitUtils.waitForSplashScreenClear() already handles properly
+        // (staged, logged) for waitForClickOverlay() — now calling that proven implementation
+        // directly instead of a weaker duplicate.
+        WaitUtils.waitForSplashScreenClear();
     }
 
     /**

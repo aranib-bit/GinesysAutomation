@@ -374,29 +374,107 @@ public final class JavascriptExecutorUtils {
         return getJsExecutor().executeScript(script, args);
     }
 
+    /**
+     * Round 14 (§27b): restructured to mirror {@code WaitUtils.waitForExtMaskInternal}'s
+     * already-proven staged shape — an initial {@code extJsTimeout()} wait (unchanged tier),
+     * then up to {@code mask.poll.max.retries} (default 4) further polls of {@code
+     * mask.poll.seconds} (default 15s) each, each logged individually, instead of one single
+     * 40s attempt with no retry timeline at all. This is the single most-called wait in the
+     * framework (196 call sites) and previously had NO retry and reported only the 3-arg
+     * {@code diagnoseFailure} (real elapsed time / attempt count always "unmeasured" / 1) —
+     * confirmed live, run 20260904_091356, FIN-GV-REVERT-01: {@code GeneralVoucherMainGrid
+     * .confirmRevert} calls this bare 5 times, and the failure read exactly "Waited: unmeasured
+     * — configured ceiling was 40 second(s)".
+     */
     public static void waitForExtJS() {
+        long startMs = System.currentTimeMillis();
+        int maxPolls = ConfigFactory.getWaitConfig().maskPollMaxRetries();
+        long pollSeconds = ConfigFactory.getWaitConfig().maskPollSeconds();
+        int attempts = 1;
+
+        if (waitForExtJSOnce(WaitUtils.extJsTimeoutSeconds())) {
+            return;
+        }
+        ReportLogger.warn(String.format(
+                "waitForExtJS: Ext not ready after %ds initial wait — polling up to %d more time(s) at %ds each…",
+                WaitUtils.extJsTimeoutSeconds(), maxPolls, pollSeconds));
+
+        for (int poll = 1; poll <= maxPolls; poll++) {
+            attempts = 1 + poll;
+            if (waitForExtJSOnce(pollSeconds)) {
+                ReportLogger.info(String.format("waitForExtJS: Ext ready on poll %d/%d", poll, maxPolls));
+                return;
+            }
+            ReportLogger.warn(String.format("waitForExtJS: Ext still not ready after poll %d/%d (%ds each)",
+                    poll, maxPolls, pollSeconds));
+        }
+
+        long elapsedMs = System.currentTimeMillis() - startMs;
+        throw PopupMonitor.diagnoseFailure(
+                new TimeoutException("Ext not ready (Ext.isReady && !Ajax.isLoading() && no masked "
+                        + "components) after " + attempts + " attempt(s)"),
+                "waitForExtJS", WaitUtils.extJsTimeoutSeconds(), elapsedMs, attempts);
+    }
+
+    /** Single genuinely-ready check, capped at {@code seconds} — never throws, returns
+     *  {@code false} on timeout so the caller's staged-poll loop can decide what's next. */
+    private static boolean waitForExtJSOnce(long seconds) {
         try {
-            WaitUtils.webDriverWait(WaitUtils.extJsTimeoutSeconds()).until(
+            WaitUtils.webDriverWait(seconds).until(
                     driver -> (Boolean) ((JavascriptExecutor) driver).executeScript(
                             "return !!(window.Ext && window.Ext.isReady && " +
                                     "!window.Ext.Ajax.isLoading() && " +
                                     "window.Ext.ComponentQuery.query('[isMasked=true]').length === 0);"
                     )
             );
+            return true;
         } catch (TimeoutException e) {
-            throw PopupMonitor.diagnoseFailure(e, "waitForExtJS", WaitUtils.extJsTimeoutSeconds());
+            return false;
         }
     }
 
+    /** Round 14 (§27b): same staged-poll restructure as {@link #waitForExtJS()}, for the same reasons. */
     public static void waitForExtLayout() {
+        long startMs = System.currentTimeMillis();
+        int maxPolls = ConfigFactory.getWaitConfig().maskPollMaxRetries();
+        long pollSeconds = ConfigFactory.getWaitConfig().maskPollSeconds();
+        int attempts = 1;
+
+        if (waitForExtLayoutOnce(WaitUtils.extJsTimeoutSeconds())) {
+            return;
+        }
+        ReportLogger.warn(String.format(
+                "waitForExtLayout: Ext layout not ready after %ds initial wait — polling up to %d more "
+                        + "time(s) at %ds each…",
+                WaitUtils.extJsTimeoutSeconds(), maxPolls, pollSeconds));
+
+        for (int poll = 1; poll <= maxPolls; poll++) {
+            attempts = 1 + poll;
+            if (waitForExtLayoutOnce(pollSeconds)) {
+                ReportLogger.info(String.format("waitForExtLayout: Ext layout ready on poll %d/%d", poll, maxPolls));
+                return;
+            }
+            ReportLogger.warn(String.format("waitForExtLayout: Ext layout still not ready after poll %d/%d (%ds each)",
+                    poll, maxPolls, pollSeconds));
+        }
+
+        long elapsedMs = System.currentTimeMillis() - startMs;
+        throw PopupMonitor.diagnoseFailure(
+                new TimeoutException("Ext layout not ready (window.Ext !== undefined && "
+                        + "Ext.ComponentManager.all.getCount() > 0) after " + attempts + " attempt(s)"),
+                "waitForExtLayout", WaitUtils.extJsTimeoutSeconds(), elapsedMs, attempts);
+    }
+
+    private static boolean waitForExtLayoutOnce(long seconds) {
         try {
-            WaitUtils.webDriverWait(WaitUtils.extJsTimeoutSeconds()).until(
+            WaitUtils.webDriverWait(seconds).until(
                     driver -> (Boolean) ((JavascriptExecutor) driver).executeScript(
                             "return window.Ext !== undefined && Ext.ComponentManager.all.getCount() > 0;"
                     )
             );
+            return true;
         } catch (TimeoutException e) {
-            throw PopupMonitor.diagnoseFailure(e, "waitForExtLayout", WaitUtils.extJsTimeoutSeconds());
+            return false;
         }
     }
 
@@ -414,9 +492,16 @@ public final class JavascriptExecutorUtils {
     }
 
     public static void waitForPageLoad() {
-        WaitUtils.webDriverWait(ConfigFactory.getWaitConfig().pageLoadTimeoutSeconds()).until(
-                driver -> ((JavascriptExecutor) driver).executeScript("return document.readyState").equals("complete")
-        );
+        // Round 14 (§27b): previously had NO try/catch at all — unlike every other wait in this
+        // file, a timeout here escaped as a bare Selenium TimeoutException with no popup
+        // diagnosis, no mask check, nothing. 50 call sites across the framework.
+        try {
+            WaitUtils.webDriverWait(ConfigFactory.getWaitConfig().pageLoadTimeoutSeconds()).until(
+                    driver -> ((JavascriptExecutor) driver).executeScript("return document.readyState").equals("complete")
+            );
+        } catch (TimeoutException e) {
+            throw PopupMonitor.diagnoseFailure(e, "waitForPageLoad", ConfigFactory.getWaitConfig().pageLoadTimeoutSeconds());
+        }
     }
 
     /**

@@ -138,9 +138,63 @@ public final class WaitUtils {
      * root cause on three different locators is enough to fix it here once, rather than waiting
      * for every remaining caller to fail separately first.
      */
+    /**
+     * Round 14 (§27c): {@code untilInvisible} was the only one of this class's five {@code
+     * until*} methods with neither a retry NOR {@link PopupMonitor#diagnoseFailure} — a timeout
+     * escaped as a bare, undiagnosed Selenium {@code TimeoutException}, despite this being the
+     * documented "single choke point behind {@code SeleniumUtils.elementDisappear(By, String)} —
+     * used at 30+ call sites". Confirmed live, run 20260904_091356, FIN-GV-ADD-MIXED-01/
+     * FIN-GV-ADD-COMBO-01: both died here, in {@code LoginPage.checkAuthenticationLoader}'s
+     * post-login loader wait, with no diagnosis and no retry chance.
+     *
+     * <p>Given the staged-poll shape (mirroring {@code WaitUtils.waitForExtMaskInternal}) already
+     * needs the caller-known default {@code timeout()} tier, it's added ONLY to this no-arg
+     * overload — the explicit-seconds overload below stays a single attempt (unchanged timing)
+     * since its many callers often pass a deliberately SHORT bounded probe (e.g. a 3s optional-
+     * popup check); multiplying an intentionally-short wait would be a real regression, not a fix.
+     * It still gets {@code diagnoseFailure} for consistent diagnosis.
+     */
     public static boolean untilInvisible(By by) {
         ReportLogger.uiAction("waitUntilInvisible {}", by);
-        return webDriverWait().until(driver -> !isGenuinelyVisible(driver, by));
+        long startMs = System.currentTimeMillis();
+        int maxPolls = ConfigFactory.getWaitConfig().maskPollMaxRetries();
+        long pollSeconds = ConfigFactory.getWaitConfig().maskPollSeconds();
+        long initialSeconds = ConfigFactory.getConfig().timeout();
+        int attempts = 1;
+
+        if (untilInvisibleOnce(by, initialSeconds)) {
+            return true;
+        }
+        ReportLogger.warn(String.format(
+                "waitUntilInvisible %s: still visible after %ds initial wait — polling up to %d more "
+                        + "time(s) at %ds each…",
+                by, initialSeconds, maxPolls, pollSeconds));
+
+        for (int poll = 1; poll <= maxPolls; poll++) {
+            attempts = 1 + poll;
+            if (untilInvisibleOnce(by, pollSeconds)) {
+                ReportLogger.info(String.format("waitUntilInvisible %s: cleared on poll %d/%d", by, poll, maxPolls));
+                return true;
+            }
+            ReportLogger.warn(String.format("waitUntilInvisible %s: still visible after poll %d/%d (%ds each)",
+                    by, poll, maxPolls, pollSeconds));
+        }
+
+        long elapsedMs = System.currentTimeMillis() - startMs;
+        throw PopupMonitor.diagnoseFailure(
+                new TimeoutException("Element still genuinely visible: " + by),
+                "waitUntilInvisible " + by, initialSeconds, elapsedMs, attempts);
+    }
+
+    /** Single genuinely-invisible check, capped at {@code seconds} — never throws, returns
+     *  {@code false} on timeout so the caller's staged-poll loop can decide what's next. */
+    private static boolean untilInvisibleOnce(By by, long seconds) {
+        try {
+            webDriverWait(seconds).until(driver -> !isGenuinelyVisible(driver, by));
+            return true;
+        } catch (TimeoutException e) {
+            return false;
+        }
     }
 
     /**
@@ -148,10 +202,17 @@ public final class WaitUtils {
      * instead of the default {@code timeout()} — for waits with a structurally different SLA
      * (e.g. {@code TopModuleMenuComponent.navigateToModule()}'s post-click "Loading Package"
      * module-bootstrap wait, which is a heavier one-off step than a routine mask clear).
+     * Deliberately single-attempt (see {@link #untilInvisible(By)}'s Javadoc for why) — now routed
+     * through {@link PopupMonitor#diagnoseFailure} for consistent diagnosis, matching this
+     * class's other {@code until*} methods.
      */
     public static boolean untilInvisible(By by, long seconds) {
         ReportLogger.uiAction("waitUntilInvisible {}s {}", seconds, by);
-        return webDriverWait(seconds).until(driver -> !isGenuinelyVisible(driver, by));
+        try {
+            return webDriverWait(seconds).until(driver -> !isGenuinelyVisible(driver, by));
+        } catch (TimeoutException e) {
+            throw PopupMonitor.diagnoseFailure(e, "waitUntilInvisible " + by, seconds);
+        }
     }
 
     /**
@@ -541,8 +602,15 @@ public final class WaitUtils {
      * splash screen that never clears is {@code click.overlay.retry.max} times this method's own
      * total wait — accepted deliberately (see {@code wait.properties}' comment on these keys)
      * in exchange for a full, logged timeline instead of a silent timeout.
+     *
+     * <p>Round 14 (§27c): made {@code public} — this staged, logged wait already existed but was
+     * reachable only from {@link #waitForClickOverlay()}, while {@code LoginPage},
+     * {@code IndexPage}, and {@code NavigationUtils} each carried their own BARE, single-attempt
+     * 30s wait on the exact same {@code #splashScreen} element via {@code SeleniumUtils
+     * .elementDisappear}. Exposed so those three sites call this proven implementation directly
+     * instead of duplicating a weaker one.
      */
-    private static void waitForSplashScreenClear() {
+    public static void waitForSplashScreenClear() {
         WaitConfig wc = ConfigFactory.getWaitConfig();
         long initialSeconds = wc.splashscreenInitialWaitSeconds();
         int maxPolls = wc.splashscreenPollMaxRetries();

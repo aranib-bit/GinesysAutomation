@@ -1,9 +1,9 @@
 package com.gsl.pages;
 
 import com.gsl.reports.ExtentLogger;
+import com.gsl.utils.Selenium.WaitUtils;
 import org.openqa.selenium.By;
 
-import static com.gsl.utils.Selenium.SeleniumUtils.elementDisappear;
 import static com.gsl.utils.Selenium.SeleniumUtils.sendKeys;
 
 public class IndexPage {
@@ -14,7 +14,9 @@ public class IndexPage {
 
 
     public IndexPage checksplashScreenstatus() {
-        elementDisappear(GINESYS_SPLASHSCREEN,"SplashScreen");
+        // Round 14 (§27c): was a bare, single-attempt 30s elementDisappear — now the same
+        // staged, logged wait waitForClickOverlay() already uses for this exact element.
+        WaitUtils.waitForSplashScreenClear();
         return this;
     }
 

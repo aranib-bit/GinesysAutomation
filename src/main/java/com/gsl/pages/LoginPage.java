@@ -7,6 +7,7 @@ import com.gsl.enums.WaitType;
 import com.gsl.pages.enums.CommonButton;
 import com.gsl.reports.ReportLogger;
 import com.gsl.reports.StepExecutor;
+import com.gsl.utils.Selenium.WaitUtils;
 import org.openqa.selenium.By;
 import org.openqa.selenium.ElementClickInterceptedException;
 import org.openqa.selenium.NoSuchElementException;
@@ -135,7 +136,9 @@ public class LoginPage {
     }
 
     private LoginPage checkSplashScreenLoader(){
-        elementDisappear(Loc.SPLASHSCREEN, "Application Loader");
+        // Round 14 (§27c): was a bare, single-attempt 30s elementDisappear — now the same
+        // staged, logged wait waitForClickOverlay() already uses for this exact element.
+        WaitUtils.waitForSplashScreenClear();
         return this;
     }
 

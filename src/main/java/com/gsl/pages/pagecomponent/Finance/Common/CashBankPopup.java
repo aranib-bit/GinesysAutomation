@@ -54,7 +54,18 @@ public class CashBankPopup {
         // (StaleElementReferenceException) AND the ExtJS loadmask still covering the row when the
         // click fires (ElementClickInterceptedException), which the previous hand-rolled loop
         // (stale-only catch, raw driver.findElement(...).click()) did not guard against.
-        SeleniumUtils.clickWithStaleRetry(selectionBy, WaitType.CLICKABLE, "CASHBANK_ROW_" + cashbankname);
+        //
+        // Round 14 (§26): also confirm the row is actually SELECTED in the grid's selection model
+        // before proceeding to OK — this popup drives the IDENTICAL widget (byte-identical row
+        // locator) as AllocateSitesPopup.searchSite, whose measured root cause applies here too:
+        // the picker can open showing this row from the unfiltered list before the async
+        // search-reload lands, so a click satisfied against that pre-reload row can be silently
+        // discarded. Re-click (fresh-resolved) until selection is confirmed, rather than clicking
+        // once and hoping — see SeleniumUtils.isRowSelected's Javadoc for the full mechanism.
+        SeleniumUtils.actAndConfirmStable(
+                () -> SeleniumUtils.clickWithStaleRetry(selectionBy, WaitType.CLICKABLE, "CASHBANK_ROW_" + cashbankname),
+                () -> SeleniumUtils.isRowSelected(selectionBy),
+                150L, 3, "CashBank_RowSelected_" + cashbankname);
         ExtentLogger.info("[CASHBANK SELECT] Selected | CashBank=" + cashbankname);
 
         SeleniumUtils.click(Loc.CASHBANKPOPUPOKBUTTON, WaitType.CLICKABLE, "OK");

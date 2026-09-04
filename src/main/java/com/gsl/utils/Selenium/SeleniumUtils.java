@@ -127,6 +127,38 @@ public class SeleniumUtils {
         return false;
     }
 
+    /**
+     * Round 14 (§26): {@code true} once the row containing {@code rowInnerLocator} (the clicked
+     * cell/div INSIDE the row, not the row itself) is genuinely selected in its grid's own
+     * selection model — the same signal already proven reliable for the main voucher grid
+     * ({@code VoucherMainGridBase.isChecked}): {@code aria-selected} on the row's ancestor
+     * {@code <tr>}, falling back to {@code x-grid-item-selected} on its ancestor {@code <table>}.
+     *
+     * <p>Added after measuring the root cause of {@code AllocateSitesPopup.searchSite}'s
+     * stable-wrong-value failures (FIN-GV-ADD-COMBO-05/-06): the picker's row-visibility wait can
+     * be satisfied against the FULL unfiltered list before the picker's own async search-reload
+     * lands, so a click that lands pre-reload gets silently discarded when the reload replaces
+     * the grid — the field-value readback afterward reads a stable, non-converging wrong value
+     * because the click itself, not just the readback, needs to be verified. A stale/not-yet-
+     * rendered element reads as "not selected" rather than throwing, so a caller polling this via
+     * {@link #actAndConfirmStable} can simply retry — the identical widget is also used by
+     * {@code CashBankPopup.selectCashBank}, latently exposed to the same race.
+     */
+    public static boolean isRowSelected(By rowInnerLocator) {
+        try {
+            WebElement inner = DriverManager.getDriver().findElement(rowInnerLocator);
+            WebElement tr = inner.findElement(By.xpath("./ancestor::tr[1]"));
+            if ("true".equals(tr.getAttribute("aria-selected"))) {
+                return true;
+            }
+            WebElement table = inner.findElement(By.xpath("./ancestor::table[1]"));
+            String cls = table.getAttribute("class");
+            return cls != null && cls.contains("x-grid-item-selected");
+        } catch (Exception e) {
+            return false;
+        }
+    }
+
     public static void click(By by, String elementName) {
         click(by, elementName, LogCategory.UI_ACTION);
     }

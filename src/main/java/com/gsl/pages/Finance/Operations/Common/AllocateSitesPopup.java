@@ -181,7 +181,21 @@ public class AllocateSitesPopup {
             By row = By.xpath(String.format(PICKER_ROW_XPATH, siteName));
             WaitUtils.webDriverWait(ConfigFactory.getWaitConfig().popupWaitSeconds())
                     .until(ExpectedConditions.visibilityOfElementLocated(row));
-            SeleniumUtils.clickWithStaleRetry(row, WaitType.CLICKABLE, "AllocateSites_SiteRow_" + siteName);
+
+            // Round 14 (§26): confirm the row is actually SELECTED in the grid's selection model
+            // before trusting the click enough to press OK — measured root cause (see this
+            // method's Javadoc history above): the picker opens on the FULL unfiltered list, which
+            // can already contain a text match for `siteName`, so the visibility wait above can be
+            // satisfied BEFORE the picker's own async server-reload (fired by typing, no
+            // Enter/Tab) lands and replaces the grid — silently discarding a click that landed on
+            // the pre-reload row. Measured across 22 passing vs 6 failing flows: the sendKeys-to-
+            // click gap was 2-7s when it worked, 0-1s when it didn't — deterministic, not a rare
+            // fluke. Re-click (fresh-resolved every attempt, not the same possibly-stale
+            // reference) until the row is confirmed selected, instead of gambling on a longer wait.
+            SeleniumUtils.actAndConfirmStable(
+                    () -> SeleniumUtils.clickWithStaleRetry(row, WaitType.CLICKABLE, "AllocateSites_SiteRow_" + siteName),
+                    () -> SeleniumUtils.isRowSelected(row),
+                    150L, 3, "AllocateSites_SiteRowSelected_" + siteName);
 
             SeleniumUtils.clickWithStaleRetry(PICKER_OK_BUTTON, WaitType.CLICKABLE, "AllocateSites_SitePickerOK");
             JavascriptExecutorUtils.waitForExtJS();
