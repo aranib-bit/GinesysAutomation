@@ -80,7 +80,7 @@ public final class LoaderStillInProgressException extends TimeoutException {
      */
     private static String buildMessage(String actionName, long timeoutSeconds, long elapsedMs, int attempts) {
         String waited = elapsedMs >= 0
-                ? String.format("%.1f second(s) actual (ceiling %d s)", elapsedMs / 1000.0, timeoutSeconds)
+                ? String.format("%s actual (ceiling %d s)", formatElapsed(elapsedMs), timeoutSeconds)
                 : String.format("unmeasured — configured ceiling was %d second(s)", timeoutSeconds);
         String attemptsNote = attempts > 1 ? String.format(" (%d attempts)", attempts) : "";
         return String.format("""
@@ -92,5 +92,20 @@ public final class LoaderStillInProgressException extends TimeoutException {
                 wait expired — the application had not finished loading/processing in time.
                 """,
                 actionName, waited, attemptsNote);
+    }
+
+    /**
+     * Round 15 (user-requested): a raw decimal-seconds count is hard to read once a wait crosses a
+     * minute — e.g. "101.7 second(s)" instead of the more readable "1 min 41.7 sec". Under 60s the
+     * existing plain-seconds form is unchanged; only the 60s-and-over rendering changes.
+     */
+    private static String formatElapsed(long elapsedMs) {
+        double totalSeconds = elapsedMs / 1000.0;
+        if (totalSeconds < 60.0) {
+            return String.format("%.1f second(s)", totalSeconds);
+        }
+        long minutes = (long) (totalSeconds / 60.0);
+        double remainingSeconds = totalSeconds - (minutes * 60.0);
+        return String.format("%d min %.1f sec", minutes, remainingSeconds);
     }
 }
