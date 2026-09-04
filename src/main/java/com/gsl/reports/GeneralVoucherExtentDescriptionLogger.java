@@ -3,6 +3,7 @@ package com.gsl.reports;
 import com.gsl.testdata.Finance.Operations.Vouchers.Common.VoucherSubLedgerRow;
 import com.gsl.testdata.Finance.Operations.Vouchers.GeneralVoucher.DetailLineEditTarget;
 import com.gsl.testdata.Finance.Operations.Vouchers.GeneralVoucher.ExpenseIncomeDetail;
+import com.gsl.testdata.Finance.Operations.Vouchers.GeneralVoucher.SiteAllocation;
 import com.gsl.testdata.dto.GeneralVoucherOperationMode;
 import com.gsl.testdata.dto.MergedFinanceGeneralVoucherData;
 
@@ -270,6 +271,38 @@ public final class GeneralVoucherExtentDescriptionLogger
                 "(NEW LINE ADDED)"
             };
         }
+        ExtentLogger.infoTable(table);
+        logSiteAllocationTable(data);
+    }
+
+    /**
+     * Round 16 (user-requested): "Income/Expense Detail" showed ledger-level amounts only — a
+     * site-applicable line's own per-site breakdown (Allocate Sites popup) never appeared anywhere
+     * near it. The data was already available and already driving the UI fill
+     * ({@code GeneralVoucherExpenseIncomeDetail.commitSiteAllocations}) — this was purely a
+     * missing render call, not a missing capture. Follows the exact same flat,
+     * Line#-keyed-table pattern already proven for AP's structurally-identical "one line ↔ many
+     * nested picks" case ({@code ApVoucherExtentDescriptionLogger.logFifoTable}). Skipped entirely
+     * when the voucher has no site allocations at all, so untouched (non-site) scenarios see no
+     * new empty table.
+     *
+     * <p>Expected-side only, same as the rest of this table — whether a line's allocation was
+     * actually committed (OK) vs. rolled back (Cancel) in an incomplete-allocation negative
+     * scenario isn't tracked on this list; {@code ActualResultsLogger.buildSiteAllocationSection}
+     * remains the place to see what actually landed.
+     */
+    private void logSiteAllocationTable(MergedFinanceGeneralVoucherData data) {
+        List<SiteAllocation> allocations = data.getSiteAllocationList();
+        if (allocations == null || allocations.isEmpty()) return;
+        String[][] table = new String[1 + allocations.size()][3];
+        table[0] = new String[]{ "Line#", "Site Name", "Amount" };
+        for (int i = 0; i < allocations.size(); i++) {
+            SiteAllocation r = allocations.get(i);
+            table[i + 1] = new String[]{
+                nullSafe(r.getLineNo()), nullSafe(r.getSiteName()), VoucherReportUtils.fmtAmount(r.getAmount())
+            };
+        }
+        ExtentLogger.info("<b>Site Allocation (Expected)</b>");
         ExtentLogger.infoTable(table);
     }
 
