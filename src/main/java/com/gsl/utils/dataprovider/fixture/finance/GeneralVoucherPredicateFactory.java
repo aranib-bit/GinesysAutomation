@@ -57,6 +57,10 @@ public final class GeneralVoucherPredicateFactory {
     /** idealdb-verified, srctype='B' — see plan §1's DB-verified sample. */
     private static final String CASH_BANK_GL = "HDFC Bank";
 
+    /** idealdb-verified, srctype='C' (Cash) — see plan §Round 21's DB audit; also the exact
+     *  ledger named in every live Round 13 failure ("every failure selects 'Cash Main'"). */
+    private static final String CASH_TYPE_GL = "Cash Main";
+
     public static MergedFinanceGeneralVoucherData siteAllocationPending() {
         String tcId = "GV_NEG_PENDING";
         DocumentInformation doc = new DocumentInformation(tcId, null, LocalDate.now(), null, CASH_BANK_GL,
@@ -138,6 +142,41 @@ public final class GeneralVoucherPredicateFactory {
                 .siteAllocationList(List.of()) // empty — Site button opens popup, nothing added, OK clicked
                 .needsPaymentInfoWarning(false)
                 .expectedValidation(NegativeValidation.GV_SITE_NOT_ALLOCATED)
+                .invocationIndex(1)
+                .totalInvocations(1)
+                .build();
+    }
+
+    /**
+     * Round 21 — {@link #siteNotAllocated()}'s sibling for the dedicated Cash+post-dated negative
+     * scenario (plan §Round 13/21): a Cash-type Cash/Bank ledger together with a post-dated
+     * Document Date makes the app correctly reject the Save. Deliberately +30 days, not just +1 —
+     * a safely future date sidesteps any midnight-boundary/Work-Date ambiguity (plan §Round 13's
+     * still-open item) entirely, since this scenario only needs to GUARANTEE post-dated, not pin
+     * down the app's exact "today".
+     */
+    public static MergedFinanceGeneralVoucherData cashPostDated() {
+        String tcId = "GV_NEG_CASH_POSTDATED";
+        LocalDate postDatedDate = LocalDate.now().plusDays(30);
+        DocumentInformation doc = new DocumentInformation(tcId, null, postDatedDate, null, CASH_TYPE_GL,
+                "Negative: Cash payment mode cannot be post-dated");
+
+        ExpenseIncomeDetail line = new ExpenseIncomeDetail(tcId, "1", "Advertisement Expenses", null, null,
+                "Cash post-dated rejection", "No", null, new BigDecimal("900.00"));
+        line.setResolvedGlType(GlLineType.TYPE2_SITE_ONLY);
+
+        SiteAllocation alloc = new SiteAllocation();
+        alloc.setTestCaseID(tcId);
+        alloc.setLineNo("1");
+        alloc.setSiteName("CNSStore");
+        alloc.setAmount(new BigDecimal("900.00"));
+
+        return MergedFinanceGeneralVoucherData.builder()
+                .documentInformation(doc)
+                .expenseIncomeDetailList(List.of(line))
+                .siteAllocationList(List.of(alloc))
+                .needsPaymentInfoWarning(false)
+                .expectedValidation(NegativeValidation.GV_CASH_POST_DATED_NOT_ALLOWED)
                 .invocationIndex(1)
                 .totalInvocations(1)
                 .build();
@@ -310,6 +349,47 @@ public final class GeneralVoucherPredicateFactory {
                 DocumentPopup popup = page.getExpenseIncomeDetail().clickSiteButtonExpectingBlock(0);
                 String expectedMsg = data.getExpectedValidation().expectedMessage();
                 String actualHeader = popup.verifyErrorHeader("No sub-ledger selected");
+                String actualMsg = popup.verifyErrorMessage(expectedMsg);
+                ReportLogger.pass("Popup header: [" + actualHeader + "] | Expected body: ["
+                        + expectedMsg + "] | Actual body: [" + actualMsg + "]");
+                popup.clickOkOnErrorDialog();
+            });
+
+            StepExecutor.step("Cancel (Logout deferred)", () -> {
+                page.close().clickYes(GeneralVoucherListPage::new);
+                ReportLogger.session("Logout deferred — session may be reused by a later test on this thread.");
+            });
+
+            return true;
+        };
+
+    /**
+     * NEG_CASH_POST_DATED_BEHAVIOR — for {@link #cashPostDated()} (plan §Round 21).
+     *
+     * <p>Reaches Save the same way {@link #POSITIVE_CREATE_BEHAVIOR} does (fill header + row +
+     * Cash/Bank payment info — a documented no-op for a Cash-type ledger, see
+     * {@code GeneralVoucherAdd#handlePaymentInformation}'s Javadoc) — but the app rejects the Save
+     * itself rather than returning a success dialog, so this asserts the rejection popup directly
+     * off {@code clickSave()}'s own return value, mirroring
+     * {@link #NEG_SUBLEDGER_REQUIRED_BEHAVIOR}'s dialog-assertion shape rather than
+     * {@code POSITIVE_CREATE_BEHAVIOR}'s success path.
+     */
+    public static final Supplier<BiPredicate<MergedFinanceGeneralVoucherData, GeneralVoucherAdd>>
+        NEG_CASH_POST_DATED_BEHAVIOR = () -> (data, page) -> {
+
+            StepExecutor.step("Fill Document Information", () ->
+                    page.fillDocumentHeader(data.getDocumentInformation()));
+
+            StepExecutor.step("Fill Expense/Income Detail", () ->
+                    page.fillExpenseIncomeRows(data));
+
+            StepExecutor.step("Fill Cash/Bank Payment Information", () ->
+                    page.handlePaymentInformation(data.getCashBankPaymentInfo()));
+
+            StepExecutor.step("Click Save — expect Cash+post-dated rejection dialog", () -> {
+                DocumentPopup popup = page.clickSave();
+                String expectedMsg = data.getExpectedValidation().expectedMessage();
+                String actualHeader = popup.verifyErrorHeader("Error");
                 String actualMsg = popup.verifyErrorMessage(expectedMsg);
                 ReportLogger.pass("Popup header: [" + actualHeader + "] | Expected body: ["
                         + expectedMsg + "] | Actual body: [" + actualMsg + "]");

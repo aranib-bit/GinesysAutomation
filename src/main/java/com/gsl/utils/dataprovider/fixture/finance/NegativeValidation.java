@@ -144,6 +144,17 @@ public enum NegativeValidation {
     GV_EDIT_DATE_CROSSES_ACCOUNTING_YEAR(
             "The entry date cannot be changed to a new accounting year. It should belong to the same accounting year."),
 
+    // ─── General Voucher — Create: Cash payment mode cannot be post-dated ────
+    // Round 21: confirmed live (plan §Round 13) — selecting a Cash-type Cash/Bank ledger together
+    // with a post-dated Document Date makes the app correctly reject the save with this exact
+    // message. Asserted directly against the Save dialog via DocumentPopup.verifyErrorMessage,
+    // same shape as GV_EDIT_DATE_CROSSES_ACCOUNTING_YEAR above.
+
+    /** Create's Document Date is set in the future while the Cash/Bank ledger is Cash-type
+     *  ({@code CashBankType.CASH}) — the app rejects the save outright. */
+    GV_CASH_POST_DATED_NOT_ALLOWED(
+            "You have selected cash account as the payment mode. Post dated entries are not allowed for cash transactions."),
+
     ;
 
     // ─────────────────────────────────────────────────────────────────────────

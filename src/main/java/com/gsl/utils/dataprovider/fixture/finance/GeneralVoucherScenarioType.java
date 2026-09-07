@@ -66,6 +66,14 @@ public enum GeneralVoucherScenarioType implements
     NEG_SITE_NOT_ALLOCATED(
             refs -> GeneralVoucherPredicateFactory.siteNotAllocated(),
             GeneralVoucherPredicateFactory.NEGATIVE_FORM_VALIDATION_BEHAVIOR
+    ),
+
+    /** Round 21 — Cash-type Cash/Bank ledger + a post-dated Document Date; the app correctly
+     *  rejects the Save. Moved out of {@link #POSITIVE_COMBINATION}'s Mandatory sweep (plan
+     *  §Round 13/21) into its own dedicated negative scenario. */
+    NEG_CASH_POST_DATED(
+            refs -> GeneralVoucherPredicateFactory.cashPostDated(),
+            GeneralVoucherPredicateFactory.NEG_CASH_POST_DATED_BEHAVIOR
     );
 
     private final Function<LiveGvDbRefs, MergedFinanceGeneralVoucherData> templateLoader;

@@ -28,7 +28,10 @@ public class GeneralVoucherFixtureFactory {
                 case "createGeneralVoucherNegativeBoundary" ->
                         scenario == GeneralVoucherScenarioType.NEG_SITE_ALLOCATION_PENDING
                                 || scenario == GeneralVoucherScenarioType.NEG_SUBLEDGER_REQUIRED
-                                || scenario == GeneralVoucherScenarioType.NEG_SITE_NOT_ALLOCATED;
+                                || scenario == GeneralVoucherScenarioType.NEG_SITE_NOT_ALLOCATED
+                                // Round 21: Cash-type payment moved out of Mandatory into this
+                                // dedicated negative scenario (plan §Round 13/21).
+                                || scenario == GeneralVoucherScenarioType.NEG_CASH_POST_DATED;
                 default -> false;
             };
 

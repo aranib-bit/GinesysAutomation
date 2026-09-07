@@ -32,18 +32,25 @@ import java.util.List;
  * business rule above was confirmed; see the plan's "Matrix conflict" resolution).
  *
  * <p><b>Tier assignment</b> — {@link #resolveExecutionGroup} partitions the 128 combinations into
- * 9 Mandatory + 10 Phase1 + 46 Phase2 + 63 Phase3 = 128, preserving the original tiering
+ * 7 Mandatory + 12 Phase1 + 46 Phase2 + 63 Phase3 = 128, preserving the original tiering
  * philosophy (a small baseline-shape smoke set per type in Mandatory, a single-payment-variant
  * sweep in Phase1, the non-reversal remainder in Phase2, the reversal sweep in Phase3) with
  * Expense/Income's baseline shape moved from the now-impossible Type1 to
  * {@link GlLineType#TYPE2_SITE_ONLY} (the simplest shape still valid for them) — see
- * {@link #isBaselineShape}:
+ * {@link #isBaselineShape}. <b>Round 21</b>: Cash-type payment is deliberately excluded from
+ * Mandatory entirely — the app's own "cash payment cannot be post-dated" business rule means a
+ * Cash-type row risks an unrelated rejection whenever Document Date isn't exactly "today",
+ * unrelated to whatever Mandatory is actually testing; that combination instead moves to Phase1
+ * and gets its own dedicated negative scenario ({@code NEG_CASH_POST_DATED}) that deliberately
+ * exercises the rule with a safely-future date and asserts the app's rejection message:
  * <ul>
- *   <li><b>MANDATORY</b> (9): Expense/Income at their baseline shape (Type2 for these two types),
- *       Reversal=No, all 4 Leg+Payment values (8), plus one Reversal=Yes smoke case
- *       (Expense/Type2/Debit/Bank+Cheque).</li>
- *   <li><b>REGRESSION_PHASE1</b> (10): every type's non-baseline shape(s) — Type3 only for
- *       Expense/Income, Type2+Type3 for Asset/Liability — Leg+Payment=Bank+Cheque, Reversal=No.</li>
+ *   <li><b>MANDATORY</b> (7): Expense/Income at their baseline shape (Type2 for these two types),
+ *       Reversal=No, the 3 Bank-type Leg+Payment values — Cheque/NEFT-RTGS/None (6), plus one
+ *       Reversal=Yes smoke case (Expense/Type2/Debit/Bank+Cheque).</li>
+ *   <li><b>REGRESSION_PHASE1</b> (12): every type's non-baseline shape(s) — Type3 only for
+ *       Expense/Income, Type2+Type3 for Asset/Liability — Leg+Payment=Bank+Cheque, Reversal=No
+ *       (10), plus the 2 baseline-shape Expense/Income Cash-type rows moved out of Mandatory
+ *       (Round 21) (2).</li>
  *   <li><b>REGRESSION_PHASE2</b> (46): Asset/Liability's first exposure at their baseline shape
  *       (Type1), all 4 Leg+Payment values, Reversal=No (16), plus every type's non-baseline
  *       shape(s) swept across the remaining 3 Leg+Payment values (30).</li>
@@ -219,7 +226,8 @@ public final class GeneralVoucherCombinations {
      * sweep in Phase3), re-derived after {@link #shapesFor} dropped Expense/Income's now-impossible
      * Type1 shape (see this class's own Javadoc for the "Matrix conflict" resolution). Reduces to:
      * <pre>
-     *   Reversal=No, baseline shape,     type=E/I → MANDATORY     (2 tuples × 4 payment = 8)
+     *   Reversal=No, baseline shape, type=E/I, payment!=CASH → MANDATORY  (2 tuples × 3 payment = 6)
+     *   Reversal=No, baseline shape, type=E/I, payment==CASH → PHASE1     (2 tuples × 1 payment = 2, Round 21)
      *   Reversal=No, baseline shape,     type=A/L → PHASE2        (4 tuples × 4 payment = 16)
      *   Reversal=No, non-baseline shape, payment=BANK+CHEQUE → PHASE1  (10 tuples × 1 payment = 10)
      *   Reversal=No, non-baseline shape, payment!=BANK+CHEQUE → PHASE2 (10 tuples × 3 payment = 30)
@@ -228,7 +236,7 @@ public final class GeneralVoucherCombinations {
      * </pre>
      * ("non-baseline shape" tuple count is 10: Expense/Income contribute 1 each — only Type3
      * remains after Type2 becomes their baseline — and Asset/Liability contribute 4 each — Type2
-     * and Type3, ×2 sides) which totals 8+16+10+30+1+63 = 9(Mandatory)+10(Phase1)+46(Phase2)+63(Phase3) = 128.
+     * and Type3, ×2 sides) which totals 6+2+16+10+30+1+63 = 7(Mandatory)+12(Phase1)+46(Phase2)+63(Phase3) = 128.
      */
     private static GeneralVoucherExecutionGroup resolveExecutionGroup(GlAccountType type, GlLineType shape,
             boolean debitSide, boolean reversal, GeneralVoucherPaymentVariant payment) {
@@ -238,9 +246,17 @@ public final class GeneralVoucherCombinations {
 
         if (!reversal) {
             if (isBaseline) {
-                return isExpenseOrIncome
-                        ? GeneralVoucherExecutionGroup.MANDATORY
-                        : GeneralVoucherExecutionGroup.REGRESSION_PHASE2;
+                if (isExpenseOrIncome) {
+                    // Round 21: Cash-type payment is deliberately excluded from Mandatory — the
+                    // app's own "cash payment cannot be post-dated" business rule (plan §Round 13/21)
+                    // means a Cash-type row here risks an unrelated rejection whenever Document
+                    // Date isn't exactly "today". Moved to Phase1 instead; a dedicated negative
+                    // scenario (NEG_CASH_POST_DATED) deliberately exercises the rule elsewhere.
+                    return payment == GeneralVoucherPaymentVariant.CASH
+                            ? GeneralVoucherExecutionGroup.REGRESSION_PHASE1
+                            : GeneralVoucherExecutionGroup.MANDATORY;
+                }
+                return GeneralVoucherExecutionGroup.REGRESSION_PHASE2;
             }
             // non-baseline shape: Type3 only for Expense/Income, Type2/Type3 for Asset/Liability
             return payment == GeneralVoucherPaymentVariant.CHEQUE
