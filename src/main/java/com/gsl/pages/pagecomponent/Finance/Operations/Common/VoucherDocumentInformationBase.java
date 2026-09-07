@@ -13,8 +13,6 @@ import com.gsl.utils.Selenium.SeleniumUtils;
 import com.gsl.utils.Selenium.WaitUtils;
 import org.openqa.selenium.By;
 import org.openqa.selenium.Keys;
-import org.openqa.selenium.NoSuchElementException;
-import org.openqa.selenium.TimeoutException;
 import org.openqa.selenium.WebElement;
 
 import java.time.LocalDate;
@@ -203,10 +201,24 @@ public abstract class VoucherDocumentInformationBase {
      * ExtJS alignTo() to compute zero geometry and throw a layout exception.
      */
     private void handleNarrationTextPopup(String remarksValue) {
-        try {
-            JavascriptExecutorUtils.waitForExtJS();
-            WaitUtils.untilVisible(NARRATION_POPUP_HEADER, 3);
-        } catch (TimeoutException | NoSuchElementException e) {
+        JavascriptExecutorUtils.waitForExtJS();
+        // Round 18: a single ~3s miss isn't proof the popup is genuinely absent — confirmed live
+        // (run 20260903_120345) that the SAME never-before-typed remarks text missed this exact
+        // wait on one attempt and was found moments later on fillAndVerifyCommit's own retry —
+        // i.e. the popup was still rendering, not gated on prior narration history existing. This
+        // is the same debounced-render race already diagnosed and fixed once for the sibling
+        // GL/Sub-Ledger boundlist (SeleniumUtils.clickBoundlistOptionAcrossPages, Round 6 RC-5/
+        // Round 12 §23) — re-confirm with the same shared act-and-confirm-stable idiom before
+        // concluding genuine absence, instead of a single un-retried wait. Genuine absence remains
+        // a legitimate, expected outcome for GV Edit's deliberately fresh Faker-generated remarks
+        // (no real narration history to match) — this only catches the case where the popup was
+        // simply still rendering, not the case where there's truly nothing to show.
+        boolean popupAppeared = SeleniumUtils.isElementPresent(NARRATION_POPUP_HEADER, 3)
+                || SeleniumUtils.actAndConfirmStable(() -> {},
+                        () -> SeleniumUtils.isElementPresent(NARRATION_POPUP_HEADER, 2),
+                        2000L, 2, "NARRATION_POPUP");
+
+        if (!popupAppeared) {
             // No popup means no row is available to select — the same situation the "no match"
             // branch below handles by pressing Tab to force the combo to commit the typed text as
             // its real bound value. This branch used to just log and return without doing that,
