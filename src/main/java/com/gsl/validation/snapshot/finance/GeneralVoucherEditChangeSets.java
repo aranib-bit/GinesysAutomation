@@ -9,12 +9,15 @@ import com.gsl.testdata.Finance.Operations.Vouchers.GeneralVoucher.DocumentInfor
 import com.gsl.testdata.Finance.Operations.Vouchers.GeneralVoucher.ExpenseIncomeDetail;
 import com.gsl.utils.Log;
 import com.gsl.validation.snapshot.ColumnRule;
+import com.gsl.validation.snapshot.DbValueNormalizer;
 import com.gsl.validation.snapshot.DocumentContext;
 import com.gsl.validation.snapshot.ExpectedChangeSet;
 import com.gsl.validation.snapshot.VoucherSnapshot;
 
 import java.math.BigDecimal;
+import java.time.LocalDate;
 import java.util.List;
+import java.util.Map;
 
 /**
  * Named {@link ExpectedChangeSet} builders for General Voucher's two V1 Edit scenarios — plan
@@ -65,12 +68,72 @@ public final class GeneralVoucherEditChangeSets {
                 .build();
     }
 
+    /**
+     * Round 20 — {@code chqdt} is a DEFAULTED/DERIVED column for General Voucher, not an
+     * independently-tracked cheque date, whenever no independent instrument date was ever
+     * provided — confirmed via a direct live-DB audit of {@code aud2_finvchdet}'s entire history:
+     * EVERY {@code payment_mode='R'} (NEFT/RTGS) row shows {@code chqdt == vchdt} at creation time
+     * (125/125, system-wide, independent of this test suite ever running), and the
+     * {@code payment_mode='C'} (Cheque) rows that also match are exactly the ones
+     * {@code PaymentModeResolver}'s own documented fallback produces when no
+     * {@code PaymentInformation} was ever supplied — always true for a GV Edit-test voucher, since
+     * GV's real Cheque/RTGS payment popup is Create-flow-only (confirmed separately). The
+     * persistence map's generic table-wide {@code MUST_NOT_CHANGE} default wrongly asserted this
+     * derived field must stay frozen; this reclassifies it as {@code SYSTEM_CHANGE}
+     * (framework/DB-maintained, not test-supplied) — per ROW, and only when THAT row's own BEFORE
+     * {@code chqdt} already equalled its own BEFORE tracking-date column. A genuinely independent
+     * cheque date on any row is deliberately left on the table's default {@code MUST_NOT_CHANGE},
+     * so a real future defect there is still caught — this is not a blanket override.
+     *
+     * <p>{@code finpost} has no {@code vchdt} column (confirmed via schema) — its own
+     * date-equivalent is {@code entdt} (already the column {@link VoucherEditChangeSets#headerEdit}
+     * cascades {@code vchdt}'s change onto), so that's what each {@code finpost} row's
+     * pre-edit {@code chqdt} is compared against instead.
+     *
+     * <p>No-op when {@code newDate} is {@code null} — nothing to reclassify when no document-date
+     * change is even in play for this scenario.
+     */
+    private static ExpectedChangeSet withChqdtTrackingRule(ExpectedChangeSet base, String builderName,
+            VoucherSnapshot beforeSnapshot, LocalDate newDate) {
+        if (newDate == null) return base;
+
+        ExpectedChangeSet.Builder builder = ExpectedChangeSet.builder(builderName).mergeFrom(base);
+
+        var finvchdetTable = beforeSnapshot.getTable("finvchdet");
+        List<Map<String, Object>> finvchdetRows = finvchdetTable == null ? List.of() : finvchdetTable.getRows();
+        for (Map<String, Object> row : finvchdetRows) {
+            Object chqdt = DbValueNormalizer.getIgnoreCase(row, "chqdt");
+            Object vchdt = DbValueNormalizer.getIgnoreCase(row, "vchdt");
+            if (DbValueNormalizer.equalsNormalized(chqdt, vchdt)) {
+                String rowKey = "glcode=" + DbValueNormalizer.getIgnoreCase(row, "glcode")
+                        + ", slcode=" + DbValueNormalizer.displayString(DbValueNormalizer.getIgnoreCase(row, "slcode"));
+                builder.rule("finvchdet", rowKey, ColumnRule.systemChangeTo("chqdt", newDate));
+            }
+        }
+
+        var finpostTable = beforeSnapshot.getTable("finpost");
+        List<Map<String, Object>> finpostRows = finpostTable == null ? List.of() : finpostTable.getRows();
+        for (Map<String, Object> row : finpostRows) {
+            Object chqdt = DbValueNormalizer.getIgnoreCase(row, "chqdt");
+            Object entdt = DbValueNormalizer.getIgnoreCase(row, "entdt");
+            if (DbValueNormalizer.equalsNormalized(chqdt, entdt)) {
+                String rowKey = "glcode=" + DbValueNormalizer.getIgnoreCase(row, "glcode")
+                        + ", slcode=" + DbValueNormalizer.displayString(DbValueNormalizer.getIgnoreCase(row, "slcode"))
+                        + ", enttype=" + DbValueNormalizer.getIgnoreCase(row, "enttype");
+                builder.rule("finpost", rowKey, ColumnRule.systemChangeTo("chqdt", newDate));
+            }
+        }
+
+        return builder.build();
+    }
+
     /** Header-edit change set — see {@link VoucherEditChangeSets#headerEdit}. */
     public static ExpectedChangeSet headerEdit(DocumentContext context, VoucherSnapshot beforeSnapshot,
             DocumentInformation newDoc) {
         ExpectedChangeSet common = VoucherEditChangeSets.headerEdit("GeneralVoucherEditChangeSets.headerEdit", context,
                 beforeSnapshot, newDoc.getReference(), newDoc.getRemarks(), newDoc.getDocumentdate());
-        return withTdsAppNote(common, "GeneralVoucherEditChangeSets.headerEdit");
+        ExpectedChangeSet withTds = withTdsAppNote(common, "GeneralVoucherEditChangeSets.headerEdit");
+        return withChqdtTrackingRule(withTds, "GeneralVoucherEditChangeSets.headerEdit", beforeSnapshot, newDoc.getDocumentdate());
     }
 
     /**
@@ -97,7 +160,8 @@ public final class GeneralVoucherEditChangeSets {
         ExpectedChangeSet common = VoucherEditChangeSets.detailLineEdit("GeneralVoucherEditChangeSets.detailLineEdit",
                 context, beforeSnapshot, newDoc.getReference(), newDoc.getRemarks(), newDoc.getDocumentdate(),
                 gl.getGlcode(), slcode, isDebit, newAmount, editedRow.isReversalYes(), editedRow.getLedgerNarration());
-        return withTdsAppNote(common, "GeneralVoucherEditChangeSets.detailLineEdit");
+        ExpectedChangeSet withTds = withTdsAppNote(common, "GeneralVoucherEditChangeSets.detailLineEdit");
+        return withChqdtTrackingRule(withTds, "GeneralVoucherEditChangeSets.detailLineEdit", beforeSnapshot, newDoc.getDocumentdate());
     }
 
     /**
@@ -129,7 +193,8 @@ public final class GeneralVoucherEditChangeSets {
                 newDoc.getReference(), newDoc.getRemarks(), newDoc.getDocumentdate(),
                 oldGl.getGlcode(), oldSlcode, newGl.getGlcode(), newSlcode,
                 isDebit, newAmount, afterRow.isReversalYes(), afterRow.getLedgerNarration());
-        return withTdsAppNote(common, "GeneralVoucherEditChangeSets.detailLineGlTransition");
+        ExpectedChangeSet withTds = withTdsAppNote(common, "GeneralVoucherEditChangeSets.detailLineGlTransition");
+        return withChqdtTrackingRule(withTds, "GeneralVoucherEditChangeSets.detailLineGlTransition", beforeSnapshot, newDoc.getDocumentdate());
     }
 
     /**
@@ -156,7 +221,8 @@ public final class GeneralVoucherEditChangeSets {
                 "GeneralVoucherEditChangeSets.addNewDetailLine", context, beforeSnapshot,
                 newDoc.getReference(), newDoc.getRemarks(), newDoc.getDocumentdate(),
                 gl.getGlcode(), slcode, isDebit, amount, newLine.isReversalYes(), newLine.getLedgerNarration());
-        return withTdsAppNote(common, "GeneralVoucherEditChangeSets.addNewDetailLine");
+        ExpectedChangeSet withTds = withTdsAppNote(common, "GeneralVoucherEditChangeSets.addNewDetailLine");
+        return withChqdtTrackingRule(withTds, "GeneralVoucherEditChangeSets.addNewDetailLine", beforeSnapshot, newDoc.getDocumentdate());
     }
 
     /**
