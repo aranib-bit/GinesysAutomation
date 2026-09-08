@@ -118,7 +118,7 @@ public class AccountGroupListPage {
                     "Pressed ESC to cancel pending edit.");
         }
 
-        // NOTE: must NOT use ActionUtils.sendKeys(By, ...) here — same problem already fixed
+        // ! NOTE: must NOT use ActionUtils.sendKeys(By, ...) here — same problem already fixed
         // once in confirmEntry(): it calls element.clear() before sending keys, and clear()
         // on this ExtJS-managed input appears to fire a blur/change-like event that the cell
         // editor interprets as "commit now", triggering an immediate save with an empty name
@@ -161,7 +161,7 @@ public class AccountGroupListPage {
      * decide to skip this row and continue.
      */
     public AccountGroupListPage confirmEntry(String expectedName) {
-        // NOTE: must NOT use ActionUtils.sendKeys(By, ...) here — it calls element.clear()
+        // ! NOTE: must NOT use ActionUtils.sendKeys(By, ...) here — it calls element.clear()
         // before sending keys, which would wipe the just-typed name and commit an empty
         // value, causing ExtJS to reject/revert the edit and leave the editor stuck open.
         DriverManager.getDriver().findElement(CELL_EDITOR_INPUT).sendKeys(Keys.ENTER);

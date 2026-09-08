@@ -45,7 +45,7 @@ public class TransferOutApiClient extends ApiClient {
 
     /** Builds and saves a single-line Transfer Out against the given DC, matching k6's flow. */
     public TransferOutCreateResponse createTransferOut(String dcCode, String itemCode, int quantity, int rate) {
-        // NOTE: this overload does not call searchChallan() — dcCode is threaded straight into
+        // * NOTE: this overload does not call searchChallan() — dcCode is threaded straight into
         // the line item as supplied by the caller. Only the actual Save call below gets its own
         // sub-section; a "search" node here would misrepresent a call that isn't made.
         TransferOutLineItem line = TransferOutLineItem.builder()

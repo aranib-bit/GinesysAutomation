@@ -1,5 +1,6 @@
 package com.gsl.utils.dataprovider.fixture.finance;
 
+import com.gsl.enums.CashBankType;
 import com.gsl.enums.Finance.Operations.GeneralVoucher.GlLineType;
 import com.gsl.enums.GlAccountType;
 import com.gsl.testdata.Finance.Operations.Vouchers.GeneralVoucher.DetailLineEditTarget;
@@ -8,14 +9,17 @@ import java.util.ArrayList;
 import java.util.List;
 
 /**
- * Enumerates the 22-scenario General Voucher Edit matrix (originally a fixed 7 — plan §7's
+ * Enumerates the 23-scenario General Voucher Edit matrix (originally a fixed 7 — plan §7's
  * table — expanded with accounting-year-aware header date variants, see the "GV Edit:
- * accounting-year-aware dates..." plan; #17 (formerly #14) added to verify the "finpost narration
- * change detection" fix — see the "Fix finpost/finvchdet narration-change detection" plan; #9-11
- * added for field-isolated header edits — see plan §4D; #18-20 added for the new detail-line edit
- * shapes — see plan §4B; #22 added for the closed-accounting-period negative scenario — see the
- * "GV Revert picks documents in a now-closed accounting period, + closed-period negative-test
- * coverage" plan):
+ * accounting-year-aware dates..." plan; #18 (formerly #14/#17) added to verify the "finpost
+ * narration change detection" fix — see the "Fix finpost/finvchdet narration-change detection"
+ * plan; #10-12 added for field-isolated header edits — see plan §4D; #19-21 added for the new
+ * detail-line edit shapes — see plan §4B; #23 added for the closed-accounting-period negative
+ * scenario — see the "GV Revert picks documents in a now-closed accounting period, +
+ * closed-period negative-test coverage" plan; #8/#9 split from a single, ambiguous #8 — see
+ * "Round 22" of the GV plan, FIN-GV-EDIT-HEADER-04: the app's own post-dated-document rule
+ * differs by the claimed voucher's Cash/Bank ledger type, so the old single variant's pass/fail
+ * meaning depended on pure luck of which candidate got claimed):
  *
  * <table>
  *     <caption>Edit scenario matrix</caption>
@@ -27,29 +31,33 @@ import java.util.List;
  *     <tr><td>5</td><td>REGRESSION_PHASE1</td><td>Header-only edit, source Posted (revert-backfill), date=last valid day</td></tr>
  *     <tr><td>6</td><td>MANDATORY</td><td>Header-only edit, source Posted (revert-backfill), date=random day (capped at today)</td></tr>
  *     <tr><td>7</td><td>MANDATORY</td><td>Negative: header-only edit, date crosses into a different accounting year — expects rejection</td></tr>
- *     <tr><td>8</td><td>MANDATORY</td><td>Positive: header-only edit, date is in the future (same accounting year) — app confirmed to accept future-dated documents</td></tr>
- *     <tr><td>9</td><td>REGRESSION_PHASE1</td><td>Header-only edit, source Unposted, headerFieldScope=REFERENCE_ONLY — only Reference changes, Remarks/Date held unchanged</td></tr>
- *     <tr><td>10</td><td>REGRESSION_PHASE1</td><td>Header-only edit, source Unposted, headerFieldScope=REMARKS_ONLY — only Remarks changes, Reference/Date held unchanged</td></tr>
- *     <tr><td>11</td><td>REGRESSION_PHASE1</td><td>Header-only edit, source Unposted, headerFieldScope=DATE_ONLY — only Date changes, Reference/Remarks held unchanged</td></tr>
- *     <tr><td>12</td><td>MANDATORY</td><td>Detail-line edit, Type1, source Unposted</td></tr>
- *     <tr><td>13</td><td>REGRESSION_PHASE1</td><td>Detail-line edit, Type2, source Unposted</td></tr>
- *     <tr><td>14</td><td>REGRESSION_PHASE1</td><td>Detail-line edit, Type3, source Unposted</td></tr>
- *     <tr><td>15</td><td>REGRESSION_PHASE1</td><td>Detail-line edit toggling Is Reversal, source Unposted</td></tr>
- *     <tr><td>16</td><td>REGRESSION_PHASE1</td><td>Detail-line edit, source Posted (revert-backfill)</td></tr>
- *     <tr><td>17</td><td>MANDATORY</td><td>Detail-line edit, source Unposted, editing Ledger Narration on a
+ *     <tr><td>8</td><td>MANDATORY</td><td>Positive: header-only edit, date is in the future (same accounting year), claimed candidate's
+ *         Cash/Bank ledger is Bank-type — app confirmed to accept future-dated documents for Bank-type</td></tr>
+ *     <tr><td>9</td><td>REGRESSION_PHASE1</td><td>Negative: header-only edit, date is in the future (same accounting year), claimed candidate's
+ *         Cash/Bank ledger is Cash-type — app rejects post-dated documents for Cash-type ("Post dated entries
+ *         are not allowed for cash transactions")</td></tr>
+ *     <tr><td>10</td><td>REGRESSION_PHASE1</td><td>Header-only edit, source Unposted, headerFieldScope=REFERENCE_ONLY — only Reference changes, Remarks/Date held unchanged</td></tr>
+ *     <tr><td>11</td><td>REGRESSION_PHASE1</td><td>Header-only edit, source Unposted, headerFieldScope=REMARKS_ONLY — only Remarks changes, Reference/Date held unchanged</td></tr>
+ *     <tr><td>12</td><td>REGRESSION_PHASE1</td><td>Header-only edit, source Unposted, headerFieldScope=DATE_ONLY — only Date changes, Reference/Remarks held unchanged</td></tr>
+ *     <tr><td>13</td><td>MANDATORY</td><td>Detail-line edit, Type1, source Unposted</td></tr>
+ *     <tr><td>14</td><td>REGRESSION_PHASE1</td><td>Detail-line edit, Type2, source Unposted</td></tr>
+ *     <tr><td>15</td><td>REGRESSION_PHASE1</td><td>Detail-line edit, Type3, source Unposted</td></tr>
+ *     <tr><td>16</td><td>REGRESSION_PHASE1</td><td>Detail-line edit toggling Is Reversal, source Unposted</td></tr>
+ *     <tr><td>17</td><td>REGRESSION_PHASE1</td><td>Detail-line edit, source Posted (revert-backfill)</td></tr>
+ *     <tr><td>18</td><td>MANDATORY</td><td>Detail-line edit, source Unposted, editing Ledger Narration on a
  *         line whose glcode is shared with a sibling line of a different slcode — regression guard for the
  *         finpost/finvchdet narration-change ambiguity fix (confirmed live: real rows share a glcode with
  *         different slcode and narration; live data shows this only on {@code fingl.slapp='Y'}/
  *         {@code costapp='N'} GL accounts — the unmodeled 4th {@code GlLineType} combination, hence no
  *         {@code glLineType} constraint on this variant)</td></tr>
- *     <tr><td>18</td><td>REGRESSION_PHASE1</td><td>Detail-line edit, GL-type transition (Type1 line moves to
+ *     <tr><td>19</td><td>REGRESSION_PHASE1</td><td>Detail-line edit, GL-type transition (Type1 line moves to
  *         a different, unused Asset-class GL), source Unposted</td></tr>
- *     <tr><td>19</td><td>REGRESSION_PHASE1</td><td>Detail-line edit, add a brand-new Type1 line, source Unposted</td></tr>
- *     <tr><td>20</td><td>REGRESSION_PHASE1</td><td>Detail-line edit, site-split-only (Type2), source Unposted —
+ *     <tr><td>20</td><td>REGRESSION_PHASE1</td><td>Detail-line edit, add a brand-new Type1 line, source Unposted</td></tr>
+ *     <tr><td>21</td><td>REGRESSION_PHASE1</td><td>Detail-line edit, site-split-only (Type2), source Unposted —
  *         same total amount, sitewise allocation redistributed</td></tr>
- *     <tr><td>21</td><td>REGRESSION_PHASE1</td><td>Detail-line edit, site-split-only (Type3), source Unposted —
+ *     <tr><td>22</td><td>REGRESSION_PHASE1</td><td>Detail-line edit, site-split-only (Type3), source Unposted —
  *         same total amount, sitewise allocation redistributed</td></tr>
- *     <tr><td>22</td><td>MANDATORY</td><td>Negative: header-only, source Posted, claimed candidate's own
+ *     <tr><td>23</td><td>MANDATORY</td><td>Negative: header-only, source Posted, claimed candidate's own
  *         accounting year/financial month is already closed — expects the live app to refuse even the
  *         "Unpost if Posted" prep step (never reaches Save)</td></tr>
  * </table>
@@ -128,10 +136,9 @@ public final class GeneralVoucherEditCombinations {
                 .build());
 
         // ── Boundary header scenarios: each exercises a real, distinct app date-handling rule —
-        // worth MANDATORY-tier coverage. Both claim an UNPOSTED source voucher (simplest source
-        // status). CROSS_YEAR_NEGATIVE is genuinely negative (app rejects); FUTURE_DATE below is
-        // positive (app confirmed to accept a future-dated document within the same accounting
-        // year) — neither assertion depends on post/unpost state.
+        // worth MANDATORY-tier coverage. All claim an UNPOSTED source voucher (simplest source
+        // status). CROSS_YEAR_NEGATIVE is genuinely negative (app rejects) — assertion doesn't
+        // depend on post/unpost state.
         out.add(GeneralVoucherEditVariant.builder()
                 .variantId("GV_EDIT_HEADER_UNPOSTED_CROSS_YEAR_NEGATIVE")
                 .scenarioType(GeneralVoucherEditVariant.ScenarioType.HEADER_ONLY)
@@ -140,12 +147,30 @@ public final class GeneralVoucherEditCombinations {
                 .executionGroup(GeneralVoucherEditExecutionGroup.MANDATORY)
                 .build());
 
+        // FUTURE_DATE's own expected outcome depends on the claimed candidate's Cash/Bank ledger
+        // type — the app accepts a future-dated document for a Bank-type ledger, but rejects one
+        // for a Cash-type ledger ("Post dated entries are not allowed for cash transactions").
+        // A single unconstrained FUTURE_DATE variant left this to pure luck of which candidate
+        // got claimed (confirmed live: FIN-GV-EDIT-HEADER-04 failed exactly this way, claiming a
+        // Cash-type voucher and hitting the app's own rejection) — split into two deterministic
+        // variants, each constrained via requiredCashBankType so claimOne only ever claims the
+        // matching ledger type. See "Round 22" of the GV plan.
         out.add(GeneralVoucherEditVariant.builder()
-                .variantId("GV_EDIT_HEADER_UNPOSTED_FUTURE_DATE")
+                .variantId("GV_EDIT_HEADER_UNPOSTED_FUTURE_DATE_BANK")
                 .scenarioType(GeneralVoucherEditVariant.ScenarioType.HEADER_ONLY)
                 .sourceStatus(GeneralVoucherEditVariant.SourceStatus.UNPOSTED)
                 .dateVariant(VoucherEditDateVariant.FUTURE_DATE)
+                .requiredCashBankType(CashBankType.BANK)
                 .executionGroup(GeneralVoucherEditExecutionGroup.MANDATORY)
+                .build());
+
+        out.add(GeneralVoucherEditVariant.builder()
+                .variantId("GV_EDIT_HEADER_UNPOSTED_FUTURE_DATE_CASH_NEGATIVE")
+                .scenarioType(GeneralVoucherEditVariant.ScenarioType.HEADER_ONLY)
+                .sourceStatus(GeneralVoucherEditVariant.SourceStatus.UNPOSTED)
+                .dateVariant(VoucherEditDateVariant.FUTURE_DATE)
+                .requiredCashBankType(CashBankType.CASH)
+                .executionGroup(GeneralVoucherEditExecutionGroup.REGRESSION_PHASE1)
                 .build());
 
         // Negative: claims a Posted candidate whose own accounting year/financial month is

@@ -741,7 +741,7 @@ public final class SelectDocumentCombinations {
                 .allowDuplicateReference(false)
                 .executionGroup(ArVoucherExecutionGroup.REGRESSION_PHASE3)
                 .build();
-        // NOTE: ArVoucherFixtureOptions.docTypeFilter must be set to "INV" for this variant.
+        // ! NOTE: ArVoucherFixtureOptions.docTypeFilter must be set to "INV" for this variant.
         // The pending-document query in ArVoucherTemplateLoader must filter AND entype = 'INV'.
     }
 }

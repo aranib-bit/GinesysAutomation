@@ -1,6 +1,7 @@
 package com.gsl.utils.dataprovider.fixture.finance;
 
 import com.gsl.enums.PaymentSelectionType;
+import com.gsl.utils.DateUtils;
 import com.gsl.utils.cheque.UniqueChequeGenerator;
 import com.gsl.utils.payment.PaymentReferenceGenerator;
 import com.gsl.testdata.Finance.Operations.Vouchers.GeneralVoucher.DocumentInformation;
@@ -84,13 +85,23 @@ public final class GeneralVoucherTemplateLoader {
             allocations.addAll(buildSiteAllocations(tcId, lineNo, row.getSiteNames(), amount));
         }
 
+        // Instrument/Cheque Date: honor a variant-supplied override (e.g. a genuinely
+        // post-dated cheque) when present; otherwise default to today — same as before, just
+        // now formatted to match the UI's own dd/MM/yyyy expectation (see DateUtils' Javadoc —
+        // a prior LocalDate.now().toString() here produced an ISO yyyy-MM-dd string the app
+        // rejected as an invalid date, confirmed live for FIN-GV-ADD-COMBO-05).
+        LocalDate instrumentDate = variant.getInstrumentDateOverride() != null
+                ? variant.getInstrumentDateOverride() : LocalDate.now();
+
         PaymentInformation paymentInfo = switch (variant.getPaymentVariant()) {
             case CASH -> new PaymentInformation(tcId, "CASHBANK", PaymentSelectionType.CASH,
                     null, null, null, null);
             case CHEQUE -> new PaymentInformation(tcId, "CASHBANK", PaymentSelectionType.CHEQUE,
-                    UniqueChequeGenerator.generateUnique(), LocalDate.now().toString(), null, null);
+                    UniqueChequeGenerator.generateUnique(),
+                    instrumentDate.format(DateUtils.UI_DATE_FORMAT), null, null);
             case NEFT_RTGS -> new PaymentInformation(tcId, "CASHBANK", PaymentSelectionType.NEFT_RTGS,
-                    PaymentReferenceGenerator.generateNEFT(), LocalDate.now().toString(), null, null);
+                    PaymentReferenceGenerator.generateNEFT(),
+                    instrumentDate.format(DateUtils.UI_DATE_FORMAT), null, null);
             case NONE -> null;
         };
 

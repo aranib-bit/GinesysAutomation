@@ -646,7 +646,7 @@ public class SeleniumUtils {
                 element.click();
                 return; // clicked successfully
             } catch (ElementNotInteractableException e) {
-                // Note: ElementClickInterceptedException (the exception ChromeDriver actually
+                // * Note: ElementClickInterceptedException (the exception ChromeDriver actually
                 // throws for "another element would receive the click", e.g. an x-mask overlay)
                 // is itself a subclass of ElementNotInteractableException in this Selenium
                 // version, so this one catch already covers both — confirmed by the compiler

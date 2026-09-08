@@ -83,7 +83,7 @@ public final class StepExecutor {
 
         // Push step context into the browser so AdvancedJsLogger timing correlation works,
         // and re-inject CustomMetrics observers in case a full-page navigation wiped them.
-        // NOTE: executeScript can block for 1-4s when the browser JS engine is busy after
+        // * NOTE: executeScript can block for 1-4s when the browser JS engine is busy after
         // a post-save navigation — startMs is set first so that wait is included in the step
         // duration rather than creating a silent gap between steps.
         try {

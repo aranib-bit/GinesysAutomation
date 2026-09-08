@@ -15,6 +15,7 @@ import com.gsl.testdata.Finance.Operations.Vouchers.APVoucher.SubLedgerInformati
 import com.gsl.testdata.Finance.Operations.Vouchers.APVoucher.TdsAndNetPayable;
 import com.gsl.testdata.MasterTestData;
 import com.gsl.testdata.dto.MergedFinanceApVoucherData;
+import com.gsl.utils.DateUtils;
 import com.gsl.utils.Faker.FakerUtils;
 import com.gsl.utils.Log;
 import com.gsl.utils.cheque.UniqueChequeGenerator;
@@ -896,7 +897,11 @@ public final class ApVoucherTemplateLoader {
         }
 
         List<PaymentInformation> payments = new ArrayList<>();
-        String today = LocalDate.now().toString();
+        // dd/MM/yyyy — matches the UI's own Document Date format (DateUtils.UI_DATE_FORMAT).
+        // Previously LocalDate.now().toString() (ISO yyyy-MM-dd) — a latent version of the same
+        // format-mismatch bug confirmed live for GV's FIN-GV-ADD-COMBO-05 (see Round 22 GV plan);
+        // not yet manifesting here since AP's Instrument Date field is usually left disabled.
+        String today = LocalDate.now().format(DateUtils.UI_DATE_FORMAT);
 
         for (int i = 0; i < subLedgers.size(); i++) {
             SubLedgerInformation sl = subLedgers.get(i);

@@ -19,6 +19,7 @@ import com.gsl.database.dao.finance.FinVchDetDao;
 import com.gsl.database.dao.finance.FinVchMainDao;
 import com.gsl.database.finance.GeneralVoucherEditRevertBackfillStrategy;
 import com.gsl.driver.DriverManager;
+import com.gsl.enums.CashBankType;
 import com.gsl.enums.Finance.Operations.Common.DocumentMessageBoxMessage;
 import com.gsl.enums.Finance.Operations.GeneralVoucher.GlLineType;
 import com.gsl.enums.GlAccountType;
@@ -307,15 +308,24 @@ public class DbGeneralVoucherEditDataSource implements TestDataSource<MergedFina
             newReference = changeReference ? FakerUtils.randomReference() : header.getRefno();
             newRemarks = changeRemarks ? FakerUtils.randomRemarks() : header.getNartext();
 
-            // Non-null only for CROSS_YEAR_INVALID — the app is expected to REJECT the save with
-            // this exact message rather than succeed (see EditGeneralVoucher's Step 9b). FUTURE_DATE
-            // is NOT a rejection case — confirmed live the app accepts a future-dated document
-            // within the same accounting year, so it falls through to `default -> null` and flows
-            // through Step 9b's normal positive save + full snapshot-validation path. Only reachable
-            // when changeDate is true — a scope that holds the date unchanged can never be rejected
-            // on accounting-year grounds.
+            // Non-null for CROSS_YEAR_INVALID (always) and FUTURE_DATE when the claimed
+            // candidate's Cash/Bank ledger is Cash-type (via requiredCashBankType, set only by
+            // GV_EDIT_HEADER_UNPOSTED_FUTURE_DATE_CASH_NEGATIVE — see claimOne's cashBankFilter
+            // above, which guarantees this variant only ever claims a Cash-type candidate) — the
+            // app is expected to REJECT the save with this exact message rather than succeed (see
+            // EditGeneralVoucher's Step 9b). FUTURE_DATE against a Bank-type ledger
+            // (GV_EDIT_HEADER_UNPOSTED_FUTURE_DATE_BANK) is NOT a rejection case — confirmed live
+            // the app accepts a future-dated document for Bank-type within the same accounting
+            // year, so it falls through to `default -> null` and flows through Step 9b's normal
+            // positive save + full snapshot-validation path. Only reachable when changeDate is
+            // true — a scope that holds the date unchanged can never be rejected on
+            // accounting-year or post-dated-Cash grounds. See "Round 22" of the GV plan
+            // (FIN-GV-EDIT-HEADER-04) — this was previously a single ambiguous FUTURE_DATE
+            // variant with no Cash/Bank-type awareness at all.
             expectedValidation = changeDate ? switch (dateVariant) {
                 case CROSS_YEAR_INVALID -> NegativeValidation.GV_EDIT_DATE_CROSSES_ACCOUNTING_YEAR;
+                case FUTURE_DATE -> variant.getRequiredCashBankType() == CashBankType.CASH
+                        ? NegativeValidation.GV_CASH_POST_DATED_NOT_ALLOWED : null;
                 default -> null;
             } : null;
 
@@ -323,8 +333,9 @@ public class DbGeneralVoucherEditDataSource implements TestDataSource<MergedFina
                     + (changeDate ? newDate + " (dateVariant=" + dateVariant
                         + (expectedValidation != null ? ", expecting REJECTION: " + expectedValidation.expectedMessage()
                            : dateVariant == VoucherEditDateVariant.FUTURE_DATE
-                                ? ", intentionally future-dated — app is confirmed to ACCEPT this, full "
-                                  + "snapshot validation applies same as any other positive header edit"
+                                ? ", intentionally future-dated (Cash/Bank type=" + variant.getRequiredCashBankType()
+                                  + ") — app is confirmed to ACCEPT this, full snapshot validation applies "
+                                  + "same as any other positive header edit"
                                 : "") + ")"
                        : newDate + " (unchanged)")
                     + ", reference=" + (changeReference ? "'" + newReference + "' (new)" : "'" + newReference + "' (unchanged)")
@@ -877,7 +888,7 @@ public class DbGeneralVoucherEditDataSource implements TestDataSource<MergedFina
     private static Optional<Long> claimOne(Jdbi jdbi, String status, GeneralVoucherEditVariant variant,
             Set<Long> claimedThisRun, List<String> gatheringLog) {
 
-        // requireClosedPeriod variants deliberately want an OLD, closed-period document — scanning
+        // ! requireClosedPeriod variants deliberately want an OLD, closed-period document — scanning
         // newest-first (the default, correct for ordinary open-period variants) forces the scan
         // through every currently-open candidate first. Confirmed live (Jenkins run
         // 20260831_213639 / #13.txt): DbGeneralVoucherDeleteDataSource's identical shared-order
@@ -934,12 +945,27 @@ public class DbGeneralVoucherEditDataSource implements TestDataSource<MergedFina
                     .bind("status", status).bind("slapp", slapp).bind("costapp", costapp)
                     .mapTo(Long.class).list());
         } else {
+            // Optional Cash/Bank-ledger-type constraint (Round 22 GV plan, FIN-GV-EDIT-HEADER-04):
+            // only the two FUTURE_DATE variants set requiredCashBankType today, so this join/
+            // filter is a no-op for every other header-only variant — same candidate set as
+            // before for them.
+            CashBankType requiredCashBankType = variant.getRequiredCashBankType();
+            String cashBankJoin = requiredCashBankType != null
+                    ? "JOIN fingl gcb ON gcb.glcode = m.glcode " : "";
+            String cashBankFilter = requiredCashBankType != null
+                    ? "AND gcb.srctype = :cashBankSrctype " : "";
             String sql =
-                    "SELECT m.vchcode FROM finvchmain m " +
-                    "WHERE m.vchtype = 'G' AND m.release_status = :status " +
+                    "SELECT m.vchcode FROM finvchmain m " + cashBankJoin +
+                    "WHERE m.vchtype = 'G' AND m.release_status = :status " + cashBankFilter +
                     "AND NOT EXISTS (SELECT 1 FROM finvchdet d2 WHERE d2.vchcode = m.vchcode AND d2.brsdt IS NOT NULL) " +
                     orderBy;
-            candidates = jdbi.withHandle(h -> h.createQuery(sql).bind("status", status).mapTo(Long.class).list());
+            candidates = jdbi.withHandle(h -> {
+                var query = h.createQuery(sql).bind("status", status);
+                if (requiredCashBankType != null) {
+                    query = query.bind("cashBankSrctype", requiredCashBankType.srcType());
+                }
+                return query.mapTo(Long.class).list();
+            });
         }
         // ORDER BY above uses ycode/vchdt, never vchcode — an insert-order surrogate key with no
         // guaranteed relationship to accounting period or document date (a backdated/corrective

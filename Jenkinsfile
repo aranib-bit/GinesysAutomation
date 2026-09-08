@@ -125,7 +125,7 @@ pipeline {
 
         stage('Run Tests') {
             steps {
-                // NOTE on live progress: reports/latest/index.html is refreshed by the
+                // * NOTE on live progress: reports/latest/index.html is refreshed by the
                 // framework after every single test case (ExtentReport.flushReports(),
                 // gated by report.flush.batch.enabled=false in report.properties). To
                 // watch it update live *during* this stage, open this build's

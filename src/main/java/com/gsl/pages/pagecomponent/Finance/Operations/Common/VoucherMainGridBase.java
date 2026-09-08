@@ -621,7 +621,7 @@ public abstract class VoucherMainGridBase {
         // clickWithStaleRetry is the established fix for exactly this ExtJS re-render race (see
         // CashBankPopup/AllocateSitesPopup/GeneralVoucherExpenseIncomeDetail for the same idiom).
         //
-        // NOTE (Round 9, run 20260903_100559 DOM forensics): a second click on a neutral row cell —
+        // * NOTE (Round 9, run 20260903_100559 DOM forensics): a second click on a neutral row cell —
         // previously added here on the theory that the checkbox toggle alone might not drive the
         // grid's real Ext.selection.CheckboxModel — was REMOVED. Fresh captures proved the opposite
         // of that theory: the row genuinely was unselected at failure time, and under CheckboxModel

@@ -195,7 +195,7 @@ public class CreateApVoucher extends WebTest {
         Log.info("Running test for: {}", data.getMasterTestData().getTestcaseid());
 
         // ── Lazy DB load — runs before steps so full data is ready ───────────────
-        // NOTE: NEG_BLANK_SUBLEDGER legitimately has an empty SL list; the single-shot
+        // * NOTE: NEG_BLANK_SUBLEDGER legitimately has an empty SL list; the single-shot
         // guard still loads it correctly (loadFreshForScenario returns it once).
         if (data.getScenarioType() != null
                 && (data.getSubLedgerInformationList() == null

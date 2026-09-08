@@ -57,4 +57,16 @@ public class GeneralVoucherVariant {
      */
     @Builder.Default
     int siteCount = 1;
+
+    /**
+     * Optional override for the Instrument/Cheque Date this variant's Payment Information uses
+     * (only meaningful for {@link GeneralVoucherPaymentVariant#CHEQUE}/{@code NEFT_RTGS}) —
+     * {@code null} (default) keeps the existing behavior of using today's date
+     * ({@code LocalDate.now()}). Set this to a future date to exercise a genuinely
+     * post-dated-cheque scenario (Instrument Date in the future, independent of Document Date);
+     * the app's own accept/reject rule for that case isn't asserted by any combination yet — a
+     * future variant can set this field once that rule needs coverage. Not wired into any
+     * existing combination — capability-only, per the Round 22 GV plan.
+     */
+    java.time.LocalDate instrumentDateOverride;
 }

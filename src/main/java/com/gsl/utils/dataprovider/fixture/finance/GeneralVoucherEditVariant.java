@@ -1,5 +1,6 @@
 package com.gsl.utils.dataprovider.fixture.finance;
 
+import com.gsl.enums.CashBankType;
 import com.gsl.enums.Finance.Operations.GeneralVoucher.GlLineType;
 import com.gsl.enums.GlAccountType;
 import com.gsl.pages.Finance.Operations.GeneralVoucherAdd;
@@ -107,6 +108,18 @@ public class GeneralVoucherEditVariant {
      *  GL's account class (Asset/Liability/Income/Expense) to transition the edited line into.
      *  {@code null} for every other shape. */
     GlAccountType targetAccountClass;
+
+    /**
+     * When non-null, constrains {@code claimOne} to a candidate whose OWN Cash/Bank ledger
+     * (finvchmain.glcode -&gt; fingl.srctype) matches this type — currently only meaningful for
+     * the {@code FUTURE_DATE}-dated-variant scenarios, where Cash- vs. Bank-type changes the
+     * app's own expected outcome (see {@code NegativeValidation.GV_CASH_POST_DATED_NOT_ALLOWED}
+     * — Round 22's fix for FIN-GV-EDIT-HEADER-04, splitting the old single ambiguous
+     * {@code GV_EDIT_HEADER_UNPOSTED_FUTURE_DATE} variant into a deterministic Bank-type
+     * positive scenario and a deterministic Cash-type negative one). {@code null} (default) for
+     * every other variant — no constraint, exactly today's pre-Round-22 behavior.
+     */
+    CashBankType requiredCashBankType;
 
     /**
      * Plan §4K: each constant now also carries the {@code Supplier<BiPredicate<Data, Page>>}

@@ -6,6 +6,7 @@ import com.gsl.database.dialect.DbDialect;
 import com.gsl.database.dialect.DbDialectFactory;
 import com.gsl.database.query.AdmClsQuery;
 import com.gsl.database.query.FinVchRefQuery;
+import com.gsl.utils.DateUtils;
 import com.gsl.utils.Faker.FakerUtils;
 import com.gsl.database.query.PendingAdjQuery;
 import com.gsl.model.finance.AdmCls;
@@ -978,7 +979,11 @@ public final class ArVoucherTemplateLoader {
         }
 
         List<PaymentInformation> payments = new ArrayList<>();
-        String today = LocalDate.now().toString();
+        // dd/MM/yyyy — matches the UI's own Document Date format (DateUtils.UI_DATE_FORMAT).
+        // Previously LocalDate.now().toString() (ISO yyyy-MM-dd) — a latent version of the same
+        // format-mismatch bug confirmed live for GV's FIN-GV-ADD-COMBO-05 (see Round 22 GV plan);
+        // not yet manifesting here since AR's Instrument Date field is usually left disabled.
+        String today = LocalDate.now().format(DateUtils.UI_DATE_FORMAT);
 
         for (int i = 0; i < subLedgers.size(); i++) {
             SubLedgerInformation sl = subLedgers.get(i);

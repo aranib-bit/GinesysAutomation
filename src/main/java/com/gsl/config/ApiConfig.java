@@ -229,7 +229,7 @@ public interface ApiConfig extends Config {
     @Key("fixture.arvoucher.empCode")
     long fixtureArVoucherEmpCode();
 
-    // NOTE: deliberately NOT a `default` method here. Owner's dynamic proxy for @Config
+    // ! NOTE: deliberately NOT a `default` method here. Owner's dynamic proxy for @Config
     // interfaces does not correctly dispatch Java default methods — it routes the call through
     // its property-lookup InvocationHandler like any other interface method, gets null back
     // (no such property exists), and the proxy's primitive `boolean` return signature then NPEs

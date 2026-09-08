@@ -100,7 +100,7 @@ public abstract class VoucherDocumentInformationBase {
         // Mirrors fillCommonFields' Cash/Bank blank-guard: positive scenarios normally
         // don't pass a Voucher No./scheme override, so this is a no-op for them.
         //
-        // IMPORTANT for Edit flows: this blank-guard is the ONLY branch that never touches the
+        // ! IMPORTANT for Edit flows: this blank-guard is the ONLY branch that never touches the
         // UI. Passing the voucher's EXISTING scheme_docno here (to hit the "already matches,
         // skip" branch below) still requires the getAttribute() read below to succeed first,
         // which waits for the field's visibility — and on a live General Voucher Edit run that

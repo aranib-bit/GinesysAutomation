@@ -122,7 +122,7 @@ public class CreateArVoucher extends WebTest {
         Log.info("Running test for: {}", data.getMasterTestData().getTestcaseid());
 
         // ── Lazy DB load — DbArVoucherDataSource raises SkipException internally on shortfall ───
-        // NOTE: NEG_BLANK_SUBLEDGER legitimately has an empty SL list; the single-shot guard
+        // * NOTE: NEG_BLANK_SUBLEDGER legitimately has an empty SL list; the single-shot guard
         // still loads it correctly (loadFreshForScenario returns it once).
         if (data.getScenarioType() != null
                 && (data.getSubLedgerInformationList() == null

@@ -1419,7 +1419,7 @@ public final class JavascriptExecutorUtils {
 
                         // Set value and fire select
                         + "      combo.select(rec);"
-                        + "      combo.fireEvent('select', combo, [rec]);"  // Note: some ExtJS versions expect array
+                        + "      combo.fireEvent('select', combo, [rec]);"  // * Note: some ExtJS versions expect array
 
                         // After select, look for dependent combos and trigger their load
                         + "      setTimeout(function(){"
@@ -4173,7 +4173,7 @@ public final class JavascriptExecutorUtils {
                         + "    rec.set('referenceSiteName',   refSiteName);"
                         + "    rec.set('referenceSiteType',   refSiteType);"
                         + "    rec.set('referenceSiteOUName', refSiteOUName);"
-                        // Pass the record object (not integer) to refreshNode — avoids the falsy-0
+                        // ! Pass the record object (not integer) to refreshNode — avoids the falsy-0
                         // bug in some ExtJS versions that silently skips row 0 when given 0.
                         + "    childGrid.getView().refreshNode(childGrid.getStore().getAt(__rowIndex));"
                         + "    window.__refSiteDebug.status      = 'DONE';"
