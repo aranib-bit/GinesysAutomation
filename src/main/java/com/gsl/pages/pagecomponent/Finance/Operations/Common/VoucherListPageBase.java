@@ -5,6 +5,7 @@ import com.gsl.pages.VerifiablePage;
 import com.gsl.pages.enums.Finance.Operations.Common.CommonVoucherListColumn;
 import com.gsl.pages.enums.Finance.Operations.Common.IVoucherListColumn;
 import com.gsl.reports.StepExecutor;
+import com.gsl.utils.Log;
 import com.gsl.utils.dataprovider.fixture.finance.DocumentSearchStrategy;
 
 import java.util.NoSuchElementException;
@@ -82,16 +83,50 @@ public abstract class VoucherListPageBase<
      */
     protected abstract TAddPage newAddPage();
 
+    /**
+     * If {@code page} can verify its own identity (i.e. implements {@link VerifiablePage}),
+     * confirms the Add/Edit form actually rendered before handing it back to the caller — a click
+     * that registers as successful can still leave the app silently stuck on the previous page
+     * (confirmed live, FIN-GV-EDIT-DETAIL-01, run 20260908_135507: the Actions→Edit click
+     * "succeeded" but the list page never actually navigated away, and the failure only surfaced
+     * 30+ seconds later, deep inside the Edit form, as a confusing unrelated error). Mirrors the
+     * exact same {@code instanceof VerifiablePage} + one-bounded-retry idiom
+     * {@code OperationsSideMenuComponent.clickMenuItem} already uses for the side-menu click, one
+     * layer up — reused here, not reinvented. A no-op (unchanged pre-existing behavior) for any
+     * {@code TAddPage} that doesn't implement {@link VerifiablePage} (e.g. AR/AP's Add pages
+     * today), so this carries zero regression risk for domains that haven't opted in yet.
+     *
+     * @param page   the just-constructed {@code TAddPage} to verify
+     * @param reopen re-runs whatever click/select sequence is needed to try opening the form again
+     * @throws RuntimeException the second {@code verifyOnThisPage()} failure, uncaught, if the
+     *         retry doesn't recover
+     */
+    private void verifyFormOpened(Object page, Runnable reopen) {
+        if (!(page instanceof VerifiablePage verifiable)) return;
+        try {
+            verifiable.verifyOnThisPage();
+        } catch (RuntimeException firstAttemptFailure) {
+            Log.warn("VoucherListPageBase: Add/Edit form didn't open after the first attempt ({}) "
+                            + "— retrying once", firstAttemptFailure.getClass().getSimpleName());
+            reopen.run();
+            verifiable.verifyOnThisPage(); // let a second failure propagate uncaught
+        }
+    }
+
     @LogStep("Open New Voucher Form")
     public TAddPage clickAdd() {
         gridHeader.clickAddButton();
-        return newAddPage();
+        TAddPage page = newAddPage();
+        verifyFormOpened(page, gridHeader::clickAddButton);
+        return page;
     }
 
     @LogStep("Open Voucher for Edit")
     public TAddPage clickEditForVoucher() {
         mainGrid.clickEditIcon();
-        return newAddPage();
+        TAddPage page = newAddPage();
+        verifyFormOpened(page, mainGrid::clickEditIcon);
+        return page;
     }
 
     /**
@@ -102,7 +137,9 @@ public abstract class VoucherListPageBase<
     @LogStep("Open Voucher for Edit via Actions")
     public TAddPage clickEditFromActions() {
         mainGrid.clickEdit();
-        return newAddPage();
+        TAddPage page = newAddPage();
+        verifyFormOpened(page, mainGrid::clickEdit);
+        return page;
     }
 
     /**
@@ -122,7 +159,9 @@ public abstract class VoucherListPageBase<
         };
         reselect.run(); // initial select + open Actions — same as the previous inline call-site sequence
         mainGrid.clickEdit(reselect); // clicks Edit; on failure, reselect.run() then one retry
-        return newAddPage();
+        TAddPage page = newAddPage();
+        verifyFormOpened(page, () -> { reselect.run(); mainGrid.clickEdit(reselect); });
+        return page;
     }
 
     /**
@@ -141,7 +180,10 @@ public abstract class VoucherListPageBase<
     @LogStep("Open Voucher for Edit via Double-Click")
     public TAddPage doubleClickToEdit(String documentNumber) {
         VoucherGridPaginationFinder.doubleClickRowAcrossPages(documentNumber, mainGrid, gridFooter);
-        return newAddPage();
+        TAddPage page = newAddPage();
+        verifyFormOpened(page, () ->
+                VoucherGridPaginationFinder.doubleClickRowAcrossPages(documentNumber, mainGrid, gridFooter));
+        return page;
     }
 
     /** Double-click analogue of {@link #selectDocumentFast(String, DocumentSearchStrategy)} for
