@@ -1,6 +1,8 @@
 package com.gsl.popup;
 
+import com.gsl.enums.PopupOutcome;
 import com.gsl.reports.ExtentLogger;
+import com.gsl.reports.ReportLogger;
 
 import java.nio.charset.StandardCharsets;
 import java.util.Base64;
@@ -18,6 +20,10 @@ public final class PopupReporter {
         // P7: Prominent failure marker FIRST so it's visible in the test summary panel
         String failMsg = "⚠ Unexpected Popup on [" + actionName + "] — "
                 + popup.popupType() + " | Header: " + popup.header();
+        // POPUP/UNEXPECTED categorized line — never hidden by the debug/business toggle (see
+        // PopupOutcome#UNEXPECTED), on top of (not instead of) the hard FAIL marker below, which
+        // is what actually rolls this node up as failed.
+        ReportLogger.popup(PopupOutcome.UNEXPECTED, failMsg);
         if (popup.screenshotPath() != null) {
             ExtentLogger.failWithScreenshotPath(failMsg, popup.screenshotPath());
         } else {
@@ -47,6 +53,8 @@ public final class PopupReporter {
     }
 
     public static void reportHandledPopup(PopupResult popup, String actionName) {
+        ReportLogger.popup(PopupOutcome.EXPECTED, "Handled popup on [" + actionName + "] — "
+                + popup.popupType() + " | Header: " + popup.header());
         String[][] table = {
                 {"Field",            "Value"},
                 {"Triggered After",  actionName},

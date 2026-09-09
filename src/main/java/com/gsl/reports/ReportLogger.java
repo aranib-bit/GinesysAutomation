@@ -26,7 +26,7 @@ public final class ReportLogger {
             case UI_ACTION, VALIDATION, MODULE, SUB_MODULE, MENU, SUB_MENU -> UI_ACTIONS_LOG;
             case DB -> DB_VALIDATION_LOG;
             case JS, PERF, RCA, FRAMEWORK, NETWORK, SESSION, NAVIGATION, RECOVERY, TEST_STEP_STATUS,
-                 CONTEXT_SWITCH, DATA_BACKFILL -> DIAGNOSTICS_LOG;
+                 CONTEXT_SWITCH, DATA_BACKFILL, VERIFICATION, LOADER_WAIT, POPUP -> DIAGNOSTICS_LOG;
         };
     }
 
@@ -245,6 +245,41 @@ public final class ReportLogger {
     public static void dataBackfillWarn(String fmt, Object... a)  { high(LogCategory.DATA_BACKFILL, fmt(fmt, a)); }
     public static void dataBackfillError(String msg)               { critical(LogCategory.DATA_BACKFILL, msg); }
     public static void dataBackfillError(String fmt, Object... a) { critical(LogCategory.DATA_BACKFILL, fmt(fmt, a)); }
+
+    /** Positive page/module-identity confirmation — e.g. "General Voucher Add page opened",
+     *  "Finance Module is loaded" (see {@link com.gsl.pages.VerifiablePage}). The failure-side
+     *  counterpart for this same check is {@link ExtentLogger#failCategorized}, called directly
+     *  at the verification call sites — not mirrored here, since a failure must always reach the
+     *  report regardless of category, whereas this info-level pass entry follows the normal
+     *  business/debug visibility gate like every other category shorthand above. */
+    public static void verification(String msg)                  { info(LogCategory.VERIFICATION, msg); }
+    public static void verification(String fmt, Object... a)      { info(LogCategory.VERIFICATION, fmt(fmt, a)); }
+
+    /** ExtJS loading-mask/splash-screen wait diagnostics (see {@code WaitUtils}) — e.g. the
+     *  "Loader wait [...] summary: ..." lines, previously logged via the plain, uncategorized
+     *  {@link #info(String)}/{@link #warn(String)} overloads (no badge, no color at all). */
+    public static void loaderWait(String msg)                  { info(LogCategory.LOADER_WAIT, msg); }
+    public static void loaderWait(String fmt, Object... a)      { info(LogCategory.LOADER_WAIT, fmt(fmt, a)); }
+    public static void loaderWaitWarn(String msg)                { high(LogCategory.LOADER_WAIT, msg); }
+    public static void loaderWaitWarn(String fmt, Object... a)  { high(LogCategory.LOADER_WAIT, fmt(fmt, a)); }
+
+    /**
+     * Logs a {@code LogCategory.POPUP} entry with its {@link com.gsl.enums.PopupOutcome}
+     * (EXPECTED/UNEXPECTED/MAYBE) rendered as a second badge — mirrors the category+severity
+     * shape of {@link #info(LogCategory, ReportSeverity, String)} above, but for popup outcome
+     * instead of severity. Visibility gates on {@code outcome.isDebugCategory()}, not the parent
+     * {@code LogCategory.POPUP}'s own flag (which carries no useful signal on its own once every
+     * popup outcome shares one parent category) — see {@link com.gsl.enums.PopupOutcome}.
+     */
+    public static void popup(com.gsl.enums.PopupOutcome outcome, String message) {
+        Log.info("[POPUP][{}] {}", outcome.name(), message);
+        loggerFor(LogCategory.POPUP).info("[POPUP][{}] {}", outcome.name(), message);
+        ExtentLogger.infoCategorized(LogCategory.POPUP, outcome, message);
+    }
+
+    public static void popup(com.gsl.enums.PopupOutcome outcome, String fmt, Object... a) {
+        popup(outcome, fmt(fmt, a));
+    }
 
     private static String fmt(String template, Object... args) {
         return org.slf4j.helpers.MessageFormatter.arrayFormat(template, args).getMessage();

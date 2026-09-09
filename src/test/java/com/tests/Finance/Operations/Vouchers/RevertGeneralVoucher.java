@@ -34,16 +34,18 @@ import com.gsl.utils.NavigationUtils;
 import com.gsl.utils.dataprovider.MergedFinGeneralVoucherDataSupplier;
 import com.gsl.utils.dataprovider.fixture.finance.DocumentSearchStrategy;
 import com.gsl.validation.snapshot.DocumentContext;
-import com.gsl.validation.snapshot.TableRule;
-import com.gsl.validation.snapshot.audit.AuditAssertion;
+import com.gsl.validation.snapshot.ExpectedChangeSet;
+import com.gsl.validation.snapshot.SnapshotService;
+import com.gsl.validation.snapshot.VoucherSnapshot;
+import com.gsl.validation.snapshot.VoucherSnapshotValidator;
 import com.gsl.validation.snapshot.finance.Aud2SnapshotDao;
+import com.gsl.validation.snapshot.finance.GeneralVoucherRevertChangeSets;
 import com.gsl.validation.snapshot.finance.VoucherDocumentContextResolver;
 import com.tests.WebTest;
 import org.testng.Assert;
 import org.testng.annotations.Test;
 
 import java.util.List;
-import java.util.Map;
 
 /**
  * Reverts an existing General Voucher from the Finance → Operations → General Voucher list
@@ -111,6 +113,9 @@ public class RevertGeneralVoucher extends WebTest {
         final String[]                        beforeReleaseStatusRef = new String[1];
         final String[]                        immediateBeforeReleaseStatusRef = new String[1];
         final GeneralVoucherRevertOutcome[]   revertOutcomeRef      = new GeneralVoucherRevertOutcome[1];
+        final DocumentContext[]               contextRef            = new DocumentContext[1];
+        final VoucherSnapshot[]               beforeSnapshotRef     = new VoucherSnapshot[1];
+        final VoucherSnapshot[]               afterSnapshotRef      = new VoucherSnapshot[1];
 
         // ── Step 1: DB Pre-Check — Verify Document Exists ────────────────────────────
         StepExecutor.step("DB Pre-Check — Verify Document Exists", () -> {
@@ -147,6 +152,11 @@ public class RevertGeneralVoucher extends WebTest {
                     header.getNartext());
             docInfo.setOwnersite(site != null ? site.getName() : null);
             testData.setDocumentInformation(docInfo);
+
+            com.gsl.reports.StepSummaryBuffer.record("Pre-Check summary — voucher=" + testData.getExistingVoucherNo()
+                    + ", found=Yes, release_status(before)='" + beforeReleaseStatusRef[0]
+                    + "', owner_site='" + (site != null ? site.getName() : "—")
+                    + "', cash/bank GL='" + (cashBankGl != null ? cashBankGl.getGlname() : "—") + "'");
         });
 
         // ── Report: Test Data — Header / Expected Results / Income-Expense Detail ────────
@@ -215,6 +225,25 @@ public class RevertGeneralVoucher extends WebTest {
             immediateBeforeReleaseStatusRef[0] = header.getReleaseStatus();
             ReportLogger.business("Release status immediately before Revert action: '"
                     + immediateBeforeReleaseStatusRef[0] + "' for voucher: " + testData.getExistingVoucherNo());
+            com.gsl.reports.StepSummaryBuffer.record("Immediate-before release_status='"
+                    + immediateBeforeReleaseStatusRef[0] + "' for voucher " + testData.getExistingVoucherNo());
+        });
+
+        // ── Step 7b: Resolve Document Context + Capture BEFORE Snapshot ──────────────────
+        // Full snapshot (not just finvchmain) — brings Revert's DB validation up to the same
+        // snapshot-diff-engine coverage Edit/Create already have (see
+        // GeneralVoucherRevertChangeSets' Javadoc): finvchdet/fincosttag get NO explicit overrides
+        // at Step 11, so the persistence map's own table-wide MUST_NOT_CHANGE default is what
+        // actually asserts they stay untouched by this Revert — coverage this test never had
+        // before. Captured here (immediately before the state-changing click) rather than at
+        // Step 1's precheck, for the same staleness reason Step 7's own re-read exists.
+        StepExecutor.step("Resolve Document Context + Capture BEFORE Snapshot", () -> {
+            contextRef[0] = new VoucherDocumentContextResolver()
+                    .resolve(testData.getExistingVoucherNo(), VoucherDomain.GV);
+            beforeSnapshotRef[0] = new SnapshotService(new Aud2SnapshotDao()).capture(contextRef[0]);
+            ReportLogger.business("Document context resolved and BEFORE snapshot captured for voucher: "
+                    + testData.getExistingVoucherNo());
+            recordSnapshotTableSummary("BEFORE Snapshot", beforeSnapshotRef[0]);
         });
 
         // ── Step 8: Click Revert ───────────────────────────────────────────────────────
@@ -242,6 +271,11 @@ public class RevertGeneralVoucher extends WebTest {
                 ReportLogger.pass("Negative outcome correctly triggered: " + revertOutcomeRef[0]
                         + " for voucher: " + testData.getExistingVoucherNo());
             }
+            com.gsl.reports.StepSummaryBuffer.record("Revert confirmed — voucher=" + testData.getExistingVoucherNo()
+                    + ", outcome=" + revertOutcomeRef[0]
+                    + (testData.getExpectedRevertOutcome() != null
+                            ? " (Revert correctly blocked/handled — matches expected outcome)"
+                            : ""));
         });
 
         // ── Step 10: Logout (deferred — session may be reused by a later test on this thread;
@@ -249,7 +283,25 @@ public class RevertGeneralVoucher extends WebTest {
         StepExecutor.step("Logout (deferred)", () ->
                 ReportLogger.session("Logout deferred — session may be reused by a later test on this thread."));
 
+        // ── Step 10b: Capture AFTER Snapshot ──────────────────────────────────────────
+        StepExecutor.step("Capture AFTER Snapshot", () -> {
+            afterSnapshotRef[0] = new SnapshotService(new Aud2SnapshotDao()).capture(contextRef[0]);
+            ReportLogger.business("AFTER snapshot captured for voucher: " + testData.getExistingVoucherNo());
+            recordSnapshotTableSummary("AFTER Snapshot", afterSnapshotRef[0]);
+        });
+
         // ── Step 11: Database Validation ──────────────────────────────────────────────
+        // All per-table checks (release_status transition on finvchmain/finpost, plus the
+        // previously-uncovered "finvchdet/fincosttag must stay unchanged" checks) are asserted
+        // SOFTLY through one VoucherSnapshotValidator/assertAll() pass — every table's failures are
+        // collected first and surface together in ONE consolidated failure report at the end of
+        // this step, rather than a hard assertion on release_status alone stopping the test before
+        // the snapshot-diff engine ever got to check the other tables. This replaces the previous
+        // hard Assert.assertEquals release_status checks AND the single-column
+        // AuditAssertion.assertAuditUpdated call — GeneralVoucherRevertChangeSets' finvchmain/
+        // finpost release-trio rules already assert the exact same release_status transition (with
+        // an equally descriptive per-column failure message), and DiffEngine's own Pass 2
+        // subsumes the audit-trail check for every active table, not just finvchmain.
         StepExecutor.step("Database Validation", () -> {
             FinVchMain afterHeader = DatabaseManager.getJdbi().onDemand(FinVchMainDao.class)
                     .findBySchemeDocno(testData.getExistingVoucherNo())
@@ -264,78 +316,77 @@ public class RevertGeneralVoucher extends WebTest {
                     + "after='{}', dialogOutcome={}",
                     testData.getExistingVoucherNo(), before, immediateBefore, after, revertOutcomeRef[0]);
 
+            // The ABSOLUTE target release_status this Revert attempt should have produced —
+            // GeneralVoucherRevertChangeSets derives MUST_CHANGE-vs-MUST_NOT_CHANGE purely by
+            // comparing the BEFORE snapshot's own captured value against this, so a single builder
+            // call covers every outcome uniformly.
+            String expectedNewStatus;
+            String outcomeNote;
             if (revertOutcomeRef[0] == GeneralVoucherRevertOutcome.CANNOT_REVERT_BRS_DONE) {
                 // BRS (bank reconciliation) blocks Revert entirely — the live app dismisses with a
-                // single-OK "cannot be reverted" info dialog and never changes release_status, so
-                // 'after' must equal whatever it was immediately before the (rejected) Revert click.
-                Assert.assertEquals(after, immediateBefore,
-                        "Expected release_status to remain unchanged ('" + immediateBefore
-                        + "') when Revert is blocked by BRS (bank reconciliation) for voucher "
-                        + testData.getExistingVoucherNo() + ", but found '" + after + "'.");
-                ReportLogger.pass("DB validated — BRS correctly blocked Revert; release_status unchanged at '"
-                        + after + "' for voucher: " + testData.getExistingVoucherNo());
-                return;
+                // single-OK "cannot be reverted" info dialog and never changes release_status.
+                expectedNewStatus = immediateBefore;
+                outcomeNote = "BRS correctly blocked Revert";
+            } else if (revertOutcomeRef[0] == GeneralVoucherRevertOutcome.CANNOT_REVERT_MONTH_CLOSED) {
+                // Same shape as the BRS branch: the document's own accounting year/financial month
+                // is closed, the live app dismisses with a single-OK "already closed" info dialog.
+                expectedNewStatus = immediateBefore;
+                outcomeNote = "closed period correctly blocked Revert";
+            } else {
+                // Revert's only legal end-state is Unposted ('U') — whether the document started
+                // Posted (dialog outcome UNPOSTED, 'P' → 'U') or was already Unposted (dialog
+                // outcome ALREADY_UNPOSTED, a no-op that leaves it at 'U').
+                expectedNewStatus = "U";
+                outcomeNote = "Revert completed: " + (immediateBefore == null ? "?" : immediateBefore) + " -> " + expectedNewStatus;
+
+                // Surface a precheck/immediate-before divergence prominently — this is exactly the
+                // race condition that previously caused false failures (e.g. VG/00303 in run
+                // 20260812_230836). Informational only — the snapshot-diff engine below is what
+                // actually asserts correctness, against the real immediate-before/after DB values.
+                if (immediateBefore != null && !immediateBefore.equals(before)) {
+                    ReportLogger.warn("release_status changed between Step-1 precheck ('" + before
+                            + "') and the immediate-before read ('" + immediateBefore + "') for voucher "
+                            + testData.getExistingVoucherNo() + " — a concurrent process modified this "
+                            + "document mid-test; this is expected to be benign as long as 'after' ended at 'U'.");
+                }
             }
 
-            if (revertOutcomeRef[0] == GeneralVoucherRevertOutcome.CANNOT_REVERT_MONTH_CLOSED) {
-                // Same shape as the BRS branch above: the document's own accounting year/financial
-                // month is closed, the live app dismisses with a single-OK "already closed" info
-                // dialog, and release_status must stay exactly what it was immediately before the
-                // (rejected) Revert click.
-                Assert.assertEquals(after, immediateBefore,
-                        "Expected release_status to remain unchanged ('" + immediateBefore
-                        + "') when Revert is blocked by a closed accounting year/financial month for voucher "
-                        + testData.getExistingVoucherNo() + ", but found '" + after + "'.");
-                ReportLogger.pass("DB validated — closed period correctly blocked Revert; release_status "
-                        + "unchanged at '" + after + "' for voucher: " + testData.getExistingVoucherNo());
-                return;
-            }
+            // (The "deliberately claimed to exercise a specific outcome" hard assertion already ran
+            // in Step 9/Confirm Revert, before this step — a wrong OUTCOME there means every
+            // downstream expectedNewStatus/changeSet decision above would be built on the wrong
+            // premise, so it stays a hard, fail-fast check rather than folded into this step's soft
+            // snapshot-diff pass.)
 
-            // Revert's only legal end-state is Unposted ('U') — whether the document started Posted
-            // (dialog outcome UNPOSTED, 'P' → 'U') or was already Unposted (dialog outcome
-            // ALREADY_UNPOSTED, a no-op that leaves it at 'U'). Asserting the absolute target value
-            // directly (rather than comparing 'after' against the possibly-stale precheck 'before')
-            // avoids false failures from the precheck/click race described above, while still hard-
-            // failing on a genuine defect (e.g. landing on 'P' or 'N' instead of 'U').
-            Assert.assertEquals(after, "U",
-                    "Expected release_status to be 'U' (Unposted) after Revert for voucher "
-                    + testData.getExistingVoucherNo() + " — dialog outcome=" + revertOutcomeRef[0]
-                    + ", precheck-before='" + before + "', immediate-before='" + immediateBefore
-                    + "', but found '" + after + "'.");
+            ExpectedChangeSet changeSet = GeneralVoucherRevertChangeSets.revert(
+                    contextRef[0], beforeSnapshotRef[0], expectedNewStatus);
 
-            // Audit-trail assertion — the live re-read above only proves the business table
-            // transitioned; this proves the audit trail's own record of that transition exists too.
-            // Skipped for the ALREADY_UNPOSTED no-op case (before/immediateBefore was already 'U' —
-            // there is no genuine transition for the audit trail to have recorded).
-            if (!"U".equals(immediateBefore)) {
-                DocumentContext auditContext = new VoucherDocumentContextResolver()
-                        .resolve(testData.getExistingVoucherNo(), VoucherDomain.GV);
-                TableRule finvchmainRule = auditContext.getPersistenceMap().findByTableName("finvchmain");
-                Map<String, Object> beforeRow = Map.of("vchcode", auditContext.getVchcode(),
-                        "release_status", immediateBefore);
-                AuditAssertion.assertAuditUpdated(auditContext, new Aud2SnapshotDao(), finvchmainRule,
-                        beforeRow, "release_status", immediateBefore, "U");
-                ReportLogger.pass("Audit trail validated — release_status UPDATE ('" + immediateBefore
-                        + "' → 'U') recorded for voucher: " + testData.getExistingVoucherNo());
-            }
+            VoucherSnapshotValidator validator = new VoucherSnapshotValidator();
+            validator.validate("General Voucher Revert — Snapshot Validation — [" + testData.getExistingVoucherNo() + "]",
+                    contextRef[0], beforeSnapshotRef[0], afterSnapshotRef[0], changeSet);
+            validator.assertAll();
 
-            // No more Excel-declared "Release Status" cross-check here (plan §16 — the column was
-            // removed entirely from RevertVoucherInfo, not merely downgraded to a soft cross-check).
-            // Step 1's live-read 'before' value above is, and remains, the sole driver of every
-            // downstream decision/assertion — there is nothing declarative left to compare it against.
-
-            // Surface a precheck/immediate-before divergence prominently — this is exactly the race
-            // condition that previously caused false failures (e.g. VG/00303 in run 20260812_230836).
-            if (immediateBefore != null && !immediateBefore.equals(before)) {
-                ReportLogger.warn("release_status changed between Step-1 precheck ('" + before
-                        + "') and the immediate-before read ('" + immediateBefore + "') for voucher "
-                        + testData.getExistingVoucherNo() + " — a concurrent process modified this document "
-                        + "mid-test; this is expected to be benign as long as 'after' ended at 'U'.");
-            }
-
-            ReportLogger.pass("DB validated — precheck-before='" + before + "', immediate-before='" + immediateBefore
-                    + "', after='" + after + "', dialog outcome=" + revertOutcomeRef[0]
+            ReportLogger.pass("DB validated — " + outcomeNote + "; precheck-before='" + before
+                    + "', immediate-before='" + immediateBefore + "', after='" + after
+                    + "', expected='" + expectedNewStatus + "', dialog outcome=" + revertOutcomeRef[0]
                     + " for voucher: " + testData.getExistingVoucherNo());
         });
+    }
+
+    /**
+     * Point 9 summary helper — names the tables/row counts actually captured in a BEFORE/AFTER
+     * snapshot (plan §Point 9 Revert steps 8/12: "the data is already in scope, no new
+     * instrumentation needed"), instead of the previous blind one-line "captured" marker. One
+     * line per table (not one long comma-joined line) — matches the report's established
+     * "Level 1 — finvchmain field checks" house style for readability.
+     */
+    private static void recordSnapshotTableSummary(String label, VoucherSnapshot snapshot) {
+        if (snapshot == null || snapshot.getTables() == null || snapshot.getTables().isEmpty()) {
+            com.gsl.reports.StepSummaryBuffer.record(label + ": no tables captured");
+            return;
+        }
+        for (var entry : snapshot.getTables().entrySet()) {
+            com.gsl.reports.StepSummaryBuffer.record(
+                    label + " — " + entry.getKey() + ": " + entry.getValue().rowCount() + " row(s)");
+        }
     }
 }

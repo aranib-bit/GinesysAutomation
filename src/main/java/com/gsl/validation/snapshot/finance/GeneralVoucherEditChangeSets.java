@@ -231,8 +231,12 @@ public final class GeneralVoucherEditChangeSets {
      * (blank {@code subLedger}) and as a safe fallback if the name can't be resolved (logged, not
      * thrown — a header-only/amount-only edit should still validate even if sub-ledger lookup
      * fails; the row-scoped rule just falls back to matching on {@code slcode=0}).
+     *
+     * <p>Package-private (not {@code private}) so {@link GeneralVoucherCreateChangeSets} can reuse
+     * it for the same {@link ExpenseIncomeDetail} DTO's sub-ledger resolution, rather than
+     * re-implementing it.
      */
-    private static long resolveSlcode(ExpenseIncomeDetail editedRow) {
+    static long resolveSlcode(ExpenseIncomeDetail editedRow) {
         String subLedgerName = editedRow.getSubLedger();
         if (subLedgerName == null || subLedgerName.isBlank()) return 0L;
 

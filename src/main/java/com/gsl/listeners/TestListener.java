@@ -366,7 +366,11 @@ public class TestListener implements ITestListener, ISuiteListener {
         }
         Log.info("TEST PASSED: {}", result.getName());
         ReportLogger.framework("TEST PASSED: {}", result.getName());
-        ExtentLogger.pass(result.getName() + " is passed");
+        // Trailing child node (not a flat top-level entry) — the bundled ExtentReports Spark
+        // template renders all flat top-level logs before every step node regardless of real
+        // timestamp, so a flat "is passed" marker here used to render ABOVE every step node
+        // (e.g. "Login to Application") even though it's actually the LAST thing that happened.
+        ExtentLogger.passOnChildNode("Test Result", result.getName() + " is passed");
 
         Optional<DomainReporter> successReporter = DomainReporterRegistry.resolve(result.getParameters());
         try {
@@ -421,8 +425,9 @@ public class TestListener implements ITestListener, ISuiteListener {
         ReportLogger.frameworkError("TEST FAILED: {} — {}",
                 result.getName(),
                 result.getThrowable() != null ? result.getThrowable().getMessage() : "no throwable");
-        // One top-level status marker; full exception details are in the StepExecutor child node.
-        ExtentLogger.fail(result.getName() + " FAILED");
+        // Trailing child node, not a flat top-level entry — same reordering fix as onTestSuccess's
+        // "is passed" marker above; full exception details are in the StepExecutor child node.
+        ExtentLogger.failOnChildNode("Test Result", result.getName() + " FAILED");
 
         Optional<DomainReporter> failureReporter = DomainReporterRegistry.resolve(result.getParameters());
         try {
@@ -454,7 +459,8 @@ public class TestListener implements ITestListener, ISuiteListener {
 
         String snapshotPath = ReportConfigRenderer.getSnapshotPath();
         if (snapshotPath != null) {
-            ExtentLogger.info("<b>Runtime Snapshot:</b> " + snapshotPath);
+            // Own trailing node rather than a flat top-level entry — same reordering fix as above.
+            ExtentLogger.infoHtmlOnChildNode("Runtime Snapshot", "<b>Runtime Snapshot:</b> " + snapshotPath);
         }
 
         ExtentReport.recordTestResult(result, "FAIL");
@@ -544,7 +550,10 @@ public class TestListener implements ITestListener, ISuiteListener {
                     skipReason = ": " + firstLine;
                 }
             }
-            ExtentLogger.skip("Test skipped" + skipReason);
+            // Trailing child node, not a flat top-level entry — same reordering fix as
+            // onTestSuccess/onTestFailure's markers above (this branch only runs when a node
+            // already exists, i.e. some steps already ran before the skip).
+            ExtentLogger.skipOnChildNode("Test Result", "Test skipped" + skipReason);
         }
         ExtentReport.recordTestResult(result, "SKIP");
         TestContextManager.clear();

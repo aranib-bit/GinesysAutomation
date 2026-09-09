@@ -123,6 +123,8 @@ public class DeleteGeneralVoucher extends WebTest {
             beforeReleaseStatusRef[0] = header.getReleaseStatus();
             ReportLogger.business("Captured release_status='" + beforeReleaseStatusRef[0]
                     + "' (before Delete) for voucher: " + testData.getExistingVoucherNo());
+            com.gsl.reports.StepSummaryBuffer.record("Pre-Check summary — voucher=" + testData.getExistingVoucherNo()
+                    + ", found=Yes, release_status(before)='" + beforeReleaseStatusRef[0] + "'");
         });
 
         // ── Step 2: Login ─────────────────────────────────────────────────────────
@@ -187,6 +189,8 @@ public class DeleteGeneralVoucher extends WebTest {
                         + "document mid-test; this is expected to be benign as long as Delete still behaves "
                         + "correctly for whichever state it actually landed in.");
             }
+            com.gsl.reports.StepSummaryBuffer.record("Immediate-before release_status='"
+                    + immediateBeforeReleaseStatusRef[0] + "' for voucher " + testData.getExistingVoucherNo());
         });
 
         // ── Step 6: Unpost if Posted ──────────────────────────────────────────────
@@ -197,23 +201,41 @@ public class DeleteGeneralVoucher extends WebTest {
         // scenario below assert a real, already-confirmed rejection. Branches on Step 5b's
         // immediate-before read, not the stale @DataSupplier-time testData.getReleaseStatus().
         StepExecutor.step("Unpost if Posted (release_status='P')", () -> {
+            String resultingStatus;
+            String actionTaken;
             if ("P".equals(immediateBeforeReleaseStatusRef[0])) {
+                actionTaken = "UNPOST_ATTEMPTED";
                 GeneralVoucherRevertOutcome outcome = listRef[0].revertSelectedDocument();
                 unpostOutcomeRef[0] = outcome;
                 if (outcome == GeneralVoucherRevertOutcome.CANNOT_REVERT_BRS_DONE) {
                     ReportLogger.warn("Voucher's line(s) are already bank-reconciled — Revert (un-post) was "
                             + "blocked; voucher remains Posted. Delete may behave differently against a "
                             + "still-Posted voucher.");
+                    resultingStatus = "P";
                 } else if (outcome == GeneralVoucherRevertOutcome.CANNOT_REVERT_MONTH_CLOSED) {
                     // The negative scenario's actual assertion point — see the early-return below.
                     ReportLogger.warn("Voucher's own accounting year/financial month is already closed — "
                             + "Revert (un-post) was blocked; voucher remains Posted.");
+                    resultingStatus = "P";
                 } else {
                     ReportLogger.business("Voucher unposted via Actions→Revert (was release_status='P'), outcome=" + outcome);
+                    resultingStatus = "U";
                 }
             } else {
+                actionTaken = "NOT_REQUIRED";
+                resultingStatus = immediateBeforeReleaseStatusRef[0];
                 ReportLogger.business("Voucher status='" + immediateBeforeReleaseStatusRef[0] + "' — unpost not required");
             }
+            // Blocked (still Posted despite an attempted unpost) is a genuinely negative outcome
+            // for this step even though it doesn't itself fail the test (BRS/closed-period are
+            // handled — either warned-and-continued, or asserted separately by the negative
+            // scenario's own "Verify Negative Outcome" step right after this one) — cross, not
+            // tick, so the summary visually flags it rather than reading as a routine success.
+            boolean unpostOk = !("UNPOST_ATTEMPTED".equals(actionTaken) && "P".equals(resultingStatus));
+            com.gsl.reports.StepSummaryBuffer.record("Unpost-if-Posted summary — before_status='"
+                    + immediateBeforeReleaseStatusRef[0] + "', action=" + actionTaken
+                    + ", outcome=" + (unpostOutcomeRef[0] == null ? "N/A" : unpostOutcomeRef[0])
+                    + ", resulting_status='" + resultingStatus + "'", unpostOk);
         });
 
         // ── Step 6b: Negative-outcome branch (closed accounting period) ──────────────
@@ -252,6 +274,7 @@ public class DeleteGeneralVoucher extends WebTest {
             beforeFinvchmainRowRef[0] = finvchmainSnapshot.getRows().get(0);
             ReportLogger.business("Captured pre-delete finvchmain state for audit comparison: "
                     + testData.getExistingVoucherNo());
+            recordPreDeleteStateSummary(beforeFinvchmainRowRef[0]);
         });
 
         // ── Step 8: Re-select Voucher + Click Actions + Delete + Confirm ──────────────────────
@@ -301,6 +324,8 @@ public class DeleteGeneralVoucher extends WebTest {
                     "[DeleteGeneralVoucher] finvchmain row for scheme_docno=" + testData.getExistingVoucherNo()
                     + " still exists after Delete was confirmed in the UI — the live row was not actually removed.");
             ReportLogger.business("Confirmed finvchmain row removed for voucher: " + testData.getExistingVoucherNo());
+            com.gsl.reports.StepSummaryBuffer.record("Live row removal confirmed — finvchmain row for voucher "
+                    + testData.getExistingVoucherNo() + " no longer present");
         });
 
         // ── Step 10: Database Validation — Audit Trail ─────────────────────────────
@@ -312,6 +337,57 @@ public class DeleteGeneralVoucher extends WebTest {
             AuditAssertion.assertAuditDeleted(contextRef[0], auditDao, finvchmainRule, beforeFinvchmainRowRef[0]);
             ReportLogger.pass("Audit trail validated — DELETE recorded for voucher: "
                     + testData.getExistingVoucherNo());
+            // Point 9 (Delete's flagged weakest step): AuditAssertion itself logs nothing of its
+            // own — enrich the closing line with a small table using only fields already in scope
+            // (minimal fix — option (a) from the plan; option (b), routing through the full
+            // VoucherSnapshotValidator/ExpectedChangeSet engine like Revert, is flagged as a
+            // longer-term follow-up, not done here).
+            recordAuditTrailSummary(finvchmainRule, beforeFinvchmainRowRef[0]);
         });
+    }
+
+    /**
+     * Point 9 summary helper — "Resolve Document Context + Capture Pre-Delete State": shows the
+     * already-captured pre-delete {@code finvchmain} row (release_status/vchdt/nartext) instead of
+     * leaving it invisible in the report despite being in scope. One line per field (not a
+     * two-column table) — matches the report's established "Level 1 — finvchmain field checks"
+     * house style for readability.
+     */
+    private static void recordPreDeleteStateSummary(Map<String, Object> beforeRow) {
+        if (beforeRow == null) return;
+        String[] fields = {"release_status", "vchdt", "nartext", "refno"};
+        for (String field : fields) {
+            Object value = com.gsl.validation.snapshot.DbValueNormalizer.getIgnoreCase(beforeRow, field);
+            com.gsl.reports.StepSummaryBuffer.record("Pre-Delete State (finvchmain) — " + field + ": "
+                    + com.gsl.validation.snapshot.DbValueNormalizer.displayString(value));
+        }
+    }
+
+    /**
+     * Point 9 summary helper — "Database Validation — Audit Trail": {@link AuditAssertion} itself
+     * logs nothing to the report, so the step's only content used to be one generic closing line.
+     * Builds the business key the same way {@code AuditAssertion} does internally (duplicated
+     * here rather than exposing a new method on it — see the plan's "minimal fix" recommendation)
+     * and reports it alongside the audit table/operation/result, since {@code assertAuditDeleted}
+     * having returned without throwing IS the "Result" (a genuine failure would have already
+     * failed this step before reaching this line). One line per field (not a table) — same
+     * readability reason as {@link #recordPreDeleteStateSummary}.
+     */
+    private static void recordAuditTrailSummary(TableRule tableRule, Map<String, Object> beforeRow) {
+        String auditTable = "aud2_" + tableRule.getTableName();
+        List<String> keyColumns = tableRule.getBusinessKeyColumns();
+        StringBuilder businessKey = new StringBuilder();
+        if (keyColumns != null) {
+            for (String col : keyColumns) {
+                if (businessKey.length() > 0) businessKey.append(", ");
+                Object raw = com.gsl.validation.snapshot.DbValueNormalizer.getIgnoreCase(beforeRow, col);
+                businessKey.append(col).append('=')
+                        .append(com.gsl.validation.snapshot.DbValueNormalizer.displayString(raw));
+            }
+        }
+        com.gsl.reports.StepSummaryBuffer.record("Audit Table: " + auditTable);
+        com.gsl.reports.StepSummaryBuffer.record("Business Key: " + businessKey);
+        com.gsl.reports.StepSummaryBuffer.record("Operation: DELETE");
+        com.gsl.reports.StepSummaryBuffer.record("Result: Confirmed — aud2 DELETE row matches pre-delete state");
     }
 }

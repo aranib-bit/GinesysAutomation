@@ -34,6 +34,20 @@ import java.util.Set;
  * {@code requireClosedPeriod}-inverted-guard pattern {@link DbGeneralVoucherDeleteDataSource}/
  * {@link DbGeneralVoucherRevertDataSource} already establish — not built here since there is no
  * consumer yet and no confirmed rejection outcome to assert against.
+ *
+ * <p><b>DB-validation design, ready once the UI flow above is confirmed and unblocked:</b> mirror
+ * {@code RevertGeneralVoucher}'s DB-validation shape exactly, inverted — a
+ * {@code GeneralVoucherReleaseChangeSets.release(context, beforeSnapshot, expectedNewStatus)}
+ * builder with the same shape as {@code com.gsl.validation.snapshot.finance
+ * .GeneralVoucherRevertChangeSets#revert} (transitioning {@code release_status} {@code 'U'} →
+ * {@code 'P'} instead of {@code 'P'} → {@code 'U'}; {@code finvchdet}/{@code fincosttag} need no
+ * explicit overrides either, since the persistence map's own table-wide {@code MUST_NOT_CHANGE}
+ * default already asserts they stay untouched), run through the identical
+ * {@code VoucherDocumentContextResolver}/{@code SnapshotService}/{@code VoucherSnapshotValidator}
+ * pipeline. A future {@code ReleaseGeneralVoucher} test class would follow
+ * {@code RevertGeneralVoucher}'s exact {@code StepExecutor.step(...)} skeleton, swapping only the
+ * click/confirm calls and the expected status transition — near-zero design lift once
+ * {@code VoucherMainGridBase#clickRelease()}/{@code #confirmRelease()} are confirmed live.
  */
 public final class DbGeneralVoucherReleaseDataSource {
 

@@ -50,4 +50,15 @@ public interface ReportConfig extends Config {
     @Key("report.export.fullValidationXlsx.enabled")
     @DefaultValue("false")
     boolean fullValidationXlsxEnabled();
+
+    /** Gates visibility of "debug" {@link com.gsl.enums.LogCategory} entries (see
+     *  {@link com.gsl.enums.LogCategory#isDebugCategory()}) in the Extent HTML report only — file
+     *  logging via {@code ReportLogger#loggerFor(LogCategory)} is never affected by this flag.
+     *  {@code false} by default: a business-user-facing report shows only business-centric
+     *  categories (BUSINESS/VALIDATION/MODULE/SUB_MODULE/MENU/SUB_MENU/NAVIGATION/FRAMEWORK/
+     *  TEST_STEP_STATUS — "did this succeed or fail", not "which Selenium call did that") until
+     *  {@code report.debugLogs.extentVisible=true} is set for a debugging run. */
+    @Key("report.debugLogs.extentVisible")
+    @DefaultValue("false")
+    boolean debugLogsExtentVisible();
 }

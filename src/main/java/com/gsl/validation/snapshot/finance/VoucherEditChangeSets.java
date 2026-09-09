@@ -391,30 +391,40 @@ public final class VoucherEditChangeSets {
     /** {@code true} when {@code row}'s {@code glcode}/{@code slcode} match the given values —
      *  shared row-identity predicate behind {@link #detailLineGlTransition}/{@link #addNewDetailLine}'s
      *  {@code expectRowInsert}/{@code expectRowDelete} matchers. Same NULL-safe {@code slcode}
-     *  handling as {@link #findFinvchdetRow}/{@link #findFinpostRowByGlcode}. */
-    private static boolean matchesKey(Map<String, Object> row, long glcode, long slcode) {
+     *  handling as {@link #findFinvchdetRow}/{@link #findFinpostRowByGlcode}. Package-private (not
+     *  {@code private}) so {@link GeneralVoucherCreateChangeSets} can reuse it for the same
+     *  finvchdet/finpost row-identity matching, rather than re-implementing it. */
+    static boolean matchesKey(Map<String, Object> row, long glcode, long slcode) {
         Object rawGlcode = DbValueNormalizer.getIgnoreCase(row, "glcode");
         Object rawSlcode = DbValueNormalizer.getIgnoreCase(row, "slcode");
         return rawGlcode != null && String.valueOf(glcode).equals(String.valueOf(rawGlcode))
                 && slcodeDisplay(slcode).equals(DbValueNormalizer.displayString(rawSlcode));
     }
 
-    private static boolean amountMatches(Map<String, Object> row, String amountColumn, BigDecimal expected) {
+    /** Package-private for the same reason as {@link #matchesKey} — reused by
+     *  {@link GeneralVoucherCreateChangeSets}. */
+    static boolean amountMatches(Map<String, Object> row, String amountColumn, BigDecimal expected) {
         return DbValueNormalizer.equalsNormalized(DbValueNormalizer.getIgnoreCase(row, amountColumn), expected);
     }
 
-    private static boolean reversalMatches(Map<String, Object> row, String expectedIsReversal) {
+    /** Package-private for the same reason as {@link #matchesKey} — reused by
+     *  {@link GeneralVoucherCreateChangeSets}. */
+    static boolean reversalMatches(Map<String, Object> row, String expectedIsReversal) {
         return DbValueNormalizer.equalsNormalized(DbValueNormalizer.getIgnoreCase(row, "isreversal"), expectedIsReversal);
     }
 
-    private static boolean narrationMatches(Map<String, Object> row, String expectedNarration) {
+    /** Package-private for the same reason as {@link #matchesKey} — reused by
+     *  {@link GeneralVoucherCreateChangeSets}. */
+    static boolean narrationMatches(Map<String, Object> row, String expectedNarration) {
         return DbValueNormalizer.equalsNormalized(DbValueNormalizer.getIgnoreCase(row, "nartext"), expectedNarration);
     }
 
     /** {@code true} when {@code row}'s {@code enttype} is NOT {@code mainEntType} — i.e. it's a
      *  per-line ("VDG"/"VDP") {@code finpost} posting row, not the document's header-level
-     *  "main grid" row. Same exclusion {@link #findFinpostRowByGlcode} already applies. */
-    private static boolean notMainEntType(Map<String, Object> row, String mainEntType) {
+     *  "main grid" row. Same exclusion {@link #findFinpostRowByGlcode} already applies.
+     *  Package-private for the same reason as {@link #matchesKey} — reused by
+     *  {@link GeneralVoucherCreateChangeSets}. */
+    static boolean notMainEntType(Map<String, Object> row, String mainEntType) {
         if (mainEntType == null) return true;
         Object enttype = DbValueNormalizer.getIgnoreCase(row, "enttype");
         return !mainEntType.equalsIgnoreCase(String.valueOf(enttype));

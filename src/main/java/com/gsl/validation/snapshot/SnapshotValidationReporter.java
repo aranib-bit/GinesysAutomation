@@ -71,11 +71,20 @@ public final class SnapshotValidationReporter {
         // exact same data/content as before — only the wrapping HTML/icon/width/badge presentation
         // changes here. Summary/Exceptions/Known-Issues open by default (the headline sections);
         // the rest collapsed.
-        ExtentLogger.infoHtml(FoldableSectionRenderer.foldableTable(
+        //
+        // Each section is rendered via infoHtmlOnChildNode (its own dedicated node/log-table)
+        // rather than a bare infoHtml call on this shared "Database Snapshot Validation" step
+        // node — up to 6 infoHtml calls sharing ONE log table meant FoldableSectionRenderer's
+        // column-hiding CSS only hid columns on the matching row while sibling rows still claimed
+        // the table's width, collapsing each widget's surviving cell into the narrow status-badge
+        // column and garbling its content into vertical, one-character-per-line text. Mirrors the
+        // proven fix already applied to DbGatheringExtentLogger's "Test Data Resolution"/"SQL
+        // Queries Executed" nodes.
+        ExtentLogger.infoHtmlOnChildNode("Validation Summary", FoldableSectionRenderer.foldableTable(
                 FoldableSectionRenderer.ICO_MONITOR, "Validation Summary", true, buildSummaryTable(result)));
 
         if (!result.failures().isEmpty()) {
-            ExtentLogger.infoHtml(FoldableSectionRenderer.foldableTableWithSummary(FoldableSectionRenderer.ICO_WARNING, "❌ Exceptions", true,
+            ExtentLogger.infoHtmlOnChildNode("Exceptions", FoldableSectionRenderer.foldableTableWithSummary(FoldableSectionRenderer.ICO_WARNING, "❌ Exceptions", true,
                     result.failures().size() + " exception(s) found",
                     buildExceptionsTable(result.failures()), WIDTHS_6COL_WITH_STATUS));
         }
@@ -84,24 +93,24 @@ public final class SnapshotValidationReporter {
                 .filter(c -> c.knownIssueNote() != null)
                 .toList();
         if (!knownIssues.isEmpty()) {
-            ExtentLogger.infoHtml(FoldableSectionRenderer.foldableTableWithSummary(FoldableSectionRenderer.ICO_WARNING, "⚠️ Known Issues", true,
+            ExtentLogger.infoHtmlOnChildNode("Known Issues", FoldableSectionRenderer.foldableTableWithSummary(FoldableSectionRenderer.ICO_WARNING, "⚠️ Known Issues", true,
                     knownIssues.size() + " known issue(s) — visible, non-blocking",
                     buildKnownIssuesTable(knownIssues), WIDTHS_6COL_WITH_STATUS));
         }
 
-        ExtentLogger.infoHtml(FoldableSectionRenderer.foldableTable(
+        ExtentLogger.infoHtmlOnChildNode("Change Classification Summary", FoldableSectionRenderer.foldableTable(
                 FoldableSectionRenderer.ICO_TABLE, "Change Classification Summary", false,
                 buildClassificationSummaryTable(result)));
 
         if (!result.auditChecks().isEmpty()) {
             long auditPassed = result.auditChecks().stream().filter(AuditTableCheckResult::passed).count();
-            ExtentLogger.infoHtml(FoldableSectionRenderer.foldableTableWithSummary(FoldableSectionRenderer.ICO_DB, "Audit Trail", false,
+            ExtentLogger.infoHtmlOnChildNode("Audit Trail", FoldableSectionRenderer.foldableTableWithSummary(FoldableSectionRenderer.ICO_DB, "Audit Trail", false,
                     result.auditChecks().size() + " audit table(s) checked, " + auditPassed + " passed",
                     buildAuditTable(result.auditChecks()), null));
         }
         if (!result.auditFieldChecks().isEmpty()) {
             long fieldPassed = result.auditFieldChecks().stream().filter(AuditFieldCheckResult::passed).count();
-            ExtentLogger.infoHtml(FoldableSectionRenderer.foldableTableWithSummary(FoldableSectionRenderer.ICO_DB, "Audit Trail — Field-Level Detail", false,
+            ExtentLogger.infoHtmlOnChildNode("Audit Trail — Field-Level Detail", FoldableSectionRenderer.foldableTableWithSummary(FoldableSectionRenderer.ICO_DB, "Audit Trail — Field-Level Detail", false,
                     result.auditFieldChecks().size() + " audit field(s) checked, " + fieldPassed + " passed",
                     buildAuditFieldTable(result.auditFieldChecks()), WIDTHS_AUDIT_FIELD));
         }
@@ -123,7 +132,7 @@ public final class SnapshotValidationReporter {
                 + (xlsxLink != null
                         ? "; full set: <a href='" + xlsxLink + "'>Download full validation data (.xlsx)</a>"
                         : "");
-        ExtentLogger.infoHtml(FoldableSectionRenderer.foldableTableWithSummary(FoldableSectionRenderer.ICO_TABLE, "Full Validation Details", false,
+        ExtentLogger.infoHtmlOnChildNode("Full Validation Details", FoldableSectionRenderer.foldableTableWithSummary(FoldableSectionRenderer.ICO_TABLE, "Full Validation Details", false,
                 fullDetailsSummary, fullTable, WIDTHS_7COL_RESULT));
 
         for (ValidationFailure f : result.failures()) {

@@ -2,6 +2,7 @@ package com.gsl.reports;
 
 import com.aventstack.extentreports.ExtentTest;
 import com.aventstack.extentreports.MediaEntityBuilder;
+import com.aventstack.extentreports.markuputils.Markup;
 import com.gsl.browser.CustomMetricsObserverInjector;
 import com.gsl.browser.injector.FrontendDiagnosticsInjectorFactory;
 import com.gsl.config.ConfigFactory;
@@ -109,23 +110,27 @@ public final class StepExecutor {
             action.run();
             durationMs = System.currentTimeMillis() - startMs;
             node.getModel().setName(stepName + " (" + formatDuration(durationMs) + ")");
+            renderStepSummary(node);
             ExtentLogger.passCategorized(LogCategory.TEST_STEP_STATUS, "Step passed");
             Log.info("[STEP PASS] {} ({}ms)", stepName, durationMs);
             StepDurationBuffer.record(stepName, durationMs, true);
             return durationMs;
         } catch (RuntimeException e) {
             durationMs = System.currentTimeMillis() - startMs;
+            StepSummaryBuffer.flush(); // discard — a step that didn't finish shouldn't render a summary
             StepDurationBuffer.record(stepName, durationMs, false);
             failNode(node, stepName, durationMs, e);
             throw e;
         } catch (Exception e) {
             durationMs = System.currentTimeMillis() - startMs;
+            StepSummaryBuffer.flush();
             StepDurationBuffer.record(stepName, durationMs, false);
             failNode(node, stepName, durationMs, e);
             throw new RuntimeException("Step failed: " + stepName, e);
         } catch (Throwable t) {
             // Catches Errors (e.g. AssertionError, SoftAssertionError) that are not Exception subclasses
             durationMs = System.currentTimeMillis() - startMs;
+            StepSummaryBuffer.flush();
             StepDurationBuffer.record(stepName, durationMs, false);
             failNode(node, stepName, durationMs, t);
             if (t instanceof Error) throw (Error) t;
@@ -133,6 +138,41 @@ public final class StepExecutor {
         } finally {
             ExtentManager.setExtentTest(parent);
         }
+    }
+
+    /**
+     * Drains {@link StepSummaryBuffer} and, if anything was recorded during this step, renders one
+     * consolidated "Summary" box as the last thing in the node — the TL;DR a reader sees right
+     * before the green "Step passed" marker, instead of piecing the outcome together from the
+     * individual lines logged above it. No-op (renders nothing) when the step recorded no
+     * fragments — most steps that don't opt in stay exactly as they were before this existed.
+     *
+     * <p>Reuses the report's existing green checkmark-summary house style (same
+     * background/border/font as {@code FinVchMainBaseValidator#buildLevel1Summary}'s
+     * "Level 1 — finvchmain field checks" box — e.g. run 20260909_114004) rather than the
+     * previously-introduced grey/blue-grey box, which looked visually inconsistent with every
+     * other summary box already in the report. Plain one-line text fragments get the same
+     * "&#10003;&nbsp;" checkmark bullet that style uses; a fragment that is already its own HTML
+     * block (e.g. a table built by one of the Point 9 call sites) renders as-is, unprefixed.
+     */
+    private static void renderStepSummary(ExtentTest node) {
+        java.util.List<StepSummaryBuffer.Fragment> fragments = StepSummaryBuffer.flush();
+        if (fragments.isEmpty()) return;
+        StringBuilder body = new StringBuilder();
+        for (StepSummaryBuffer.Fragment fragment : fragments) {
+            String text = fragment.text();
+            boolean isHtmlBlock = text.stripLeading().startsWith("<");
+            body.append("<div style='margin-bottom:4px;'>");
+            if (!isHtmlBlock) {
+                body.append(fragment.ok() ? "&#10003;&nbsp; " : "&#10007;&nbsp; ");
+            }
+            body.append(text).append("</div>");
+        }
+        String html = "<div style='font-family:monospace;font-size:12px;line-height:1.8;"
+                + "padding:8px 12px;background:#f0fff4;border-left:4px solid #38a169;"
+                + "border-radius:2px;margin:4px 0;'>"
+                + "<b>Summary</b><br/>" + body + "</div>";
+        node.info((Markup) () -> html);
     }
 
     /**

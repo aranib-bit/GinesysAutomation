@@ -173,6 +173,36 @@ public final class ExtentLogger {
         child.info((Markup) () -> innerHtml);
     }
 
+    /**
+     * Creates a trailing named child node marked PASS — used for end-of-test bookkeeping (e.g.
+     * "TEST PASSED") that would otherwise be logged as a flat top-level entry and, per the
+     * bundled ExtentReports Spark template ({@code standard-content.ftl}), render BEFORE every
+     * step node regardless of real timestamp (it renders all flat top-level logs in one block,
+     * then all child nodes in a separate block). Creating a trailing node instead makes it sort
+     * after the step nodes, matching real end-of-test timing — same idiom as
+     * {@link #infoHtmlOnChildNode}'s P8 fix. Still mirrors the flat message onto the shard test,
+     * which never receives child nodes of its own.
+     */
+    public static void passOnChildNode(String nodeName, String message) {
+        ExtentTest parent = ExtentManager.getExtentTest();
+        if (parent != null) parent.createNode(nodeName).pass(message);
+        if (ExtentManager.getShardTest() != null) ExtentManager.getShardTest().pass(message);
+    }
+
+    /** {@link #passOnChildNode}'s FAIL counterpart. */
+    public static void failOnChildNode(String nodeName, String message) {
+        ExtentTest parent = ExtentManager.getExtentTest();
+        if (parent != null) parent.createNode(nodeName).fail(message);
+        if (ExtentManager.getShardTest() != null) ExtentManager.getShardTest().fail(message);
+    }
+
+    /** {@link #passOnChildNode}'s SKIP counterpart. */
+    public static void skipOnChildNode(String nodeName, String message) {
+        ExtentTest parent = ExtentManager.getExtentTest();
+        if (parent != null) parent.createNode(nodeName).skip(message);
+        if (ExtentManager.getShardTest() != null) ExtentManager.getShardTest().skip(message);
+    }
+
     public static void infoTable(String[][] table) {
         if (ExtentManager.getExtentTest() == null) return;
         ExtentManager.getExtentTest().info(buildScrollableTable(table));
@@ -200,10 +230,31 @@ public final class ExtentLogger {
     /**
      * Logs a message prefixed with colored category and (non-MEDIUM) severity badges.
      * MEDIUM severity is the silent default — its badge is suppressed to avoid noise.
+     *
+     * <p>Suppressed from the Extent HTML report when {@code category.isDebugCategory()} is true
+     * and {@code report.debugLogs.extentVisible} is off (the default) — see {@link LogCategory}.
+     * File logging via {@code ReportLogger#loggerFor} happens independently, before this method
+     * is ever called, and is unaffected either way.
      */
     public static void infoCategorized(LogCategory category, ReportSeverity severity, String message) {
         if (ExtentManager.getExtentTest() == null) return;
+        if (category.isDebugCategory() && !com.gsl.config.ConfigFactory.getReportConfig().debugLogsExtentVisible()) return;
         String htmlStr = buildCategorizedHtml(category, severity, message);
+        ExtentManager.getExtentTest().info((Markup) () -> htmlStr);
+    }
+
+    /**
+     * Logs a message prefixed with colored category AND {@link com.gsl.enums.PopupOutcome} badges
+     * — the popup-specific counterpart to {@link #infoCategorized(LogCategory, ReportSeverity, String)},
+     * for a category (currently only {@code LogCategory.POPUP}) whose own debug/business flag
+     * carries no useful signal once every sub-outcome shares one parent category. Visibility gates
+     * on {@code outcome.isDebugCategory()} instead of {@code category.isDebugCategory()} — see
+     * {@link com.gsl.enums.PopupOutcome}.
+     */
+    public static void infoCategorized(LogCategory category, com.gsl.enums.PopupOutcome outcome, String message) {
+        if (ExtentManager.getExtentTest() == null) return;
+        if (outcome.isDebugCategory() && !com.gsl.config.ConfigFactory.getReportConfig().debugLogsExtentVisible()) return;
+        String htmlStr = buildPopupHtml(category, outcome, message);
         ExtentManager.getExtentTest().info((Markup) () -> htmlStr);
     }
 
@@ -211,11 +262,37 @@ public final class ExtentLogger {
      * Logs a message prefixed with a colored category badge, keeping Extent's native
      * PASS status (green) on the node rather than an INFO entry — used for step-level
      * outcome markers that should still roll the test/step up as passed.
+     *
+     * <p>Same debug/business gating as {@link #infoCategorized} — e.g. {@code TEST_STEP_STATUS}
+     * (StepExecutor's "Step passed" marker) is business, always shown; {@code RECOVERY}'s
+     * "dashboard recovered after refresh" detail is debug, hidden by default. Gating this out
+     * only skips the log entry itself — it does not affect whether the step/test actually passed,
+     * since Extent's overall status is driven by whether a FAIL entry was ever logged, not by
+     * this specific PASS marker existing.
      */
     public static void passCategorized(LogCategory category, String message) {
         if (ExtentManager.getExtentTest() == null) return;
+        if (category.isDebugCategory() && !com.gsl.config.ConfigFactory.getReportConfig().debugLogsExtentVisible()) return;
         String htmlStr = buildCategorizedHtml(category, ReportSeverity.MEDIUM, message);
         ExtentManager.getExtentTest().pass((Markup) () -> htmlStr);
+    }
+
+    /**
+     * Logs a message prefixed with a colored category badge, keeping Extent's native FAIL status
+     * (red) on the node — the FAIL-status counterpart to {@link #passCategorized}, used so a
+     * categorized check's failure side carries the same badge its pass side does (e.g.
+     * {@link com.gsl.pages.VerifiablePage}'s {@code VERIFICATION} confirmations).
+     *
+     * <p><b>Deliberately does NOT check {@code category.isDebugCategory()}</b> — unlike every
+     * other categorized method here, a FAIL entry is never gated behind the business/debug
+     * toggle, regardless of the category it's tagged with. Hiding a failure by default would be
+     * actively harmful; only passing/informational noise is ever a legitimate candidate for the
+     * business-only view to hide.
+     */
+    public static void failCategorized(LogCategory category, String message) {
+        if (ExtentManager.getExtentTest() == null) return;
+        String htmlStr = buildCategorizedHtml(category, ReportSeverity.MEDIUM, message);
+        ExtentManager.getExtentTest().fail((Markup) () -> htmlStr);
     }
 
     private static String buildCategorizedHtml(LogCategory category, ReportSeverity severity, String message) {
@@ -232,6 +309,25 @@ public final class ExtentLogger {
                 .append("font-size:10px;font-weight:bold;margin-right:5px;vertical-align:middle;'>")
                 .append(severity.name()).append("</span>");
         }
+        html.append("<span style='vertical-align:middle;'>").append(escapeHtml(message)).append("</span>");
+        return html.toString();
+    }
+
+    /** {@link #buildCategorizedHtml}'s counterpart for a {@link com.gsl.enums.PopupOutcome}
+     *  sub-badge instead of a {@link ReportSeverity} one — see
+     *  {@link #infoCategorized(LogCategory, com.gsl.enums.PopupOutcome, String)}. */
+    private static String buildPopupHtml(LogCategory category, com.gsl.enums.PopupOutcome outcome, String message) {
+        StringBuilder html = new StringBuilder();
+        String catColor = categoryColor(category);
+        html.append("<span style='background:").append(catColor)
+            .append(";color:white;padding:1px 7px;border-radius:3px;")
+            .append("font-size:10px;font-weight:bold;margin-right:5px;vertical-align:middle;'>")
+            .append(category.name()).append("</span>");
+        String outcomeColor = popupOutcomeColor(outcome);
+        html.append("<span style='background:").append(outcomeColor)
+            .append(";color:white;padding:1px 6px;border-radius:3px;")
+            .append("font-size:10px;font-weight:bold;margin-right:5px;vertical-align:middle;'>")
+            .append(outcome.name()).append("</span>");
         html.append("<span style='vertical-align:middle;'>").append(escapeHtml(message)).append("</span>");
         return html.toString();
     }
@@ -257,6 +353,19 @@ public final class ExtentLogger {
             case TEST_STEP_STATUS -> "#757575";
             case CONTEXT_SWITCH   -> "#5e35b1";
             case DATA_BACKFILL    -> "#d84315";
+            case VERIFICATION     -> "#00796b";
+            case LOADER_WAIT      -> "#455a64";
+            case POPUP            -> "#6a4c93";
+        };
+    }
+
+    /** Badge color for a {@link com.gsl.enums.PopupOutcome} sub-category badge — see
+     *  {@link #infoCategorized(LogCategory, com.gsl.enums.PopupOutcome, String)}. */
+    private static String popupOutcomeColor(com.gsl.enums.PopupOutcome outcome) {
+        return switch (outcome) {
+            case EXPECTED   -> "#827717";
+            case UNEXPECTED -> "#d32f2f";
+            case MAYBE      -> "#f57f17";
         };
     }
 

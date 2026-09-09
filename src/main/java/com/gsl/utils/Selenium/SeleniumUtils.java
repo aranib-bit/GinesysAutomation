@@ -629,8 +629,9 @@ public class SeleniumUtils {
      * <ol>
      *   <li>Logs a WARN to Log4j and a WARNING entry on the current ExtentReport node so
      *       testers can see that a retry occurred and what overlay caused it.</li>
-     *   <li>Calls {@link WaitUtils#waitForClickOverlay()} to wait for ExtJS masks,
-     *       {@code ext-element-*} backdrops, and the AJAX queue to clear.</li>
+     *   <li>Calls {@link WaitUtils#waitForClickOverlay(String)} (passing {@code elementName} as
+     *       the log context label) to wait for ExtJS masks, {@code ext-element-*} backdrops, and
+     *       the AJAX queue to clear.</li>
      *   <li>Re-attempts the click.</li>
      * </ol>
      * After exhausting all retries the original exception is re-thrown.
@@ -660,10 +661,13 @@ public class SeleniumUtils {
 
                 // Retrying only pays off when the blocker is something that goes away on its own.
                 // A stable layout element (a form label, a panel, a grid cell) never will, and each
-                // retry costs two full componentready timeouts inside waitForClickOverlay(). Run
-                // 20260807_095328 burned ~123s per test that way: a leftover Add-form label
-                // (#combo-1216-labelTextEl) sat over the side menu, and all 3 retries were futile
-                // by construction. Fail immediately instead, naming the blocker.
+                // retry now costs up to ~100s in waitForClickOverlay()'s Phase 1 alone (hardened,
+                // genuinely-visible staged-poll — see WaitUtils#waitForGenuineMaskClear), plus its
+                // other phases — a materially higher cost than before that hardening, since Phase 1
+                // used to give up after one ~40s isDisplayed()-only check. Run 20260807_095328
+                // burned ~123s per test on the OLD, cheaper timing that way: a leftover Add-form
+                // label (#combo-1216-labelTextEl) sat over the side menu, and all 3 retries were
+                // futile by construction. Fail immediately instead, naming the blocker.
                 if (!isTransientOverlayBlock(e.getMessage())) {
                     String blocker = describeBlocker(e.getMessage());
                     Log.error("[OVERLAY-RETRY] Click on '{}' is blocked by {} — a stable layout element, "
@@ -682,7 +686,7 @@ public class SeleniumUtils {
                         "[Overlay Retry %d/%d] Click on '%s' was intercepted%s — scrolling into view and waiting for overlay to clear",
                         attempt, maxRetries, elementName, overlayTag));
                 JavascriptExecutorUtils.scrollToElement(element);
-                WaitUtils.waitForClickOverlay();
+                WaitUtils.waitForClickOverlay(elementName);
             }
         }
     }
@@ -711,6 +715,19 @@ public class SeleniumUtils {
         if (msg.contains("x-mask"))        return " (by .x-mask)";
         if (msg.contains("x-mask-msg"))    return " (by .x-mask-msg)";
         if (msg.contains("modal"))         return " (by modal overlay)";
+        // ExtJS toolbar-layout filler (e.g. <div class="x-toolbar-spacer ..." role="presentation"
+        // id="tbspacer-1260">) — a genuinely transient layout artifact, not a real UI element:
+        // role="presentation" is the ARIA marker for "this element carries no semantic meaning and
+        // is never meant to receive interaction," so ANY element carrying it that intercepts a
+        // click is, by definition, a temporary layout-reflow overlap (e.g. a toolbar spacer
+        // momentarily sliding over an adjacent button while the toolbar recalculates widths) —
+        // never a real stable blocker a user would need to route around. Confirmed live: run
+        // 20260909_094016, a "reopen" click on GV's Add button (issued after a page-identity
+        // verification race — see VerifiablePage#waitUntilVerified) was intercepted by exactly such
+        // a spacer belonging to the Add form that had, by then, already opened.
+        if (msg.contains("role=\"presentation\"") || msg.contains("role='presentation'")) {
+            return " (by role=presentation layout artifact)";
+        }
         return "";
     }
 
@@ -721,8 +738,9 @@ public class SeleniumUtils {
      * Whether the thing blocking a click is expected to disappear by itself, and so is worth
      * waiting and retrying for.
      *
-     * <p>Three cases, and the distinction matters because each retry costs two
-     * {@code componentready.timeout.seconds} windows inside {@link WaitUtils#waitForClickOverlay()}:
+     * <p>Three cases, and the distinction matters because each retry now costs up to ~100s in
+     * {@link WaitUtils#waitForClickOverlay(String)}'s hardened Phase 1 mask-wait alone (see
+     * {@code WaitUtils#waitForGenuineMaskClear}), plus its other phases:
      * <ul>
      *   <li>No interceptor named at all (a plain "element not interactable" — mid-animation, not yet
      *       scrolled into view): <b>transient</b>, retry. This is the case the retry loop was built for.</li>

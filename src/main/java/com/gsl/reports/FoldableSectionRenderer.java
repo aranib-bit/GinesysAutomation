@@ -48,12 +48,34 @@ public final class FoldableSectionRenderer {
             "letter-spacing:.04em;border:0.5px solid #E2E8F0;border-top:none;user-select:none}" +
         ".rs-chev{font-size:9px;opacity:0.55;flex-shrink:0;display:inline-block;transition:transform .15s}" +
         ".rs-wrap details:not([open]) .rs-chev{transform:rotate(180deg)}" +
-        // Hide the Status and Timestamp columns of the Extent log row that wraps the widget.
-        // Use > (direct-child combinator) so only the outer Extent <tr>'s own <td>s are hidden,
-        // not the <td>s inside the nested tables within .rs-wrap.
+        // Hide the Status and Timestamp columns of every row in the Extent log TABLE that
+        // contains the widget — not just the one matching <tr> (the previous, narrower rule).
+        // A widget's log table sometimes shares rows with other .info()/.pass()/.fail() calls
+        // logged on the same ExtentTest node; hiding columns on only the matching row left the
+        // table's overall column widths still governed by those other, untouched rows, so the
+        // widget's own surviving <td> never got to claim the freed width and its content wrapped
+        // into vertical, one-character-per-line garbled text (confirmed live via
+        // SnapshotValidationReporter, which used to make up to 6 infoHtml calls on one shared
+        // node/table — see its own comment). Scoping to the whole <table> instead removes that
+        // column-width fight regardless of how many other rows share it, independent of also
+        // isolating each widget onto its own dedicated node (the complementary code-level fix).
         // :has() supported: Chrome 105+, Edge 105+, Firefox 121+
-        "tr:has(.rs-wrap)>td:not(:last-child){display:none!important;width:0!important;padding:0!important}" +
-        "tr:has(.rs-wrap)>td:last-child{padding:0!important}" +
+        //
+        // Regression fix: the descendant combinator between ":has(.rs-wrap)" and "tbody" doesn't
+        // respect table nesting — foldableSection()'s content (e.g. sqlQueriesTableHtml()'s own
+        // 2-column <table>) renders NESTED inside the .rs-wrap div, which is itself nested inside
+        // this outer table's own <td>. A descendant combinator matches "any tbody>tr>td anywhere
+        // below this table" — including the INNER table's own cells, since they're still
+        // descendants of the outer table in the DOM tree regardless of the intermediate nesting —
+        // so this rule was collaterally hiding the inner table's own first column too (confirmed
+        // live: "SQL Queries Executed" showed only the Time(ms) column, the SQL text column
+        // silently stripped). Scoping to "> tbody > tr > td" (direct-child combinators right after
+        // the matched table) fixes this: it only ever reaches THIS table's own row structure, never
+        // a nested table's, since a nested table's own tbody is a child of the INNER table element,
+        // not of the outer one, no matter how deep the nesting.
+        "table:has(.rs-wrap) > thead > tr > th:not(:last-child)," +
+        "table:has(.rs-wrap) > tbody > tr > td:not(:last-child){display:none!important;width:0!important;padding:0!important}" +
+        "table:has(.rs-wrap) > tbody > tr > td:last-child{padding:0!important;width:100%!important}" +
         ".rs-legend{display:flex;align-items:center;flex-wrap:nowrap;overflow-x:auto;gap:6px 10px;" +
             "padding:8px 14px;background:#F8FAFC;border:0.5px solid #E2E8F0;" +
             "border-radius:8px;margin-bottom:8px}" +
