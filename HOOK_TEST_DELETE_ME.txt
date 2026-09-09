@@ -1,0 +1,1 @@
+Temporary file to verify the graphify post-commit hook fires on a real commit. Safe to delete.
