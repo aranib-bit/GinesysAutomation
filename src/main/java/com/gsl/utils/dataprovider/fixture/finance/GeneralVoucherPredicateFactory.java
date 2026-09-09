@@ -17,11 +17,20 @@ import com.gsl.testdata.Finance.Operations.Vouchers.GeneralVoucher.ExpenseIncome
 import com.gsl.testdata.Finance.Operations.Vouchers.GeneralVoucher.SiteAllocation;
 import com.gsl.testdata.dto.MergedFinanceGeneralVoucherData;
 import com.gsl.validation.db.finance.GeneralVoucherDbValidator;
+import com.gsl.validation.snapshot.DocumentContext;
+import com.gsl.validation.snapshot.ExpectedChangeSet;
+import com.gsl.validation.snapshot.SnapshotService;
+import com.gsl.validation.snapshot.VoucherSnapshot;
+import com.gsl.validation.snapshot.VoucherSnapshotValidator;
+import com.gsl.validation.snapshot.finance.Aud2SnapshotDao;
+import com.gsl.validation.snapshot.finance.GeneralVoucherCreateChangeSets;
+import com.gsl.validation.snapshot.finance.VoucherDocumentContextResolver;
 import org.testng.asserts.SoftAssert;
 
 import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
+import java.util.Collections;
 import java.util.List;
 import java.util.function.BiPredicate;
 import java.util.function.Supplier;
@@ -209,25 +218,35 @@ public final class GeneralVoucherPredicateFactory {
                 ReportLogger.business("Remarks     (UI): " + docInfo.getRemarks());
                 ActualResultsHolder.get().setUiOwnerSite(docInfo.getOwnerSite());
                 ActualResultsHolder.get().setUiCashBank(docInfo.getCashBank());
+                recordDocumentInformationSummary(data.getDocumentInformation(), docInfo);
             });
 
             StepExecutor.step("Fill Expense/Income Detail", () -> {
                 page.fillExpenseIncomeRows(data);
                 ReportLogger.business("Expense/Income Detail section complete: "
                         + data.getExpenseIncomeDetailList().size() + " rows");
+                recordExpenseIncomeDetailSummary(data);
             });
 
-            StepExecutor.step("Fill Cash/Bank Payment Information", () ->
-                    page.handlePaymentInformation(data.getCashBankPaymentInfo()));
+            StepExecutor.step("Fill Cash/Bank Payment Information", () -> {
+                page.handlePaymentInformation(data.getCashBankPaymentInfo());
+                com.gsl.reports.StepSummaryBuffer.record(buildPaymentInformationSummary(data));
+            });
 
             StepExecutor.step("Click Save", () -> {
                 saveStartTimeRef[0] = LocalDateTime.now();
                 popupRef[0] = page.clickSave();
+                com.gsl.reports.StepSummaryBuffer.record("Save clicked at "
+                        + saveStartTimeRef[0].toLocalTime().withNano(0));
             });
 
-            StepExecutor.step("Handle Post-Save Dialogs", () ->
-                    msgBoxRef[0] = PostSaveDialogHandler.forDomain(VoucherDomain.GV)
-                            .handle(popupRef[0], data));
+            StepExecutor.step("Handle Post-Save Dialogs", () -> {
+                msgBoxRef[0] = PostSaveDialogHandler.forDomain(VoucherDomain.GV)
+                        .handle(popupRef[0], data);
+                com.gsl.reports.StepSummaryBuffer.record(data.isNeedsPaymentInfoWarning()
+                        ? "Post-save dialogs seen: payment-info-check warning (acknowledged) --&gt; message box."
+                        : "Post-save dialogs seen: none (no payment-info warning expected) --&gt; message box.");
+            });
 
             StepExecutor.step("Verify Save Result", () -> {
                 docNoRef[0] = msgBoxRef[0].verifyDocumentSave(softAssert).getDocumentNo();
@@ -240,6 +259,8 @@ public final class GeneralVoucherPredicateFactory {
                 }
                 page.close().clickYes(GeneralVoucherListPage::new);
                 ReportLogger.business("Voucher page closed, returned to list");
+                com.gsl.reports.StepSummaryBuffer.record(
+                        "Voucher page closed — Document No " + docNoRef[0] + " returned to list");
             });
 
             StepExecutor.step("Logout (deferred)", () ->
@@ -248,12 +269,138 @@ public final class GeneralVoucherPredicateFactory {
             StepExecutor.step("Database Validation", () -> {
                 new GeneralVoucherDbValidator().validate(data, docNoRef[0], saveStartTimeRef[0]);
                 ReportLogger.pass("DB validated. Document No: " + docNoRef[0]);
+                int detailRows = data.getExpenseIncomeDetailList() == null ? 0 : data.getExpenseIncomeDetailList().size();
+                int siteRows = data.getSiteApplicableRows().size();
+                com.gsl.reports.StepSummaryBuffer.record("DB validation: Levels 1-4 passed — "
+                        + detailRows + " detail row(s), " + siteRows + " site-applicable row(s) — Document No "
+                        + docNoRef[0]);
             });
 
-            StepExecutor.step("Finalize save assertions", softAssert::assertAll);
+            // Runs ALONGSIDE (not replacing) the hand-written Level 1-4 checks above — brings
+            // Create's DB validation up to the same snapshot-diff-engine coverage Edit already has
+            // (generic unexpected-row detection + aud2_* audit-trail INSERT checks), which the
+            // Level 1-4 checklist has never covered. See GeneralVoucherCreateChangeSets' Javadoc
+            // for why the two layers are complementary rather than redundant. No BEFORE snapshot is
+            // resolved from the DB — the document didn't exist before Save, so an empty
+            // VoucherSnapshot stands in for it; DiffEngine treats a missing table as zero rows, so
+            // every row genuinely present AFTER is, by construction, an INSERT.
+            StepExecutor.step("Database Snapshot Validation", () -> {
+                DocumentContext context = new VoucherDocumentContextResolver().resolve(docNoRef[0], VoucherDomain.GV);
+                VoucherSnapshot before = new VoucherSnapshot(Collections.emptyMap());
+                VoucherSnapshot after = new SnapshotService(new Aud2SnapshotDao()).capture(context);
+                ExpectedChangeSet changeSet = GeneralVoucherCreateChangeSets.build(context, data);
+
+                VoucherSnapshotValidator validator = new VoucherSnapshotValidator();
+                validator.validate("General Voucher Create — Snapshot Validation — [" + docNoRef[0] + "]",
+                        context, before, after, changeSet);
+                validator.assertAll();
+                ReportLogger.pass("Snapshot validation complete. Document No: " + docNoRef[0]);
+                recordSnapshotDiffSummary(after);
+            });
+
+            StepExecutor.step("Finalize save assertions", () -> {
+                softAssert.assertAll();
+                com.gsl.reports.StepSummaryBuffer.record(
+                        "All soft assertions passed — Document No " + docNoRef[0] + " finalized");
+            });
 
             return docNoRef[0] != null;
         };
+
+    /**
+     * Point 9 summary helper — "Fill Document Information": one tick/cross line per field
+     * (matches the report's established "Level 1 — finvchmain field checks" house style —
+     * {@code FinVchMainBaseValidator#buildLevel1Summary} — rather than a wide multi-column table,
+     * which wrapped illegibly at the report's fixed panel width), comparing what was originally
+     * supplied (test data) against what the UI reads back after entry. Owner Site has no
+     * test-data input counterpart (it's resolved live from the logged-in user's site), so it's
+     * shown informationally (always tick) rather than compared.
+     */
+    private static void recordDocumentInformationSummary(
+            com.gsl.testdata.Finance.Operations.Vouchers.GeneralVoucher.DocumentInformation input,
+            com.gsl.pages.pagecomponent.Finance.Operations.GeneralVoucher.GeneralVoucherDocumentInformation uiReadBack) {
+        java.time.format.DateTimeFormatter fmt = java.time.format.DateTimeFormatter.ofPattern("dd/MM/yyyy");
+        String expectedDate = input.getDocumentdate() == null ? null : input.getDocumentdate().format(fmt);
+
+        recordFieldCheck("Document Date", expectedDate, uiReadBack.getDocumentDate());
+        recordFieldCheck("Reference", input.getReference(), uiReadBack.getReference());
+        recordFieldCheck("Cash/Bank", input.getCashbank(), uiReadBack.getCashBank());
+        recordFieldCheck("Remarks", input.getRemarks(), uiReadBack.getRemarks());
+        com.gsl.reports.StepSummaryBuffer.record("Owner Site (UI): " + nullSafe(uiReadBack.getOwnerSite())
+                + " — resolved live, no test-data input");
+    }
+
+    /** One "label: Input='X' | UI='Y'" line, tick when they match (or there's nothing to
+     *  compare), cross when they genuinely differ — see {@link #recordDocumentInformationSummary}. */
+    private static void recordFieldCheck(String label, String expected, String actual) {
+        boolean match = expected == null || expected.equalsIgnoreCase(actual == null ? null : actual.trim());
+        com.gsl.reports.StepSummaryBuffer.record(label + " — Input: " + nullSafe(expected)
+                + " | UI: " + nullSafe(actual), match);
+    }
+
+    private static String nullSafe(String value) {
+        return (value == null || value.isBlank()) ? "&mdash;" : value;
+    }
+
+    /**
+     * Point 9 summary helper — "Fill Expense/Income Detail": one line per row filled, naming GL,
+     * resolved ledger type, amount, allocated sites (if any), and Sub Ledger (if any) — the
+     * currently least-visible section of the flow (plan's own finding). One line per row (not a
+     * multi-column table) for the same readability reason as
+     * {@link #recordDocumentInformationSummary}.
+     */
+    private static void recordExpenseIncomeDetailSummary(MergedFinanceGeneralVoucherData data) {
+        List<ExpenseIncomeDetail> rows = data.getExpenseIncomeDetailList();
+        if (rows == null || rows.isEmpty()) return;
+
+        for (ExpenseIncomeDetail row : rows) {
+            java.math.BigDecimal amount = row.getExpenseDr() != null ? row.getExpenseDr() : row.getIncomeCr();
+            String sites = data.getSiteAllocationsForLine(row.getLineNo()).stream()
+                    .map(sa -> sa.getSiteName() + " (" + sa.getAmount() + ")")
+                    .reduce((a, b) -> a + ", " + b).orElse("&mdash;");
+            com.gsl.reports.StepSummaryBuffer.record("Line " + nullSafe(row.getLineNo())
+                    + " — GL: " + nullSafe(row.getGeneralLedger())
+                    + " | Type: " + (row.getResolvedGlType() == null ? "&mdash;" : row.getResolvedGlType().name())
+                    + " | Amount: " + (amount == null ? "&mdash;" : amount)
+                    + " | Sites: " + sites
+                    + " | Sub Ledger: " + nullSafe(row.getSubLedger()));
+        }
+    }
+
+    /**
+     * Point 9 summary helper — "Fill Cash/Bank Payment Information": the CASH-mode happy path
+     * previously left this section as an empty accordion (plan's flagged worst existing gap) —
+     * now always states the payment mode, plus instrument details when applicable.
+     */
+    private static String buildPaymentInformationSummary(MergedFinanceGeneralVoucherData data) {
+        var info = data.getCashBankPaymentInfo();
+        if (info == null || info.getPaymentMode() == null) {
+            return "Payment mode: CASH — no instrument entry required";
+        }
+        return "Payment mode: " + info.getPaymentMode()
+                + (info.getInstrumentNo() == null ? "" : " | Instrument No: " + info.getInstrumentNo())
+                + (info.getInstrumentDate() == null ? "" : " | Instrument Date: " + info.getInstrumentDate())
+                + (info.getDrawnOn() == null ? "" : " | Drawn On: " + info.getDrawnOn());
+    }
+
+    /**
+     * Point 9 summary helper — "Database Snapshot Validation": names the tables actually captured
+     * in the AFTER snapshot and their row counts, so the step states what was diffed instead of
+     * just a generic "complete" line. {@code VoucherSnapshotValidator.validate(...)} doesn't
+     * itself return the {@link com.gsl.validation.snapshot.DiffResult} to the caller, so this
+     * reads counts straight off the already-captured {@code after} snapshot in scope — no new
+     * instrumentation needed.
+     */
+    private static void recordSnapshotDiffSummary(VoucherSnapshot after) {
+        if (after == null || after.getTables() == null || after.getTables().isEmpty()) {
+            com.gsl.reports.StepSummaryBuffer.record("Snapshot validation complete — no tables captured");
+            return;
+        }
+        for (var entry : after.getTables().entrySet()) {
+            com.gsl.reports.StepSummaryBuffer.record(
+                    "Snapshot diffed — " + entry.getKey() + ": " + entry.getValue().rowCount() + " row(s)");
+        }
+    }
 
     /**
      * Shared negative-scenario behavior: fill header + rows → Save → assert the

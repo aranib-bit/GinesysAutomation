@@ -1,6 +1,5 @@
 package com.gsl.reports;
 
-import com.aventstack.extentreports.markuputils.Markup;
 import com.gsl.config.ConfigFactory;
 import com.gsl.diagnostics.RootCause;
 import com.gsl.enums.ReportSeverity;
@@ -94,7 +93,11 @@ public final class FailureSummaryRenderer {
         html.append("</table></div>");
 
         String htmlStr = html.toString();
-        ExtentManager.getExtentTest().info((Markup) () -> htmlStr);
+        // Own trailing node rather than a flat top-level entry — the bundled ExtentReports Spark
+        // template renders all flat top-level logs before every step node regardless of real
+        // timestamp, so this summary (rendered from TestListener.onTestFailure, after steps
+        // already ran) used to render ABOVE every step node instead of after them.
+        ExtentLogger.infoHtmlOnChildNode("Failure Summary", htmlStr);
     }
 
     private static String labelRow(String label, String value,

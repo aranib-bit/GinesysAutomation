@@ -3,6 +3,7 @@ package com.gsl.pages;
 import com.gsl.annotations.LogStep;
 import com.gsl.config.ConfigFactory;
 import com.gsl.driver.DriverManager;
+import com.gsl.enums.PopupOutcome;
 import com.gsl.enums.WaitType;
 import com.gsl.pages.enums.CommonButton;
 import com.gsl.reports.ReportLogger;
@@ -93,8 +94,11 @@ public class LoginPage {
             }
 
             click(yesButton, WaitType.CLICKABLE, "Concurrent Session Yes Button");
-            ReportLogger.business("Concurrent-session prompt detected — clicked 'Yes' to log out the "
-                    + "stale session and continue login.");
+            // MAYBE, not EXPECTED/UNEXPECTED — this popup only conditionally appears depending on
+            // whatever session state happened to exist before this login attempt; it's neither a
+            // routine part of every login nor a hard anomaly.
+            ReportLogger.popup(PopupOutcome.MAYBE, "Concurrent-session prompt detected — clicked "
+                    + "'Yes' to log out the stale session and continue login.");
 
             // Wait briefly for the prompt to clear; if it persists, takeover failed → skip.
             new FluentWait<>(driver)

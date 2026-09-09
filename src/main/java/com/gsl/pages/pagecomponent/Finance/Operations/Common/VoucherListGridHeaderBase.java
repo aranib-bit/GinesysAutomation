@@ -30,6 +30,13 @@ public abstract class VoucherListGridHeaderBase {
         this.expectedPageHeader = domain.getListPageHeader();
     }
 
+    /** Exposes this list page's domain — e.g. so {@link VoucherListPageBase} can build a
+     *  human-readable label (via {@link VoucherDomain#getVoucherLabel()}) for verification-status
+     *  report entries, without duplicating the domain reference on the facade itself. */
+    public VoucherDomain getDomain() {
+        return domain;
+    }
+
     /** Confirmed against the live DOM (General Voucher list) — a bare span, not scoped to a toolbar. */
     protected By actionsButtonLocator() {
         return By.xpath("//span[text()='Actions']");

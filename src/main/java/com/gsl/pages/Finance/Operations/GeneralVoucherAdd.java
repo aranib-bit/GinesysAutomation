@@ -1,6 +1,7 @@
 package com.gsl.pages.Finance.Operations;
 
 import com.gsl.annotations.LogStep;
+import com.gsl.enums.VoucherDomain;
 import com.gsl.pages.Common.DocumentMessageBox;
 import com.gsl.pages.Finance.Operations.Common.DocumentPopup;
 import com.gsl.pages.VerifiablePage;
@@ -35,29 +36,44 @@ public class GeneralVoucherAdd implements CashBankParent, VerifiablePage {
     }
 
     /**
-     * Confirms the browser is actually showing this voucher's Add/Edit form right now, via the
-     * same live page-header signal {@code VoucherListGridHeaderBase} already uses for list pages
-     * — added (Round 23) after a confirmed live race where {@code VoucherListPageBase}'s
-     * Actions→Edit click registered as successful while the app silently stayed on the list page:
-     * the failure only surfaced 30+ seconds later, deep inside the Edit form, as a confusing
-     * "General ledger column not found" error (FIN-GV-EDIT-DETAIL-01, run 20260908_135507).
-     * {@code GeneralVoucherAdd} serves both the Add flow ({@code clickAdd()}) and every Edit entry
-     * path, so both header shapes are accepted — confirmed against a live screenshot of this exact
-     * page ("Add: General Voucher"). Deliberately checks for the colon-qualified header, not a
-     * bare {@code contains("General Voucher")} — the list page's own header ("General Vouchers",
+     * Confirms the browser is actually showing this voucher's Add/Edit form right now, via its
+     * own window title-bar text — added (Round 23) after a confirmed live race where
+     * {@code VoucherListPageBase}'s Actions→Edit click registered as successful while the app
+     * silently stayed on the list page: the failure only surfaced 30+ seconds later, deep inside
+     * the Edit form, as a confusing "General ledger column not found" error
+     * (FIN-GV-EDIT-DETAIL-01, run 20260908_135507). {@code GeneralVoucherAdd} serves both the Add
+     * flow ({@code clickAdd()}) and every Edit entry path, so both header shapes are accepted —
+     * confirmed against a live screenshot of this exact page ("Add: General Voucher").
+     * Deliberately checks for the colon-qualified header, not a bare
+     * {@code contains("General Voucher")} — the list page's own header ("General Vouchers",
      * plural, no colon) would otherwise false-positive-match and defeat the whole check.
+     *
+     * <p><b>Correction (this session):</b> this originally read {@link PageHeaderUtils#getPageHeaderText()}
+     * — the shared LIST-page toolbar text — which the Add/Edit form does not use at all, so the
+     * check always matched the STALE underlying list-page header ("General Vouchers") instead,
+     * confirmed live across many runs (e.g. `20260909_094016`, `20260909_112203`) even while the
+     * Add form was genuinely, correctly open on screen. Now reads
+     * {@link PageHeaderUtils#getWindowTitleText()} instead — the Add/Edit form's own
+     * {@code winTitleType1} window title, confirmed live via DevTools inspection of this exact
+     * page. See that method's Javadoc for the full mechanism.
+     *
+     * <p>Expected header text is centralized in {@link VoucherDomain#getAddFormHeader()}/
+     * {@link VoucherDomain#getEditFormHeader()} (backed by {@code FinanceVoucherAddEditPageHeader}
+     * — the single source of truth) rather than hardcoded here, mirroring
+     * {@code VoucherListGridHeaderBase#verifyOnThisPage()}'s own delegation to
+     * {@link VoucherDomain#getListPageHeader()}.
      */
     @Override
     public void verifyOnThisPage() {
-        String actual = PageHeaderUtils.getPageHeaderText();
+        String actual = PageHeaderUtils.getWindowTitleText();
         boolean onAddOrEditForm = actual != null
-                && (actual.equalsIgnoreCase("Add: General Voucher")
-                    || actual.equalsIgnoreCase("Edit: General Voucher"));
+                && (actual.equalsIgnoreCase(VoucherDomain.GV.getAddFormHeader())
+                    || actual.equalsIgnoreCase(VoucherDomain.GV.getEditFormHeader()));
         if (!onAddOrEditForm) {
             throw new IllegalStateException(
-                    "Expected the General Voucher Add/Edit form to be open (page header "
-                    + "'Add: General Voucher' or 'Edit: General Voucher') but the live page "
-                    + "header reads '" + actual + "' instead.");
+                    "Expected the General Voucher Add/Edit form to be open (page header '"
+                    + VoucherDomain.GV.getAddFormHeader() + "' or '" + VoucherDomain.GV.getEditFormHeader()
+                    + "') but the live page header reads '" + actual + "' instead.");
         }
     }
 

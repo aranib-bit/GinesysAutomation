@@ -4,6 +4,7 @@ import com.gsl.constants.FrameworkConstants;
 import com.gsl.driver.DriverManager;
 import com.gsl.driver.ExecutionContext;
 import com.gsl.driver.ExecutionManager;
+import com.gsl.enums.LogCategory;
 import com.gsl.pages.HomePage;
 import com.gsl.pages.VerifiablePage;
 import com.gsl.pages.enums.Inventory.MainMenuType;
@@ -18,8 +19,10 @@ import com.gsl.pages.pagecomponent.Inventory.InventoryTopMenuComponent;
 import com.gsl.pages.pagecomponent.Inventory.Product_Definition.ProductDefinitionHomePage;
 import com.gsl.pages.pagecomponent.Procurement.ProcurementHomePage;
 import com.gsl.pages.pagecomponent.Procurement.ProcurementTopMenuComponent;
+import com.gsl.reports.ExtentLogger;
 import com.gsl.reports.NavigationLogger;
 import com.gsl.reports.PoolAttributionStats;
+import com.gsl.reports.ReportLogger;
 import com.gsl.utils.Selenium.SeleniumUtils;
 import com.gsl.utils.Selenium.WaitUtils;
 import org.openqa.selenium.By;
@@ -147,7 +150,7 @@ public final class NavigationUtils {
         // what causes a page-header visibility timeout (the header wait itself has no ExtJS-settle
         // gate of its own).
         SeleniumUtils.elementDisappear(FrameworkConstants.getLoadingMask(), "Loading Mask");
-        verifyAndRecordPage(ctx, page, sideMenu.getName());
+        verifyAndRecordPage(ctx, page, sideMenu.getName(), true);
         ExecutionManager.logState("navigation:Procurement/" + subMenu.name() + "/" + sideMenu.getName());
         finishColdStartIfInProgress(ctx, navStart);
         return page;
@@ -202,7 +205,7 @@ public final class NavigationUtils {
         // exactly what caused the 30s pageheader-toolbar visibility timeout seen on
         // GeneralVoucherListPage (the header wait itself has no ExtJS-settle gate of its own).
         SeleniumUtils.elementDisappear(FrameworkConstants.getLoadingMask(), "Loading Mask");
-        verifyAndRecordPage(ctx, page, sideMenu.getName());
+        verifyAndRecordPage(ctx, page, sideMenu.getName(), true);
         ExecutionManager.logState("navigation:Finance/" + subMenu.name() + "/" + sideMenu.getName());
         finishColdStartIfInProgress(ctx, navStart);
         return page;
@@ -330,13 +333,38 @@ public final class NavigationUtils {
      * checkpoint ({@code ExecutionContext.setCurrentPage}) — the checkpoint is only ever set once
      * independently confirmed, never assumed. Pages that don't implement {@link VerifiablePage} yet
      * simply skip both steps (no regression versus today's behavior).
+     *
+     * <p>Uses {@link VerifiablePage#waitUntilVerified} (a short bounded retry) rather than a
+     * single-shot {@code verifyOnThisPage()} call, so a transient render-completion race
+     * self-heals instead of surfacing as a false-negative failure (see that method's Javadoc).
+     * Logs a {@code LogCategory.VERIFICATION} confirmation on success (e.g. "General Voucher List
+     * page is opened") and, on the failure that finally propagates, a paired failure entry under
+     * the same category — previously only the failure path logged anything (via
+     * {@link #logVerificationFailureDiagnostics}), and success was completely silent.
      */
     private static void verifyAndRecordPage(ExecutionContext ctx, Object page, String pageLabel) {
+        verifyAndRecordPage(ctx, page, pageLabel, false);
+    }
+
+    /**
+     * Overload (Point 9's folded-in wording fix) — lets a confirmed-safe destination report
+     * "&lt;label&gt; list page is opened" instead of the generic "&lt;label&gt; page is opened",
+     * without guessing for destinations that aren't confirmed list/grid pages (see call sites —
+     * only {@code navigateToFinanceSideMenu}/{@code navigateToProcurementSideMenu} pass {@code true}
+     * today; {@code navigateToInventorySideMenu}/{@code navigateToFinanceSetupSideMenu} keep the
+     * 3-arg overload's unchanged wording until their own suspect entries are individually
+     * confirmed live).
+     */
+    private static void verifyAndRecordPage(ExecutionContext ctx, Object page, String pageLabel, boolean isListPage) {
         if (page instanceof VerifiablePage verifiable) {
+            String suffix = isListPage ? " list page is opened" : " page is opened";
             try {
-                verifiable.verifyOnThisPage();
+                verifiable.waitUntilVerified(5);
+                ReportLogger.verification(pageLabel + suffix);
             } catch (RuntimeException e) {
                 logVerificationFailureDiagnostics(pageLabel, e);
+                ExtentLogger.failCategorized(LogCategory.VERIFICATION,
+                        pageLabel + " page failed to open: " + e.getMessage());
                 throw e;
             }
             ctx.setCurrentPage(pageLabel);

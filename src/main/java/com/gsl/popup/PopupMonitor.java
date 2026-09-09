@@ -2,11 +2,12 @@ package com.gsl.popup;
 
 import com.gsl.config.ConfigFactory;
 import com.gsl.driver.DriverManager;
+import com.gsl.enums.PopupOutcome;
 import com.gsl.enums.PopupType;
 import com.gsl.exceptions.LoaderStillInProgressException;
 import com.gsl.exceptions.UnexpectedPopupException;
-import com.gsl.reports.ExtentLogger;
 import com.gsl.reports.PopupTrailBuffer;
+import com.gsl.reports.ReportLogger;
 import com.gsl.utils.Selenium.WaitUtils;
 
 /**
@@ -47,14 +48,14 @@ public final class PopupMonitor {
         if (popup.popupType() == PopupType.CONFIRM) {
             String msg = (popup.message() != null && !popup.message().isBlank())
                     ? " | Message: \"" + popup.message() + "\"" : "";
-            ExtentLogger.info("ℹ Confirm dialog detected after [" + actionName + "] — \""
+            ReportLogger.popup(PopupOutcome.EXPECTED, "Confirm dialog detected after [" + actionName + "] — \""
                     + popup.header() + "\"" + msg + " — handled by page flow");
             return;
         }
 
         // WARNING is logged with full details but does not fail the test
         if (popup.popupType() == PopupType.WARNING) {
-            ExtentLogger.warning("⚠ Warning popup after [" + actionName + "] — " + popup.header());
+            ReportLogger.popup(PopupOutcome.EXPECTED, "Warning popup after [" + actionName + "] — " + popup.header());
             PopupReporter.reportHandledPopup(popup, actionName);
             return;
         }
@@ -76,7 +77,7 @@ public final class PopupMonitor {
 
         if (popup.popupType() == PopupType.SUCCESS || popup.popupType() == PopupType.INFO) return;
 
-        ExtentLogger.warning("⚠ Handled popup on [" + actionName + "] — "
+        ReportLogger.popup(PopupOutcome.EXPECTED, "Handled popup on [" + actionName + "] — "
                 + popup.popupType() + " | Header: " + popup.header());
         PopupReporter.reportHandledPopup(popup, actionName);
     }
@@ -142,8 +143,8 @@ public final class PopupMonitor {
             PopupResult popup = PopupHandler.detectPopup();
             if (popup != null) {
                 if (popup.popupType() == PopupType.WARNING) {
-                    ExtentLogger.warning("⚠ Warning popup detected while diagnosing [" + actionName
-                            + "] failure — " + popup.header());
+                    ReportLogger.popup(PopupOutcome.EXPECTED, "Warning popup detected while diagnosing ["
+                            + actionName + "] failure — " + popup.header());
                     PopupReporter.reportHandledPopup(popup, actionName);
                 } else if (popup.popupType() != PopupType.SUCCESS
                         && popup.popupType() != PopupType.INFO

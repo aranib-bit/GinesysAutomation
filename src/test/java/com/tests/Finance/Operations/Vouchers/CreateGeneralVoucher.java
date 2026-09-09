@@ -113,8 +113,15 @@ public class CreateGeneralVoucher extends WebTest {
         // ── Step 1: Login ─────────────────────────────────────────────────────────
         StepExecutor.step("Login to Application", () -> {
             UserCredential u = DriverManager.getCurrentUser();
+            boolean wasAlreadyLoggedIn = com.gsl.driver.ExecutionContext.current().isLoggedIn();
+            long loginStartMs = System.currentTimeMillis();
             homeRef[0] = com.gsl.driver.SessionManager.ensureLoggedIn(u);
+            long loginElapsedMs = System.currentTimeMillis() - loginStartMs;
             ReportLogger.business("Logged in as: " + u.username());
+            com.gsl.reports.StepSummaryBuffer.record(wasAlreadyLoggedIn
+                    ? "Login: reused existing session for " + u.username() + " — landing page confirmed loaded."
+                    : "Login: fresh login for " + u.username() + " in " + loginElapsedMs
+                            + "ms — landing page confirmed loaded.");
         });
 
         // ── Lazy DB load — deliberately runs AFTER Step 1 (login/navigation), not before as it
@@ -152,10 +159,15 @@ public class CreateGeneralVoucher extends WebTest {
                     OperationsMenuType.CATEGORY,
                     GeneralVoucherListPage.class);
             ReportLogger.business("General Voucher list page opened");
+            com.gsl.reports.StepSummaryBuffer.record(
+                    "Navigated: Finance --&gt; Operations --&gt; General Voucher");
         });
 
         // ── Step 3: Open Add form ─────────────────────────────────────────────────
-        StepExecutor.step("Open Add Form", () -> addRef[0] = listRef[0].clickAdd());
+        StepExecutor.step("Open Add Form", () -> {
+            addRef[0] = listRef[0].clickAdd();
+            com.gsl.reports.StepSummaryBuffer.record("Add form opened for General Voucher");
+        });
 
         // ── Delegate fill/save/verify/logout to the scenario behaviour ────────────
         // (GeneralVoucherPredicateFactory.POSITIVE_CREATE_BEHAVIOR — see VoucherScenarioType unification)

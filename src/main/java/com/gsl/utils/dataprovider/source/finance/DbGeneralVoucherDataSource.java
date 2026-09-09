@@ -104,6 +104,11 @@ public class DbGeneralVoucherDataSource implements TestDataSource<MergedFinanceG
                 // hand-built negative fixtures, which also legitimately hardcode a single row).
                 placeholders.add(MergedFinanceGeneralVoucherData.builder()
                         .scenarioType(scenario)
+                        // Same reason buildPlaceholder() sets this for the combination-matrix rows below:
+                        // without it, VoucherExtentDescriptionLogger.logHeaderTable()'s "TestCase ID"/
+                        // "TestCase Name" cells render blank for the MIXED_TYPES report row.
+                        .masterTestData(new com.gsl.testdata.MasterTestData(
+                                "MIXED_TYPES", null, null, null, "MIXED_TYPES", 1))
                         .expenseIncomeDetailList(List.of())   // empty = placeholder signal
                         .siteAllocationList(List.of())
                         .needsPaymentInfoWarning(false)
@@ -363,6 +368,9 @@ public class DbGeneralVoucherDataSource implements TestDataSource<MergedFinanceG
         MergedFinanceGeneralVoucherData data = placeholder.getScenarioType().loadData(refs);
         data.setFixtureOptions(opts);
         data.setTags(placeholder.getTags());
+        // Carried from the placeholder for the same reason fixtureOptions/tags are above — without
+        // this, the report's Header table renders a blank TestCase ID/Name for every GV-ADD-COMBO row.
+        data.setMasterTestData(placeholder.getMasterTestData());
 
         // Flush the real SQL captured since DbQueryBuffer.start() above and append it under its
         // own section — these are actual executed statements (auto-prefixed "[DB Query ⏱ Xms]" by
@@ -408,6 +416,9 @@ public class DbGeneralVoucherDataSource implements TestDataSource<MergedFinanceG
                 com.gsl.utils.dataprovider.fixture.finance.GeneralVoucherTemplateLoader.mergeIntoMixedVoucher(perType);
         data.setScenarioType(placeholder.getScenarioType());
         data.setTags(placeholder.getTags());
+        // Same TestCase ID/Name fix as loadFreshForScenario — copy from the outer MIXED_TYPES
+        // placeholder (not from any of the per-type results in perType, which never set it).
+        data.setMasterTestData(placeholder.getMasterTestData());
         return data;
     }
 

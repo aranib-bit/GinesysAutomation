@@ -5,6 +5,7 @@ import com.gsl.pages.enums.Finance.Operations.ARVoucher.ARVoucherGridColumnHeade
 import com.gsl.pages.enums.Finance.Operations.Common.CommonVoucherActionsMenu;
 import com.gsl.pages.enums.Finance.Operations.Common.CommonVoucherGridColumnHeader;
 import com.gsl.pages.enums.Finance.Operations.Common.CommonVoucherListColumn;
+import com.gsl.pages.enums.Finance.Operations.Common.FinanceVoucherAddEditPageHeader;
 import com.gsl.pages.enums.Finance.Operations.Common.FinanceVoucherListPageHeader;
 import com.gsl.pages.enums.Finance.Operations.Common.IVoucherGridAction;
 import com.gsl.pages.enums.Finance.Operations.Common.IVoucherGridColumnHeader;
@@ -22,6 +23,7 @@ public enum VoucherDomain implements VoucherDocumentLabels {
         @Override public String getDateFieldId() { return "transanctionDate"; }
         @Override public IVoucherGridColumnHeader getSubLedgerColumnHeader() { return ARVoucherGridColumnHeader.SUB_LEDGER; }
         @Override public FinanceVoucherListPageHeader getListPageHeaderEnum() { return FinanceVoucherListPageHeader.AR; }
+        @Override public FinanceVoucherAddEditPageHeader getAddEditPageHeaderEnum() { return FinanceVoucherAddEditPageHeader.AR; }
         /** TODO-confirm against {@code mdmenu.sys_shortcode} — same open item as GV's (plan §2/§4/§9). */
         @Override public String getMenuShortcode() { return "FinanceARVoucher"; }
         @Override public VoucherType getVoucherType() { return VoucherType.AR; }
@@ -41,6 +43,7 @@ public enum VoucherDomain implements VoucherDocumentLabels {
         @Override public String getDateFieldId() { return "transactionDate"; }
         @Override public IVoucherGridColumnHeader getSubLedgerColumnHeader() { return APVoucherGridColumnHeader.SUB_LEDGER; }
         @Override public FinanceVoucherListPageHeader getListPageHeaderEnum() { return FinanceVoucherListPageHeader.AP; }
+        @Override public FinanceVoucherAddEditPageHeader getAddEditPageHeaderEnum() { return FinanceVoucherAddEditPageHeader.AP; }
         /** TODO-confirm against {@code mdmenu.sys_shortcode} — same open item as GV's (plan §2/§4/§9). */
         @Override public String getMenuShortcode() { return "FinanceAPVoucher"; }
         @Override public VoucherType getVoucherType() { return VoucherType.AP; }
@@ -50,6 +53,7 @@ public enum VoucherDomain implements VoucherDocumentLabels {
         @Override public IVoucherGridColumnHeader getSubLedgerColumnHeader() { throw new UnsupportedOperationException("CONTRA has no sub-ledger column header"); }
         @Override public String getVoucherLabel() { return "Contra Voucher"; }
         @Override public FinanceVoucherListPageHeader getListPageHeaderEnum() { return FinanceVoucherListPageHeader.CONTRA; }
+        @Override public FinanceVoucherAddEditPageHeader getAddEditPageHeaderEnum() { return FinanceVoucherAddEditPageHeader.CONTRA; }
         @Override public String getMenuShortcode() { throw new UnsupportedOperationException("CONTRA has no menu shortcode resolved yet"); }
         @Override public VoucherType getVoucherType() { return VoucherType.CONTRA; }
     },
@@ -58,6 +62,7 @@ public enum VoucherDomain implements VoucherDocumentLabels {
         @Override public IVoucherGridColumnHeader getSubLedgerColumnHeader() { return GeneralVoucherGridColumnHeader.SUB_LEDGER; }
         @Override public String getVoucherLabel() { return "General Voucher"; }
         @Override public FinanceVoucherListPageHeader getListPageHeaderEnum() { return FinanceVoucherListPageHeader.GV; }
+        @Override public FinanceVoucherAddEditPageHeader getAddEditPageHeaderEnum() { return FinanceVoucherAddEditPageHeader.GV; }
         /** TODO-confirm against {@code mdmenu.sys_shortcode} — same open item flagged in plan §2/§4/§9. */
         @Override public String getMenuShortcode() { return "FinanceGeneralVoucher"; }
         @Override public VoucherType getVoucherType() { return VoucherType.GENERAL; }
@@ -66,6 +71,7 @@ public enum VoucherDomain implements VoucherDocumentLabels {
         @Override public String getDateFieldId() { return null; }
         @Override public IVoucherGridColumnHeader getSubLedgerColumnHeader() { throw new UnsupportedOperationException("COMMON has no sub-ledger column header"); }
         @Override public FinanceVoucherListPageHeader getListPageHeaderEnum() { throw new UnsupportedOperationException("COMMON has no list page"); }
+        @Override public FinanceVoucherAddEditPageHeader getAddEditPageHeaderEnum() { throw new UnsupportedOperationException("COMMON has no Add/Edit page"); }
         @Override public String getMenuShortcode() { throw new UnsupportedOperationException("COMMON has no menu shortcode"); }
         @Override public VoucherType getVoucherType() { throw new UnsupportedOperationException("COMMON has no voucher type"); }
     };
@@ -75,6 +81,12 @@ public enum VoucherDomain implements VoucherDocumentLabels {
     /** Returns the {@link FinanceVoucherListPageHeader} constant carrying this domain's literal
      *  list-page header text — the single source of truth {@link #getListPageHeader()} delegates to. */
     public abstract FinanceVoucherListPageHeader getListPageHeaderEnum();
+
+    /** Returns the {@link FinanceVoucherAddEditPageHeader} constant carrying this domain's literal
+     *  Add/Edit form page-header text — the single source of truth {@link #getAddFormHeader()}/
+     *  {@link #getEditFormHeader()} delegate to. Mirrors {@link #getListPageHeaderEnum()} exactly,
+     *  for the Add/Edit form header instead of the list-page header. */
+    public abstract FinanceVoucherAddEditPageHeader getAddEditPageHeaderEnum();
 
     /**
      * Returns this domain's {@code mdmenu.sys_shortcode} value, e.g. {@code "FinanceARVoucher"} —
@@ -197,5 +209,19 @@ public enum VoucherDomain implements VoucherDocumentLabels {
      */
     public String getListPageHeader() {
         return getListPageHeaderEnum().headerText();
+    }
+
+    /** Returns the expected Add-form page header text, e.g. "Add: General Voucher" — the live-DOM
+     *  signal each domain's Add/Edit page object's {@code verifyOnThisPage()} checks against.
+     *  Delegates to {@link #getAddEditPageHeaderEnum()} — {@link FinanceVoucherAddEditPageHeader}
+     *  is the single source of truth for this literal text, not a computed/hardcoded string. */
+    public String getAddFormHeader() {
+        return getAddEditPageHeaderEnum().addHeaderText();
+    }
+
+    /** Returns the expected Edit-form page header text, e.g. "Edit: General Voucher" — mirrors
+     *  {@link #getAddFormHeader()} exactly. */
+    public String getEditFormHeader() {
+        return getAddEditPageHeaderEnum().editHeaderText();
     }
 }

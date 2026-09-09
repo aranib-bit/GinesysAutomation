@@ -1,9 +1,12 @@
 package com.gsl.pages.pagecomponent.Finance.Operations.Common;
 
 import com.gsl.annotations.LogStep;
+import com.gsl.enums.LogCategory;
 import com.gsl.pages.VerifiablePage;
 import com.gsl.pages.enums.Finance.Operations.Common.CommonVoucherListColumn;
 import com.gsl.pages.enums.Finance.Operations.Common.IVoucherListColumn;
+import com.gsl.reports.ExtentLogger;
+import com.gsl.reports.ReportLogger;
 import com.gsl.reports.StepExecutor;
 import com.gsl.utils.Log;
 import com.gsl.utils.dataprovider.fixture.finance.DocumentSearchStrategy;
@@ -96,28 +99,61 @@ public abstract class VoucherListPageBase<
      * {@code TAddPage} that doesn't implement {@link VerifiablePage} (e.g. AR/AP's Add pages
      * today), so this carries zero regression risk for domains that haven't opted in yet.
      *
-     * @param page   the just-constructed {@code TAddPage} to verify
-     * @param reopen re-runs whatever click/select sequence is needed to try opening the form again
-     * @throws RuntimeException the second {@code verifyOnThisPage()} failure, uncaught, if the
-     *         retry doesn't recover
+     * Once {@code verifyOnThisPage()} passes (first attempt or after reopen), logs a positive
+     * {@code LogCategory.VERIFICATION} confirmation (e.g. "General Voucher Add page opened") —
+     * previously this check was silent on success, so a report reader had no visible evidence it
+     * ever ran. Each failure (bounded-wait timeout, and — if it comes to that — the post-reopen
+     * re-check) is likewise logged under the same category via
+     * {@link ExtentLogger#failCategorized}, which is never hidden by the business/debug toggle.
+     *
+     * <p>The first check uses {@link VerifiablePage#waitUntilVerified} (a short bounded retry)
+     * rather than a single-shot {@code verifyOnThisPage()} call — confirmed live (run
+     * {@code 20260909_094016}) that a single-shot check can race the view swap's header-text
+     * write and false-negative even though the form is genuinely fine, which used to trigger this
+     * exact {@code reopen.run()} needlessly — and the reopen click then genuinely failed, since
+     * the form had by then actually opened and was covering the original button. The bounded
+     * retry lets that race self-heal, so {@code reopen.run()} now only fires for a genuinely
+     * stuck page (the scenario it was originally built for, live FIN-GV-EDIT-DETAIL-01, run
+     * 20260908_135507).
+     *
+     * @param page        the just-constructed {@code TAddPage} to verify
+     * @param actionLabel short label for the report message, e.g. {@code "Add"}/{@code "Edit"}
+     * @param reopen      re-runs whatever click/select sequence is needed to try opening the form again
+     * @throws RuntimeException the second verification's failure, uncaught, if the retry doesn't recover
      */
-    private void verifyFormOpened(Object page, Runnable reopen) {
+    private void verifyFormOpened(Object page, String actionLabel, Runnable reopen) {
         if (!(page instanceof VerifiablePage verifiable)) return;
+        String label = gridHeader.getDomain().getVoucherLabel() + " " + actionLabel + " page";
         try {
-            verifiable.verifyOnThisPage();
+            verifiable.waitUntilVerified(FORM_OPEN_VERIFY_TIMEOUT_SECONDS);
+            ReportLogger.verification(label + " opened");
         } catch (RuntimeException firstAttemptFailure) {
+            ExtentLogger.failCategorized(LogCategory.VERIFICATION, label + " did not open after the "
+                    + "bounded wait (" + firstAttemptFailure.getMessage() + ") — attempting reopen");
             Log.warn("VoucherListPageBase: Add/Edit form didn't open after the first attempt ({}) "
                             + "— retrying once", firstAttemptFailure.getClass().getSimpleName());
             reopen.run();
-            verifiable.verifyOnThisPage(); // let a second failure propagate uncaught
+            try {
+                verifiable.waitUntilVerified(FORM_OPEN_VERIFY_TIMEOUT_SECONDS);
+                ReportLogger.verification(label + " opened (after reopen)");
+            } catch (RuntimeException secondAttemptFailure) {
+                ExtentLogger.failCategorized(LogCategory.VERIFICATION,
+                        label + " still not open after reopen — giving up: " + secondAttemptFailure.getMessage());
+                throw secondAttemptFailure; // let a second failure propagate uncaught
+            }
         }
     }
+
+    /** Bounded-wait window for {@link #verifyFormOpened}'s page-identity checks — a real
+     *  page-header write is near-instant once the view swap completes, so a few seconds is enough
+     *  to bridge a render-completion race without masking a genuinely-stuck page for long. */
+    private static final long FORM_OPEN_VERIFY_TIMEOUT_SECONDS = 5;
 
     @LogStep("Open New Voucher Form")
     public TAddPage clickAdd() {
         gridHeader.clickAddButton();
         TAddPage page = newAddPage();
-        verifyFormOpened(page, gridHeader::clickAddButton);
+        verifyFormOpened(page, "Add", gridHeader::clickAddButton);
         return page;
     }
 
@@ -125,7 +161,7 @@ public abstract class VoucherListPageBase<
     public TAddPage clickEditForVoucher() {
         mainGrid.clickEditIcon();
         TAddPage page = newAddPage();
-        verifyFormOpened(page, mainGrid::clickEditIcon);
+        verifyFormOpened(page, "Edit", mainGrid::clickEditIcon);
         return page;
     }
 
@@ -138,7 +174,7 @@ public abstract class VoucherListPageBase<
     public TAddPage clickEditFromActions() {
         mainGrid.clickEdit();
         TAddPage page = newAddPage();
-        verifyFormOpened(page, mainGrid::clickEdit);
+        verifyFormOpened(page, "Edit", mainGrid::clickEdit);
         return page;
     }
 
@@ -160,7 +196,7 @@ public abstract class VoucherListPageBase<
         reselect.run(); // initial select + open Actions — same as the previous inline call-site sequence
         mainGrid.clickEdit(reselect); // clicks Edit; on failure, reselect.run() then one retry
         TAddPage page = newAddPage();
-        verifyFormOpened(page, () -> { reselect.run(); mainGrid.clickEdit(reselect); });
+        verifyFormOpened(page, "Edit", () -> { reselect.run(); mainGrid.clickEdit(reselect); });
         return page;
     }
 
@@ -181,7 +217,7 @@ public abstract class VoucherListPageBase<
     public TAddPage doubleClickToEdit(String documentNumber) {
         VoucherGridPaginationFinder.doubleClickRowAcrossPages(documentNumber, mainGrid, gridFooter);
         TAddPage page = newAddPage();
-        verifyFormOpened(page, () ->
+        verifyFormOpened(page, "Edit", () ->
                 VoucherGridPaginationFinder.doubleClickRowAcrossPages(documentNumber, mainGrid, gridFooter));
         return page;
     }

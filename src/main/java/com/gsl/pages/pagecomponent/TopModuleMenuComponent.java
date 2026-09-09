@@ -19,6 +19,7 @@ import com.gsl.pages.pagecomponent.Procurement.ProcurementHomePage;
 import com.gsl.pages.pagecomponent.Report.ReportHomePage;
 import com.gsl.pages.pagecomponent.SalesDistribution.SalesDistributionHomePage;
 import com.gsl.reports.ExtentLogger;
+import com.gsl.reports.ReportLogger;
 import com.gsl.utils.Selenium.SeleniumUtils;
 import org.openqa.selenium.By;
 
@@ -82,10 +83,14 @@ public class TopModuleMenuComponent {
 
         try {
             verifiable.verifyOnThisPage(); // first attempt
+            ReportLogger.verification(requiredModule.getName() + " Module is loaded");
         } catch (RuntimeException firstFailure) {
             ExtentLogger.warningCategorizedWithScreenshot(LogCategory.MODULE, ReportSeverity.HIGH,
                     requiredModule.getName() + " Dashboard did not load properly on first attempt after "
                             + requiredModule.getName() + " menu click — " + firstFailure.getMessage());
+            ExtentLogger.failCategorized(LogCategory.VERIFICATION, requiredModule.getName()
+                    + " Module did not load on first attempt — attempting refresh-based recovery ("
+                    + firstFailure.getMessage() + ")");
 
             boolean recovered = RecoveryManager.refreshAndRestore(requiredModule.getName() + " Dashboard", () -> {
                 SeleniumUtils.elementDisappear(FrameworkConstants.getSplashScreen(), "SplashScreen",
@@ -98,9 +103,12 @@ public class TopModuleMenuComponent {
             if (recovered) {
                 ExtentLogger.passCategorized(LogCategory.RECOVERY,
                         requiredModule.getName() + " Dashboard recovered after refresh (matches known manual workaround).");
+                ReportLogger.verification(requiredModule.getName() + " Module is loaded (after refresh-based recovery)");
             } else {
                 ExtentLogger.fail(requiredModule.getName()
                         + " Dashboard did not load even after refresh-based recovery.");
+                ExtentLogger.failCategorized(LogCategory.VERIFICATION, requiredModule.getName()
+                        + " Module failed to load even after refresh-based recovery");
                 throw new IllegalStateException(requiredModule.getName()
                         + " Dashboard failed to load after menu click and after refresh-recovery — hard failure.");
             }

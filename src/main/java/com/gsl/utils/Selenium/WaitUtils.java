@@ -165,7 +165,7 @@ public final class WaitUtils {
         if (untilInvisibleOnce(by, initialSeconds)) {
             return true;
         }
-        ReportLogger.warn(String.format(
+        ReportLogger.loaderWaitWarn(String.format(
                 "waitUntilInvisible %s: still visible after %ds initial wait — polling up to %d more "
                         + "time(s) at %ds each…",
                 by, initialSeconds, maxPolls, pollSeconds));
@@ -173,10 +173,10 @@ public final class WaitUtils {
         for (int poll = 1; poll <= maxPolls; poll++) {
             attempts = 1 + poll;
             if (untilInvisibleOnce(by, pollSeconds)) {
-                ReportLogger.info(String.format("waitUntilInvisible %s: cleared on poll %d/%d", by, poll, maxPolls));
+                ReportLogger.loaderWait(String.format("waitUntilInvisible %s: cleared on poll %d/%d", by, poll, maxPolls));
                 return true;
             }
-            ReportLogger.warn(String.format("waitUntilInvisible %s: still visible after poll %d/%d (%ds each)",
+            ReportLogger.loaderWaitWarn(String.format("waitUntilInvisible %s: still visible after poll %d/%d (%ds each)",
                     by, poll, maxPolls, pollSeconds));
         }
 
@@ -458,31 +458,13 @@ public final class WaitUtils {
      *                    Analysis section even on the throwing path
      */
     private static void waitForExtMaskInternal(String actionLabel, long startMs, int[] attemptsOut) {
-        WaitConfig wc = ConfigFactory.getWaitConfig();
-        int maxPolls = wc.maskPollMaxRetries();
-        long pollSeconds = wc.maskPollSeconds();
-
-        attemptsOut[0] = 1;
-        if (waitForMaskClearedOnce(extJsTimeout())) {
+        if (waitForGenuineMaskClear(actionLabel, attemptsOut)) {
             return;
         }
 
-        ReportLogger.warn(String.format(
-                "Loader wait [%s]: ExtJS mask still visible after %ds initial wait — polling up to %d "
-                        + "more time(s) at %ds each…",
-                actionLabel, extJsTimeout(), maxPolls, pollSeconds));
-
-        for (int poll = 1; poll <= maxPolls; poll++) {
-            attemptsOut[0] = 1 + poll;
-            if (waitForMaskClearedOnce(pollSeconds)) {
-                ReportLogger.info(String.format("Loader wait [%s]: mask cleared on poll %d/%d",
-                        actionLabel, poll, maxPolls));
-                return;
-            }
-            ReportLogger.warn(String.format("Loader wait [%s]: mask still visible after poll %d/%d (%ds each)",
-                    actionLabel, poll, maxPolls, pollSeconds));
-        }
-
+        WaitConfig wc = ConfigFactory.getWaitConfig();
+        int maxPolls = wc.maskPollMaxRetries();
+        long pollSeconds = wc.maskPollSeconds();
         long elapsedMs = System.currentTimeMillis() - startMs;
         boolean dialogBlocking = !DriverManager.getDriver()
                 .findElements(By.xpath(
@@ -493,7 +475,7 @@ public final class WaitUtils {
             // budget and then gave up because a dialog was on screen left NO trace anywhere in
             // the report, so that time simply vanished from the record. Still non-throwing
             // (a blocking dialog is a legitimate reason to stop waiting), but no longer silent.
-            ReportLogger.warn("Loader wait [" + actionLabel + "] gave up after " + elapsedMs
+            ReportLogger.loaderWaitWarn("Loader wait [" + actionLabel + "] gave up after " + elapsedMs
                     + "ms (" + attemptsOut[0] + " attempts: " + extJsTimeout() + "s initial + " + maxPolls
                     + "x" + pollSeconds + "s polls) — an x-message-box dialog is on screen, so the mask "
                     + "may never clear until it is dismissed. Not failing the wait.");
@@ -503,6 +485,84 @@ public final class WaitUtils {
                 new TimeoutException("ExtJS mask (.x-mask/.x-mask-msg) still visible after "
                         + attemptsOut[0] + " attempt(s)"),
                 actionLabel, extJsTimeout(), elapsedMs, attemptsOut[0]);
+    }
+
+    /**
+     * Staged, genuinely-visible-aware poll for the ExtJS {@code .x-mask}/{@code .x-mask-msg}
+     * overlay to clear — the shared core behind {@link #waitForExtMaskInternal} (throwing,
+     * diagnosed on timeout) and {@link #waitForClickOverlay(String)} (non-throwing, best-effort).
+     * An initial {@code extJsTimeout()} wait, then up to {@code mask.poll.max.retries} further
+     * polls of {@code mask.poll.seconds} each — the exact same tuning both callers already shared
+     * before this loop was extracted into its own method, so extracting it changes no timing.
+     * Never throws — returns {@code true} once genuinely clear, {@code false} if every stage
+     * timed out. Exits on the very first poll when no mask is genuinely visible, same fast path
+     * every existing caller of the old inline loop already relied on.
+     *
+     * <p>Logs a rolled-up summary line (see {@link #logMaskWaitSummary}) on top of the existing
+     * per-poll lines, stating the number of attempts, the wait duration used per attempt, and the
+     * total cumulative time waited — so a report reader doesn't have to add up individual poll
+     * lines by hand to see the real cost of a stuck mask.
+     *
+     * @param actionLabel the caller's own context label, used in every log line
+     * @param attemptsOut single-element out-parameter, updated as attempts happen so the caller
+     *                    can report the real attempt count (e.g. in a failure diagnosis)
+     */
+    private static boolean waitForGenuineMaskClear(String actionLabel, int[] attemptsOut) {
+        WaitConfig wc = ConfigFactory.getWaitConfig();
+        int maxPolls = wc.maskPollMaxRetries();
+        long pollSeconds = wc.maskPollSeconds();
+        long initialSeconds = extJsTimeout();
+
+        attemptsOut[0] = 1;
+        if (waitForMaskClearedOnce(initialSeconds)) {
+            logMaskWaitSummary(actionLabel, 0, initialSeconds, pollSeconds, initialSeconds, true);
+            return true;
+        }
+
+        ReportLogger.loaderWaitWarn(String.format(
+                "Loader wait [%s]: ExtJS mask still visible after %ds initial wait — polling up to %d "
+                        + "more time(s) at %ds each…",
+                actionLabel, initialSeconds, maxPolls, pollSeconds));
+
+        for (int poll = 1; poll <= maxPolls; poll++) {
+            attemptsOut[0] = 1 + poll;
+            if (waitForMaskClearedOnce(pollSeconds)) {
+                ReportLogger.loaderWait(String.format("Loader wait [%s]: mask cleared on poll %d/%d",
+                        actionLabel, poll, maxPolls));
+                logMaskWaitSummary(actionLabel, poll, initialSeconds, pollSeconds,
+                        initialSeconds + ((long) poll * pollSeconds), true);
+                return true;
+            }
+            ReportLogger.loaderWaitWarn(String.format("Loader wait [%s]: mask still visible after poll %d/%d (%ds each)",
+                    actionLabel, poll, maxPolls, pollSeconds));
+        }
+
+        logMaskWaitSummary(actionLabel, maxPolls, initialSeconds, pollSeconds,
+                initialSeconds + ((long) maxPolls * pollSeconds), false);
+        return false;
+    }
+
+    /**
+     * Emits the rolled-up "N attempt(s) (... breakdown ...) = Ts total waited — <outcome>"
+     * summary line for {@link #waitForGenuineMaskClear}, shared by both its cleared and
+     * gave-up exit paths, e.g.:
+     * <pre>Loader wait [waitForClickOverlay] summary: 3 attempt(s) (1 initial @40s + 2 poll(s) @15s each) = 65s total waited — mask cleared</pre>
+     */
+    private static void logMaskWaitSummary(String actionLabel, int pollsUsed, long initialSeconds,
+            long pollSeconds, long totalSeconds, boolean cleared) {
+        String breakdown = pollsUsed == 0
+                ? "1 initial @" + initialSeconds + "s"
+                : "1 initial @" + initialSeconds + "s + " + pollsUsed + " poll(s) @" + pollSeconds + "s each";
+        int totalAttempts = 1 + pollsUsed;
+        String line = String.format(
+                "Loader wait [%s] summary: %d attempt(s) (%s) = %ds total waited — %s",
+                actionLabel, totalAttempts, breakdown, totalSeconds,
+                cleared ? "mask cleared" : "mask still visible, giving up");
+        if (cleared) {
+            ReportLogger.loaderWait(line);
+        } else {
+            ReportLogger.loaderWaitWarn(line);
+        }
     }
 
     /** Single genuinely-mask-cleared wait, capped at {@code seconds} — never throws, returns
@@ -536,26 +596,42 @@ public final class WaitUtils {
      * Waits for the transient {@code ext-element-*} overlay (and all standard ExtJS masks) to
      * disappear before a click retry.
      *
-     * <p>Phase 1 — {@code .x-mask} / {@code .x-mask-msg}: standard ExtJS loading masks.
+     * <p>Phase 1 — {@code .x-mask} / {@code .x-mask-msg}: standard ExtJS loading masks. Uses the
+     * same hardened, genuinely-visible staged-poll {@link #waitForGenuineMaskClear} that
+     * {@link #waitForExtMaskInternal} uses (proven live on GV's {@code FIN-GV-ADD-COMBO-01}) —
+     * previously used a naive single-attempt {@code ExpectedConditions.invisibilityOfElementLocated}
+     * ({@code isDisplayed()}-only) check, which gave up after one {@code extJsTimeout()} wait per
+     * retry even while a real mask was still genuinely showing (root cause of
+     * {@code FIN-AP-ADD-ADV-02}'s {@code ElementClickInterceptedException} on its TDS "OK" popup).
      * <p>Phase 2 — {@code #splashScreen}: app-level splash screen, which disappears via a CSS
      * opacity fade-out rather than {@code display:none}/removal — a naive {@code isDisplayed()}
-     * check (as Phase 1's {@code ExpectedConditions.invisibilityOfElementLocated} uses) reports
-     * it "displayed" throughout the fade, so this phase uses the same "genuinely visible"
-     * bounding-box + computed-style discipline as {@link #untilInvisible(By)} instead, staged and
-     * logged via {@link #waitForSplashScreenClear()} rather than one opaque timeout.
+     * check (as Phase 1 used to) reports it "displayed" throughout the fade, so this phase uses the
+     * same "genuinely visible" bounding-box + computed-style discipline as {@link #untilInvisible(By)}
+     * instead, staged and logged via {@link #waitForSplashScreenClear()} rather than one opaque timeout.
      * <p>Phase 3 — {@code div[id^='ext-element-']}: dynamic ExtJS modal backdrop elements.
      * <p>Phase 4 — ExtJS AJAX / layout cycle.
      */
     public static void waitForClickOverlay() {
+        waitForClickOverlay("waitForClickOverlay");
+    }
+
+    /**
+     * Same as {@link #waitForClickOverlay()}, but with a caller-supplied context label used in
+     * the Phase 1 mask-wait's log lines (see {@link #waitForGenuineMaskClear}) so a report reader
+     * can tell which click's retry the wait belongs to instead of a generic constant.
+     */
+    public static void waitForClickOverlay(String actionLabel) {
         long startMs = System.currentTimeMillis();
         try {
-            // Phase 1: standard mask elements
-            try {
-                webDriverWait(extJsTimeout())
-                        .until(ExpectedConditions.invisibilityOfElementLocated(
-                                By.cssSelector(".x-mask, .x-mask-msg")
-                        ));
-            } catch (Exception ignored) { /* not present — proceed */ }
+            // Phase 1: standard mask elements — same hardened, genuinely-visible staged-poll
+            // waitForExtMaskInternal already uses (proven live on GV's FIN-GV-ADD-COMBO-01),
+            // instead of the old naive isDisplayed()-only single-attempt check, which gave up
+            // after ~40s per retry while a real mask (e.g. loadmask-1611, "Loading... Please
+            // wait.") was still genuinely showing — the exact cause of FIN-AP-ADD-ADV-02's
+            // ElementClickInterceptedException failure on its TDS "OK" popup button. Best-effort
+            // — never throws; clickWithOverlayRetry's own outer retry loop remains the sole
+            // throw point.
+            waitForGenuineMaskClear(actionLabel, new int[1]);
 
             // Phase 2: #splashScreen genuine-visibility fade-out — opacity-based, so Phase 1's
             // isDisplayed()-only check never catches it. Polls in named stages with a log line
@@ -617,19 +693,19 @@ public final class WaitUtils {
         long pollSeconds = wc.splashscreenPollSeconds();
 
         if (waitForSplashInvisible(initialSeconds)) return;
-        ReportLogger.warn(String.format(
+        ReportLogger.loaderWaitWarn(String.format(
                 "#splashScreen still visible after %ds — polling up to %d more time(s) at %ds each…",
                 initialSeconds, maxPolls, pollSeconds));
 
         for (int poll = 1; poll <= maxPolls; poll++) {
             if (waitForSplashInvisible(pollSeconds)) {
-                ReportLogger.info(String.format("#splashScreen cleared on poll %d/%d", poll, maxPolls));
+                ReportLogger.loaderWait(String.format("#splashScreen cleared on poll %d/%d", poll, maxPolls));
                 return;
             }
-            ReportLogger.warn(String.format("#splashScreen still visible after poll %d/%d (%ds each)",
+            ReportLogger.loaderWaitWarn(String.format("#splashScreen still visible after poll %d/%d (%ds each)",
                     poll, maxPolls, pollSeconds));
         }
-        ReportLogger.warn(String.format(
+        ReportLogger.loaderWaitWarn(String.format(
                 "#splashScreen never cleared after %ds total (%ds initial + %dx%ds polls)",
                 initialSeconds + (long) maxPolls * pollSeconds, initialSeconds, maxPolls, pollSeconds));
     }
@@ -677,7 +753,7 @@ public final class WaitUtils {
             // a wait that burned the full extJsTimeout() ceiling (40s by default) produced ZERO
             // output anywhere in the HTML report. That silence is a large part of why mask-related
             // slowness looked like it "sometimes" logged and sometimes didn't.
-            ReportLogger.warn("Loader wait [" + contextLabel + "] (best-effort) gave up after "
+            ReportLogger.loaderWaitWarn("Loader wait [" + contextLabel + "] (best-effort) gave up after "
                     + (System.currentTimeMillis() - startMs) + "ms with the mask still visible — "
                     + "continuing without failing. (" + e.getClass().getSimpleName() + ")");
         } finally {
@@ -712,7 +788,7 @@ public final class WaitUtils {
             // waitForExtMaskBestEffort above: silence here hid up to 10s of post-save mask time
             // from the report on exactly the step ("Verify Save Result") where that delay matters
             // most for diagnosing a slow/failed save.
-            ReportLogger.warn("Post-save loader wait [" + contextLabel + "] gave up after "
+            ReportLogger.loaderWaitWarn("Post-save loader wait [" + contextLabel + "] gave up after "
                     + (System.currentTimeMillis() - startMs) + "ms with the mask still visible — "
                     + "continuing without failing. (" + e.getClass().getSimpleName() + ")");
         } finally {
