@@ -16,8 +16,11 @@ def pickDefaultProfile(jobName) {
 // folder names under src/test/resources/env/ (see com.gsl.enums.TestEnvironment).
 def pickDefaultEnv(jobName) {
     def name = (jobName ?: '').toLowerCase()
-    def m = (name =~ /feature-(0[1-8])/)
-    if (m.find()) return 'feature-' + m.group(1)
+    // No regex Matcher here: it is not serializable under the pipeline CPS engine.
+    for (n in 1..8) {
+        def feature = 'feature-0' + n
+        if (name.contains(feature)) return feature
+    }
     if (name.contains('clone-staging')) return 'clone-staging'
     if (name.contains('oracle-staging')) return 'oracle-staging'
     if (name.contains('oracle-mnt')) return 'oracle-mnt'
@@ -51,11 +54,12 @@ pipeline {
             defaultValue: pickDefaultProfile(env.JOB_NAME),
             description: 'Maven profile / suite to run'
         )
-        choice(
+        // string (not choice): declarative `choice` only accepts a literal list, so it cannot
+        // take the job-name-derived default. Must be a folder name under src/test/resources/env/
+        // (staging, clone-staging, feature-01..08, mnt-01, oracle-staging, oracle-mnt, prod-staging).
+        string(
             name: 'ENV_NAME',
-            choices: [pickDefaultEnv(env.JOB_NAME), 'staging', 'clone-staging', 'feature-01', 'feature-02', 'feature-03',
-                      'feature-04', 'feature-05', 'feature-06', 'feature-07', 'feature-08', 'mnt-01',
-                      'oracle-staging', 'oracle-mnt', 'prod-staging'].unique(),
+            defaultValue: pickDefaultEnv(env.JOB_NAME),
             description: 'Target environment (src/test/resources/env/<name>). Defaults from the job name.'
         )
     }
