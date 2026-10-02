@@ -1,0 +1,29 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE suite SYSTEM "http://testng.org/testng-1.0.dtd">
+<!--
+  Temporary, minimal suite to verify the DB-based assigned-site-codes fix
+  (DbGeneralVoucherDataSource.loadFreshForScenario / HrEmpOuDao.findSiteCodesByEcode).
+  Runs only createGeneralVoucherMixedTypes — a single invocation that exercises Type1,
+  Type2 (site-only), and Type3 (site+subledger) resolution in one voucher, the fastest
+  way to confirm the previously-failing "No site is assigned to this ledger" path now
+  resolves correctly. Not part of the permanent suite set — delete after use.
+-->
+<suite name="GV Site Fix Verify" parallel="none" data-provider-thread-count="1">
+    <listeners>
+        <listener class-name="com.gsl.listeners.RetryAnnotationTransformer"/>
+        <listener class-name="com.gsl.listeners.TestListener"/>
+        <listener class-name="com.gsl.listeners.SuiteDataLoader"/>
+        <listener class-name="com.gsl.listeners.AnnotationMethodInterceptor"/>
+    </listeners>
+
+    <test name="GV Mixed Types Verify">
+        <classes>
+            <class name="com.tests.Finance.Operations.Vouchers.CreateGeneralVoucher">
+                <methods>
+                    <include name="createGeneralVoucherMixedTypes"/>
+                </methods>
+            </class>
+        </classes>
+    </test>
+
+</suite>
