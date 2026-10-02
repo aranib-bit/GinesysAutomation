@@ -133,6 +133,11 @@ public class DbGeneralVoucherDataSource implements TestDataSource<MergedFinanceG
                 // can never drift apart again.
                 MergedFinanceGeneralVoucherData mixedPlaceholder = MergedFinanceGeneralVoucherData.builder()
                         .scenarioType(scenario)
+                        // Same reason buildPlaceholder() sets this for the combination-matrix rows below:
+                        // without it, VoucherExtentDescriptionLogger.logHeaderTable()'s "TestCase ID"/
+                        // "TestCase Name" cells render blank for the MIXED_TYPES report row.
+                        .masterTestData(new com.gsl.testdata.MasterTestData(
+                                "MIXED_TYPES", null, null, null, "MIXED_TYPES", 1))
                         .expenseIncomeDetailList(List.of())   // empty = placeholder signal
                         .siteAllocationList(List.of())
                         .needsPaymentInfoWarning(false)
