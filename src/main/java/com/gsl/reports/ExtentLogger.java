@@ -8,11 +8,24 @@ import com.gsl.enums.LogCategory;
 import com.gsl.enums.ReportSeverity;
 import com.gsl.utils.Selenium.ScreenshotUtils;
 
+/**
+ * Thin wrapper over the ExtentReports API — every method mirrors a log entry onto both the
+ * current thread's main-report {@link ExtentTest} (from {@link ExtentManager#getExtentTest()})
+ * and, when set, its per-shard counterpart (from {@link ExtentManager#getShardTest()}), so a
+ * test's shard report never falls behind its main-report entry. All methods are no-ops when
+ * there is no active test, so callers never need to null-check first.
+ *
+ * <p>{@link ReportLogger} is the higher-level façade most test/framework code should call
+ * instead — it additionally routes to Log4j2 and applies category/severity badges. Call this
+ * class directly only for Extent-only concerns (raw HTML, tables, child nodes) that
+ * {@link ReportLogger} doesn't already wrap.
+ */
 public final class ExtentLogger {
 
     private ExtentLogger() {
     }
 
+    /** PASS status entry on the current test (and shard test, if any). */
     public static void pass(String message) {
         if (ExtentManager.getExtentTest() != null) ExtentManager.getExtentTest().pass(message);
         if (ExtentManager.getShardTest()  != null) ExtentManager.getShardTest().pass(message);
@@ -49,6 +62,8 @@ public final class ExtentLogger {
         }
     }
 
+    /** FAIL status entry with an auto-captured screenshot (when a live driver session exists) on
+     *  the current test (and shard test, if any). */
     public static void fail(String message) {
         if (ExtentManager.getExtentTest() == null) return;
         if (DriverManager.getDriver() != null) {
@@ -56,12 +71,16 @@ public final class ExtentLogger {
                 // File-on-disk capture: keeps only the path string in the live Extent model
                 // (vs. ~1.3× the raw PNG bytes when embedded as base64).
                 String screenshotPath = ScreenshotUtils.saveScreenshot(message);
-                ExtentManager.getExtentTest().fail(message,
-                        MediaEntityBuilder.createScreenCaptureFromPath(screenshotPath).build());
+                // Message logged now; the screenshot is attached at test end by ScreenshotPolicy
+                // (report.screenshots.mode: LAST = only the final failure screenshot per test).
+                ExtentManager.getExtentTest().fail(message);
+                java.util.List<com.aventstack.extentreports.ExtentTest> targets = new java.util.ArrayList<>();
+                targets.add(ExtentManager.getExtentTest());
                 if (ExtentManager.getShardTest() != null) {
-                    ExtentManager.getShardTest().fail(message,
-                            MediaEntityBuilder.createScreenCaptureFromPath(screenshotPath).build());
+                    ExtentManager.getShardTest().fail(message);
+                    targets.add(ExtentManager.getShardTest());
                 }
+                ScreenshotPolicy.defer(targets, message, screenshotPath, null);
             } catch (org.openqa.selenium.WebDriverException wde) {
                 String msg = message + " [screenshot unavailable: " + wde.getMessage().split("\n")[0] + "]";
                 ExtentManager.getExtentTest().fail(msg);
@@ -77,6 +96,7 @@ public final class ExtentLogger {
         }
     }
 
+    /** Plain INFO entry on the current test (and shard test, if any). */
     public static void info(String message) {
         if (ExtentManager.getExtentTest() != null) ExtentManager.getExtentTest().info(message);
         if (ExtentManager.getShardTest()  != null) ExtentManager.getShardTest().info(message);
@@ -88,6 +108,7 @@ public final class ExtentLogger {
         if (ExtentManager.getShardTest()  != null) ExtentManager.getShardTest().skip(message);
     }
 
+    /** Plain amber WARNING entry (does not fail the test) on the current test (and shard test, if any). */
     public static void warning(String message) {
         if (ExtentManager.getExtentTest() != null) ExtentManager.getExtentTest().warning(message);
         if (ExtentManager.getShardTest()  != null) ExtentManager.getShardTest().warning(message);
@@ -131,6 +152,9 @@ public final class ExtentLogger {
         if (ExtentManager.getShardTest() != null) ExtentManager.getShardTest().warning(prefixed);
     }
 
+    /** Attaches a screenshot already held as a base64 string (e.g. captured before this Extent
+     *  test existed) to a failure log entry; falls back to a plain fail entry if the media
+     *  attachment itself throws. */
     public static void failWithBase64Screenshot(String message, String base64) {
         if (ExtentManager.getExtentTest() == null) return;
         try {
@@ -203,6 +227,8 @@ public final class ExtentLogger {
         if (ExtentManager.getShardTest() != null) ExtentManager.getShardTest().skip(message);
     }
 
+    /** Renders {@code table} ({@code table[0]} = header row, the rest data rows) as a styled
+     *  scrollable HTML table on the current test — see {@link #buildScrollableTableHtml}. */
     public static void infoTable(String[][] table) {
         if (ExtentManager.getExtentTest() == null) return;
         ExtentManager.getExtentTest().info(buildScrollableTable(table));
@@ -332,30 +358,38 @@ public final class ExtentLogger {
         return html.toString();
     }
 
+    /**
+     * One badge color per {@link LogCategory} — each hex is commented with its human-readable
+     * name (Material Design palette naming, where it matches one) so a reader adding a new
+     * category can see at a glance which colors are already taken instead of decoding hex by eye.
+     */
     private static String categoryColor(LogCategory cat) {
         return switch (cat) {
-            case BUSINESS   -> "#1565c0";
-            case UI_ACTION  -> "#00695c";
-            case VALIDATION -> "#2e7d32";
-            case DB         -> "#283593";
-            case NETWORK    -> "#6a1b9a";
-            case JS         -> "#e65100";
-            case PERF       -> "#bf360c";
-            case FRAMEWORK  -> "#424242";
-            case RCA        -> "#b71c1c";
-            case SESSION    -> "#00838f";
-            case NAVIGATION -> "#558b2f";
-            case RECOVERY   -> "#ad1457";
-            case MODULE           -> "#3949ab";
-            case SUB_MODULE       -> "#6d4c41";
-            case MENU             -> "#0277bd";
-            case SUB_MENU         -> "#00acc1";
-            case TEST_STEP_STATUS -> "#757575";
-            case CONTEXT_SWITCH   -> "#5e35b1";
-            case DATA_BACKFILL    -> "#d84315";
-            case VERIFICATION     -> "#00796b";
-            case LOADER_WAIT      -> "#455a64";
-            case POPUP            -> "#6a4c93";
+            case BUSINESS   -> "#1565c0"; // Blue 800
+            case UI_ACTION  -> "#00695c"; // Teal 800
+            case FIELD_ENTRY -> "#00897b"; // Teal 600
+            case FIELD_VALIDATION -> "#0288d1"; // Light Blue 700 — deliberately distinct from
+                                                 // FIELD_ENTRY's green (Item P)
+            case VALIDATION -> "#2e7d32"; // Green 800
+            case DB         -> "#283593"; // Indigo 800
+            case NETWORK    -> "#6a1b9a"; // Purple 800
+            case JS         -> "#e65100"; // Orange 900
+            case PERF       -> "#bf360c"; // Deep Orange 900
+            case FRAMEWORK  -> "#424242"; // Grey 800
+            case RCA        -> "#b71c1c"; // Red 900
+            case SESSION    -> "#00838f"; // Cyan 800
+            case NAVIGATION -> "#558b2f"; // Light Green 800
+            case RECOVERY   -> "#ad1457"; // Pink 800
+            case MODULE           -> "#3949ab"; // Indigo 600
+            case SUB_MODULE       -> "#6d4c41"; // Brown 600
+            case MENU             -> "#0277bd"; // Light Blue 800
+            case SUB_MENU         -> "#00acc1"; // Cyan 600
+            case TEST_STEP_STATUS -> "#757575"; // Grey 600
+            case CONTEXT_SWITCH   -> "#5e35b1"; // Deep Purple 600
+            case DATA_BACKFILL    -> "#d84315"; // Deep Orange 800
+            case VERIFICATION     -> "#00796b"; // Teal 700
+            case LOADER_WAIT      -> "#455a64"; // Blue Grey 700
+            case POPUP            -> "#6a4c93"; // Muted Purple/Plum (custom — not a standard Material swatch)
         };
     }
 
@@ -369,6 +403,8 @@ public final class ExtentLogger {
         };
     }
 
+    /** One badge color per {@link ReportSeverity} — see {@link #categoryColor}'s own Javadoc for
+     *  why these are commented with human-readable names. */
     private static String severityColor(ReportSeverity sev) {
         return switch (sev) {
             case CRITICAL -> "#b71c1c";
@@ -387,11 +423,16 @@ public final class ExtentLogger {
 
     // ── Table rendering ────────────────────────────────────────────────────────
 
+    /** Wraps {@link #buildScrollableTableHtml}'s output as a lazily-evaluated {@link Markup}. */
     private static Markup buildScrollableTable(String[][] table) {
         String html = buildScrollableTableHtml(table);
         return () -> html;
     }
 
+    /** Renders {@code table} as an HTML table with a bordered/scrollable wrapper — {@code
+     *  table[0]} styled as the header row (light-blue background), every subsequent row as data;
+     *  a {@code null} cell renders as "—". Shared by {@link #infoTable} and
+     *  {@link #infoLabeledTable}. */
     private static String buildScrollableTableHtml(String[][] table) {
         StringBuilder sb = new StringBuilder();
         sb.append("<div style='overflow-x:auto;background:#f8fbff;border-left:3px solid #6aacf0;padding:6px 10px;'>")

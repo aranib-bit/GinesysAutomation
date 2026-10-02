@@ -39,6 +39,7 @@ import java.util.Map;
  */
 public class LedgerApiClient extends ApiClient {
 
+    /** Wraps an already-authenticated session {@code spec} — see {@link ApiClient}'s class Javadoc. */
     public LedgerApiClient(RequestSpecification spec) {
         super(spec);
     }

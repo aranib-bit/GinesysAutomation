@@ -3,6 +3,12 @@ package com.gsl.enums;
 import java.util.Arrays;
 import java.util.stream.Collectors;
 
+/**
+ * Whether extra tax should be charged on an item at POS billing. Populated from the "Charge Extra
+ * Tax" column of the "POS Behaviour" sheet in the inventory-item Excel test data (see
+ * {@code ItemPOSBehaviour.chargeExtraTax}) via {@link com.gsl.converter.ChargeExtraTaxConverter}
+ * / {@link #fromExcel}.
+ */
 public enum ChargeExtraTaxType {
     YES("Yes"),
     NO("No");
@@ -12,6 +18,7 @@ public enum ChargeExtraTaxType {
         this.label = label;
     }
 
+    /** Excel parse key / display label — same string for this enum (see {@link #toString}). */
     public String label() {
         return label;
     }
@@ -22,6 +29,12 @@ public enum ChargeExtraTaxType {
     }
 
 
+    /**
+     * Resolves {@code excelValue} to its matching {@link ChargeExtraTaxType} constant by
+     * case-insensitive match against each constant's {@link #label}; throws
+     * {@link IllegalArgumentException} naming {@code fileName}/{@code sheetName}/
+     * {@code columnName} for a blank or unrecognized value.
+     */
     public static ChargeExtraTaxType fromExcel(
             String excelValue,
             String fileName,

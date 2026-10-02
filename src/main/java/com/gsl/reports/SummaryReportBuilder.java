@@ -49,8 +49,30 @@ public final class SummaryReportBuilder {
     // Accumulates per-shard test results during the run
     private static final ConcurrentHashMap<ShardKey, ShardStats> STATS = new ConcurrentHashMap<>();
 
+    /**
+     * Results with no resolved {@link ShardKey} — e.g. a {@code @DataProvider}-level failure/skip
+     * (TestNG's own synthetic wrapper for a provider that threw), which never reaches the
+     * annotated test method and so never gets a module/subModule/operation to key off. Previously
+     * {@link ExtentReport#recordTestResult} simply dropped these when no key resolved, which meant
+     * a real {@code status="fail"} entry visible in {@code index.html} could be entirely absent
+     * from {@code summary.html}'s own Total/Pass/Fail/Skip banner (confirmed live: run
+     * 20260916_190711, `DATA PROVIDER FAILURE — [FIN-GV-EDIT-DETAIL]` showed nowhere in the
+     * summary despite being a genuine failure). Counted here instead, and folded into the grand
+     * total in {@link #buildHtml} — not attributed to any specific shard/module row, since there
+     * genuinely isn't one, but no longer silently missing from the headline totals either.
+     */
+    private static final ShardStats UNCATEGORIZED = new ShardStats();
+
+    /** Tallies one test result under its resolved {@link ShardKey} — call once per finished test
+     *  from {@link ExtentReport#recordTestResult}. {@code status} is {@code "PASS"}/{@code "FAIL"}/
+     *  anything else counted as skip (see {@link ShardStats#record(String)}). */
     public static void record(ShardKey key, String status) {
         STATS.computeIfAbsent(key, k -> new ShardStats()).record(status);
+    }
+
+    /** See {@link #UNCATEGORIZED}'s own Javadoc. */
+    public static void recordUncategorized(String status) {
+        UNCATEGORIZED.record(status);
     }
 
     /** @deprecated use {@link #build(ISuite)} so the class-level summary can be rendered too. */
@@ -59,6 +81,9 @@ public final class SummaryReportBuilder {
         build(null);
     }
 
+    /** Writes {@code summary.html} for the finished suite — call once, from suite teardown.
+     *  {@code suite} feeds the class-level pool-attribution table ({@link #classLevelSummarySection});
+     *  pass {@code null} only via the deprecated no-arg {@link #build()}. */
     public static void build(ISuite suite) {
         String path = FrameworkConstants.getReportDir() + "/summary.html";
         try {
@@ -70,6 +95,9 @@ public final class SummaryReportBuilder {
         }
     }
 
+    /** Assembles the full {@code summary.html} document — circuit-breaker banner, run metadata,
+     *  grand totals, the performance and class-level summary sections, then one table per
+     *  module/group/shard (see {@link #groupShards()}). */
     private static String buildHtml(ISuite suite) {
         ExecutionConfig cfg = ConfigFactory.getExecutionConfig();
         FrameworkConfig fw  = ConfigFactory.getConfig();
@@ -99,9 +127,9 @@ public final class SummaryReportBuilder {
         }
 
         // Run metadata
-        int totalPass = STATS.values().stream().mapToInt(s -> s.pass).sum();
-        int totalFail = STATS.values().stream().mapToInt(s -> s.fail).sum();
-        int totalSkip = STATS.values().stream().mapToInt(s -> s.skip).sum();
+        int totalPass = STATS.values().stream().mapToInt(s -> s.pass).sum() + UNCATEGORIZED.pass;
+        int totalFail = STATS.values().stream().mapToInt(s -> s.fail).sum() + UNCATEGORIZED.fail;
+        int totalSkip = STATS.values().stream().mapToInt(s -> s.skip).sum() + UNCATEGORIZED.skip;
         int grandTotal = totalPass + totalFail + totalSkip;
         double passRate = grandTotal > 0 ? (double) totalPass / grandTotal * 100.0 : 0;
         String runDate = LocalDateTime.now().format(DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm"));
@@ -119,6 +147,19 @@ public final class SummaryReportBuilder {
           .append(" &nbsp; <span class='t-skip'>○ Skip: ").append(totalSkip).append("</span>")
           .append(String.format(" &nbsp; <span class='t-rate'>Pass%%: %.1f%%</span>", passRate))
           .append("</div>");
+
+        int uncategorizedTotal = UNCATEGORIZED.pass + UNCATEGORIZED.fail + UNCATEGORIZED.skip;
+        if (uncategorizedTotal > 0) {
+            sb.append("<div class='totals' style='font-size:12px;color:#757575'>")
+              .append("Includes ").append(uncategorizedTotal)
+              .append(" uncategorized result(s) with no module/shard attribution — typically a ")
+              .append("@DataProvider-level failure/skip (e.g. a data-shortage SkipException thrown ")
+              .append("before the test method itself ran): ")
+              .append("<span class='t-pass'>Pass: ").append(UNCATEGORIZED.pass).append("</span> ")
+              .append("<span class='t-fail'>Fail: ").append(UNCATEGORIZED.fail).append("</span> ")
+              .append("<span class='t-skip'>Skip: ").append(UNCATEGORIZED.skip).append("</span>")
+              .append("</div>");
+        }
 
         sb.append(performanceSummarySection());
         sb.append(classLevelSummarySection(suite));
@@ -177,6 +218,10 @@ public final class SummaryReportBuilder {
         return sb.toString();
     }
 
+    /** Groups every registered shard (from {@link ExtentReport#getShardExtents()}, so a
+     *  zero-test shard still appears) by module then by {@link ISubModule#getGroup()}, sorted for
+     *  stable rendering order, each paired with its accumulated {@link ShardStats} (or a fresh
+     *  zero-stats instance when no test ever touched that shard). */
     private static Map<MainModuleType, Map<String, List<Map.Entry<ShardKey, ShardStats>>>> groupShards() {
         Map<MainModuleType, Map<String, List<Map.Entry<ShardKey, ShardStats>>>> result =
                 new LinkedHashMap<>();
@@ -199,6 +244,8 @@ public final class SummaryReportBuilder {
         return result;
     }
 
+    /** Mirrors {@link ExtentReport#createShardFile}'s own path-building logic so a summary row's
+     *  "Open" link resolves to the exact shard HTML file that method writes. */
     private static String buildShardFileName(ShardKey key) {
         String dir = key.module().getName().toLowerCase()
                         .replace(" & ", "_and_").replace(" ", "_");
@@ -340,11 +387,13 @@ public final class SummaryReportBuilder {
 
     // ── Inner stat holder ──────────────────────────────────────────────────────
 
+    /** Mutable pass/fail/skip tally for one {@link ShardKey} (or for {@link #UNCATEGORIZED}). */
     public static final class ShardStats {
         public volatile int pass;
         public volatile int fail;
         public volatile int skip;
 
+        /** Increments the counter matching {@code status} ({@code "PASS"}/{@code "FAIL"}/else skip). */
         synchronized void record(String status) {
             switch (status) {
                 case "PASS" -> pass++;

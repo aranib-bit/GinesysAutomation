@@ -11,9 +11,20 @@ import com.gsl.reports.ReportLogger;
 import com.gsl.utils.Selenium.WaitUtils;
 
 /**
- * Single entry point for unexpected popup detection.
- * Called automatically by SeleniumUtils.click() after every click action.
- * SUCCESS and INFO popups are ignored — handled by DocumentMessageBox as before.
+ * Single entry point for unexpected popup detection — called automatically by
+ * {@code SeleniumUtils.click()} after every click action, and reused by
+ * {@code WaitUtils}/{@code JavascriptExecutorUtils} to diagnose wait/action failures via
+ * {@link #diagnoseFailure}. SUCCESS and INFO popups are ignored — handled by
+ * {@code DocumentMessageBox} as before.
+ *
+ * <p>Delegates detection to {@link PopupHandler} (locators in {@link AppPopupLocators}, results
+ * carried as {@link PopupResult}) and ExtentReport diagnostics to {@link PopupReporter}:
+ * <ul>
+ *   <li>{@link PopupHandler}</li>
+ *   <li>{@link AppPopupLocators}</li>
+ *   <li>{@link PopupResult}</li>
+ *   <li>{@link PopupReporter}</li>
+ * </ul>
  */
 public final class PopupMonitor {
 
@@ -68,6 +79,8 @@ public final class PopupMonitor {
      * Same as checkAfterAction but for handled scenarios — logs the popup as a warning
      * and returns without throwing. Use when the caller knows a popup may appear and
      * deals with it, but still wants it noted in the report.
+     *
+     * @param actionName human-readable description of the preceding action (used in the report)
      */
     public static void noteAfterAction(String actionName) {
         if (!ConfigFactory.getWaitConfig().popupDetectionEnabled()) return;

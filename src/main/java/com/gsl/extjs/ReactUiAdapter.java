@@ -10,18 +10,22 @@ import java.util.List;
 import java.util.Map;
 
 /**
- * UiFrameworkAdapter implementation for React (16+).
- * Uses the React fiber tree via __reactFiber$ DOM property keys.
- * Intentionally avoids __REACT_DEVTOOLS_GLOBAL_HOOK__ — absent in production builds.
- * Gracefully falls back to empty results when React is not present.
+ * {@link UiFrameworkAdapter} implementation for React (16+) — uses the React fiber tree via
+ * {@code __reactFiber$} DOM property keys. Intentionally avoids
+ * {@code __REACT_DEVTOOLS_GLOBAL_HOOK__} — absent in production builds. Gracefully falls back to
+ * empty results when React is not present.
+ *
+ * <p>Siblings: {@link ExtJsUiAdapter}, {@link AngularUiAdapter}.
  */
 public final class ReactUiAdapter implements UiFrameworkAdapter {
 
     private static final Logger LOG = LogManager.getLogger(ReactUiAdapter.class);
 
+    /** {@inheritDoc} Always {@code "React"}. */
     @Override
     public String frameworkName() { return "React"; }
 
+    /** {@inheritDoc} Walks every DOM node for a {@code __reactFiber$*} property key and collects up to 10 distinct component names from each fiber's {@code type}. */
     @Override
     @SuppressWarnings("unchecked")
     public List<ComponentState> getComponentDiagnostics(WebDriver driver) {
@@ -85,6 +89,7 @@ public final class ReactUiAdapter implements UiFrameworkAdapter {
         return result;
     }
 
+    /** {@inheritDoc} React has no built-in module concept here — returns the document title as a stand-in. */
     @Override
     public String getActiveModule(WebDriver driver) {
         try {
@@ -96,6 +101,7 @@ public final class ReactUiAdapter implements UiFrameworkAdapter {
         }
     }
 
+    /** {@inheritDoc} Reads the element with {@code role="tab"} and {@code aria-selected="true"}. */
     @Override
     public String getActiveTab(WebDriver driver) {
         try {
@@ -111,6 +117,7 @@ public final class ReactUiAdapter implements UiFrameworkAdapter {
         }
     }
 
+    /** {@inheritDoc} Returns the current pathname + search + hash. */
     @Override
     public String getActiveRoute(WebDriver driver) {
         try {
@@ -122,12 +129,14 @@ public final class ReactUiAdapter implements UiFrameworkAdapter {
         }
     }
 
+    /** Normalizes a JS execution result to a trimmed string, treating {@code null}/the literal "null" as empty. */
     private static String safeString(Object o) {
         if (o == null) return "";
         String s = String.valueOf(o).trim();
         return "null".equalsIgnoreCase(s) ? "" : s;
     }
 
+    /** Normalizes a JS execution result to a boolean. */
     private static boolean safeBoolean(Object o) {
         if (o instanceof Boolean b) return b;
         return "true".equalsIgnoreCase(String.valueOf(o));

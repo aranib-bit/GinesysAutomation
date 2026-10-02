@@ -9,6 +9,15 @@ import io.github.sskorol.data.Column;
 import io.github.sskorol.data.Sheet;
 import lombok.Getter;
 
+/**
+ * Fixture-data counterpart of the "General" sheet of the Inventory Item workbook ({@code
+ * ConfigFactory.getExcelDataConfig().inventoryitemPath()}) — the item's core identity (article,
+ * HSN/SAC, ITC eligibility). The only one of the seven Item-hierarchy sheets that is mandatory:
+ * {@code MergedInvItemDataSupplier} throws if a {@code TestCaseID} has no row here, while the
+ * other six ({@link ItemCategoryDescription}, {@link ItemOthers}, {@link ItemPricing}, {@link
+ * ItemInventoryTracking}, {@link ItemPOSBehaviour}, {@link ItemStoreWiseMultiplePrice}) are
+ * optional and joined in only when present. Feeds {@code MergedInventoryItemData.itemGeneral}.
+ */
 @Getter
 @Sheet(name= "General")
 public class ItemGeneral {

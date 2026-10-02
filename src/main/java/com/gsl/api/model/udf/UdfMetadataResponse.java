@@ -8,7 +8,14 @@ import lombok.NoArgsConstructor;
 
 import java.util.List;
 
-/** GET /udf/GetUDFMetaData's {result:{metaData:[...]}, success, error} envelope. */
+/**
+ * {@code GET /udf/GetUDFMetaData}'s {@code {result:{metaData:[...]}, success, error}} envelope —
+ * deserialized directly in {@code UdfValueBuilder.fetchUdfMetadata(ApiClient, String)} via
+ * {@code response.as(UdfMetadataResponse.class)}. {@link #getMetaData()} flattens the nested
+ * {@link Result#metaData} onto this class so callers never need to reach into {@link #result}
+ * directly (mirrors {@code TransferOutCreateResponse}'s delegating-getter pattern for the same
+ * kind of nested envelope).
+ */
 @Data
 @Builder
 @NoArgsConstructor
@@ -20,10 +27,12 @@ public class UdfMetadataResponse {
     private String error;
     private Result result;
 
+    /** Delegates to {@link Result#metaData}, or an empty list if {@link #result} is absent. */
     public List<UdfFieldMetadata> getMetaData() {
         return result != null ? result.metaData : List.of();
     }
 
+    /** The field-metadata list — {@code result} in the raw JSON. */
     @Data
     @Builder
     @NoArgsConstructor

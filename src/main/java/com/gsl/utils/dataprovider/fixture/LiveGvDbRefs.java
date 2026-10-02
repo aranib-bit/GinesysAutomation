@@ -35,6 +35,11 @@ public class LiveGvDbRefs {
     /** Active Cash or Bank GL scoped to the owner site (fingl), matching {@link #cashBankType}. */
     String cashBankName;
 
+    /** Round 20 — {@code fingl.glcode} for {@link #cashBankName}, needed to resolve a "known"
+     *  cheque number ({@code FinChqDetDao.findFirstUnused(glcode)}) for this voucher's own
+     *  counter-leg bank. */
+    long cashBankGlcode;
+
     /** {@link CashBankType#CASH} or {@link CashBankType#BANK} — derived from the variant's payment info. */
     CashBankType cashBankType;
 

@@ -22,6 +22,7 @@ import java.util.Optional;
  */
 public final class RegexLogParser implements LogParser {
 
+    /** Tries each {@link LogFormat} in turn; falls back to a raw, timestamp-less {@link LogEntry} when none match. */
     @Override
     public Optional<LogEntry> parse(String line) {
         if (line == null || line.isBlank()) return Optional.empty();
@@ -43,6 +44,7 @@ public final class RegexLogParser implements LogParser {
                 .build());
     }
 
+    /** Reads the configured server timezone offset, defaulting to {@code "Z"} (UTC) when unset or on config error. */
     private static String serverTimezoneOffset() {
         try {
             String offset = ConfigFactory.getRemoteLogConfig().remoteLogsServerTimezoneOffset();

@@ -10,17 +10,22 @@ import java.util.List;
 import java.util.Map;
 
 /**
- * UiFrameworkAdapter implementation for Ext.js (Sencha ExtJS 6/7).
- * All diagnostics are extracted via JavaScript executed in the browser.
- * Gracefully returns empty results if Ext is not present on the page.
+ * {@link UiFrameworkAdapter} implementation for Ext.js (Sencha ExtJS 6/7) — the framework this
+ * application is built on today, and the {@link UiFrameworkAdapterFactory} default. All
+ * diagnostics are extracted via JavaScript executed in the browser through
+ * {@code Ext.ComponentQuery}. Gracefully returns empty results if Ext is not present on the page.
+ *
+ * <p>Siblings: {@link ReactUiAdapter}, {@link AngularUiAdapter}.
  */
 public final class ExtJsUiAdapter implements UiFrameworkAdapter {
 
     private static final Logger LOG = LogManager.getLogger(ExtJsUiAdapter.class);
 
+    /** {@inheritDoc} Always {@code "ExtJS"}. */
     @Override
     public String frameworkName() { return "ExtJS"; }
 
+    /** {@inheritDoc} Queries {@code Ext.ComponentQuery.query('*')} for up to the first 10 components. */
     @Override
     @SuppressWarnings("unchecked")
     public List<ComponentState> getComponentDiagnostics(WebDriver driver) {
@@ -73,6 +78,7 @@ public final class ExtJsUiAdapter implements UiFrameworkAdapter {
         return result;
     }
 
+    /** {@inheritDoc} Reads the top-level viewport child's {@code title}/{@code xtype}. */
     @Override
     public String getActiveModule(WebDriver driver) {
         try {
@@ -88,6 +94,7 @@ public final class ExtJsUiAdapter implements UiFrameworkAdapter {
         }
     }
 
+    /** {@inheritDoc} Reads the active tab of the first {@code tabpanel} found on the page. */
     @Override
     public String getActiveTab(WebDriver driver) {
         try {
@@ -107,6 +114,7 @@ public final class ExtJsUiAdapter implements UiFrameworkAdapter {
         }
     }
 
+    /** {@inheritDoc} Returns the URL hash — ExtJS routing here is hash-based. */
     @Override
     public String getActiveRoute(WebDriver driver) {
         try {
@@ -118,12 +126,14 @@ public final class ExtJsUiAdapter implements UiFrameworkAdapter {
         }
     }
 
+    /** Normalizes a JS execution result to a trimmed string, treating {@code null}/the literal "null" as empty. */
     private static String safeString(Object o) {
         if (o == null) return "";
         String s = String.valueOf(o).trim();
         return "null".equalsIgnoreCase(s) ? "" : s;
     }
 
+    /** Normalizes a JS execution result to a boolean. */
     private static boolean safeBoolean(Object o) {
         if (o instanceof Boolean b) return b;
         return "true".equalsIgnoreCase(String.valueOf(o));

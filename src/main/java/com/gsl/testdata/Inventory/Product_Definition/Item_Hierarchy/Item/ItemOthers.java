@@ -11,6 +11,13 @@ import io.github.sskorol.data.Sheet;
 import lombok.Getter;
 import lombok.Setter;
 
+/**
+ * Fixture-data counterpart of the "Others" sheet of the Inventory Item workbook ({@code
+ * ConfigFactory.getExcelDataConfig().inventoryitemPath()}) — the item's naming, vendor/ledger,
+ * tax/material classification, and unit-of-measurement fields. Optional sheet: {@code
+ * MergedInvItemDataSupplier} joins a row in only when one exists for the {@code TestCaseID}
+ * (unlike the mandatory {@link ItemGeneral}). Feeds {@code MergedInventoryItemData.itemOthers}.
+ */
 @Getter
 @Setter
 @Sheet(name = "Others")

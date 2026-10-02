@@ -51,6 +51,12 @@ public final class ApVoucherArBackfillStrategy implements BackfillStrategy {
     private final int ouCode;
     private final long empCode;
 
+    /**
+     * @param requiredClsCode the {@code admcls.clscode} the AP Voucher's sub-ledger must belong to
+     * @param ownerSiteCode   AR Voucher's owner site (drives which site's user/session creates the AP Voucher)
+     * @param ouCode          organizational unit code for the created AP Voucher
+     * @param empCode         logged-in employee code used to create the AP Voucher
+     */
     public ApVoucherArBackfillStrategy(long requiredClsCode, int ownerSiteCode, int ouCode, long empCode) {
         this.requiredClsCode = requiredClsCode;
         this.ownerSiteCode = ownerSiteCode;
@@ -58,6 +64,7 @@ public final class ApVoucherArBackfillStrategy implements BackfillStrategy {
         this.empCode = empCode;
     }
 
+    /** Creates {@code neededQuantity} AP Vouchers (Customer Advance, {@code onAccount}) against {@link #requiredClsCode} via {@code platform}; see the class Javadoc for the data shape this produces. */
     @Override
     public void backfill(ApiPlatform platform, int neededQuantity) {
         ApiSessionBundle session = ApiSessionFactory.create(platform);
@@ -130,6 +137,7 @@ public final class ApVoucherArBackfillStrategy implements BackfillStrategy {
         }
     }
 
+    /** {@inheritDoc} Always {@code "apVoucherBackfill"} — see the inline comment below for why {@code K6BULK} never actually reaches this path. */
     @Override
     public String k6ScriptKey() {
         // No k6 script exists for this path yet — quantities here are always small (well under

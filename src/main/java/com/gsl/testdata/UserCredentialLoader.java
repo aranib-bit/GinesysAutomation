@@ -1,6 +1,7 @@
 package com.gsl.testdata;
 
 import com.gsl.config.ConfigFactory;
+import com.gsl.config.Secrets;
 import com.gsl.utils.Log;
 import org.apache.poi.ss.usermodel.*;
 
@@ -37,6 +38,14 @@ public final class UserCredentialLoader {
 
     private UserCredentialLoader() {}
 
+    /**
+     * Loads every {@link UserCredential} from the configured {@code UsersList.xlsx} (path from
+     * {@code ConfigFactory.getExcelDataConfig().usersListPath()}), per the sheet-resolution order
+     * documented on this class. Returns {@link List#of()} (never {@code null}) if the file is
+     * missing on the classpath or fails to parse — logged as an error either way, not thrown, so
+     * a bad workbook surfaces as "no users configured" (via {@link UserPool#hasUsersOfType}) at
+     * the point of use rather than crashing suite startup.
+     */
     public static List<UserCredential> loadAll() {
         String path = ConfigFactory.getExcelDataConfig().usersListPath();
         Log.info("[UserCredentialLoader] Reading credentials from '{}'", path);
@@ -77,6 +86,7 @@ public final class UserCredentialLoader {
         }
     }
 
+    /** Picks which sheet(s) to read and each one's default {@link UserType}, per the 3-tier order documented on this class. */
     private static List<SheetResolution> resolveSheets(Workbook workbook) {
         // 1. Single combined "Users" sheet — legacy/back-compat shape.
         Sheet usersSheet = findSheetByName(workbook, "Users");
@@ -104,6 +114,7 @@ public final class UserCredentialLoader {
         return List.of(new SheetResolution(first, UserType.UI));
     }
 
+    /** Case-insensitive sheet lookup by name; returns {@code null} if no sheet matches. */
     private static Sheet findSheetByName(Workbook workbook, String name) {
         Sheet exact = workbook.getSheet(name);
         if (exact != null) return exact;
@@ -115,6 +126,13 @@ public final class UserCredentialLoader {
         return null;
     }
 
+    /**
+     * Parses one resolved sheet into {@link UserCredential}s, matching column headers
+     * case-insensitively (spaces stripped). Rows missing a {@code username} are skipped
+     * (debug-logged); rows with a blank {@code userType} or {@code executionSet} — after
+     * applying {@code defaultUserType}/SET1 inference for sheets without those columns — or an
+     * unrecognized enum value are skipped with a warning rather than failing the whole load.
+     */
     private static List<UserCredential> parseSheet(Sheet sheet, UserType defaultUserType) {
         List<UserCredential> result = new ArrayList<>();
         DataFormatter fmt = new DataFormatter();
@@ -168,7 +186,7 @@ public final class UserCredentialLoader {
                 UserType     userType = UserType.valueOf(userTypeStr.trim().toUpperCase());
                 ExecutionSet execSet  = ExecutionSet.valueOf(execSetStr.trim().toUpperCase());
                 String       gid      = (groupId == null || groupId.isBlank()) ? null : groupId.trim();
-                result.add(new UserCredential(username.trim(), password, userType, execSet, gid));
+                result.add(new UserCredential(username.trim(), resolvePassword(username.trim(), password), userType, execSet, gid));
             } catch (IllegalArgumentException e) {
                 Log.warn("[UserCredentialLoader] Skipping row {} — unknown userType='{}' or executionSet='{}': {}",
                         r + 1, userTypeStr, execSetStr, e.getMessage());
@@ -177,6 +195,20 @@ public final class UserCredentialLoader {
         return result;
     }
 
+    /**
+     * Keeps passwords out of committed workbooks. Order: a per-user secret
+     * ({@code user.<username>.password}), then the workbook's password cell, then the shared
+     * default secret ({@code user.default.password}). Secrets come from {@link Secrets}
+     * (-D, environment variable, or the environment's gitignored secrets.local.properties).
+     */
+    private static String resolvePassword(String username, String cellPassword) {
+        return Secrets.find("user." + username + ".password")
+                .or(() -> cellPassword == null || cellPassword.isBlank()
+                        ? Secrets.find("user.default.password") : java.util.Optional.of(cellPassword))
+                .orElse(cellPassword);
+    }
+
+    /** Reads {@code colName}'s cell value from {@code row} as trimmed text, or {@code null} if the column is absent or the cell is blank. */
     private static String cellValue(Row row, Map<String, Integer> colIndex,
                                     DataFormatter fmt, String colName) {
         Integer idx = colIndex.get(colName);

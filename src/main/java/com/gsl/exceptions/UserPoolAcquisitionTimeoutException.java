@@ -7,6 +7,7 @@ package com.gsl.exceptions;
  */
 public class UserPoolAcquisitionTimeoutException extends RuntimeException {
 
+    /** @param message the pre-formatted failure message, including the snapshot of tests currently holding users */
     public UserPoolAcquisitionTimeoutException(String message) {
         super(message);
     }

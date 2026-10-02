@@ -19,6 +19,8 @@ import com.gsl.testdata.Finance.Operations.Vouchers.APVoucher.SelectDocument;
 import com.gsl.testdata.Finance.Operations.Vouchers.APVoucher.SubLedgerInformation;
 import com.gsl.testdata.dto.MergedFinanceApVoucherData;
 import com.gsl.utils.BigDecimalUtils;
+import com.gsl.flow.Finance.Operations.Common.AdjustmentFlowSteps;
+import com.gsl.testdata.Finance.Operations.Vouchers.Common.AdjustmentSpec;
 import com.gsl.utils.Log;
 import com.gsl.utils.Selenium.JavascriptExecutorUtils;
 import com.gsl.utils.Selenium.SeleniumUtils;
@@ -330,75 +332,78 @@ public class APVoucherSubLedgerInformation extends VoucherSubLedgerInformationBa
 
             SubLedgerRowStepRegistry.stepUnderRow(rowKey, "Adjust — Type: " + adjType, () -> {
                 AdjustmentEntry adjustmentEntry = openAdjustmentEntry(row.getSubLedger(), refSite, slId);
-                boolean needsConfirmation = false; // AP voucher has no GridRelation confirmation popup
+                String lineNo = row.getLineNo();
 
+                // Shared extraction: Create, Edit restore and "I will adjust more" all drive the
+                // three adjustment methods through AdjustmentFlowSteps.applyAdjustment.
+                AdjustmentSpec.AdjustmentSpecBuilder spec = AdjustmentSpec.builder().type(adjType);
                 if (adjType == AdjustmentType.SELECT_DOCUMENT) {
-                    SelectDocumentPopup popup = adjustmentEntry.selectDocument();
-                    String lineNo = row.getLineNo();
-                    List<SelectDocument> docs = data.getSelectDocumentList().stream()
+                    data.getSelectDocumentList().stream()
                             .filter(d -> lineNo != null && lineNo.equalsIgnoreCase(d.getLineNo()))
-                            .collect(Collectors.toList());
-                    for (SelectDocument doc : docs) {
-                        popup.selectDocument(doc.getDocumentNumber());
-                    }
-                    popup.clickSelect();
-                    for (SelectDocument doc : docs) {
-                        BigDecimal excelAmount = doc.getAdjustmentAmount();
-                        if (excelAmount == null || excelAmount.compareTo(BigDecimal.ZERO) == 0) continue;
-                        if (excelAmount.compareTo(BigDecimal.ZERO) < 0) {
-                            throw new IllegalArgumentException(
-                                "Adjustment amount cannot be negative for document ["
-                                + doc.getDocumentNumber() + "]. Got: " + excelAmount.toPlainString());
-                        }
-                        String uiStr = adjustmentEntry.getAdjustedAmountForDocument(doc.getDocumentNumber());
-                        BigDecimal uiAmount = BigDecimalUtils.safeParse(uiStr);
-                        if (excelAmount.compareTo(uiAmount) != 0) {
-                            adjustmentEntry.setAdjustedAmountForDocument(
-                                    doc.getDocumentNumber(), excelAmount.toPlainString());
-                        }
-                    }
-                    if (needsConfirmation) {
-                        adjustmentEntry.clickOKExpectingConfirmation().clickProceedAnyway();
-                    } else {
-                        adjustmentEntry.clickOK();
-                    }
-
+                            .forEach(d -> spec.doc(new AdjustmentSpec.DocAmount(
+                                    d.getDocumentNumber(), d.getAdjustmentAmount())));
                 } else if (adjType == AdjustmentType.REFERENCE_SITEWISE_FIFO_SETOFF) {
-                    String lineNo = row.getLineNo();
                     List<com.gsl.testdata.Finance.Operations.Vouchers.APVoucher.ReferenceSitewiseFIFOsetoff> fifoRows =
                             data.getReferenceSitewiseFIFOList() != null
                             ? data.getReferenceSitewiseFIFOList() : List.of();
-                    List<com.gsl.testdata.Finance.Operations.Vouchers.APVoucher.ReferenceSitewiseFIFOsetoff> refSites =
-                            fifoRows.stream()
-                                    .filter(r -> lineNo != null && lineNo.equalsIgnoreCase(r.getLineNo()))
-                                    .collect(Collectors.toList());
-                    com.gsl.pages.Finance.Operations.Common.ReferenceSiteWiseFIFOPopup fifoPopup =
-                            adjustmentEntry.openReferenceSiteWiseFIFOPopup();
-                    for (int i = 0; i < refSites.size(); i++) {
-                        com.gsl.testdata.Finance.Operations.Vouchers.APVoucher.ReferenceSitewiseFIFOsetoff rs = refSites.get(i);
-                        if (i > 0) fifoPopup.addRow();
-                        fifoPopup.selectReferenceSiteInCombo(rs.getReferenceSiteName());
-                    }
-                    fifoPopup.clickAutoAdjust();
-                    com.gsl.pages.Finance.Operations.Common.AdjustmentAmountSnapshot snapshot =
-                            adjustmentEntry.captureAmounts();
-                    Log.info("RefSiteFIFO amounts — txn={} adj={} pending={}",
-                             snapshot.getTransactionAmount(), snapshot.getAdjustedAmount(), snapshot.getPendingToAdjust());
-                    if (needsConfirmation) {
-                        adjustmentEntry.clickOKExpectingConfirmation().clickProceedAnyway();
-                    } else {
-                        adjustmentEntry.clickOK();
-                    }
+                    fifoRows.stream()
+                            .filter(r -> lineNo != null && lineNo.equalsIgnoreCase(r.getLineNo()))
+                            .forEach(r -> spec.referenceSite(r.getReferenceSiteName()));
+                }
+                AdjustmentFlowSteps.applyAdjustment(adjustmentEntry, spec.build());
 
-                } else if (adjType == AdjustmentType.FIFO_SETOFF) {
-                    if (needsConfirmation) {
-                        adjustmentEntry.fifoSetOff().clickOKExpectingConfirmation().clickProceedAnyway();
-                    } else {
-                        adjustmentEntry.fifoSetOff().clickOK();
-                    }
+                // Legacy scenarios (no plan): plain OK, exactly as before. The amount-mismatch
+                // Confirmation is only scripted when a scenario asks for it via
+                // data.getAdjustmentMismatchPlan().
+                if (data.getAdjustmentMismatchPlan() == null) {
+                    adjustmentEntry.clickOK();
+                } else {
+                    AdjustmentFlowSteps.okAnsweringMismatch(adjustmentEntry, data.getAdjustmentMismatchPlan());
                 }
             });
         }
+    }
+
+    /**
+     * Public, standalone counterpart to {@link #openAdjustmentEntry(String, String, String)} —
+     * same body, but reachable directly instead of only through {@code fillAdjustments} →
+     * {@code fillSubLedgerRowsForDocument}, which ALSO re-fills the row's name/amount/reference-
+     * site fields from scratch. For re-tagging (or changing the adjustment on) an
+     * already-populated, already-saved Edit-mode row, only the adjustment itself needs touching —
+     * this method is the "click Adjust + open the menu" half on its own, with no other field
+     * interaction attached. Callers resolve {@code subLedgerName}/{@code referenceSite}/
+     * {@code slId} via {@link #readRowIdentity(int)} rather than test data, since an Edit flow has
+     * no test-data-supplied row identity to locate the row by.
+     */
+    public AdjustmentEntry openAdjustmentEntryForExistingRow(String subLedgerName,
+                                                              String referenceSite, String slId) {
+        return openAdjustmentEntry(subLedgerName, referenceSite, slId);
+    }
+
+    /** Public counterpart to {@link VoucherSubLedgerInformationBase#readRowIdentity(int)} — same
+     *  protected base method, exposed here so {@code ApVoucherAdd} can delegate to it. */
+    public com.gsl.pages.Finance.Operations.Common.SubLedgerRowIdentity readSubLedgerRowIdentity(int rowNumber) {
+        return readRowIdentity(rowNumber);
+    }
+
+    /**
+     * Opens the Cheque/RTGS payment popup for an existing, already-populated Sub-Ledger row and
+     * submits {@code payment} — the standalone counterpart to {@code handlePaymentInformation}'s
+     * own private per-row loop (which also resolves the row/payment pairing from test data, unlike
+     * an Edit flow which already knows exactly which row/payment it's touching). Returns the popup
+     * itself (always an {@link ApPaymentInformationPopup}, since {@link #createPaymentPopup()}
+     * always constructs one for this domain) so the caller can read
+     * {@code getLastObservedPreviousInstrumentNo()} for the same before/after cross-check
+     * {@code GeneralVoucherEditPredicateFactory.PAYMENT_INFO_EDIT_BEHAVIOR} already proves live for
+     * GV — {@code ApPaymentInformationPopup extends ChequeRegisterPaymentInformationPopup}, so that
+     * exact mechanism is already inherited here, not reimplemented.
+     */
+    public ApPaymentInformationPopup setPaymentInformationForExistingRow(
+            String subLedgerName, String referenceSite, String slId,
+            com.gsl.testdata.Finance.Operations.Vouchers.Common.VoucherPaymentInfo payment) {
+        PaymentInformationPopup popup = clickPaymentButton(subLedgerName, referenceSite, slId);
+        popup.fillAndSubmit(payment);
+        return (ApPaymentInformationPopup) popup;
     }
 
     // ── Private helpers ───────────────────────────────────────────────────────
@@ -459,7 +464,7 @@ public class APVoucherSubLedgerInformation extends VoucherSubLedgerInformationBa
         By option = subLedgerPickerRow(subledgerName, id);
         SeleniumUtils.clickBoundlistOptionAcrossPages(
                 "//div[contains(@class,'x-boundlist-floating')]", option, "SL_OPTION_" + subledgerName);
-        ExtentLogger.info("SL_OPTION_" + subledgerName + " is clicked successfully");
+        ReportLogger.fieldEntry(subledgerName + " selected from dropdown");
         // Let the application's combo select handler run its GL + TDS-applicability evaluation.
         JavascriptExecutorUtils.waitForExtJS();
         JavascriptExecutorUtils.waitForPageLoad();
@@ -606,7 +611,7 @@ public class APVoucherSubLedgerInformation extends VoucherSubLedgerInformationBa
             driver.findElement(option).click();
             return true;
         });
-        ExtentLogger.info("SL_REFSITE_OPTION_" + referenceSite + " is clicked successfully");
+        ReportLogger.fieldEntry(referenceSite + " selected from dropdown");
         JavascriptExecutorUtils.waitForExtJS();
         JavascriptExecutorUtils.waitForPageLoad();
         ExtentLogger.info("[AP SL RefSite] Row " + (rowIndex + 1) + ": selected '" + referenceSite + "' via native");
@@ -700,6 +705,25 @@ public class APVoucherSubLedgerInformation extends VoucherSubLedgerInformationBa
         ExtentLogger.info("[SL_AMOUNT] Row '" + slName + "': Deduct TDS cell='" + t
                 + "' → amount auto-calculated (skip native amount)=" + autoCalculated);
         return autoCalculated;
+    }
+
+    /**
+     * Public counterpart to {@link #setSubLedgerAmount(String, int)} — edits an existing,
+     * already-populated row's Amount (Dr) cell directly, for Advance-mode (On Account = Yes) Edit
+     * scenarios where the cell is a plain, directly-editable field (unlike Document mode, where
+     * this same cell is confirmed read-only — see {@code ApVoucherPredicateFactory
+     * .DOC_AMOUNT_READ_ONLY_BEHAVIOR} — and must go through {@link #openAdjustmentEntryForExistingRow}
+     * instead).
+     *
+     * @param rowIndex 0-based grid row index (same convention {@link #setSubLedgerAmount} already uses)
+     */
+    public void setAmountForExistingRow(int rowIndex, String newAmount) {
+        try {
+            setSubLedgerAmount(newAmount, rowIndex);
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            throw new RuntimeException("Interrupted setting sub-ledger amount on row " + rowIndex, e);
+        }
     }
 
     private void setSubLedgerAmount(String subLedgerAmount, int rowIndex) throws InterruptedException {

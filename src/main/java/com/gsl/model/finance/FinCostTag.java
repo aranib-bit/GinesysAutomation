@@ -34,16 +34,36 @@ import java.time.LocalDateTime;
 @Data
 public class FinCostTag {
 
+    /** FK → {@code finvchmain.vchcode}, denormalized as text — see {@link com.gsl.database.dao.finance.FinCostTagDao}'s class Javadoc for why every query binds it as a String. */
     private String entcode;      // varchar — FK to finvchmain.vchcode (cast to text)
+
+    /** Voucher/document number of the owning entry. */
     private String entno;
+
+    /** Date of the owning entry. */
     private LocalDateTime entdt;
+
+    /** Entry type of the owning line — e.g. {@code "VDG"} for General Voucher detail lines (see class Javadoc). */
     private String enttype;      // e.g. "VDG" for General Voucher detail lines
+
+    /** FK → {@code fingl.glcode} — the GL line this site allocation belongs to. */
     private long glcode;
+
     private Long slcode;         // nullable — populated only for Type 3 rows
+
+    /** Debit portion of this line's amount allocated to the site. */
     private BigDecimal damount;
+
+    /** Credit portion of this line's amount allocated to the site. */
     private BigDecimal camount;
+
+    /** Accounting year code. */
     private long ycode;
+
+    /** Surrogate row id. */
     private long code;
+
+    /** FK → {@code finpost.postcode} — shared by every allocation row of the same GL line. */
     private long postcode;       // FK → finpost.postcode
 
     @ColumnName("admsite_code")
@@ -52,6 +72,7 @@ public class FinCostTag {
     @ColumnName("ref_admsite_code")
     private long refAdmsiteCode;     // the actual allocated Site
 
+    /** Operating Unit code (same {@code admou_code} concept as {@code admsite.admou_code}). */
     @ColumnName("admou_code")
     private long admouCode;
 }

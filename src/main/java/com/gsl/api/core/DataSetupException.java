@@ -8,10 +8,12 @@ package com.gsl.api.core;
  */
 public class DataSetupException extends RuntimeException {
 
+    /** Signals a data-setup failure with no underlying cause (e.g. a post-creation DB lookup came back empty). */
     public DataSetupException(String message) {
         super(message);
     }
 
+    /** Signals a data-setup failure wrapping an underlying cause (e.g. the k6 backfill subprocess's own exception). */
     public DataSetupException(String message, Throwable cause) {
         super(message, cause);
     }

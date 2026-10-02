@@ -19,6 +19,14 @@ import java.net.URL;
  */
 public class SeleniumGridProvider implements ExecutionProvider {
 
+    /**
+     * Builds driver options for {@code browser}, opens a {@link RemoteWebDriver} against
+     * {@link #getGridUrl()}, then wraps it with {@link Augmenter} so a remote session gains
+     * {@code HasDevTools} support (required for CDP-dependent features such as
+     * {@code ViewportEnforcer} and network capture against a grid/remote session).
+     *
+     * @throws RuntimeException if the grid URL is malformed
+     */
     @Override
     public WebDriver createDriver(Browser browser) {
         try {
@@ -42,6 +50,12 @@ public class SeleniumGridProvider implements ExecutionProvider {
         return ConfigFactory.getBrowserConfig().gridUrl();
     }
 
+    /**
+     * Maps {@code browser} to its typed Selenium options (Chrome/Firefox/Edge); inherited
+     * unchanged by {@link DockerGridProvider}.
+     *
+     * @throws IllegalArgumentException if {@code browser} is not Chrome/Firefox/Edge
+     */
     protected AbstractDriverOptions<?> buildOptions(Browser browser) {
         return switch (browser) {
             case CHROME  -> BrowserOptions.chrome();

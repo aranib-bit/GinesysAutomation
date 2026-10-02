@@ -45,6 +45,7 @@ public final class SessionDownloadDirectory {
         CURRENT.set(dir);
     }
 
+    /** Unbinds the calling thread's assigned directory (e.g. on session unbind); a later {@link #current()} call will re-derive a fallback. */
     public static void clear() {
         CURRENT.remove();
     }

@@ -14,6 +14,15 @@ public final class ArVoucherDataSetup {
 
     private ArVoucherDataSetup() {}
 
+    /**
+     * Creates an AR Voucher against {@code requiredClsCode} via {@code client} and validates the response.
+     *
+     * @param requiredClsCode the {@code admcls.clscode} the voucher's sub-ledger must belong to
+     * @param ownerSiteCode   owner site for the created voucher
+     * @param ouCode          organizational unit code for the created voucher
+     * @param empCode         logged-in employee code used to create the voucher
+     * @throws com.gsl.api.core.ApiException if the response fails {@link ArVoucherApiValidator}'s checks
+     */
     public static ArVoucherCreateResponse setupArVoucherForTest(
             ArVoucherApiClient client, long requiredClsCode, int ownerSiteCode, int ouCode,
             long empCode, int quantity, int rate) {

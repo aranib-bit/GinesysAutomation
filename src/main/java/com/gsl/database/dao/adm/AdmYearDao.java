@@ -14,6 +14,8 @@ import java.util.Optional;
 @RegisterBeanMapper(AdmYear.class)
 public interface AdmYearDao {
 
+    /** Returns the {@link AdmYear} row (its {@code [dtfr, dtto]} date range) for the given fiscal
+     *  year code, if one exists. */
     @SqlQuery("SELECT ycode, yname, dtfr, dtto FROM admyear WHERE ycode = :ycode")
     Optional<AdmYear> findByYcode(@Bind("ycode") long ycode);
 

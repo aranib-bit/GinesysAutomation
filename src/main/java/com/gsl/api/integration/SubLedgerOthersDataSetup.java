@@ -14,6 +14,15 @@ public final class SubLedgerOthersDataSetup {
 
     private SubLedgerOthersDataSetup() {}
 
+    /**
+     * Creates an "Others"-classified Sub Ledger linked to {@code targetGlcode} via {@code client},
+     * throwing if the response reports failure.
+     *
+     * @param targetGlcode   the already-resolved {@code fingl.glcode} the new Sub Ledger is linked to
+     * @param targetGlname   {@code targetGlcode}'s GL name, used to drive the create flow
+     * @param targetSiteCode site to narrow the new {@code finsl_gl} row to; {@code null} for a non-Site-Applicable GL
+     * @throws com.gsl.api.core.ApiException if the response's {@code success}/{@code result} flags indicate failure
+     */
     public static SubLedgerOthersCreationOutcome createSubLedgerOthersForTest(
             SubLedgerOthersApiClient client, long targetGlcode, String targetGlname, Long targetSiteCode) {
         SubLedgerOthersCreationOutcome outcome =

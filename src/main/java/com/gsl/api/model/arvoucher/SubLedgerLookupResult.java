@@ -20,6 +20,8 @@ import lombok.NoArgsConstructor;
 public class SubLedgerLookupResult {
     private long slCode;
     private String slName;
+    /** External sub-ledger id, distinct from {@code slCode} — carried alongside the name so a
+     *  same-named sub-ledger can be disambiguated downstream, e.g. via {@code FinSlDao.findBySlnameAndSlid}. */
     private String slid;
     private long classCode;
     private String className;

@@ -3,6 +3,7 @@ package com.gsl.api.core;
 import com.gsl.api.client.ApVoucherApiClient;
 import com.gsl.api.client.ArVoucherApiClient;
 import com.gsl.api.client.DcApiClient;
+import com.gsl.api.client.DocumentAdjustmentApiClient;
 import com.gsl.api.client.GeneralVoucherApiClient;
 import com.gsl.api.client.GrcApiClient;
 import com.gsl.api.client.ItemApiClient;
@@ -51,6 +52,14 @@ public final class ApiSessionBundle {
     private final LedgerApiClient ledgerApiClient;
     private final SubLedgerOthersApiClient subLedgerOthersApiClient;
     private final GeneralVoucherApiClient generalVoucherApiClient;
+    /**
+     * Generic Document Adjustment ("untag") client — plan: the same {@code fintag}/
+     * {@code documentAdjustments} mechanism is used identically by AR and AP voucher flows (see
+     * {@code DocumentAdjustmentFlow}), so this one client is shared across every domain rather
+     * than duplicated per voucher type, mirroring how {@code ledgerApiClient}/
+     * {@code subLedgerOthersApiClient} are already domain-agnostic single clients above.
+     */
+    private final DocumentAdjustmentApiClient documentAdjustmentApiClient;
 
     /**
      * Terminates the server-side session (WEBAPI only — PUBLICAPI's OAuth2 client-credentials

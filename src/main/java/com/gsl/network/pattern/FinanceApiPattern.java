@@ -3,7 +3,7 @@ package com.gsl.network.pattern;
 import java.util.List;
 
 /**
- * API URL patterns for the Finance module.
+ * {@link ApiPattern} constants for the Finance module.
  * Each constant's urlPatterns are relative paths — the base URL from config is
  * prepended at match time so no enum changes are needed when switching environments.
  *

@@ -83,6 +83,9 @@ public class AuditChangeReconstructor {
         return changes;
     }
 
+    /** Splits one identity-group's new audit rows by their {@code action}, pairs up DELETE+INSERT
+     *  rows into reconciled UPDATEs (see class Javadoc), and diffs any genuine UPDATE rows against
+     *  {@code beforeDataRows} — the per-group body behind {@link #reconstruct}. */
     @AuditTrace("reconcileGroup")
     private List<AuditChange> reconcileGroup(TableRule dataTableRule, List<Map<String, Object>> group,
             TableSnapshot beforeDataRows, Set<String> excluded) {
@@ -176,6 +179,8 @@ public class AuditChangeReconstructor {
         return changes;
     }
 
+    /** Builds a row-level (no single {@code column}) {@link AuditChange} for an unpaired DELETE or
+     *  INSERT row — see {@link #reconcileGroup}. */
     private AuditChange wholeRowChange(TableRule dataTableRule, Map<String, Object> row, AuditOperation operation) {
         return new AuditChange(dataTableRule.getTableName(), businessKeyOf(dataTableRule, row),
                 operation, null, null, null);
@@ -185,6 +190,7 @@ public class AuditChangeReconstructor {
         return snapshot == null ? List.of() : snapshot.getRows();
     }
 
+    /** First row in {@code snapshot} whose business key equals {@code businessKey}; {@code null} if none. */
     private static Map<String, Object> findByBusinessKey(TableRule tableRule, TableSnapshot snapshot, String businessKey) {
         for (Map<String, Object> row : rowsOf(snapshot)) {
             if (businessKeyOf(tableRule, row).equals(businessKey)) return row;
@@ -206,6 +212,8 @@ public class AuditChangeReconstructor {
         return keyOf(dataTableRule.getBusinessKeyColumns(), row);
     }
 
+    /** Renders {@code row}'s values for {@code columns} as a {@code "col1=val1, col2=val2"} display
+     *  string — shared by {@link #businessKeyOf} and {@link #rowIdentity}'s grouping key. */
     private static String keyOf(List<String> columns, Map<String, Object> row) {
         if (columns == null || columns.isEmpty()) return "(no key)";
         StringBuilder sb = new StringBuilder();
@@ -217,6 +225,8 @@ public class AuditChangeReconstructor {
         return sb.toString();
     }
 
+    /** Union of {@code a}'s and {@code b}'s column names, excluding meta columns — the column set
+     *  {@link #diffReconciledUpdate} compares between a DELETE and its paired INSERT row. */
     private static Set<String> commonColumns(Map<String, Object> a, Map<String, Object> b) {
         Set<String> columns = new LinkedHashSet<>();
         for (String c : a.keySet()) if (!isMetaColumn(c)) columns.add(c);

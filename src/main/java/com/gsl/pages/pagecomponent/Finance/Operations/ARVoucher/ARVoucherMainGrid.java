@@ -30,4 +30,28 @@ public class ARVoucherMainGrid extends VoucherMainGridBase {
         columns.addAll(Arrays.asList(ARVoucherListColumn.values()));
         return columns;
     }
+
+    /**
+     * Confirms whichever post-Revert dialog appears. AR Voucher shares AP's custom Fin.js
+     * {@code doRevert()} dialogs (confirm button "Revert", then a "Result" dialog) — see
+     * {@link com.gsl.pages.pagecomponent.Finance.Operations.Common.ArApVoucherDialogs}.
+     * Replaces the never-confirmed {@code //TODO-unpost-button} locator AR tests used to hit.
+     */
+    @com.gsl.annotations.LogStep("Confirm Revert")
+    public com.gsl.pages.enums.Finance.Operations.ARVoucher.ARVoucherRevertOutcome confirmRevert() {
+        switch (com.gsl.pages.pagecomponent.Finance.Operations.Common.ArApVoucherDialogs.confirmRevert()) {
+            case UNPOSTED:                   return com.gsl.pages.enums.Finance.Operations.ARVoucher.ARVoucherRevertOutcome.UNPOSTED;
+            case ALREADY_UNPOSTED:           return com.gsl.pages.enums.Finance.Operations.ARVoucher.ARVoucherRevertOutcome.ALREADY_UNPOSTED;
+            case CANNOT_REVERT_BRS_DONE:     return com.gsl.pages.enums.Finance.Operations.ARVoucher.ARVoucherRevertOutcome.CANNOT_REVERT_BRS_DONE;
+            case CANNOT_REVERT_MONTH_CLOSED: return com.gsl.pages.enums.Finance.Operations.ARVoucher.ARVoucherRevertOutcome.CANNOT_REVERT_MONTH_CLOSED;
+            default: throw new IllegalStateException("Unmapped revert dialog result");
+        }
+    }
+
+    /** AR Delete uses the same "Delete Anyway" + Result dialogs as AP. */
+    @com.gsl.annotations.LogStep("Confirm Delete Dialog")
+    @Override
+    public void confirmDelete() {
+        com.gsl.pages.pagecomponent.Finance.Operations.Common.ArApVoucherDialogs.confirmDelete();
+    }
 }

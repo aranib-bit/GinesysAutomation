@@ -7,14 +7,16 @@ import org.openqa.selenium.firefox.FirefoxDriver;
 
 /**
  * Single-responsibility manager for Firefox WebDriver creation.
- * Referenced via method reference FirefoxManager::getDriver in LocalExecutionProvider.
+ * Referenced via method reference {@code FirefoxManager::getDriver} in
+ * {@code LocalExecutionProvider}'s browser-to-factory map.
  */
 public final class FirefoxManager {
 
     private FirefoxManager() {}
 
+    /** Ensures a matching geckodriver binary via {@link WebDriverManager}, then starts a local {@link FirefoxDriver} using {@link BrowserOptions#firefox()}. */
     public static WebDriver getDriver() {
         WebDriverManager.firefoxdriver().setup();
-        return new FirefoxDriver(BrowserOptions.firefox());
+        return new FirefoxDriver(BrowserOptions.firefox(), BrowserOptions.clientConfig());
     }
 }

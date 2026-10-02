@@ -45,6 +45,7 @@ public class Aud2SnapshotDao implements AuditSnapshotDao {
             this.fkValueResolver = fkValueResolver;
         }
 
+        /** Looks up the {@link AuditFk} entry whose {@code tableName} equals {@code tableName}; {@code null} if none. */
         static AuditFk forTable(String tableName) {
             for (AuditFk fk : values()) {
                 if (fk.tableName.equals(tableName)) return fk;
@@ -53,6 +54,13 @@ public class Aud2SnapshotDao implements AuditSnapshotDao {
         }
     }
 
+    /**
+     * Fetches every row of {@code auditTableName} scoped to {@code context}'s voucher, via the
+     * FK column {@link AuditFk} resolves for that table.
+     *
+     * @throws IllegalArgumentException if {@code auditTableName} isn't one of the registered
+     *                                  {@link AuditFk} tables (defensive allowlist — see class Javadoc)
+     */
     @Override
     public List<Map<String, Object>> fetch(String auditTableName, DocumentContext context) {
         AuditFk fk = AuditFk.forTable(auditTableName);

@@ -23,8 +23,29 @@ import java.util.stream.Collectors;
 
 import static io.github.sskorol.data.TestDataReader.use;
 
+/**
+ * Excel-driven {@link TestDataSource} for AP Voucher's Create flow — mirrors
+ * {@link ExcelArVoucherDataSource}'s shape, extended with AP-specific sheets/columns:
+ * {@code TdsAndNetPayable} (TDS rows for Advance Payment) and two optional, ZeroCell-bypassing
+ * columns — "On Account Confirm" on {@code DocumentInformation}, "Deduct TDS Confirm" on
+ * {@code SubLedgerInformation} — read via {@link OptionalColumnMerger} so an absent column header
+ * never hard-fails the whole load (see {@link #readOptionalOnAccountConfirm}/
+ * {@link #readOptionalDeductTdsConfirm}).
+ *
+ * <p>On Account (advance payment) rows skip {@code SelectDocument}/FIFO resolution entirely and
+ * instead read {@code TdsAndNetPayable}; document-payment rows do the reverse. Its DB-mode
+ * sibling is {@link DbApVoucherDataSource}, which resolves the same
+ * {@link MergedFinanceApVoucherData} shape from live pending-AP documents instead of a fixture
+ * sheet.
+ */
 public class ExcelApVoucherDataSource implements TestDataSource<MergedFinanceApVoucherData> {
 
+    /**
+     * Reads the AP Voucher Excel fixtures (including the two optional columns — see class
+     * Javadoc), joins them by {@code TestCaseID}, and expands each surviving row into
+     * {@code invocationcount} copies with globally unique {@code invocationIndex}es, mirroring
+     * {@link ExcelArVoucherDataSource#load}.
+     */
     @Override
     public List<MergedFinanceApVoucherData> load(String methodName) {
 

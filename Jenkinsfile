@@ -11,6 +11,20 @@ def pickDefaultProfile(jobName) {
     return 'ap-mandatory' // safe fallback for any job not yet mapped (e.g. future regression jobs)
 }
 
+// Same idea for the target environment: a job whose name contains FEATURE-05 (or CLONE-STAGING, ...)
+// defaults to that environment; everything else falls back to staging. The value must be one of the
+// folder names under src/test/resources/env/ (see com.gsl.enums.TestEnvironment).
+def pickDefaultEnv(jobName) {
+    def name = (jobName ?: '').toLowerCase()
+    def m = (name =~ /feature-(0[1-8])/)
+    if (m.find()) return 'feature-' + m.group(1)
+    if (name.contains('clone-staging')) return 'clone-staging'
+    if (name.contains('oracle-staging')) return 'oracle-staging'
+    if (name.contains('oracle-mnt')) return 'oracle-mnt'
+    if (name.contains('mnt-01')) return 'mnt-01'
+    return 'staging'
+}
+
 pipeline {
     agent any
 
@@ -36,6 +50,13 @@ pipeline {
             name: 'MAVEN_PROFILE',
             defaultValue: pickDefaultProfile(env.JOB_NAME),
             description: 'Maven profile / suite to run'
+        )
+        choice(
+            name: 'ENV_NAME',
+            choices: [pickDefaultEnv(env.JOB_NAME), 'staging', 'clone-staging', 'feature-01', 'feature-02', 'feature-03',
+                      'feature-04', 'feature-05', 'feature-06', 'feature-07', 'feature-08', 'mnt-01',
+                      'oracle-staging', 'oracle-mnt', 'prod-staging'].unique(),
+            description: 'Target environment (src/test/resources/env/<name>). Defaults from the job name.'
         )
     }
 
@@ -138,7 +159,20 @@ pipeline {
                 // action) — a periodic call therefore produces one duplicate link per
                 // poll. publishHTML must be called at most once per build; that one
                 // call is the authoritative post.always publish below.
-                bat ".\\mvnw.cmd clean test -P%MAVEN_PROFILE% -Drunmode=docker_grid -Dheadless=true"
+                // Secrets are not in git. Each environment has one Jenkins "Secret file" credential,
+                // id gsl-secrets-<env> (e.g. gsl-secrets-feature-05), whose content is a
+                // secrets.local.properties file (template: src/test/resources/env/secrets.local.properties.example).
+                // It is copied next to the environment's config for the run and deleted afterwards.
+                script {
+                    withCredentials([file(credentialsId: "gsl-secrets-${params.ENV_NAME}", variable: 'SECRETS_FILE')]) {
+                        try {
+                            bat 'copy /Y "%SECRETS_FILE%" "src\\test\\resources\\env\\%ENV_NAME%\\secrets.local.properties"'
+                            bat ".\\mvnw.cmd clean test -P%MAVEN_PROFILE% -Denv=%ENV_NAME% -Drunmode=docker_grid -Dheadless=true"
+                        } finally {
+                            bat 'if exist "src\\test\\resources\\env\\%ENV_NAME%\\secrets.local.properties" del /Q "src\\test\\resources\\env\\%ENV_NAME%\\secrets.local.properties"'
+                        }
+                    }
+                }
             }
         }
     }

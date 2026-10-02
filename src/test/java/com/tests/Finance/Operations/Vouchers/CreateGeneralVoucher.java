@@ -22,6 +22,8 @@ import com.gsl.utils.Log;
 import com.gsl.utils.NavigationUtils;
 import com.gsl.utils.dataprovider.MergedFinGeneralVoucherDataSupplier;
 import com.gsl.utils.dataprovider.source.finance.DbGeneralVoucherDataSource;
+import com.gsl.utils.ui.UiFieldState;
+import com.gsl.validation.ui.UiValidationLevel;
 import com.tests.WebTest;
 import org.testng.annotations.Test;
 
@@ -152,26 +154,37 @@ public class CreateGeneralVoucher extends WebTest {
         final MergedFinanceGeneralVoucherData testData = data;
 
         // ── Step 2: Navigate ──────────────────────────────────────────────────────
-        StepExecutor.step("Open Finance → General Voucher List", () -> {
-            listRef[0] = NavigationUtils.navigateToFinanceSideMenu(
-                    homeRef[0],
-                    MainMenuType.OPERATIONS,
-                    OperationsMenuType.CATEGORY,
-                    GeneralVoucherListPage.class);
-            ReportLogger.business("General Voucher list page opened");
-            com.gsl.reports.StepSummaryBuffer.record(
-                    "Navigated: Finance --&gt; Operations --&gt; General Voucher");
-        });
+        // Business log + "Navigated: ..." summary are now recorded inside
+        // NavigationUtils.navigateToFinanceSideMenu itself — see its Javadoc.
+        StepExecutor.step("Open Finance → General Voucher List", () -> listRef[0] =
+                NavigationUtils.navigateToFinanceSideMenu(
+                        homeRef[0],
+                        MainMenuType.OPERATIONS,
+                        OperationsMenuType.CATEGORY,
+                        GeneralVoucherListPage.class));
 
         // ── Step 3: Open Add form ─────────────────────────────────────────────────
-        StepExecutor.step("Open Add Form", () -> {
-            addRef[0] = listRef[0].clickAdd();
-            com.gsl.reports.StepSummaryBuffer.record("Add form opened for General Voucher");
-        });
+        // "Add form opened for ..." summary is now recorded inside
+        // VoucherListPageBase.clickAdd() itself — see its Javadoc.
+        StepExecutor.step("Open Add Form", () -> addRef[0] = listRef[0].clickAdd());
+
+        // Deferred: a UI defect is reported (and the test fails) at "Finalize save assertions", AFTER
+        // Save, Database Validation and Snapshot Validation have all run — never instead of them.
+        StepExecutor.step("UI Validation", () ->
+                addRef[0].validateUiContractDeferred(UiValidationLevel.CONTRACT, UiFieldState.EDITABLE, false));
 
         // ── Delegate fill/save/verify/logout to the scenario behaviour ────────────
         // (GeneralVoucherPredicateFactory.POSITIVE_CREATE_BEHAVIOR — see VoucherScenarioType unification)
-        boolean ok = testData.getScenarioType().execute(testData, addRef[0]);
+        boolean ok;
+        try {
+            ok = testData.getScenarioType().execute(testData, addRef[0]);
+        } catch (RuntimeException | Error e) {
+            // The deferred UI failures must not vanish just because the flow itself failed too.
+            throw com.gsl.validation.ui.UiFailureCollector.combineWithPending(e);
+        }
+        // Positive flows already reported pending UI failures in "Finalize save assertions"; this
+        // covers flows that do not go through it (negative scenarios) — no-op when nothing pending.
+        com.gsl.validation.ui.UiFailureCollector.assertNoPending();
         org.testng.Assert.assertTrue(ok,
                 "Scenario behaviour did not complete successfully: " + testData.getScenarioType());
     }

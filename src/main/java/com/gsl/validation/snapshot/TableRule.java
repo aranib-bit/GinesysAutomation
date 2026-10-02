@@ -51,6 +51,19 @@ public class TableRule {
      *  (varchar {@code entcode} column). */
     private final Function<DocumentContext, Object> fkValueResolver;
 
+    /** Composite WHERE-clause columns for a capture query, used INSTEAD of {@link #fkColumn}/
+     *  {@link #fkValueResolver} when a single column can't stably identify this table's row
+     *  throughout a document's lifecycle — e.g. {@code finchqdet}: its {@code vchcode} FK is only
+     *  populated once a cheque is actually issued (null/blank on a fresh row), so the BEFORE
+     *  snapshot needs a different, always-stable key: {@code (chqno, glcode)}. Empty/null for
+     *  every table that doesn't need this (the vast majority) — {@link SnapshotService} falls back
+     *  to the single-column {@link #fkColumn} path in that case. */
+    private final List<String> fkColumns;
+
+    /** Resolves the bind values for {@link #fkColumns}, in the same order, from the
+     *  {@link DocumentContext} — e.g. {@code ctx -> List.of(ctx.getKnownChqno(), ctx.getKnownChequeGlcode())}. */
+    private final Function<DocumentContext, List<Object>> fkValuesResolver;
+
     /** Whether this table participates for a given document at all (e.g. {@code fincosttag}
      *  only when at least one Type2/Type3 line exists; {@code aud2_<table>} only when that base
      *  table is currently audit-active). */

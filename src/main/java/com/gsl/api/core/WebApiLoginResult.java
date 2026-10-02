@@ -6,6 +6,10 @@ import lombok.Getter;
 /**
  * Result of {@code WebApiSessionClient.login()} — both auth headers plus the identifiers
  * {@code WebApiSessionClient.logout()} needs to echo back.
+ *
+ * <p>Consumed by {@link WebApiTokenAuthStrategy#authenticate}, which copies these values into
+ * the {@link AuthResult} it returns — this type is WEBAPI-internal (raw login response shape),
+ * while {@link AuthResult} is the platform-agnostic result {@link ApiAuthStrategy} exposes.
  */
 @Getter
 @Builder

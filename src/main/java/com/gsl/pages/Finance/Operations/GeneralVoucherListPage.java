@@ -1,10 +1,12 @@
 package com.gsl.pages.Finance.Operations;
 
+import com.gsl.pages.enums.Finance.Operations.Common.CommonVoucherActionsMenu;
 import com.gsl.pages.enums.Finance.Operations.GeneralVoucher.GeneralVoucherRevertOutcome;
 import com.gsl.pages.pagecomponent.Finance.Operations.Common.VoucherListPageBase;
 import com.gsl.pages.pagecomponent.Finance.Operations.GeneralVoucher.GeneralVoucherListFooter;
 import com.gsl.pages.pagecomponent.Finance.Operations.GeneralVoucher.GeneralVoucherListGridHeader;
 import com.gsl.pages.pagecomponent.Finance.Operations.GeneralVoucher.GeneralVoucherMainGrid;
+import com.gsl.utils.dataprovider.fixture.finance.DocumentSearchStrategy;
 
 /**
  * General Voucher list page — plan §17: thin domain subclass of the common
@@ -45,6 +47,20 @@ public class GeneralVoucherListPage extends VoucherListPageBase<
      */
     public GeneralVoucherListPage clickRevert() {
         getMainGrid().clickRevert();
+        return this;
+    }
+
+    /**
+     * Document-number-aware overload — mirrors {@link VoucherListPageBase#clickEditFromActions(
+     * String, DocumentSearchStrategy)}'s reselect-and-retry shape, applied to Revert after a
+     * confirmed live "Actions dropdown is not open at all" failure (reports/runs/20260913_133337,
+     * FIN-GV-REVERT-02): on a lost/never-opened dropdown, re-selects {@code documentNumber} and
+     * re-opens Actions once before giving up, instead of {@link #clickRevert()}'s one-shot check
+     * of the same already-lost state. Prefer this overload at any Actions→Revert call site that
+     * already has the document number/strategy in scope.
+     */
+    public GeneralVoucherListPage clickRevert(String documentNumber, DocumentSearchStrategy strategy) {
+        performGridAction(CommonVoucherActionsMenu.REVERT, documentNumber, strategy);
         return this;
     }
 

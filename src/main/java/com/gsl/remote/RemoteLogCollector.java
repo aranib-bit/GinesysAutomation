@@ -124,6 +124,7 @@ public final class RemoteLogCollector {
     // AND every credential key resolves blank, Owner almost certainly didn't load
     // remote-log.properties (wrong JVM working dir / missing file). Surface that
     // explicitly so the user isn't left chasing a generic "credentials not configured".
+    /** One-time startup sanity check; see the comment above for what it guards against. */
     private static void warnIfConfigUnloaded() {
         if (!CONFIG_SANITY_CHECKED.compareAndSet(false, true)) return;
         var cfg = ConfigFactory.getRemoteLogConfig();
@@ -147,6 +148,11 @@ public final class RemoteLogCollector {
         return s == null || s.isBlank();
     }
 
+    /**
+     * Detects OS, resolves credentials, and runs a single-host fetch for {@code role}.
+     * Never throws — a missing-credentials or fetch failure is reported via
+     * {@link LogFetchResponse#getSkipReason()} on the returned response instead.
+     */
     private LogFetchResponse collectOne(ServerRole role, String host, Instant start, Instant end) {
         try {
             List<String> keywords = keywords();
@@ -206,6 +212,7 @@ public final class RemoteLogCollector {
         }
     }
 
+    /** Best-effort ICMP ping check, logged as a warning only — never blocks or fails collection. */
     private static void warnIfHostUnreachable(String host, ServerRole role) {
         if (host == null || host.isBlank()) return;
         try {
@@ -221,6 +228,7 @@ public final class RemoteLogCollector {
         }
     }
 
+    /** Assembles a {@link LogFetchRequest} for {@code role}/{@code host} from resolved config (ports, paths, timeouts, keywords). */
     private LogFetchRequest buildRequest(ServerRole role, String host, OSType osType,
                                           Credentials creds, Instant start, Instant end) {
         boolean isApp = role == ServerRole.APP;
@@ -251,6 +259,7 @@ public final class RemoteLogCollector {
                 .build();
     }
 
+    /** Picks {@link SshLogFetcher} (pooled) for Linux or {@link WinRmLogFetcher} for Windows, each wired with a fresh {@link KeywordTimeWindowFilter}. */
     private LogFetcher selectFetcher(OSType osType, List<String> keywords, Instant start, Instant end) {
         if (osType == OSType.LINUX) {
             return new SshLogFetcher(
@@ -265,6 +274,11 @@ public final class RemoteLogCollector {
                 new RetryPolicy(ConfigFactory.getRemoteLogConfig().remoteSshRetryCount(), 1_000L));
     }
 
+    /**
+     * Resolves the configured log paths for {@code role}: for APP, a paths-file (one path per
+     * line) takes priority when configured; otherwise falls back to the comma-separated
+     * primary/legacy config key, then a hardcoded default.
+     */
     private List<String> logPaths(ServerRole role) {
         boolean isApp = role == ServerRole.APP;
 
@@ -294,6 +308,7 @@ public final class RemoteLogCollector {
         return Arrays.asList(raw.split(",\\s*"));
     }
 
+    /** Comma-separated {@code remote.logs.keywords} config value, split and trimmed; empty list when unset. */
     private List<String> keywords() {
         String raw = ConfigFactory.getRemoteLogConfig().remoteLogsKeywords();
         if (raw == null || raw.isBlank()) return List.of();
@@ -301,6 +316,8 @@ public final class RemoteLogCollector {
                 .filter(k -> !k.isBlank())
                 .collect(Collectors.toList());
     }
+
+    /** APP/DB-specific config lookups below — each dispatches on {@code role} to the matching {@code remote.app.server.*}/{@code remote.db.server.*} key. */
 
     private static int sshPortFor(ServerRole role) {
         return (role == ServerRole.APP)
@@ -338,6 +355,7 @@ public final class RemoteLogCollector {
                 : ConfigFactory.getRemoteLogConfig().remoteDbServerSshPassword();
     }
 
+    /** Returns {@code primary} unless it's null/blank, in which case {@code fallback} is returned instead. */
     private static String firstNonBlank(String primary, String fallback) {
         return (primary != null && !primary.isBlank()) ? primary : fallback;
     }

@@ -6,12 +6,23 @@ import com.gsl.utils.Selenium.JavascriptExecutorUtils;
 import com.gsl.utils.Selenium.WaitUtils;
 import com.gsl.pages.Finance.Operations.ArVoucherAdd;
 import com.gsl.pages.pagecomponent.Procurement.Operations.GoodsReceiveChallan.GoodsReceiveChallanGeneral;
-import com.gsl.reports.ExtentLogger;
+import com.gsl.reports.ReportLogger;
 import com.gsl.utils.Selenium.SeleniumUtils;
 import org.openqa.selenium.By;
 import org.openqa.selenium.support.ui.ExpectedConditions;
 import org.openqa.selenium.support.ui.WebDriverWait;
 
+/**
+ * Drives the "Cash/Bank" search-and-select popup grid, shared by AR/AP/GV voucher Add/Edit forms
+ * (opened via {@link com.gsl.pages.pagecomponent.Finance.Operations.Common.VoucherDocumentInformationBase}).
+ * Search text is typed into a filter box, the ExtJS grid reloads asynchronously, and the matching
+ * row is clicked and re-confirmed as selected (see {@link #selectCashBank(String)}) before the
+ * popup's OK button is clicked.
+ *
+ * <p>Constructed with the {@link CashBankParent} page that owns it, so {@link
+ * #selectCashBank(String)}/{@link #cancel()} can hand back a correctly-typed reference to that
+ * page once the popup closes.
+ */
 public class CashBankPopup {
 
     private static final class Loc {
@@ -24,21 +35,32 @@ public class CashBankPopup {
 
     private final CashBankParent parentPage;
 
+    /** @param parentPage the page that opened this popup; returned by {@link #selectCashBank(String)}/{@link #cancel()}. */
     public CashBankPopup(CashBankParent parentPage) {
         this.parentPage = parentPage;
     }
 
+    /** Types {@code cashbank} into the popup's search box, without waiting for or selecting a row. */
     public CashBankPopup sendCashBankSearch(String cashbank){
         SeleniumUtils.sendKeys(Loc.CASHBANKSEARCHBOX, cashbank, "CASHBANKSEARCHBOX");
         return this;
     }
 
+    /** Builds the locator for {@code cashbank}'s grid row, keyed off the "Name" column. */
     private By getCashBankSelection(String cashbank) {
         String xpath = String.format(Loc.CASHBANKSELECTION, cashbank);
         System.out.println("Generated XPath: " + xpath); // <-- Print it
         return By.xpath(xpath);
     }
 
+    /**
+     * Types {@code cashbankname} into the search box, waits for its matching grid row to render
+     * after the ExtJS search-reload, clicks it (retrying through stale-element/overlay races and
+     * re-confirming the row is actually selected in the grid's selection model — see {@link
+     * SeleniumUtils#isRowSelected}), then clicks OK.
+     *
+     * @return the parent page passed into this popup's constructor
+     */
     public CashBankParent selectCashBank(String cashbankname) {
         SeleniumUtils.sendKeys(Loc.CASHBANKSEARCHBOX, cashbankname, "CASHBANKSEARCHBOX");
 
@@ -66,12 +88,13 @@ public class CashBankPopup {
                 () -> SeleniumUtils.clickWithStaleRetry(selectionBy, WaitType.CLICKABLE, "CASHBANK_ROW_" + cashbankname),
                 () -> SeleniumUtils.isRowSelected(selectionBy),
                 150L, 3, "CashBank_RowSelected_" + cashbankname);
-        ExtentLogger.info("[CASHBANK SELECT] Selected | CashBank=" + cashbankname);
+        ReportLogger.fieldEntry("Cash/Bank selected: '" + cashbankname + "'");
 
         SeleniumUtils.click(Loc.CASHBANKPOPUPOKBUTTON, WaitType.CLICKABLE, "OK");
         return parentPage;
     }
 
+    /** Dismisses the popup without selecting anything and returns the parent page. */
     public CashBankParent cancel() {
         SeleniumUtils.click(Loc.CASHBANKPOPUPCANCELBUTTON, WaitType.CLICKABLE, "Cancel");
         return parentPage;

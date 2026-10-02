@@ -62,6 +62,7 @@ public final class HarFileGenerator {
 
     // ── HAR builder ───────────────────────────────────────────────────────────
 
+    /** Assembles the top-level HAR JSON object (log/version/creator/entries) from all log records. */
     private static String buildHar(List<NetworkLogRecord> logs) {
         StringBuilder sb = new StringBuilder();
         sb.append("{\n")
@@ -81,6 +82,7 @@ public final class HarFileGenerator {
         return sb.toString();
     }
 
+    /** Builds one HAR {@code entries[]} object (startedDateTime/time/request/response/timings) for a single log record. */
     private static String buildEntry(NetworkLogRecord r) {
         String startedAt = r.timestamp() > 0
                 ? ISO_FMT.format(Instant.ofEpochMilli(r.timestamp()))
@@ -95,6 +97,7 @@ public final class HarFileGenerator {
              + "    }";
     }
 
+    /** Builds a HAR {@code request} object, adding a {@code postData} block only when a request body was captured. */
     private static String buildRequest(NetworkLogRecord r) {
         StringBuilder sb = new StringBuilder();
         sb.append("{\n")
@@ -121,6 +124,7 @@ public final class HarFileGenerator {
         return sb.append("\n      }").toString();
     }
 
+    /** Builds a HAR {@code response} object; a {@code FAILED} record gets status/statusText {@code 0}/"Network Error" instead of an HTTP status. */
     private static String buildResponse(NetworkLogRecord r) {
         int status = r.status() == 0 ? 0 : r.status();
         String statusText = r.type() == NetworkLogType.FAILED ? "Network Error" : httpStatusText(status);
@@ -151,6 +155,7 @@ public final class HarFileGenerator {
         return sb.toString();
     }
 
+    /** Renders a headers map as a HAR {@code [{name, value}, ...]} array, or {@code "[]"} when empty/null. */
     private static String headersJson(Map<String, String> headers) {
         if (headers == null || headers.isEmpty()) return "[]";
         StringBuilder sb = new StringBuilder("[");
@@ -164,6 +169,7 @@ public final class HarFileGenerator {
         return sb.append("]").toString();
     }
 
+    /** Maps a subset of common HTTP status codes to their reason phrase; falls back to {@code "Unknown"}. */
     private static String httpStatusText(int code) {
         return switch (code) {
             case 200 -> "OK"; case 201 -> "Created"; case 204 -> "No Content";
@@ -175,6 +181,7 @@ public final class HarFileGenerator {
         };
     }
 
+    /** True when {@code s} is non-null, non-blank, and not the literal string {@code "null"}. */
     private static boolean hasValue(String s) {
         return s != null && !s.isBlank() && !"null".equalsIgnoreCase(s);
     }

@@ -99,6 +99,7 @@ public final class SshConnectionPool {
 
     // ── private ───────────────────────────────────────────────────────────────
 
+    /** Returns the existing pool for {@code host:port}, creating and configuring one on first use. */
     private GenericObjectPool<SSHClient> getOrCreatePool(
             String host, int port, Credentials creds,
             int connectTimeoutSeconds, int readTimeoutSeconds,
@@ -121,12 +122,14 @@ public final class SshConnectionPool {
         });
     }
 
+    /** Builds the {@link #pools} map key for a host/port pair. */
     private static String poolKey(String host, int port) {
         return host + ":" + port;
     }
 
     // ── Inner factory ─────────────────────────────────────────────────────────
 
+    /** Commons Pool2 factory that creates, validates, and destroys pooled {@link SSHClient}s for one host/port. */
     private static final class SshClientFactory extends BasePooledObjectFactory<SSHClient> {
 
         private final String      host;
@@ -147,6 +150,7 @@ public final class SshConnectionPool {
             this.hostKeyVerify         = hostKeyVerify;
         }
 
+        /** Creates, connects, and authenticates a brand-new {@link SSHClient} for this factory's host/port. */
         @Override
         public SSHClient create() throws Exception {
             SSHClient ssh = new SSHClient();
@@ -158,17 +162,20 @@ public final class SshConnectionPool {
             return ssh;
         }
 
+        /** Wraps a raw {@link SSHClient} in the pool's tracking object. */
         @Override
         public PooledObject<SSHClient> wrap(SSHClient client) {
             return new DefaultPooledObject<>(client);
         }
 
+        /** A pooled client is still usable when connected and authenticated (checked via {@code testOnBorrow}). */
         @Override
         public boolean validateObject(PooledObject<SSHClient> p) {
             SSHClient client = p.getObject();
             return client != null && client.isConnected() && client.isAuthenticated();
         }
 
+        /** Disconnects a client being evicted or invalidated; swallows errors since it's already being discarded. */
         @Override
         public void destroyObject(PooledObject<SSHClient> p) {
             try { p.getObject().disconnect(); } catch (Exception ignored) {}
@@ -177,6 +184,14 @@ public final class SshConnectionPool {
 
     // ── Shared host-key verification logic ────────────────────────────────────
 
+    /**
+     * Configures {@code ssh}'s host-key verifier per {@code mode}, shared by both the pooled
+     * {@link SshClientFactory#create()} path and {@link com.gsl.remote.fetcher.SshLogFetcher}'s
+     * unpooled path.
+     *
+     * @param mode {@code "STRICT"} (known_hosts, no auto-accept), {@code "DISABLED"} (accept any
+     *             host key), or anything else (default) for accept-and-remember-new
+     */
     public static void applyHostKeyVerification(SSHClient ssh, String mode) {
         switch (mode == null ? "ACCEPT_NEW" : mode.toUpperCase(Locale.ROOT)) {
             case "STRICT" -> {
@@ -192,6 +207,7 @@ public final class SshConnectionPool {
         }
     }
 
+    /** Accept-and-remember-new: verifies against (and appends to) {@code ~/.ssh/known_hosts}, creating it if absent. */
     private static void applyAcceptNew(SSHClient ssh) {
         try {
             File knownHosts = new File(System.getProperty("user.home"), ".ssh/known_hosts");

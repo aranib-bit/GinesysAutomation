@@ -16,6 +16,11 @@ import java.util.stream.Stream;
  *   public void myTest(UserCredential uiUser, UserCredential apiUser) { ... }
  *
  * WebTest.setUp() auto-detects these params via extractCredential() and skips UserPool acquisition.
+ *
+ * TODO-confirm: no test class in this codebase currently declares
+ * {@code dataProviderClass = UserPairDataSupplier.class}/{@code dataProvider = "set1UserPairs"} —
+ * a repo-wide search found only this declaration. Do not assume it is dead code without checking
+ * for newer callers first; it may be prepared for an upcoming SET1-paired-user test.
  */
 public class UserPairDataSupplier {
 

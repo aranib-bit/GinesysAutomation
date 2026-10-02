@@ -3,6 +3,7 @@ package com.gsl.api.core;
 import com.gsl.api.client.ApVoucherApiClient;
 import com.gsl.api.client.ArVoucherApiClient;
 import com.gsl.api.client.DcApiClient;
+import com.gsl.api.client.DocumentAdjustmentApiClient;
 import com.gsl.api.client.GeneralVoucherApiClient;
 import com.gsl.api.client.GrcApiClient;
 import com.gsl.api.client.ItemApiClient;
@@ -81,6 +82,31 @@ public final class ApiSessionFactory {
         };
     }
 
+    /**
+     * Self-acquires a fresh WEBAPI session (same {@link #createForWebApi()} self-acquire every
+     * {@code BackfillStrategy} already uses — a UserPool credential UNRELATED to whatever UI user
+     * a calling thread's browser may already be logged in as), runs {@code action} against it, and
+     * always logs it out afterward so the credential is released and no server-side session leaks.
+     *
+     * <p>Exists specifically for a UI test class ({@code WebTest}, not {@code MultiContextTest})
+     * that needs exactly one or two throwaway API calls mid-test — {@code WebTest} never calls
+     * {@link ApiSessionManager#unloadAllContexts()} in tearDown, so caching a session there via
+     * {@code ApiSessionManager.setSession(...)} would leak the held credential forever. Reusing the
+     * UI's OWN logged-in credential instead of self-acquiring a separate one is NOT safe either —
+     * {@code WebApiSessionClient.login()}'s code-012 ("already logged in elsewhere") handler kills
+     * the OTHER session (here, the UI browser's own) to force the new login through. Self-acquiring
+     * a distinct credential avoids both problems at once.
+     */
+    public static <T> T withWebApiSession(java.util.function.Function<ApiSessionBundle, T> action) {
+        ApiSessionBundle session = create(ApiPlatform.WEBAPI);
+        try {
+            return action.apply(session);
+        } finally {
+            session.logout();
+        }
+    }
+
+    /** Assembles the {@link ApiSessionBundle} common to both platforms — auth result, credential-release flag, and all ten flow clients built against {@code auth}'s spec. */
     private static ApiSessionBundle build(ApiPlatform platform, AuthResult auth,
                                            UserCredential credential, boolean releaseOnLogout) {
         RequestSpecification spec = auth.getSpec();
@@ -101,6 +127,7 @@ public final class ApiSessionFactory {
                 .ledgerApiClient(new LedgerApiClient(spec))
                 .subLedgerOthersApiClient(new SubLedgerOthersApiClient(spec))
                 .generalVoucherApiClient(new GeneralVoucherApiClient(spec))
+                .documentAdjustmentApiClient(new DocumentAdjustmentApiClient(spec))
                 .build();
     }
 }

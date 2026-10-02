@@ -8,21 +8,24 @@ import org.apache.logging.log4j.Logger;
 import org.openqa.selenium.WebDriver;
 import org.openqa.selenium.devtools.DevTools;
 import org.openqa.selenium.devtools.HasDevTools;
-import org.openqa.selenium.devtools.v150.network.Network;
-import org.openqa.selenium.devtools.v150.network.model.RequestId;
-import org.openqa.selenium.devtools.v150.page.Page;
+import org.openqa.selenium.devtools.v153.network.Network;
+import org.openqa.selenium.devtools.v153.network.model.RequestId;
+import org.openqa.selenium.devtools.v153.page.Page;
 
 import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.CopyOnWriteArrayList;
 
 /**
- * CDP-based network capture for Chrome and Edge.
- * One instance is created per browser session (via NetworkCaptureManager ThreadLocal).
+ * CDP-based {@link NetworkCapture} implementation for Chrome and Edge — one of several
+ * {@link NetworkCapture} implementations, selected by {@code NetworkServiceFactory} based on
+ * which protocol the driver supports (CDP here, BiDi for {@link BiDiNetworkCapture}, or neither
+ * for {@link NoOpNetworkCapture}).
+ * One instance is created per browser session (via {@link NetworkCaptureManager}'s ThreadLocal).
  * Uses a pending-request map keyed by CDP requestId to correlate request headers/body
  * with the corresponding response event and calculate duration.
  *
- * URL filtering: if network.capture.url.filter is set, only URLs containing at least
+ * <p>URL filtering: if network.capture.url.filter is set, only URLs containing at least
  * one of the comma-separated patterns are stored. Unmatched requests are discarded.
  */
 public final class CdpNetworkCapture implements NetworkCapture {
@@ -34,6 +37,7 @@ public final class CdpNetworkCapture implements NetworkCapture {
     private final Map<String, PendingEntry>  pending = new ConcurrentHashMap<>();
     private volatile boolean                 started = false;
 
+    /** In-flight request accumulator, keyed by CDP requestId, until its response/failure event arrives. */
     private static final class PendingEntry {
         String              url;
         String              method;
@@ -42,10 +46,12 @@ public final class CdpNetworkCapture implements NetworkCapture {
         long                startTime;
     }
 
+    /** Wraps the given driver's existing {@link DevTools} session; capture does not begin until {@link #start()} is called. */
     public CdpNetworkCapture(WebDriver driver) {
         this.devTools = ((HasDevTools) driver).getDevTools();
     }
 
+    /** Enables the CDP {@code Network} domain and registers request/response/failure listeners. */
     @Override
     public void start() {
         try {
@@ -139,6 +145,7 @@ public final class CdpNetworkCapture implements NetworkCapture {
         }
     }
 
+    /** Drops any in-flight (not yet responded/failed) request entries; already-captured logs are kept. */
     @Override
     public void stop() {
         pending.clear();
@@ -153,6 +160,7 @@ public final class CdpNetworkCapture implements NetworkCapture {
     @Override
     public List<NetworkLogRecord> getLogs() { return List.copyOf(logs); }
 
+    /** {@code "CDP"} once {@link #start()} has completed successfully, otherwise a diagnostic string noting the failed session. */
     @Override
     public String protocolName() { return started ? "CDP" : "CDP (session failed — check logs)"; }
 
@@ -168,6 +176,7 @@ public final class CdpNetworkCapture implements NetworkCapture {
                 .anyMatch(url::contains);
     }
 
+    /** Stringifies a raw CDP headers map's values (as returned by {@code Headers.toJson()}) into a plain name-to-value map. */
     @SuppressWarnings("unchecked")
     private static Map<String, String> headersFromMap(Map<String, Object> raw) {
         if (raw == null) return Map.of();

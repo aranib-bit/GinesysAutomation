@@ -9,7 +9,16 @@ import lombok.Singular;
 
 import java.util.List;
 
-/** POST DC/Save request body. Field set mirrors flows/createDc.js. */
+/**
+ * POST DC/Save request body — the WebAPI/PublicAPI wire shape {@code DcApiClient} builds and
+ * posts to create a Delivery Challan. A reduced field set relative to flows/createDc.js's full
+ * save body (that k6 flow's {@code saveBody} carries roughly 30 fields covering
+ * site/stockpoint/price-list/doc-scheme context); this DTO carries only what's needed for a
+ * minimal single-line DC — {@code code}/{@code entryMode}/{@code status} default to the same
+ * literal values the k6 flow sends for a new save ({@code 0}/{@code "Add"}/{@code "P"}),
+ * {@code dcDate} is an ISO date-time string, and {@code packetBarcode} is the server-issued value
+ * from {@code DcApiClient.fetchPacketBarcode()}.
+ */
 @Data
 @Builder
 @NoArgsConstructor

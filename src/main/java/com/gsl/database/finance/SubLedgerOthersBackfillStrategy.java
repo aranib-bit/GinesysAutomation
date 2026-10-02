@@ -29,6 +29,8 @@ public final class SubLedgerOthersBackfillStrategy implements BackfillStrategy {
     private final Long targetSiteCode;
 
     /**
+     * @param targetGlcode   the already-resolved {@code fingl.glcode} the new Sub Ledger must be linked to
+     * @param targetGlname   {@code targetGlcode}'s GL name, used to drive the Create UI/API flow
      * @param targetSiteCode the {@code admsite.code} to narrow the new {@code finsl_gl} row's
      *                       {@code finsl_gl_site} to — required (non-null) whenever
      *                       {@code targetGlcode}'s GL is Site-Applicable ({@code fingl.costapp =
@@ -53,6 +55,7 @@ public final class SubLedgerOthersBackfillStrategy implements BackfillStrategy {
         this.targetSiteCode = targetSiteCode;
     }
 
+    /** Creates {@code neededQuantity} "Others"-classified Sub Ledgers linked to {@link #targetGlcode} via {@code platform}, verifying each landing row's {@code finsl_gl} linkage. */
     @Override
     public void backfill(ApiPlatform platform, int neededQuantity) {
         ApiSessionBundle session = ApiSessionFactory.create(platform);
@@ -89,11 +92,21 @@ public final class SubLedgerOthersBackfillStrategy implements BackfillStrategy {
         FinSlDao finSlDao = jdbi.onDemand(FinSlDao.class);
 
         FinSl created = finSlDao.findBySlnameAndSlid(slname, slid);
+        long deadline = System.currentTimeMillis() + 30_000L;
+        while (created == null && System.currentTimeMillis() < deadline) {
+            try {
+                Thread.sleep(1_000L);
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+                break;
+            }
+            created = finSlDao.findBySlnameAndSlid(slname, slid);
+        }
         if (created == null) {
-            ReportLogger.dataBackfillWarn(
-                    "[SubLedgerOthersBackfillStrategy] No finsl row found yet for slname='{}', slid='{}' — "
-                            + "CreateFinanceSubLedgerOther may not have actually persisted.", slname, slid);
-            return;
+            throw new com.gsl.api.core.DataSetupException("CreateFinanceSubLedgerOther reported success but no finsl row "
+                    + "with slname='" + slname + "', slid='" + slid + "' appeared within 30 s. Check that "
+                    + "webapi.baseuri (api.properties) points at the same deployment as the UI url "
+                    + "(config.properties) and the database the tests read.");
         }
         ReportLogger.dataBackfill(
                 "[SubLedgerOthersBackfillStrategy] Confirmed finsl row — slcode={}, slname='{}', slid='{}'",
@@ -112,6 +125,7 @@ public final class SubLedgerOthersBackfillStrategy implements BackfillStrategy {
         }
     }
 
+    /** {@inheritDoc} Always {@code "subLedgerOthersBackfill"} — see the inline comment below for why {@code K6BULK} never actually reaches this path. */
     @Override
     public String k6ScriptKey() {
         // No k6 script exists for this path — quantities here are always 1 (one Sub Ledger per

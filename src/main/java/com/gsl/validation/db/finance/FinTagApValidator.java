@@ -35,6 +35,13 @@ public class FinTagApValidator {
         this.finPostDao = DatabaseManager.getJdbi().onDemand(FinPostDao.class);
     }
 
+    /**
+     * Skips (as ADVANCE_PAYMENT) when {@code context}'s test data has no {@code SelectDocument}s;
+     * otherwise asserts {@code fintag} row count matches the selected-document count, {@code
+     * SUM(fintag.amount)} equals {@code header.getCamount()} (AP's credit side carries the payment
+     * total), and each row via {@link #validateTagRow}. Failures are collected via {@link
+     * SoftAssertions} and reported together.
+     */
     public void validate(ApVoucherDbContext context, FinVchMain header, List<FinPost> postEntries) {
         String voucherNo = context.getVoucherNo();
         MergedFinanceApVoucherData data = context.getTestData();
@@ -83,6 +90,7 @@ public class FinTagApValidator {
         ReportLogger.db("Level 4a — PASSED for voucherNo [" + voucherNo + "]");
     }
 
+    /** Builds the Level 4a green-checklist HTML box (tagged entry count, tagged total vs. camount). */
     private static String buildLevel4aSummary(int tagCount, BigDecimal totalTagged, BigDecimal camount) {
         return "<div style='font-family:monospace;font-size:12px;line-height:1.8;padding:8px 12px;"
             + "background:#f0fff4;border-left:4px solid #38a169;border-radius:2px;margin:4px 0;'>"
@@ -93,6 +101,7 @@ public class FinTagApValidator {
             + "</div>";
     }
 
+    /** Per-row checks for one {@code fintag} entry: its {@code postcode2} resolves to a real {@code finpost} row, its amount matches the matching {@link SelectDocument#getAdjustmentAmount()} (when one is found by invoice number), and its slcode/enttype columns are populated and sane. */
     private void validateTagRow(SoftAssertions soft, FinTag tag,
                                  List<SelectDocument> selectDocs, String voucherNo) {
 
@@ -134,6 +143,7 @@ public class FinTagApValidator {
                 .isNotNull();
     }
 
+    /** Builds the {@code fintag} rows' display table for the Extent Report. */
     private static String[][] buildTagTable(List<FinTag> rows) {
         String[] headers = {"postcode1","entcode1","postcode2","entcode2","slcode","amount","enttype1","enttype2"};
         String[][] table = new String[rows.size() + 1][headers.length];

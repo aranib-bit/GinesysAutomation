@@ -23,6 +23,7 @@ public abstract class ApiClient {
 
     protected final RequestSpecification spec;
 
+    /** @param spec the pre-authenticated spec built by {@code ApiSessionFactory} for this client's session. */
     protected ApiClient(RequestSpecification spec) {
         this.spec = spec;
     }
@@ -44,6 +45,7 @@ public abstract class ApiClient {
         return RestAssured.given().spec(spec);
     }
 
+    /** GET {@code endpoint}, validate the response, and deserialize {@code result} into {@code responseType}. */
     protected <T> T get(String endpoint, Class<T> responseType) {
         long start = System.currentTimeMillis();
         Response response = fresh().get(endpoint);
@@ -52,6 +54,7 @@ public abstract class ApiClient {
         return response.as(responseType);
     }
 
+    /** POST {@code body} to {@code endpoint}, validate the response, and deserialize {@code result} into {@code responseType}. */
     protected <T> T post(String endpoint, Object body, Class<T> responseType) {
         long start = System.currentTimeMillis();
         Response response = fresh().body(body).post(endpoint);
@@ -60,6 +63,25 @@ public abstract class ApiClient {
         return response.as(responseType);
     }
 
+    /**
+     * PUT {@code body} to {@code endpoint}, validate the response, and deserialize {@code result}
+     * into {@code responseType} — the PUT counterpart to {@link #post(String, Object, Class)},
+     * added for {@code ApVoucherApiClient.revertApVoucher} (confirmed via HAR as a real
+     * {@code PUT Finance/api/vouchers/ap/revert} call — no other flow client in this codebase has
+     * needed a PUT verb before this one). Mirrors {@code post()}'s shape exactly, including the
+     * same {@code fresh()}-derived disposable request (see that method's Javadoc for why calling
+     * an HTTP verb directly on the shared {@code spec} would leak state across calls) and the same
+     * {@link ApiCallReportLogger} instrumentation.
+     */
+    protected <T> T put(String endpoint, Object body, Class<T> responseType) {
+        long start = System.currentTimeMillis();
+        Response response = fresh().body(body).put(endpoint);
+        ApiCallReportLogger.logCall("PUT", endpoint, body, response, System.currentTimeMillis() - start);
+        validateResponse(response, endpoint);
+        return response.as(responseType);
+    }
+
+    /** POST {@code body} to {@code endpoint}, validate the response, and return the raw {@link Response} (no deserialization). */
     protected Response postRaw(String endpoint, Object body) {
         long start = System.currentTimeMillis();
         Response response = fresh().body(body).post(endpoint);
@@ -68,6 +90,7 @@ public abstract class ApiClient {
         return response;
     }
 
+    /** {@link #postRaw(String, Object)} with query params attached. */
     protected Response postRaw(String endpoint, Object body, Map<String, Object> queryParams) {
         long start = System.currentTimeMillis();
         Response response = fresh().queryParams(queryParams).body(body).post(endpoint);
@@ -76,6 +99,7 @@ public abstract class ApiClient {
         return response;
     }
 
+    /** GET {@code endpoint}, validate the response, and return the raw {@link Response} (no deserialization). */
     protected Response getRaw(String endpoint) {
         long start = System.currentTimeMillis();
         Response response = fresh().get(endpoint);
@@ -137,6 +161,7 @@ public abstract class ApiClient {
         return response;
     }
 
+    /** Throws {@link ApiException} on an HTTP 4xx/5xx status or an envelope with {@code success=false}; otherwise a no-op. */
     protected void validateResponse(Response response, String endpoint) {
         int status = response.getStatusCode();
         if (status >= 400) {

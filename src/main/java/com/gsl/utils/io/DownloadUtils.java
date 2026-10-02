@@ -41,6 +41,9 @@ public final class DownloadUtils {
                 + (candidate != null ? " (last seen: " + candidate + ", still growing/partial)" : ""));
     }
 
+    /** Returns the most-recently-modified non-partial file in {@code dir} whose name contains
+     *  {@code filenameContains} (case-insensitive), or {@code null} if none match or {@code dir}
+     *  doesn't exist/can't be listed. */
     private static Path findCandidate(Path dir, String filenameContains) {
         if (!Files.isDirectory(dir)) {
             return null;
@@ -69,6 +72,8 @@ public final class DownloadUtils {
         }
     }
 
+    /** {@code true} if {@code file}'s size is unchanged (and non-zero) across two reads 300ms
+     *  apart — the signal used to confirm a download has actually finished, not just appeared. */
     private static boolean isStable(Path file) {
         try {
             long size1 = Files.size(file);

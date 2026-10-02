@@ -17,7 +17,9 @@ import com.gsl.testdata.MasterTestData;
 import com.gsl.testdata.dto.MergedFinanceApVoucherData;
 import com.gsl.utils.DateUtils;
 import com.gsl.utils.Faker.FakerUtils;
+import com.gsl.database.DatabaseManager;
 import com.gsl.utils.Log;
+import com.gsl.utils.cheque.ChequeInstrumentResolver;
 import com.gsl.utils.cheque.UniqueChequeGenerator;
 import com.gsl.utils.dataprovider.fixture.ApVoucherLiveDbRefs;
 import com.gsl.database.query.PendingAdjQuery;
@@ -517,9 +519,13 @@ public final class ApVoucherTemplateLoader {
             Log.info("[Template] RANDOM payment → resolved to: {} (GL type: Bank)", paymentMode);
         }
 
+        // Round 20: known-vs-unknown was already decided by ApVoucherFixtureFactory
+        // .assignKnownChequeFlags (an exact-ratio "controlled sequence" over ALL of this run's
+        // CHEQUE rows, not a per-row roll) — buildPayments' 5-arg overload just resolves the
+        // actual chqno for whichever outcome refs.isSelectDocKnownCheque() already carries.
         List<PaymentInformation> payments = (paymentMode == SelectDocumentVariant.PaymentMode.NONE)
                 ? List.of()
-                : buildPayments(id, subLedgers, paymentMode);
+                : buildPayments(id, subLedgers, paymentMode, refs.isSelectDocKnownCheque(), refs.getCashBankGlcode());
 
         String resolvedPmtLabel = paymentMode == SelectDocumentVariant.PaymentMode.NEFT_RTGS
                 ? "NEFT/RTGS" : paymentMode.name();
@@ -928,6 +934,51 @@ public final class ApVoucherTemplateLoader {
     }
 
     /**
+     * Round 20 — overload used ONLY by {@link #docSelectDocumentTemplate}, the sole AP scenario
+     * whose payment mode is driven by the known/unknown-cheque ratio (every other caller of the
+     * 3-arg {@link #buildPayments(String, List, SelectDocumentVariant.PaymentMode)} always passes
+     * a hardcoded {@code CASH}/{@code MIX} and is left unchanged — its own {@code CHEQUE} branch,
+     * where {@code MIX} lands on odd indices, keeps calling {@code UniqueChequeGenerator}
+     * directly, same as before).
+     *
+     * @param knownCheque    the decision {@code ApVoucherFixtureFactory.assignKnownChequeFlags}
+     *                       already made for this run (see {@code ApVoucherLiveDbRefs
+     *                       #isSelectDocKnownCheque()}'s own Javadoc)
+     * @param cashBankGlcode this voucher's own counter-leg Cash/Bank GL — needed to resolve a
+     *                       "known" cheque registered against the SAME bank
+     */
+    private static List<PaymentInformation> buildPayments(
+            String testCaseId,
+            List<SubLedgerInformation> subLedgers,
+            SelectDocumentVariant.PaymentMode paymentMode,
+            boolean knownCheque,
+            long cashBankGlcode) {
+
+        if (paymentMode == SelectDocumentVariant.PaymentMode.NONE || subLedgers.isEmpty()) {
+            return List.of();
+        }
+        if (paymentMode != SelectDocumentVariant.PaymentMode.CHEQUE) {
+            // Only CHEQUE is ratio-driven — NEFT_RTGS/CASH/MIX behave exactly like the 3-arg overload.
+            return buildPayments(testCaseId, subLedgers, paymentMode);
+        }
+
+        List<PaymentInformation> payments = new ArrayList<>();
+        String today = LocalDate.now().format(DateUtils.UI_DATE_FORMAT);
+        var resolution = knownCheque
+                ? ChequeInstrumentResolver.resolveKnownSameBank(DatabaseManager.getJdbi(), cashBankGlcode)
+                : ChequeInstrumentResolver.resolveUnknown();
+        Log.info("[ApVoucherTemplateLoader] Cheque instrument resolved: bankMatch={}, chqno={}",
+                resolution.bankMatch(), resolution.chqno());
+        for (int i = 0; i < subLedgers.size(); i++) {
+            SubLedgerInformation sl = subLedgers.get(i);
+            payments.add(new PaymentInformation(
+                    testCaseId, sl.getLineNo(), PaymentSelectionType.CHEQUE,
+                    resolution.chqno(), today, null, null));
+        }
+        return payments;
+    }
+
+    /**
      * Resolves the actual {@link PaymentSelectionType} for a given SL index.
      * MIX: even index (0, 2, ...) = NEFT/RTGS; odd index (1, 3, ...) = Cheque.
      */
@@ -996,5 +1047,155 @@ public final class ApVoucherTemplateLoader {
     /** Short GL type label for test case names — wrapped in square brackets to match AR Voucher style. */
     private static String glLabel(ApVoucherLiveDbRefs refs) {
         return refs.getCashBankType() == CashBankType.CASH ? "[Cash GL]" : "[Bank GL]";
+    }
+
+    // ─── Adjustment amount-mismatch scenarios ("Update payment amount" / "I will adjust more") ───
+
+    /** Which amount-mismatch scenario {@link #docPartialTemplate} builds. */
+    public enum DocPartialKind {
+        /** One document, adjusted for half its pending (payment = full pending) → Update payment amount. */
+        UPDATE_SINGLE,
+        /** Two documents (payment = both pending); adjust the first, "I will adjust more" via Select Document. */
+        ADJUST_MORE_SELECT_DOC,
+        /** Same, but the additional adjustment is FIFO Set-off. */
+        ADJUST_MORE_FIFO,
+        /** Same, but the additional adjustment is Reference Site wise FIFO set-off. */
+        ADJUST_MORE_REFSITE_FIFO,
+        /** Two documents each adjusted for half their pending → Update payment amount. */
+        MULTI_DOC_UPDATE,
+        /** One document adjusted just below its pending (in range) → Update payment amount. */
+        PER_DOC_LESS_THAN_PENDING,
+        /** Adjust more once with a partial second document, still short → then Update payment amount. */
+        ADJUST_MORE_THEN_UPDATE,
+        /** Exploratory negative: per-document amount above the document's pending. */
+        OVER_PENDING
+    }
+
+    /**
+     * Builds a Document-mode Create scenario whose adjusted total deliberately differs from the row's
+     * payment amount, so Adjustment Entry's OK raises the amount-mismatch Confirmation; the scenario's
+     * {@link com.gsl.testdata.Finance.Operations.Vouchers.Common.AdjustmentMismatchPlan} scripts how it
+     * is answered and {@code expectedPaymentAmount} records the payment the saved voucher must carry.
+     * Derived from {@link #docSelectDocumentTemplate} (same header/payment/GL resolution) narrowed to
+     * the first sub-ledger and its first one or two pending documents.
+     *
+     * @throws org.testng.SkipException when the first SL lacks the pending documents this kind needs
+     */
+    public static MergedFinanceApVoucherData docPartialTemplate(ApVoucherLiveDbRefs refs, DocPartialKind kind) {
+        MergedFinanceApVoucherData base = docSelectDocumentTemplate(refs);
+        SubLedgerInformation sl0 = base.getSubLedgerInformationList().get(0);
+        String lineNo = sl0.getLineNo();
+        List<SelectDocument> docs = base.getSelectDocumentList().stream()
+                .filter(d -> lineNo.equalsIgnoreCase(d.getLineNo()))
+                .collect(Collectors.toList());
+
+        boolean needsTwo = kind != DocPartialKind.UPDATE_SINGLE
+                && kind != DocPartialKind.PER_DOC_LESS_THAN_PENDING
+                && kind != DocPartialKind.OVER_PENDING;
+        if (docs.isEmpty() || (needsTwo && docs.size() < 2)) {
+            throw new org.testng.SkipException("[" + kind + "] needs " + (needsTwo ? "at least 2" : "1")
+                    + " pending document(s) on the first sub-ledger but found " + docs.size());
+        }
+        SelectDocument d1 = docs.get(0);
+        BigDecimal p1 = d1.getAdjustmentAmount();               // scaled pending
+        BigDecimal half1 = p1.divide(BigDecimal.valueOf(2), 2, RoundingMode.DOWN).max(new BigDecimal("0.01"));
+
+        List<SelectDocument> selected = new ArrayList<>();
+        BigDecimal payment;
+        BigDecimal expectedPayment;
+        com.gsl.testdata.Finance.Operations.Vouchers.Common.AdjustmentMismatchPlan plan;
+
+        switch (kind) {
+            case UPDATE_SINGLE: {
+                selected.add(withAmount(d1, half1));
+                payment = p1;
+                expectedPayment = half1;
+                plan = com.gsl.testdata.Finance.Operations.Vouchers.Common.AdjustmentMismatchPlan.updatePayment();
+                break;
+            }
+            case PER_DOC_LESS_THAN_PENDING: {
+                BigDecimal less = p1.compareTo(BigDecimal.ONE) > 0 ? p1.subtract(BigDecimal.ONE) : half1;
+                selected.add(withAmount(d1, less));
+                payment = p1;
+                expectedPayment = less;
+                plan = com.gsl.testdata.Finance.Operations.Vouchers.Common.AdjustmentMismatchPlan.updatePayment();
+                break;
+            }
+            case OVER_PENDING: {
+                selected.add(withAmount(d1, p1.add(new BigDecimal("1000.00"))));
+                payment = p1;
+                expectedPayment = null;      // app behavior unconfirmed — exploratory
+                plan = com.gsl.testdata.Finance.Operations.Vouchers.Common.AdjustmentMismatchPlan.none();
+                break;
+            }
+            case MULTI_DOC_UPDATE: {
+                SelectDocument d2 = docs.get(1);
+                BigDecimal half2 = d2.getAdjustmentAmount()
+                        .divide(BigDecimal.valueOf(2), 2, RoundingMode.DOWN).max(new BigDecimal("0.01"));
+                selected.add(withAmount(d1, half1));
+                selected.add(withAmount(d2, half2));
+                payment = p1.add(d2.getAdjustmentAmount());
+                expectedPayment = half1.add(half2);
+                plan = com.gsl.testdata.Finance.Operations.Vouchers.Common.AdjustmentMismatchPlan.updatePayment();
+                break;
+            }
+            default: {
+                // ADJUST_MORE_* and ADJUST_MORE_THEN_UPDATE — two documents in play.
+                SelectDocument d2 = docs.get(1);
+                BigDecimal p2 = d2.getAdjustmentAmount();
+                selected.add(d1);                                  // first document at full pending
+                payment = p1.add(p2);
+                com.gsl.testdata.Finance.Operations.Vouchers.Common.AdjustmentSpec extra;
+                if (kind == DocPartialKind.ADJUST_MORE_FIFO) {
+                    extra = com.gsl.testdata.Finance.Operations.Vouchers.Common.AdjustmentSpec.fifo();
+                    expectedPayment = payment;
+                    plan = com.gsl.testdata.Finance.Operations.Vouchers.Common.AdjustmentMismatchPlan.adjustMore(extra);
+                } else if (kind == DocPartialKind.ADJUST_MORE_REFSITE_FIFO) {
+                    String refSite = sl0.getReferenceSite();
+                    if (refSite == null || refSite.isBlank()) {
+                        throw new org.testng.SkipException("[" + kind + "] needs a resolvable reference site for the SL");
+                    }
+                    extra = com.gsl.testdata.Finance.Operations.Vouchers.Common.AdjustmentSpec.builder()
+                            .type(AdjustmentType.REFERENCE_SITEWISE_FIFO_SETOFF).referenceSite(refSite).build();
+                    expectedPayment = payment;
+                    plan = com.gsl.testdata.Finance.Operations.Vouchers.Common.AdjustmentMismatchPlan.adjustMore(extra);
+                } else if (kind == DocPartialKind.ADJUST_MORE_THEN_UPDATE) {
+                    BigDecimal half2 = p2.divide(BigDecimal.valueOf(2), 2, RoundingMode.DOWN).max(new BigDecimal("0.01"));
+                    extra = com.gsl.testdata.Finance.Operations.Vouchers.Common.AdjustmentSpec
+                            .selectDocument(d2.getDocumentNumber(), half2);
+                    expectedPayment = p1.add(half2);
+                    plan = com.gsl.testdata.Finance.Operations.Vouchers.Common.AdjustmentMismatchPlan.adjustMoreThenUpdate(extra);
+                } else { // ADJUST_MORE_SELECT_DOC
+                    extra = com.gsl.testdata.Finance.Operations.Vouchers.Common.AdjustmentSpec
+                            .selectDocument(d2.getDocumentNumber(), null);
+                    expectedPayment = payment;
+                    plan = com.gsl.testdata.Finance.Operations.Vouchers.Common.AdjustmentMismatchPlan.adjustMore(extra);
+                }
+            }
+        }
+
+        SubLedgerInformation row = new SubLedgerInformation(
+                sl0.getTestCaseID(), lineNo, sl0.getSubLedger(), sl0.getId(), sl0.getGeneralLedger(),
+                sl0.getReferenceSite(), sl0.getLedgerNarration(), sl0.getIsReversal(), sl0.getDeductTds(),
+                payment, AdjustmentType.SELECT_DOCUMENT, sl0.getPaymentSelection());
+
+        List<PaymentInformation> payments = base.getPaymentInformationList() == null ? List.of()
+                : base.getPaymentInformationList().stream()
+                        .filter(p -> lineNo.equalsIgnoreCase(p.getLineNo())).collect(Collectors.toList());
+
+        base.setSubLedgerInformationList(List.of(row));
+        base.setSelectDocumentList(selected);
+        base.setPaymentInformationList(payments);
+        base.setPaymentProvided(!payments.isEmpty());
+        base.setAdjustmentMismatchPlan(plan);
+        base.setExpectedPaymentAmount(expectedPayment);
+        base.getMasterTestData().setTestcasename(
+                base.getMasterTestData().getTestcasename() + " | MISMATCH:" + kind);
+        return base;
+    }
+
+    private static SelectDocument withAmount(SelectDocument d, BigDecimal amount) {
+        return new SelectDocument(d.getTestCaseID(), d.getLineNo(), d.getDocumentNumber(), d.getDocumentDate(),
+                d.getDocumentType(), d.getReferenceNo(), d.getReferenceDate(), d.getReferenceSite(), amount);
     }
 }

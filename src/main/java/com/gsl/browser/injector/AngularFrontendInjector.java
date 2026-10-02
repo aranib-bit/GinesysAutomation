@@ -223,6 +223,7 @@ public final class AngularFrontendInjector implements FrontendDiagnosticsInjecto
             }
             """;
 
+    /** Executes {@link #INIT_SCRIPT}, {@link #COMMON_SCRIPT}, then {@link #ANGULAR_SCRIPT} in order; failures are logged, never thrown. */
     @Override
     public void inject(WebDriver driver) {
         if (driver == null) return;

@@ -2,19 +2,36 @@ package com.gsl.config;
 
 import org.aeonbits.owner.Config;
 
-@Config.Sources(value = "file:${user.dir}/src/test/resources/config/config.properties")
+/**
+ * Core framework settings read from {@code config.properties} — application URL, environment
+ * name, DB-mode login credentials, global timeouts, and the handful of app-wide behavioral
+ * defaults ({@link #testDataSource()}, {@link #gridMultiSortMaxColumns()}) that don't belong in
+ * a more specific config interface. Obtained via {@link ConfigFactory#getConfig()}; {@code
+ * com.tests.BaseTest} holds one shared instance for all test subclasses.
+ */
+@Config.LoadPolicy(Config.LoadType.MERGE)
+@Config.Sources({
+        "system:properties",
+        "file:${user.dir}/src/test/resources/env/${env}/secrets.local.properties",
+        "file:${user.dir}/src/test/resources/env/${env}/config.properties",
+        "file:${user.dir}/src/test/resources/config/config.properties"
+})
 public interface FrameworkConfig extends Config {
 
+    /** Default explicit-wait timeout (seconds) used across {@code WaitUtils}' expected-condition waits. */
     long timeout();
 
+    /** Base URL of the application under test. */
     String url();
 
+    /** Environment name (e.g. local/staging/prod), used for report metadata and environment-specific branching. */
     @DefaultValue("local")
     String env();
 
     /** Raw browser name string — used by TestContextManager and report metadata. */
     String browser();
 
+    /** Max time (seconds) allowed for an item-scan/lookup operation before timing out. */
     long itemscanmaxtimeout();
 
     /** EXCEL | DB — selects which DataSource implementation loads test data. */

@@ -171,43 +171,45 @@ public class RevertGeneralVoucher extends WebTest {
         });
 
         // ── Step 3: Navigate ──────────────────────────────────────────────────────────
-        StepExecutor.step("Open Finance → General Voucher List", () -> {
-            listRef[0] = NavigationUtils.navigateToFinanceSideMenu(
-                    homeRef[0],
-                    MainMenuType.OPERATIONS,
-                    OperationsMenuType.CATEGORY,
-                    GeneralVoucherListPage.class);
-            ReportLogger.business("General Voucher list page opened");
-        });
+        // Business log + "Navigated: ..." summary are now recorded inside
+        // NavigationUtils.navigateToFinanceSideMenu itself.
+        StepExecutor.step("Open Finance → General Voucher List", () -> listRef[0] =
+                NavigationUtils.navigateToFinanceSideMenu(
+                        homeRef[0],
+                        MainMenuType.OPERATIONS,
+                        OperationsMenuType.CATEGORY,
+                        GeneralVoucherListPage.class));
 
-        // ── Step 4: Clear Filter + Refresh ────────────────────────────────────────────
-        StepExecutor.step("Clear Filter and Refresh List", () -> {
-            listRef[0].clearFilterAndRefreshList().resetToFirstPageIfEnabled();
-            ReportLogger.business("Filter cleared, list refreshed, reset to first page (if not already there)");
-        });
-
-        // ── Step 5: Select document (tiered fast search, falling back to page-by-page) ──
+        // ── Step 4: Clear Filter + Select Document (tiered fast search, falling back to
+        // page-by-page) — consolidated into one call via VoucherListPageBase.selectDocumentForAction,
+        // which composes clearFilterAndRefreshList().resetToFirstPageIfEnabled().selectDocumentFast(...)
+        // (previously 2 separate steps/calls, now the one common function every Revert/Delete/Edit
+        // test across GV/AR/AP shares) ──────────────────────────────────────────────────
         StepExecutor.step("Select General Voucher in List Page", () -> {
             DocumentSearchStrategy strategy = testData.getSearchStrategy() == null
                     ? DocumentSearchStrategy.EXACT_MATCH
                     : testData.getSearchStrategy();
-            listRef[0].selectDocumentFast(testData.getExistingVoucherNo(), strategy);
-            ReportLogger.business("Selected voucher: " + testData.getExistingVoucherNo());
+            listRef[0].selectDocumentForAction(testData.getExistingVoucherNo(), strategy);
+            ReportLogger.business("Filter cleared, list refreshed, selected voucher: "
+                    + testData.getExistingVoucherNo());
         });
 
-        // ── Step 6: Click Actions ──────────────────────────────────────────────────────
-        StepExecutor.step("Click Actions", () -> {
-            listRef[0].clickActions();
-            ReportLogger.business("Actions dropdown opened");
-        });
-
-        // ── Step 7: DB Check — Release Status Immediately Before Revert ──────────────────
+        // ── Step 6: DB Check — Release Status Immediately Before Revert ──────────────────
         // A fresh, log-only read taken right before the state-changing click — Step 1's precheck
         // was captured before login/navigation/selection, leaving a race window in which another
         // concurrent process can legitimately change the voucher's live release_status. This
         // narrower read is the true pre-action snapshot; it drives diagnostics only, never
         // assertions, and its divergence from the Step-1 value (when it occurs) explains an
         // otherwise-confusing later mismatch instead of masquerading as a product defect.
+        //
+        // MOVED (was Step 7, after "Click Actions") — confirmed live, reports/runs/20260913_173951
+        // FIN-GV-REVERT-03: opening the Actions dropdown and then running this DB read plus the
+        // snapshot capture below (Step 7b) left the dropdown idle for several seconds before the
+        // Revert click ever ran, long enough for an async grid event to invalidate the row
+        // selection/close the dropdown — the reselect-and-retry overload on clickRevert (Round 10
+        // pattern) then had to recover, but was itself racing the same window on its own retry.
+        // Both DB-only steps now run BEFORE Actions is opened, so the dropdown opens immediately
+        // ahead of the click with no idle gap in between.
         StepExecutor.step("DB Check — Release Status Immediately Before Revert", () -> {
             DbQueryBuffer.start();
             FinVchMain header;
@@ -244,11 +246,34 @@ public class RevertGeneralVoucher extends WebTest {
             ReportLogger.business("Document context resolved and BEFORE snapshot captured for voucher: "
                     + testData.getExistingVoucherNo());
             recordSnapshotTableSummary("BEFORE Snapshot", beforeSnapshotRef[0]);
+            // Item U: Revert previously had NO audit-state visibility at all, before or after —
+            // both sets are already resolved on contextRef[0], so this is just rendering them in
+            // the same dedicated shape the AFTER-snapshot audit check elsewhere in the codebase
+            // uses, ahead of the state-changing Revert click.
+            new com.gsl.validation.snapshot.finance.AuditStateSummary(
+                    contextRef[0].getAuditActiveTables(), contextRef[0].getAuditTriggerDisabledTables())
+                    .logTable("BEFORE Revert — Audit State");
+        });
+
+        // ── Step 7c: Click Actions ─────────────────────────────────────────────────────
+        // MOVED here (was Step 6, before the two DB-only steps above) — see their Javadoc for
+        // why: this now opens the dropdown immediately ahead of the Revert click, with no idle
+        // DB-round-trip gap in between for an async grid event to invalidate the selection.
+        StepExecutor.step("Click Actions", () -> {
+            listRef[0].clickActions();
+            ReportLogger.business("Actions dropdown opened");
         });
 
         // ── Step 8: Click Revert ───────────────────────────────────────────────────────
+        // Document-number-aware overload (see GeneralVoucherListPage#clickRevert(String,
+        // DocumentSearchStrategy)'s Javadoc): on a confirmed "Actions dropdown not open" failure —
+        // seen live in reports/runs/20260913_133337 (FIN-GV-REVERT-02) — re-selects the row and
+        // re-opens Actions once before giving up, instead of failing outright on the first check.
         StepExecutor.step("Click Revert", () -> {
-            listRef[0].clickRevert();
+            DocumentSearchStrategy strategy = testData.getSearchStrategy() == null
+                    ? DocumentSearchStrategy.EXACT_MATCH
+                    : testData.getSearchStrategy();
+            listRef[0].clickRevert(testData.getExistingVoucherNo(), strategy);
             ReportLogger.business("Revert clicked");
         });
 

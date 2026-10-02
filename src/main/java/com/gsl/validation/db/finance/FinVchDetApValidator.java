@@ -1,6 +1,8 @@
 package com.gsl.validation.db.finance;
 
 import com.gsl.database.DatabaseManager;
+import com.gsl.database.dao.finance.FinChqDetDao;
+import com.gsl.database.dao.finance.FinChqMainDao;
 import com.gsl.database.dao.finance.FinGlDao;
 import com.gsl.database.dao.finance.FinSlDao;
 import com.gsl.database.dao.finance.FinVchDetDao;
@@ -40,16 +42,27 @@ import java.util.Map;
  */
 public class FinVchDetApValidator {
 
-    private final FinVchDetDao dao;
-    private final FinGlDao     glDao;
-    private final FinSlDao     slDao;
+    private final FinVchDetDao   dao;
+    private final FinGlDao       glDao;
+    private final FinSlDao       slDao;
+    private final FinChqDetDao   finChqDetDao;
+    private final FinChqMainDao  finChqMainDao;
 
     public FinVchDetApValidator() {
-        this.dao   = DatabaseManager.getJdbi().onDemand(FinVchDetDao.class);
-        this.glDao = DatabaseManager.getJdbi().onDemand(FinGlDao.class);
-        this.slDao = DatabaseManager.getJdbi().onDemand(FinSlDao.class);
+        this.dao           = DatabaseManager.getJdbi().onDemand(FinVchDetDao.class);
+        this.glDao         = DatabaseManager.getJdbi().onDemand(FinGlDao.class);
+        this.slDao         = DatabaseManager.getJdbi().onDemand(FinSlDao.class);
+        this.finChqDetDao  = DatabaseManager.getJdbi().onDemand(FinChqDetDao.class);
+        this.finChqMainDao = DatabaseManager.getJdbi().onDemand(FinChqMainDao.class);
     }
 
+    /**
+     * Blocking: asserts at least one {@code finvchdet} row exists for {@code header}'s vchcode,
+     * then soft-asserts row cardinality, the {@code SUM(finvchdet.damount) == finvchmain.camount}
+     * balance (AP's debit side), each line's amount via {@link #validateSubLedgerLine}, {@code
+     * tds_app} via {@link #validateTdsApp}, and payment-mode plus instrument/cheque-book details
+     * via {@link #validatePaymentDetails}.
+     */
     public void validate(ApVoucherDbContext context, FinVchMain header) {
         long vchcode = header.getVchcode();
         MergedFinanceApVoucherData data = context.getTestData();
@@ -234,10 +247,21 @@ public class FinVchDetApValidator {
                         .isEqualTo(LocalTime.MIDNIGHT);
             }
         }
+
+        // Round 20 — AP's own Level 5-equivalent: same cheque-book (finchqdet/finchqmain)
+        // linkage GV already asserts, reusing the identical shared helper. A synthetic/unknown
+        // cheque number (the majority case per AP's own configured ratio) has no matching
+        // finchqdet row — a clean, logged skip, not a failure; only AP's 90%-by-default
+        // known-cheque case actually exercises these assertions.
+        if (PaymentSelectionType.CHEQUE.dbCode().equalsIgnoreCase(mode)) {
+            ChequeBookValidator.assertKnownChequeIssued(soft, finChqDetDao, finChqMainDao,
+                    row.getChqno(), row.getGlcode(), row.getBookcode(), context.trim());
+        }
     }
 
     // ── tds_app assertion (Y = TDS provided, N = not provided) ───────────────
 
+    /** Asserts every {@code finvchdet} row's {@code tds_app} matches {@code tdsProvided} ('Y'/'N'). */
     private static void validateTdsApp(SoftAssertions soft, List<FinVchDet> rows,
                                         boolean tdsProvided, long vchcode) {
         String expected = tdsProvided ? "Y" : "N";
@@ -252,6 +276,7 @@ public class FinVchDetApValidator {
 
     // ── Level 2 summary HTML ─────────────────────────────────────────────────
 
+    /** Builds the Level 2 green-checklist HTML box (line count, balance, TDS flag). */
     private static String buildLevel2Summary(int rowCount, BigDecimal sumDebit,
                                               BigDecimal camount, boolean tdsProvided) {
         return "<div style='font-family:monospace;font-size:12px;line-height:1.8;padding:8px 12px;"
@@ -266,6 +291,7 @@ public class FinVchDetApValidator {
 
     // ── Sub-ledger line amount check (Dr side) ────────────────────────────────
 
+    /** Finds the {@code finvchdet} row matching {@code line}'s debit amount (or, for an Advance+TDS voucher, its Net Payable in place of the gross Dr) and, when supplied, checks its narration. */
     private void validateSubLedgerLine(SoftAssertions soft, SubLedgerInformation line,
                                         List<FinVchDet> rows, long vchcode,
                                         MergedFinanceApVoucherData data) {
@@ -347,6 +373,11 @@ public class FinVchDetApValidator {
             DateTimeFormatter.ofPattern("MM/dd/yyyy")
     );
 
+    /**
+     * Parses {@code raw} against each of {@link #INSTR_DATE_FORMATS} in turn.
+     *
+     * @throws IllegalArgumentException if {@code raw} matches none of the accepted formats
+     */
     private static LocalDate parseInstrDate(String raw) {
         String s = raw.trim();
         for (DateTimeFormatter fmt : INSTR_DATE_FORMATS) {

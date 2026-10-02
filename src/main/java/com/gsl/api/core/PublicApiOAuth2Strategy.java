@@ -18,6 +18,7 @@ public final class PublicApiOAuth2Strategy implements ApiAuthStrategy {
     private static volatile String cachedToken;
     private static volatile long cachedTokenExpiryEpochMs;
 
+    /** {@inheritDoc} {@code credential} is ignored — PUBLICAPI authenticates at the app level, not per-user. */
     @Override
     public AuthResult authenticate(String baseUri, UserCredential credential) {
         String token = currentToken();
@@ -31,6 +32,7 @@ public final class PublicApiOAuth2Strategy implements ApiAuthStrategy {
         return AuthResult.builder().spec(spec).userId(null).sessionId(null).build();
     }
 
+    /** Returns the cached bearer token if still valid (with a 60s early-refresh margin), else fetches and caches a new one. */
     private static synchronized String currentToken() {
         long now = System.currentTimeMillis();
         if (cachedToken != null && now < cachedTokenExpiryEpochMs) {

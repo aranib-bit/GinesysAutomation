@@ -6,7 +6,12 @@ import lombok.Builder;
 import lombok.Data;
 import lombok.NoArgsConstructor;
 
-/** One entry of GetUDFMetaData's {@code lookupData.data} — {"value": "..."}. */
+/**
+ * One entry of {@code GET /udf/GetUDFMetaData}'s {@code lookupData.data} — shape confirmed via
+ * HAR: {@code {"value": "..."}}. Wraps {@link UdfFieldMetadata#getLookupData()}'s candidate
+ * values; {@code UdfValueBuilder.pickFixedListCandidate} reads {@link #value} off these when
+ * choosing a value for a mandatory {@code FixedList} UDF field.
+ */
 @Data
 @Builder
 @NoArgsConstructor

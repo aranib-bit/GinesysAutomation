@@ -9,11 +9,14 @@ import java.math.BigDecimal;
 import java.util.List;
 
 /**
- * DAO for finvchdet — Finance module.
+ * DAO for finvchdet — Voucher Detail / Line Item table (see {@link FinVchDet} for column
+ * meanings). One finvchmain header → N finvchdet rows. Every query joins in {@code admsite} to
+ * additionally resolve {@code ref_admsite_name} for the line's referenced site.
  */
 @RegisterBeanMapper(FinVchDet.class)
 public interface FinVchDetDao {
 
+    /** Returns all line items for a voucher, ordered by {@code code} (see note below on why the explicit order matters). */
     // ORDER BY f.code (Round 9, RC-10): finvchdet has no line-sequence column at all, so without
     // an explicit order Postgres's fetch order is undefined and needn't match the app's actual
     // grid row order. DbGeneralVoucherEditDataSource fabricates LineNo purely from this fetch's
@@ -28,15 +31,19 @@ public interface FinVchDetDao {
               "ORDER BY f.code")
     List<FinVchDet> findByVoucherCode(@Bind("vchcode") long vchcode);
 
+    /** Returns the number of line items for the given voucher. */
     @SqlQuery("SELECT COUNT(*) FROM finvchdet WHERE vchcode = :vchcode")
     int countByVoucherCode(@Bind("vchcode") long vchcode);
 
+    /** Sums {@code damount} across all of a voucher's line items; {@code 0} when none exist. */
     @SqlQuery("SELECT COALESCE(SUM(damount), 0) FROM finvchdet WHERE vchcode = :vchcode")
     BigDecimal sumDebitByVoucherCode(@Bind("vchcode") long vchcode);
 
+    /** Sums {@code camount} across all of a voucher's line items; {@code 0} when none exist. */
     @SqlQuery("SELECT COALESCE(SUM(camount), 0) FROM finvchdet WHERE vchcode = :vchcode")
     BigDecimal sumCreditByVoucherCode(@Bind("vchcode") long vchcode);
 
+    /** Returns a voucher's line items restricted to a specific Sub Ledger. */
     @SqlQuery("SELECT f.*, a.name AS ref_admsite_name " +
               "FROM finvchdet f " +
               "LEFT JOIN admsite a ON a.code = f.ref_admsite_code " +

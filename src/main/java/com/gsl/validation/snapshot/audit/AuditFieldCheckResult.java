@@ -21,12 +21,14 @@ public record AuditFieldCheckResult(
         boolean passed,
         ValidationFailure failure
 ) {
+    /** Builds a passing row — {@code expected*}/{@code actual*} agreed. */
     public static AuditFieldCheckResult pass(String table, String recordId, AuditOperation operation,
             String column, String expectedOld, String expectedNew, String actualOld, String actualNew) {
         return new AuditFieldCheckResult(table, recordId, operation, column,
                 expectedOld, expectedNew, actualOld, actualNew, true, null);
     }
 
+    /** Builds a failing row, carrying the {@link ValidationFailure} that explains the mismatch. */
     public static AuditFieldCheckResult fail(String table, String recordId, AuditOperation operation,
             String column, String expectedOld, String expectedNew, String actualOld, String actualNew,
             ValidationFailure failure) {

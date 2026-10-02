@@ -17,13 +17,17 @@ import org.jdbi.v3.core.mapper.reflect.ColumnName;
 @Data
 public class FinSlGlSite {
 
+    /** Surrogate row id. */
     private long code;
 
+    /** FK → {@code finsl_gl.code} — the (Sub Ledger, GL) pair this narrowed site list applies to. */
     @ColumnName("finsl_gl_code")
     private long finslGlCode;
 
+    /** FK → {@code admsite.code} — a Site allowed for this specific (Sub Ledger, GL) pair. */
     @ColumnName("admsite_code")
     private long admsiteCode;
 
+    /** {@code 'N'} = active (allow-listed); anything else = logically deleted. */
     private String ext;
 }

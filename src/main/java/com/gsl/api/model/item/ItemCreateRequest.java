@@ -11,7 +11,10 @@ import lombok.NoArgsConstructor;
 /**
  * POST ItemMaster/Create request body. Field set mirrors
  * D:\PerformanceAutomationTesting\flows\createItem.js — core fields only; additional
- * udfstring/udfnum fields follow the same pattern and can be added as needed.
+ * udfstring/udfnum fields follow the same pattern and can be added as needed. Built by
+ * {@code ItemApiClient.createItemWithDefaults(...)} from a {@link com.gsl.enums.ItemManagementMode}
+ * (supplies {@code itemManagementMode}/{@code priceManagement}) and an {@link ItemLookupData}
+ * (supplies {@code unitname}/{@code inventoryGroup}/{@code inventoryCategory}/{@code hsnSacMain}).
  */
 @Data
 @Builder

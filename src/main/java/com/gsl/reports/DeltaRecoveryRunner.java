@@ -22,6 +22,10 @@ import java.nio.file.Paths;
  */
 public class DeltaRecoveryRunner {
 
+    /** CLI entry point — see this class's own Javadoc for the invocation command. Reads one JSON
+     *  object per line from the delta file named in {@code args[0]} and rebuilds a recovered
+     *  {@code recovered_report.html} alongside it; malformed lines are logged to stderr and
+     *  skipped rather than aborting the whole recovery. */
     public static void main(String[] args) throws IOException {
         if (args.length == 0) {
             System.err.println("Usage: DeltaRecoveryRunner <path/to/run_delta.ndjson>");

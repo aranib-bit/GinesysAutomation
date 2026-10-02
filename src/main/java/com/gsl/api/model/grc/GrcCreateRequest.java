@@ -10,7 +10,15 @@ import lombok.Singular;
 
 import java.util.List;
 
-/** POST GRC/Save request body. Field set mirrors flows/createGrc.js. */
+/**
+ * POST GRC/Save request body — the WebAPI wire shape {@code GrcApiClient} builds and posts to
+ * create a Goods Receipt Challan. A reduced field set relative to flows/createGrc.js's full save
+ * body (that k6 flow resolves charges/margin-validation/tax-region context via separate lookup
+ * calls before Save); this DTO carries only what's needed for a minimal single-vendor,
+ * single-line GRC. {@code admsite}/{@code admouCode} are the receiving site/OU
+ * {@link LookupValue}s, {@code grcdt} is an ISO date-time string, and {@code rcqty}/
+ * {@code grsamt} are header-level totals mirroring the sum of {@code items}.
+ */
 @Data
 @Builder
 @NoArgsConstructor

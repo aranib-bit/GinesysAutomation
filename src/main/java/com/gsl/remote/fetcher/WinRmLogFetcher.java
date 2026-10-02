@@ -41,10 +41,12 @@ public final class WinRmLogFetcher implements LogFetcher {
     private final LogFilter   filter;
     private final RetryPolicy retryPolicy;
 
+    /** Fetcher with a default 3-attempt retry policy. */
     public WinRmLogFetcher(LogParser parser, LogFilter filter) {
         this(parser, filter, new RetryPolicy(3, 1_000L));
     }
 
+    /** Fetcher with a caller-supplied retry policy. */
     public WinRmLogFetcher(LogParser parser, LogFilter filter, RetryPolicy retryPolicy) {
         this.parser      = parser;
         this.filter      = filter;
@@ -56,6 +58,14 @@ public final class WinRmLogFetcher implements LogFetcher {
         return osType == OSType.WINDOWS;
     }
 
+    /**
+     * Runs the PowerShell Get-Content/Select-String (or Get-EventLog) command strategy over WinRM,
+     * retrying transient failures per {@link RetryPolicy}. Each fetch issues one stateless HTTP
+     * call — see the class Javadoc.
+     *
+     * @throws RemoteCommandException on validation failure, a non-zero/non-1 exit, or once
+     *                                 retries are exhausted
+     */
     @Override
     public LogFetchResponse fetch(LogFetchRequest request) throws RemoteCommandException {
         LogFetchRequestValidator.validate(request);
@@ -99,6 +109,7 @@ public final class WinRmLogFetcher implements LogFetcher {
 
     // ── private ───────────────────────────────────────────────────────────────
 
+    /** Builds the PowerShell script, issues one WinRM HTTP call via winrm4j, and parses the result. One attempt (retries are the caller's job). */
     private LogFetchResponse doFetch(LogFetchRequest request) throws Exception {
         String url    = buildWinRmUrl(request);
         String user   = request.getCredentials().getUsername();
@@ -281,8 +292,14 @@ public final class WinRmLogFetcher implements LogFetcher {
                 windowInit, pathArray, dateFilterClause, maxRotated, fileReadCmd);
     }
 
+    /** Holds one {@link #parseAndFilter} pass's grouped output: parsed entries, files read, and per-file errors. */
     private record ParseResult(List<LogEntry> entries, List<String> filesRead, Map<String, String> fileErrors) {}
 
+    /**
+     * Splits raw stdout on the {@code ###FILE:###}/{@code ###FILE_ERROR:###} sentinels emitted by
+     * {@link #buildPowerShellCommand}, groups the lines in between by source file, and hands each
+     * group to {@link #flushBlock} for parsing once a new sentinel or a new entry start is seen.
+     */
     private ParseResult parseAndFilter(String stdout, LogFetchRequest request) {
         if (stdout == null || stdout.isBlank())
             return new ParseResult(List.of(), List.of(), Map.of());
@@ -328,6 +345,12 @@ public final class WinRmLogFetcher implements LogFetcher {
         return new ParseResult(entries, filesRead, fileErrors);
     }
 
+    /**
+     * Parses one accumulated multi-line block (a timestamped entry plus any continuation lines,
+     * e.g. a stack trace or multi-line SQL body) into a single {@link LogEntry} and adds it to
+     * {@code entries} when {@code filter} accepts it. Blocks whose first line doesn't parse are
+     * treated as orphaned continuation lines and each parsed individually instead, so no line is lost.
+     */
     private void flushBlock(List<String> block, String file,
                              List<LogEntry> entries, LogFilter filter) {
         if (block.isEmpty()) return;
@@ -356,6 +379,7 @@ public final class WinRmLogFetcher implements LogFetcher {
         });
     }
 
+    /** Builds the WinRM WSMan endpoint URL ({@code http(s)://host:port/wsman}) for the request. */
     private static String buildWinRmUrl(LogFetchRequest request) {
         String scheme = request.isWinrmUseHttps() ? "https" : "http";
         return scheme + "://" + request.getHost() + ":" + request.getPort() + "/wsman";

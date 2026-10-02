@@ -5,7 +5,6 @@ import com.gsl.database.dao.adm.AdmOuMonthDao;
 import com.gsl.database.dao.adm.AdmOuYearDao;
 import com.gsl.database.dao.adm.AdmSiteOuDao;
 import com.gsl.database.dao.adm.AdmYearDao;
-import com.gsl.database.dao.finance.FinVchMainDao;
 import com.gsl.enums.PeriodDomain;
 import com.gsl.model.adm.AdmMonth;
 import com.gsl.model.adm.AdmOuMonth;
@@ -81,49 +80,71 @@ public final class AccountingPeriodResolver {
      * {@code admyear} calendar, or its containing year is closed.
      */
     public static Optional<AdmYear> findCurrentYear(Jdbi jdbi, LocalDate date, long ouCode) {
+        return findCurrentYear(jdbi, date, ouCode, null);
+    }
+
+    /**
+     * Cache-aware overload of {@link #findCurrentYear} — routes each candidate year's
+     * {@code isYearOpen} check through {@code cache} (the caller's own {@link AccountingPeriodCache})
+     * instead of the raw static query, when a non-null cache is supplied. {@code null} preserves the
+     * original uncached behavior exactly (used by the 3-arg overload above).
+     */
+    public static Optional<AdmYear> findCurrentYear(Jdbi jdbi, LocalDate date, long ouCode, AccountingPeriodCache cache) {
         List<AdmYear> years = jdbi.onDemand(AdmYearDao.class).findAll();
         return years.stream()
                 .filter(y -> !date.atStartOfDay().isBefore(y.getDtfr()) && !date.atStartOfDay().isAfter(y.getDtto()))
-                .filter(y -> isYearOpen(jdbi, y.getYcode(), ouCode))
+                .filter(y -> cache != null ? cache.isYearOpen(jdbi, y.getYcode(), ouCode) : isYearOpen(jdbi, y.getYcode(), ouCode))
                 .findFirst();
     }
 
     /**
      * Resolves today's accounting year (via {@link #findCurrentYear}, using the OU of the first
-     * candidate whose header can be read — OU is consistent per tenant in practice, and any
-     * candidate's header is sufficient to resolve it), appends a diagnostic line to
-     * {@code gatheringLog} describing what was found, and returns the resolved {@code ycode} (or
-     * {@code null} if no candidate exists to resolve an OU from, or today falls outside every
-     * open year). Shared by every candidate-claim data source that wants to prefer the current
-     * year over an older-but-open one (GV Revert/Edit/Delete, AR Edit) — see the "GV Revert picks
-     * documents in a now-closed accounting period, + closed-period negative-test coverage" plan,
-     * follow-up round 2.
+     * candidate — OU is consistent per tenant in practice, and any candidate's header is sufficient
+     * to resolve it), appends a diagnostic line to {@code gatheringLog} describing what was found,
+     * and returns the resolved {@code ycode} (or {@code null} if {@code candidates} is empty, or
+     * today falls outside every open year). Shared by every candidate-claim data source that wants
+     * to prefer the current year over an older-but-open one (GV Revert/Edit/Delete, AR Edit) — see
+     * the "GV Revert picks documents in a now-closed accounting period, + closed-period
+     * negative-test coverage" plan, follow-up round 2.
+     *
+     * <p><b>Cache-aware</b> (Round 12 continued, Finding C): {@code cache} — the SAME
+     * {@link AccountingPeriodCache} instance the caller's own claim-scan uses for its
+     * {@code isEditable} checks — MUST be created BEFORE calling this method, not after (every call
+     * site used to create its cache afterward). Routing this lookup through that cache means the
+     * first candidate's OU/year data, once resolved here, is already cached when the scan's own
+     * {@code isEditable} check evaluates that same candidate moments later, instead of being
+     * re-queried — confirmed live via {@code admsite_ou}/{@code admou_year} firing twice in a row
+     * for the first candidate in a scan.
+     *
+     * <p>{@code candidates} is now a bulk-fetched {@code List<FinVchMain>} (Round 12's own N+1 fix
+     * — see {@code DbGeneralVoucherDeleteDataSource}/{@code DbGeneralVoucherRevertDataSource}/
+     * {@code DbGeneralVoucherEditDataSource}'s claim-scan SQL), so this method no longer needs a
+     * {@code FinVchMainDao} to re-fetch the first candidate's header — it's already in hand.
      */
-    public static Long logAndResolveCurrentYcode(Jdbi jdbi, FinVchMainDao headerDao,
-            List<Long> candidates, List<String> gatheringLog) {
+    public static Long logAndResolveCurrentYcode(Jdbi jdbi, List<FinVchMain> candidates,
+            List<String> gatheringLog, AccountingPeriodCache cache) {
         LocalDate today = LocalDate.now();
-        for (Long vchcode : candidates) {
-            FinVchMain header = headerDao.findByVoucherCode(vchcode).orElse(null);
-            if (header == null) continue;
-
-            long ouCode = resolveOuCode(jdbi, header.getAdmsiteCodeOwner());
-            Optional<AdmYear> currentYear = findCurrentYear(jdbi, today, ouCode);
-            if (currentYear.isPresent()) {
-                AdmYear y = currentYear.get();
-                gatheringLog.add("  Current date: " + today.format(VoucherReportUtils.DATE_FMT)
-                        + " — falls within admyear ycode=" + y.getYcode() + " '" + y.getYname() + "' ("
-                        + firstValidDay(y).format(VoucherReportUtils.DATE_FMT)
-                        + " to " + lastValidDay(y).format(VoucherReportUtils.DATE_FMT)
-                        + ") for admou_code=" + ouCode + " — preferring this year's candidates first");
-                return y.getYcode();
-            }
+        if (candidates.isEmpty()) {
             gatheringLog.add("  Current date: " + today.format(VoucherReportUtils.DATE_FMT)
-                    + " — no open admyear found containing today for admou_code=" + ouCode
-                    + "; falling back to any open year");
+                    + " — no candidate available to resolve an OU from; no current-year preference applied");
             return null;
         }
+
+        FinVchMain header = candidates.get(0);
+        long ouCode = cache.resolveOuCode(jdbi, header.getAdmsiteCodeOwner());
+        Optional<AdmYear> currentYear = findCurrentYear(jdbi, today, ouCode, cache);
+        if (currentYear.isPresent()) {
+            AdmYear y = currentYear.get();
+            gatheringLog.add("  Current date: " + today.format(VoucherReportUtils.DATE_FMT)
+                    + " — falls within admyear ycode=" + y.getYcode() + " '" + y.getYname() + "' ("
+                    + firstValidDay(y).format(VoucherReportUtils.DATE_FMT)
+                    + " to " + lastValidDay(y).format(VoucherReportUtils.DATE_FMT)
+                    + ") for admou_code=" + ouCode + " — preferring this year's candidates first");
+            return y.getYcode();
+        }
         gatheringLog.add("  Current date: " + today.format(VoucherReportUtils.DATE_FMT)
-                + " — no candidate available to resolve an OU from; no current-year preference applied");
+                + " — no open admyear found containing today for admou_code=" + ouCode
+                + "; falling back to any open year");
         return null;
     }
 

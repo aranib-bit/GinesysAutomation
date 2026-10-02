@@ -28,4 +28,23 @@
         </classes>
     </test>
 
+    <test name="AP Voucher Edit — Negative/Boundary — Regression Phase-1"
+          parallel="methods" thread-count="4">
+        <!--
+          editApVoucherDateFieldDisabled — confirms AP Voucher's Date field is genuinely disabled
+          on Edit (business rule, not a bug). Moved here from the MANDATORY suite
+          (testng-apvoucher.xml) after a confirmed live "element not interactable" failure showed
+          the field is disabled="" aria-disabled="true" by design — editing Date was never a valid
+          positive scenario for AP Voucher, so this negative assertion replaces it.
+        -->
+        <parameter name="apv.group" value="REGRESSION_PHASE1"/>
+        <classes>
+            <class name="com.tests.Finance.Operations.Vouchers.EditApVoucher">
+                <methods>
+                    <include name="editApVoucherDateFieldDisabled"/>
+                </methods>
+            </class>
+        </classes>
+    </test>
+
 </suite>

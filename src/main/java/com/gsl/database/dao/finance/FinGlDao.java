@@ -8,14 +8,16 @@ import org.jdbi.v3.sqlobject.statement.SqlQuery;
 import java.util.List;
 
 /**
- * DAO for fingl — General Ledger master table.
+ * DAO for fingl — General Ledger master table (see {@link FinGl} for column meanings).
  */
 @RegisterBeanMapper(FinGl.class)
 public interface FinGlDao {
 
+    /** Looks up the fingl row by its {@code glcode} primary key. */
     @SqlQuery("SELECT glcode, glname, srctype, slapp, costapp, type FROM fingl WHERE glcode = :glcode")
     FinGl findByGlCode(@Bind("glcode") long glcode);
 
+    /** Looks up the fingl row by exact {@code glname} match. */
     @SqlQuery("SELECT glcode, glname, srctype, slapp, costapp, type FROM fingl WHERE glname = :glname")
     FinGl findByGlName(@Bind("glname") String glname);
 

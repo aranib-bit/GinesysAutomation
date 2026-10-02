@@ -14,6 +14,16 @@ public final class ServiceInvoiceAdhocDataSetup {
 
     private ServiceInvoiceAdhocDataSetup() {}
 
+    /**
+     * Creates a Service Invoice Adhoc (saved and released) against {@code vendorSlCode} via
+     * {@code client}, validates the response, then logs {@code releaseStatus}/{@code
+     * validationErrors} to the data-backfill report channel when present (best-effort — these
+     * fields are informational and never fail the call themselves).
+     *
+     * @param vendorSlCode  the vendor sub-ledger the invoice is raised against
+     * @param ownerSiteCode owner site for the created invoice
+     * @throws com.gsl.api.core.ApiException if the response fails {@link ServiceInvoiceAdhocApiValidator}'s checks
+     */
     public static ServiceInvoiceAdhocCreateResponse setupServiceInvoiceAdhocForTest(
             ServiceInvoiceAdhocApiClient client, String vendorSlCode, int ownerSiteCode,
             int quantity, int rate) {

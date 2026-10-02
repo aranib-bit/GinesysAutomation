@@ -14,6 +14,7 @@ public final class NetworkLogAttachment {
 
     private NetworkLogAttachment() {}
 
+    /** No-ops when network logging is disabled or the current thread's capture has no logs; otherwise sends them to {@link NetworkExtentLogger}. */
     public static void attach() {
         if (!ConfigFactory.getNetworkConfig().enableNetworkLogs()) return;
 

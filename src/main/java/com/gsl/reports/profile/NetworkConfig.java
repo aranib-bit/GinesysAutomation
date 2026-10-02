@@ -4,6 +4,16 @@ import com.fasterxml.jackson.annotation.JsonInclude;
 import lombok.Builder;
 import lombok.Data;
 
+/**
+ * Immutable snapshot of the network-capture and browser-log values shown in the Extent Report's
+ * Runtime Profile "Network &amp; Browser Logging Configuration" section (built by
+ * {@code RuntimeProfileBuilder#buildNetwork}, rendered by
+ * {@code ReportConfigRenderer#renderNetworkSection}).
+ *
+ * <p>Almost a 1:1 mirror of {@link com.gsl.config.NetworkConfig}'s own capture/browser-log
+ * fields — the one exception is {@code networkMode}, which instead comes from
+ * {@link com.gsl.config.BrowserConfig#networkMode()}.
+ */
 @Data
 @Builder
 @JsonInclude(JsonInclude.Include.NON_NULL)

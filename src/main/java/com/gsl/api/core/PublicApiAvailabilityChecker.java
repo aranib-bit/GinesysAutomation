@@ -16,6 +16,7 @@ public final class PublicApiAvailabilityChecker {
 
     private PublicApiAvailabilityChecker() {}
 
+    /** True if PUBLICAPI is enabled for the active tenant and its token endpoint answered reachable (cached after the first call). */
     public static boolean isAvailable() {
         if (!ConfigFactory.getApiConfig().publicApiEnabled()) {
             return false; // tenant may not have PUBLICAPI provisioned at all
@@ -27,6 +28,7 @@ public final class PublicApiAvailabilityChecker {
         return cached;
     }
 
+    /** Issues a bare GET against the token URL — a sub-500 status (even 4xx) counts as reachable; a thrown exception does not. */
     private static boolean pingTokenEndpoint() {
         try {
             String tokenUrl = ConfigFactory.getApiConfig().publicApiTokenUrl();

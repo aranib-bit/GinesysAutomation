@@ -16,11 +16,22 @@ public final class ConcurrentSyncManager {
 
     private ConcurrentSyncManager() {}
 
+    /**
+     * Builds a {@link CyclicBarrier} for {@code parties} threads that logs a release message
+     * tagged with {@code name} once every party has arrived.
+     */
     public static CyclicBarrier createBarrier(int parties, String name) {
         return new CyclicBarrier(parties, () ->
                 Log.info("[ConcurrentSync] Barrier '{}' released ({} threads arrived).", name, parties));
     }
 
+    /**
+     * Awaits {@code barrier} (identified as {@code name} in log/error output) up to
+     * {@code sync.timeout.seconds}.
+     *
+     * @throws RuntimeException if the barrier is broken by another thread's failure, times out
+     *                           (the barrier is reset first), or this thread is interrupted
+     */
     public static void await(CyclicBarrier barrier, String name) {
         long timeout = ConfigFactory.getExecutionConfig().syncTimeoutSeconds();
         try {

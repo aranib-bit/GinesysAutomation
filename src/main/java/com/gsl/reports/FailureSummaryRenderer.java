@@ -93,13 +93,21 @@ public final class FailureSummaryRenderer {
         html.append("</table></div>");
 
         String htmlStr = html.toString();
-        // Own trailing node rather than a flat top-level entry — the bundled ExtentReports Spark
-        // template renders all flat top-level logs before every step node regardless of real
-        // timestamp, so this summary (rendered from TestListener.onTestFailure, after steps
-        // already ran) used to render ABOVE every step node instead of after them.
-        ExtentLogger.infoHtmlOnChildNode("Failure Summary", htmlStr);
+        // Item 2 (Round 12): deliberately a flat top-level entry, not a child node. The bundled
+        // ExtentReports Spark template renders all flat top-level logs BEFORE every child step
+        // node regardless of real call order — a prior round switched this to
+        // ExtentLogger.infoHtmlOnChildNode(...) specifically to stop that, but a child node's
+        // position among its siblings IS its real creation order, and since this renders from
+        // TestListener.onTestFailure() (after every real step node already exists), that made the
+        // summary render dead LAST instead — confirmed via live screenshot and against an older
+        // report predating that change. Reverted per explicit user confirmation: rendering ABOVE
+        // every step node (near the top, right after the test's own header info) is the preferred,
+        // more useful position for quickly seeing why a test failed.
+        ExtentLogger.infoHtml(htmlStr);
     }
 
+    /** Renders one {@code <tr>} of the summary's Field|Value data table, with {@code value}
+     *  rendered in {@code valueColor} and bolded when {@code bold}. */
     private static String labelRow(String label, String value,
                                    String valueColor, boolean bold) {
         String b1 = bold ? "<b>" : "";
@@ -109,7 +117,7 @@ public final class FailureSummaryRenderer {
             + "white-space:nowrap;vertical-align:top;'>"
             + esc(label) + "</td>"
             + "<td style='padding:3px 0;color:" + valueColor + ";word-break:break-word;'>"
-            + b1 + esc(value) + b2 + "</td>"
+            + b1 + esc(value).replace("\n", "<br>") + b2 + "</td>"
             + "</tr>";
     }
 
@@ -167,6 +175,11 @@ public final class FailureSummaryRenderer {
         String msg = t.getMessage();
         if (msg == null || msg.isBlank()) return "—";
 
+        // Combined multi-area failure (UI / Database / Snapshot): already a readable block per area.
+        if (t instanceof com.gsl.validation.CombinedValidationError) {
+            return msg;
+        }
+
         String[] chunks = ENTRY_MARKER.split(msg);
         List<String> descriptions = new ArrayList<>();
         for (String chunk : chunks) {
@@ -174,6 +187,16 @@ public final class FailureSummaryRenderer {
             if (description != null && !description.isEmpty()) {
                 descriptions.add(truncate(description, MAX_ENTRY_LEN));
             }
+        }
+        if (!descriptions.isEmpty()) {
+            return joinWithOverflowSummary(descriptions);
+        }
+
+        // Numbered entries without a [bracketed] tag (e.g. UI-contract failures): use each entry's
+        // first line instead of falling back to the bare "The following N assertions failed:" header.
+        for (int i = 1; i < chunks.length; i++) {
+            String first = firstLine(chunks[i], MAX_ENTRY_LEN);
+            if (!first.equals("—")) descriptions.add(first);
         }
         if (!descriptions.isEmpty()) {
             return joinWithOverflowSummary(descriptions);

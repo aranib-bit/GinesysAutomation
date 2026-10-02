@@ -1,7 +1,11 @@
 package com.gsl.utils.dataprovider.fixture.finance;
 
+import com.gsl.database.DatabaseManager;
+import com.gsl.enums.Finance.Operations.GeneralVoucher.GlLineType;
 import com.gsl.enums.PaymentSelectionType;
 import com.gsl.utils.DateUtils;
+import com.gsl.utils.Log;
+import com.gsl.utils.cheque.ChequeInstrumentResolver;
 import com.gsl.utils.cheque.UniqueChequeGenerator;
 import com.gsl.utils.payment.PaymentReferenceGenerator;
 import com.gsl.testdata.Finance.Operations.Vouchers.GeneralVoucher.DocumentInformation;
@@ -93,24 +97,62 @@ public final class GeneralVoucherTemplateLoader {
         LocalDate instrumentDate = variant.getInstrumentDateOverride() != null
                 ? variant.getInstrumentDateOverride() : LocalDate.now();
 
-        PaymentInformation paymentInfo = switch (variant.getPaymentVariant()) {
-            case CASH -> new PaymentInformation(tcId, "CASHBANK", PaymentSelectionType.CASH,
-                    null, null, null, null);
-            case CHEQUE -> new PaymentInformation(tcId, "CASHBANK", PaymentSelectionType.CHEQUE,
-                    UniqueChequeGenerator.generateUnique(),
-                    instrumentDate.format(DateUtils.UI_DATE_FORMAT), null, null);
-            case NEFT_RTGS -> new PaymentInformation(tcId, "CASHBANK", PaymentSelectionType.NEFT_RTGS,
-                    PaymentReferenceGenerator.generateNEFT(),
-                    instrumentDate.format(DateUtils.UI_DATE_FORMAT), null, null);
-            case NONE -> null;
-        };
+        // Round 6: payment is decided PER GRID ROW (variant.paymentForRow) — a legacy variant keeps
+        // its single payment on row 1 and no payment on the others, a multi-row-payment variant
+        // carries one assigned payment per row (config-weighted, see
+        // GeneralVoucherFixtureFactory.assignKnownChequeFlags). Every CHEQUE row resolves its OWN
+        // instrument (known = a distinct unused finchqdet cheque of the header bank, unknown = a
+        // fresh synthetic one) and every NEFT/RTGS row its own reference, so no two rows share one.
+        List<PaymentInformation> rowPayments = new ArrayList<>();
+        java.util.Map<String, ChequeInstrumentResolver.ChequeBankMatch> rowBankMatches = new java.util.LinkedHashMap<>();
+        java.util.Set<String> usedInstrumentNos = new java.util.HashSet<>();
+        boolean anyRowWithoutPayment = false;
+        for (int i = 0; i < lines.size(); i++) {
+            String lineNo = lines.get(i).getLineNo();
+            GeneralVoucherPaymentVariant rowVariant = variant.paymentForRow(i);
+            PaymentInformation payment = switch (rowVariant) {
+                case CASH -> new PaymentInformation(tcId, lineNo, PaymentSelectionType.CASH, null, null, null, null);
+                case CHEQUE -> {
+                    // Round 23: keep the resolver's ACTUAL outcome (a "known" row can silently fall back
+                    // to unknown) — GeneralVoucherCreateChangeSets' bookcode rule needs the real one.
+                    ChequeInstrumentResolver.ChequeResolution resolution = variant.knownChequeForRow(i)
+                            ? ChequeInstrumentResolver.resolveKnownSameBank(DatabaseManager.getJdbi(), refs.getCashBankGlcode())
+                            : ChequeInstrumentResolver.resolveUnknown();
+                    Log.info("[GeneralVoucherTemplateLoader] Row {} cheque instrument resolved: bankMatch={}, chqno={}",
+                            lineNo, resolution.bankMatch(), resolution.chqno());
+                    rowBankMatches.put(lineNo, resolution.bankMatch());
+                    usedInstrumentNos.add(resolution.chqno());
+                    yield new PaymentInformation(tcId, lineNo, PaymentSelectionType.CHEQUE, resolution.chqno(),
+                            instrumentDate.format(DateUtils.UI_DATE_FORMAT), null, null);
+                }
+                case NEFT_RTGS -> {
+                    String reference = PaymentReferenceGenerator.generateNEFT();
+                    while (!usedInstrumentNos.add(reference)) reference = PaymentReferenceGenerator.generateNEFT();
+                    yield new PaymentInformation(tcId, lineNo, PaymentSelectionType.NEFT_RTGS, reference,
+                            instrumentDate.format(DateUtils.UI_DATE_FORMAT), null, null);
+                }
+                case NONE -> null;
+            };
+            if (payment != null) rowPayments.add(payment);
+            else anyRowWithoutPayment = true;
+        }
+        PaymentInformation paymentInfo = rowPayments.isEmpty() ? null : rowPayments.get(0);
+        ChequeInstrumentResolver.ChequeBankMatch firstBankMatch = paymentInfo == null ? null
+                : rowBankMatches.get(paymentInfo.getLineNo());
+        // The app's post-save "instrument missing" warning applies to a Bank header with any row lacking one.
+        boolean needsWarning = variant.getPaymentVariant().cashBankType() == com.gsl.enums.CashBankType.BANK
+                && anyRowWithoutPayment;
 
         return MergedFinanceGeneralVoucherData.builder()
                 .documentInformation(doc)
                 .expenseIncomeDetailList(lines)
                 .siteAllocationList(allocations)
                 .cashBankPaymentInfo(paymentInfo)
-                .needsPaymentInfoWarning(variant.getPaymentVariant().needsPaymentInfoWarning())
+                .rowPayments(rowPayments)
+                .rowChequeBankMatches(rowBankMatches)
+                // Round 23: the resolver's ACTUAL outcome of the first payment (single-payment consumers).
+                .actualChequeBankMatch(firstBankMatch)
+                .needsPaymentInfoWarning(needsWarning)
                 .scenarioTypeLabel(tcId)
                 .invocationIndex(1)
                 .totalInvocations(1)
@@ -208,6 +250,189 @@ public final class GeneralVoucherTemplateLoader {
                 .invocationIndex(1)
                 .totalInvocations(1)
                 .dbGatheringLog(mergedGatheringLog)
+                .build();
+    }
+
+    // ─── Negative/boundary templates — mirrors ApVoucherTemplateLoader's negXxxTemplate shape ──
+    //
+    // All 4 resolve their GL/Site/Cash-Bank ledger live via LiveGvDbRefs (built by
+    // DbGeneralVoucherDataSource.loadFreshForScenario off a GeneralVoucherFixtureOptions —
+    // see CreateGeneralVoucherNegativeBoundary's @DataProvider), exactly like the positive
+    // combination matrix — no hardcoded GL/Site/ledger names. Each scenario's amount-side
+    // (Debit) and deliberate data-shape choice (under-allocation / empty allocation / blank Sub
+    // Ledger / post-dated date) is the actual point of the scenario and stays hand-authored.
+
+    /**
+     * NEG_SITE_ALLOCATION_PENDING — Type2 row where the Allocate Sites Tagging Summary's
+     * Pending Amount != 0 (under-allocation): the site is allocated 500.00 against a 900.00
+     * line, deliberately less.
+     */
+    public static MergedFinanceGeneralVoucherData negSiteAllocationPendingTemplate(LiveGvDbRefs refs) {
+        String tcId = "GV_NEG_PENDING";
+        LiveGvDbRefs.ResolvedGlRow row = refs.getResolvedRows().get(0);
+        DocumentInformation doc = new DocumentInformation(tcId, null, LocalDate.now(), null,
+                refs.getCashBankName(), "Negative: Allocate Sites Pending Amount != 0");
+
+        ExpenseIncomeDetail line = new ExpenseIncomeDetail(tcId, "1", row.getGl().getGlname(), null, null,
+                "Under-allocated site", "No", new BigDecimal("900.00"), null);
+        line.setResolvedGlType(GlLineType.TYPE2_SITE_ONLY);
+
+        SiteAllocation partial = new SiteAllocation();
+        partial.setTestCaseID(tcId);
+        partial.setLineNo("1");
+        partial.setSiteName(row.getSiteNames().get(0));
+        partial.setAmount(new BigDecimal("500.00")); // deliberately less than 900.00 → Pending != 0
+
+        return MergedFinanceGeneralVoucherData.builder()
+                .documentInformation(doc)
+                .expenseIncomeDetailList(List.of(line))
+                .siteAllocationList(List.of(partial))
+                .needsPaymentInfoWarning(false)
+                .expectedValidation(NegativeValidation.GV_SITE_ALLOCATION_PENDING)
+                .invocationIndex(1)
+                .totalInvocations(1)
+                .build();
+    }
+
+    /**
+     * NEG_SUBLEDGER_REQUIRED — Type3 row with Sub Ledger deliberately left blank (exercises
+     * {@code GeneralVoucherExpenseIncomeDetail.setSubLedger}'s blank-guard, which skips the fill
+     * and lets the app's own validation fire on the Site-button click).
+     *
+     * <p>{@code refs} is resolved with {@code GeneralVoucherFixtureOptions.requireAmbiguousSubLedger
+     * = true}, guaranteeing the chosen GL has MORE THAN ONE eligible Sub Ledger — per the app's own
+     * auto-populate rule (user-confirmed), a Type3 GL with exactly one eligible Sub Ledger has it
+     * filled automatically, with no validation left to trigger.
+     */
+    public static MergedFinanceGeneralVoucherData negSubledgerRequiredTemplate(LiveGvDbRefs refs) {
+        String tcId = "GV_NEG_SUBLEDGER";
+        LiveGvDbRefs.ResolvedGlRow row = refs.getResolvedRows().get(0);
+        DocumentInformation doc = new DocumentInformation(tcId, null, LocalDate.now(), null,
+                refs.getCashBankName(), "Negative: Type3 row missing Sub Ledger");
+
+        // Sub Ledger deliberately left null (subLedger/subLedgerId args below) even though refs
+        // resolved one — GeneralVoucherExpenseIncomeDetail.setSubLedger's blank-guard skips the
+        // fill, so clicking Site should raise "No sub-ledger selected".
+        ExpenseIncomeDetail line = new ExpenseIncomeDetail(tcId, "1", row.getGl().getGlname(), null, null,
+                "Missing sub ledger", "No", new BigDecimal("800.00"), null);
+        line.setResolvedGlType(GlLineType.TYPE3_SITE_AND_SUBLEDGER);
+
+        SiteAllocation alloc = new SiteAllocation();
+        alloc.setTestCaseID(tcId);
+        alloc.setLineNo("1");
+        alloc.setSiteName(row.getSiteNames().get(0));
+        alloc.setAmount(new BigDecimal("800.00"));
+
+        return MergedFinanceGeneralVoucherData.builder()
+                .documentInformation(doc)
+                .expenseIncomeDetailList(List.of(line))
+                .siteAllocationList(List.of(alloc))
+                .needsPaymentInfoWarning(false)
+                .expectedValidation(NegativeValidation.GV_SUBLEDGER_REQUIRED)
+                .invocationIndex(1)
+                .totalInvocations(1)
+                .build();
+    }
+
+    /**
+     * NEG_SITE_NOT_ALLOCATED — Type2 row whose Site button is clicked but nothing is added in
+     * the popup (empty {@link SiteAllocation} list).
+     */
+    public static MergedFinanceGeneralVoucherData negSiteNotAllocatedTemplate(LiveGvDbRefs refs) {
+        String tcId = "GV_NEG_NOSITE";
+        LiveGvDbRefs.ResolvedGlRow row = refs.getResolvedRows().get(0);
+        DocumentInformation doc = new DocumentInformation(tcId, null, LocalDate.now(), null,
+                refs.getCashBankName(), "Negative: Type2 row, Site button clicked but nothing allocated");
+
+        ExpenseIncomeDetail line = new ExpenseIncomeDetail(tcId, "1", row.getGl().getGlname(), null, null,
+                "Unallocated site", "No", new BigDecimal("900.00"), null);
+        line.setResolvedGlType(GlLineType.TYPE2_SITE_ONLY);
+
+        return MergedFinanceGeneralVoucherData.builder()
+                .documentInformation(doc)
+                .expenseIncomeDetailList(List.of(line))
+                .siteAllocationList(List.of()) // empty — Site button opens popup, nothing added, OK clicked
+                .needsPaymentInfoWarning(false)
+                .expectedValidation(NegativeValidation.GV_SITE_NOT_ALLOCATED)
+                .invocationIndex(1)
+                .totalInvocations(1)
+                .build();
+    }
+
+    /**
+     * NEG_CASH_POST_DATED — Round 21: a Cash-type Cash/Bank ledger together with a post-dated
+     * Document Date makes the app correctly reject the Save. Deliberately +30 days, not just +1 —
+     * a safely future date sidesteps any midnight-boundary/Work-Date ambiguity entirely, since
+     * this scenario only needs to GUARANTEE post-dated, not pin down the app's exact "today".
+     * {@code refs} is resolved with {@code GeneralVoucherPaymentVariant.CASH}, so {@code
+     * refs.getCashBankName()} is a live Cash-type (not Bank-type) ledger.
+     */
+    public static MergedFinanceGeneralVoucherData negCashPostDatedTemplate(LiveGvDbRefs refs) {
+        String tcId = "GV_NEG_CASH_POSTDATED";
+        LiveGvDbRefs.ResolvedGlRow row = refs.getResolvedRows().get(0);
+        LocalDate postDatedDate = LocalDate.now().plusDays(30);
+        DocumentInformation doc = new DocumentInformation(tcId, null, postDatedDate, null,
+                refs.getCashBankName(), "Negative: Cash payment mode cannot be post-dated");
+
+        ExpenseIncomeDetail line = new ExpenseIncomeDetail(tcId, "1", row.getGl().getGlname(), null, null,
+                "Cash post-dated rejection", "No", new BigDecimal("900.00"), null);
+        line.setResolvedGlType(GlLineType.TYPE2_SITE_ONLY);
+
+        SiteAllocation alloc = new SiteAllocation();
+        alloc.setTestCaseID(tcId);
+        alloc.setLineNo("1");
+        alloc.setSiteName(row.getSiteNames().get(0));
+        alloc.setAmount(new BigDecimal("900.00"));
+
+        return MergedFinanceGeneralVoucherData.builder()
+                .documentInformation(doc)
+                .expenseIncomeDetailList(List.of(line))
+                .siteAllocationList(List.of(alloc))
+                .needsPaymentInfoWarning(false)
+                .expectedValidation(NegativeValidation.GV_CASH_POST_DATED_NOT_ALLOWED)
+                .invocationIndex(1)
+                .totalInvocations(1)
+                .build();
+    }
+
+    /**
+     * Round 16 — {@code NEG_SITE_ALLOCATION_CROSS_OU}. {@code refs} is resolved with
+     * {@code GeneralVoucherFixtureOptions#requireCrossOuSite} set, so {@code
+     * row.getSiteNames().get(0)} is a real GL-linked, user-assigned site belonging to a DIFFERENT
+     * Organizational Unit than the resolved Owner Site (see
+     * {@code DbGeneralVoucherDataSource#resolveCrossOuSiteForNegativeTest}).
+     *
+     * <p>The {@link SiteAllocation} built here is deliberately NEVER submitted to the UI as a real
+     * allocation — it's reused purely as the existing DTO slot carrying the site name under test,
+     * the same "carry a resolved value through to the behavior predicate" idiom
+     * {@link #negCashPostDatedTemplate} already uses its own {@code SiteAllocation} for, just for
+     * a different (row-absence, not row-selection) purpose here.
+     */
+    public static MergedFinanceGeneralVoucherData negSiteAllocationCrossOuTemplate(LiveGvDbRefs refs) {
+        String tcId = "GV_NEG_SITE_CROSS_OU";
+        LiveGvDbRefs.ResolvedGlRow row = refs.getResolvedRows().get(0);
+        DocumentInformation doc = new DocumentInformation(tcId, null, LocalDate.now(), null,
+                refs.getCashBankName(), "Negative: site from a different Organizational Unit than "
+                + "the Owner Site must not be selectable in Allocate Sites");
+
+        ExpenseIncomeDetail line = new ExpenseIncomeDetail(tcId, "1", row.getGl().getGlname(), null, null,
+                "Cross-OU site rejection", "No", new BigDecimal("900.00"), null);
+        line.setResolvedGlType(GlLineType.TYPE2_SITE_ONLY);
+
+        SiteAllocation crossOuSiteUnderTest = new SiteAllocation();
+        crossOuSiteUnderTest.setTestCaseID(tcId);
+        crossOuSiteUnderTest.setLineNo("1");
+        crossOuSiteUnderTest.setSiteName(row.getSiteNames().get(0));
+        crossOuSiteUnderTest.setAmount(new BigDecimal("900.00"));
+
+        return MergedFinanceGeneralVoucherData.builder()
+                .documentInformation(doc)
+                .expenseIncomeDetailList(List.of(line))
+                .siteAllocationList(List.of(crossOuSiteUnderTest))
+                .needsPaymentInfoWarning(false)
+                .expectedValidation(NegativeValidation.GV_SITE_CROSS_OU_NOT_SELECTABLE)
+                .invocationIndex(1)
+                .totalInvocations(1)
                 .build();
     }
 }

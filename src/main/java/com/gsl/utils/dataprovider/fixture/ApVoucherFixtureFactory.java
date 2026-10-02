@@ -1,12 +1,17 @@
 package com.gsl.utils.dataprovider.fixture;
 
+import com.gsl.config.ConfigFactory;
 import com.gsl.testdata.dto.MergedFinanceApVoucherData;
+import com.gsl.utils.WeightedSequenceBuilder;
 import com.gsl.utils.dataprovider.fixture.finance.ApVoucherScenarioType;
+import com.gsl.utils.dataprovider.fixture.finance.SelectDocumentVariant;
 
+import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
 import java.util.function.BiPredicate;
 import java.util.stream.Collectors;
+import java.util.stream.IntStream;
 
 /**
  * Routes AP Voucher test methods to their applicable scenario types.
@@ -47,6 +52,17 @@ public class ApVoucherFixtureFactory {
                         scenario == ApVoucherScenarioType.DOC_SELECT_DOCUMENT
                                 || scenario == ApVoucherScenarioType.DOC_FIFO
                                 || scenario == ApVoucherScenarioType.DOC_REFERENCE_SITEWISE_FIFO;
+
+                // Adjustment amount-mismatch Confirmation ("Update payment amount" / "I will adjust more")
+                case "createApVoucherDocumentMismatch" ->
+                        scenario == ApVoucherScenarioType.DOC_PARTIAL_UPDATE_PAYMENT_SELECT_DOC
+                                || scenario == ApVoucherScenarioType.DOC_PARTIAL_ADJUST_MORE_SELECT_DOC
+                                || scenario == ApVoucherScenarioType.DOC_PARTIAL_ADJUST_MORE_FIFO
+                                || scenario == ApVoucherScenarioType.DOC_PARTIAL_ADJUST_MORE_REFSITE_FIFO
+                                || scenario == ApVoucherScenarioType.DOC_PARTIAL_MULTI_DOC_UPDATE_PAYMENT
+                                || scenario == ApVoucherScenarioType.DOC_PARTIAL_PER_DOC_AMOUNT_LESS_THAN_PENDING
+                                || scenario == ApVoucherScenarioType.DOC_PARTIAL_ADJUST_MORE_THEN_UPDATE
+                                || scenario == ApVoucherScenarioType.DOC_AMOUNT_OVER_PENDING_NEGATIVE;
 
                 // Regression: TDS nature-tagging scenarios (DB-verified)
                 // Scenario 1: no nature tagged (53 vendors) — all fintdstype available
@@ -103,5 +119,35 @@ public class ApVoucherFixtureFactory {
         return scenariosFor(testMethodName).stream()
                 .map(scenario -> scenario.loadData(refs))
                 .collect(Collectors.toList());
+    }
+
+    /**
+     * Round 20 — decides known-vs-unknown for EVERY {@code CHEQUE}-payment row in {@code variants},
+     * at an exact ratio (not a per-row random roll) via {@link WeightedSequenceBuilder}, using
+     * AP's own configured weights ({@code ap.cheque.known.weight}/{@code ap.cheque.unknown.weight}).
+     * Mirrors {@code GeneralVoucherFixtureFactory.assignKnownChequeFlags} exactly — see that
+     * method's Javadoc for the full rationale. {@link SelectDocumentVariant} is immutable
+     * ({@code @Builder(toBuilder = true)}) — a CHEQUE row assigned "known" is rebuilt via
+     * {@code toBuilder()}, not mutated in place.
+     *
+     * @param variants the full, already-built (and already execution-group-filtered) variant list
+     *                 — NOT mutated; a new list is returned.
+     */
+    public static List<SelectDocumentVariant> assignKnownChequeFlags(List<SelectDocumentVariant> variants) {
+        List<Integer> chequeIndices = IntStream.range(0, variants.size())
+                .filter(i -> variants.get(i).getPaymentMode() == SelectDocumentVariant.PaymentMode.CHEQUE)
+                .boxed()
+                .collect(Collectors.toList());
+
+        List<Boolean> knownFlags = WeightedSequenceBuilder.build(chequeIndices.size(), List.of(
+                new WeightedSequenceBuilder.Entry<>(true, ConfigFactory.getFinanceConfig().apChequeKnownWeight()),
+                new WeightedSequenceBuilder.Entry<>(false, ConfigFactory.getFinanceConfig().apChequeUnknownWeight())));
+
+        List<SelectDocumentVariant> result = new ArrayList<>(variants);
+        for (int j = 0; j < chequeIndices.size(); j++) {
+            int i = chequeIndices.get(j);
+            result.set(i, result.get(i).toBuilder().knownCheque(knownFlags.get(j)).build());
+        }
+        return result;
     }
 }

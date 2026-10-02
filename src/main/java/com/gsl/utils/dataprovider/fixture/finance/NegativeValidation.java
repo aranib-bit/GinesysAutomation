@@ -155,6 +155,33 @@ public enum NegativeValidation {
     GV_CASH_POST_DATED_NOT_ALLOWED(
             "You have selected cash account as the payment mode. Post dated entries are not allowed for cash transactions."),
 
+    // ─── General Voucher — Create: cross-OU site must not be selectable ──────
+    // Round 16: confirmed live (Round 15's investigation) — a Type2/Type3 candidate site
+    // belonging to a DIFFERENT Organizational Unit than the voucher's own Owner Site is linked to
+    // the same GL and assigned to the same user, yet the app's Allocate Sites picker returns "No
+    // data to display" for it. Not asserted via DocumentPopup.verifyErrorMessage (there is no
+    // dialog here) — GeneralVoucherPredicateFactory.NEG_SITE_ALLOCATION_CROSS_OU_BEHAVIOR asserts
+    // row ABSENCE in the picker directly (AllocateSitesPopup.assertSiteNotFound). This message is
+    // used only for the test's own "Scenario: ... | expect error: ..." report line.
+
+    /** A GL-linked, user-assigned site belonging to a different Organizational Unit than the
+     *  voucher's Owner Site must not appear in the Allocate Sites picker's search results. */
+    GV_SITE_CROSS_OU_NOT_SELECTABLE(
+            "Site belongs to a different Organizational Unit than the Owner Site and must not "
+            + "appear in the Allocate Sites search results."),
+
+    // ─── General Voucher — Edit: Payment Info instrument date vs. entry date ─────
+    // ⚠️ UNVERIFIED text: confirmed live via a user-supplied screenshot of the app's own Error
+    // dialog (report analysis, reports/runs/20260922_225443, FIN-GV-EDIT-PAYMENT-02), but not yet
+    // re-confirmed against a live automated run using this exact NegativeValidation constant.
+
+    /** Payment-Info Edit's new Instrument Date (for a final mode of NEFT/RTGS) is later than the
+     *  voucher's own entry/document date — the app rejects the save outright. Unlike Cheque (see
+     *  {@code PaymentInfoDateScenario#CHEQUE_FUTURE_DATE_CR_ACCEPTED}/{@code
+     *  #CHEQUE_FUTURE_DATE_DR_ACCEPTED}), NEFT/RTGS does not allow a post-dated instrument. */
+    GV_PAYMENT_NEFT_FUTURE_INSTRUMENT_DATE_NOT_ALLOWED(
+            "Instrument date cannot be greater than entry date"),
+
     ;
 
     // ─────────────────────────────────────────────────────────────────────────

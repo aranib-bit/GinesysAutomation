@@ -14,14 +14,24 @@ import java.net.URL;
 import java.util.HashMap;
 
 /**
- * Creates a RemoteWebDriver against BrowserStack hub.
- * BrowserStack-specific options are passed via the bs:options capability map.
- * Credentials are read from browserstack.username / browserstack.accesskey in config.properties.
+ * {@link ExecutionProvider} for BrowserStack cloud execution, registered against
+ * {@code RunMode.BROWSERSTACK} in {@link ExecutionProviderRegistry}.
+ * Creates a {@link RemoteWebDriver} against the BrowserStack hub.
+ * BrowserStack-specific options are passed via the {@code bs:options} capability map.
+ * Credentials are read from {@code browserstack.username} / {@code browserstack.accesskey} in config.properties.
  */
 public final class BrowserStackProvider implements ExecutionProvider {
 
     private static final String HUB_URL = "https://hub.browserstack.com/wd/hub";
 
+    /**
+     * Builds a Chrome/Firefox/Edge {@link AbstractDriverOptions} for {@code browser}, attaches
+     * BrowserStack's {@code bs:options} capability (credentials, build/session name), and opens
+     * a {@link RemoteWebDriver} against the BrowserStack hub.
+     *
+     * @throws IllegalArgumentException if {@code browser} is not Chrome/Firefox/Edge
+     * @throws RuntimeException if the hub URL is malformed
+     */
     @Override
     public WebDriver createDriver(Browser browser) {
         try {

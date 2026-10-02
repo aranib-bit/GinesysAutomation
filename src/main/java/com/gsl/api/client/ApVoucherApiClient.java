@@ -7,6 +7,8 @@ import com.gsl.api.model.apvoucher.ApVoucherAttachment;
 import com.gsl.api.model.apvoucher.ApVoucherCreateRequest;
 import com.gsl.api.model.apvoucher.ApVoucherCreateResponse;
 import com.gsl.api.model.apvoucher.ApVoucherDetailLine;
+import com.gsl.api.model.apvoucher.ApVoucherRevertRequest;
+import com.gsl.api.model.apvoucher.ApVoucherRevertResponse;
 import com.gsl.api.model.apvoucher.TdsSectionLookupResult;
 import com.gsl.api.model.arvoucher.CashBankLedgerLookupResult;
 import com.gsl.api.model.arvoucher.DocNumberSchemeEntry;
@@ -60,10 +62,12 @@ public class ApVoucherApiClient extends ApiClient {
      *  threading a new field through just for this one call. */
     private static final int DEFAULT_SRC_CODE = 1;
 
+    /** Wraps an already-authenticated session {@code spec} — see {@link ApiClient}'s class Javadoc. */
     public ApVoucherApiClient(RequestSpecification spec) {
         super(spec);
     }
 
+    /** Prefixes {@code path} with {@code financeApiBaseUri} — see class Javadoc for why this client's endpoints need that override. */
     private static String url(String path) {
         return ConfigFactory.getApiConfig().financeApiBaseUri() + path;
     }
@@ -275,6 +279,31 @@ public class ApVoucherApiClient extends ApiClient {
      */
     public Response createApVoucherExpectFailure(ApVoucherCreateRequest request) {
         return postRawExpectFailure(url("/vouchers/ap"), request);
+    }
+
+    /**
+     * PUT Finance/api/vouchers/ap/revert — un-posts a currently-Posted AP Voucher via API rather
+     * than the UI Actions→Revert path. Confirmed via a live HAR capture (request:
+     * {@code {"code":[<vchcode>],"empCode":<empCode>,"connectedOUCode":<ouCode>}}; response:
+     * {@code {"status":0,...,"result":[{"item1":<vchcode>,"item2":"<scheme_docno>","item3":
+     * "success","item4":<postcode>}],"success":true}}) — a real implementation, not a stub, unlike
+     * {@code GeneralVoucherApiClient.revertGeneralVoucher} (which is still an honest
+     * {@link UnsupportedOperationException} stub pending exactly this kind of capture). Used by
+     * {@code EditApVoucher}'s "Unpost if Posted" step (API-driven per the user's explicit
+     * instruction — a Posted+tagged AP Voucher cannot be unposted until untagged first, so
+     * {@code DocumentAdjustmentFlow.untagIfNeeded} must run immediately before this call).
+     *
+     * @param vchcode         the {@code finvchmain.vchcode} of the Posted AP Voucher to revert
+     * @param empCode         the logged-in employee code performing the revert
+     * @param connectedOUCode the organizational unit code the revert is performed under
+     */
+    public ApVoucherRevertResponse revertApVoucher(long vchcode, long empCode, long connectedOUCode) {
+        ApVoucherRevertRequest request = ApVoucherRevertRequest.builder()
+                .code(List.of(vchcode))
+                .empCode(empCode)
+                .connectedOUCode(connectedOUCode)
+                .build();
+        return put(url("/vouchers/ap/revert"), request, ApVoucherRevertResponse.class);
     }
 
     /** GET /udf/GetUDFMetaData — lives under the original WebAPI base, same as {@link ArVoucherApiClient#fetchUdfMetadata}. */

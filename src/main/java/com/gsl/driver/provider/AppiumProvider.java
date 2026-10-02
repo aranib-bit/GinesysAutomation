@@ -18,6 +18,10 @@ import org.openqa.selenium.WebDriver;
  */
 public final class AppiumProvider implements ExecutionProvider {
 
+    /**
+     * Delegates to {@link #createDriver(PlatformType)} using {@code mobile.defaultPlatform} from
+     * config. {@code browser} is ignored — mobile execution has no browser selection.
+     */
     @Override
     public WebDriver createDriver(Browser browser) {
         ApiConfig cfg = ConfigFactory.getApiConfig();
@@ -25,6 +29,12 @@ public final class AppiumProvider implements ExecutionProvider {
         return createDriver(platform);
     }
 
+    /**
+     * Builds {@link MobileDriverData} from {@code mobile.*} config keys and dispatches to
+     * {@link AndroidManager#getDriver} or {@link IOSManager#getDriver} for {@code platform}.
+     *
+     * @throws IllegalArgumentException if {@code platform} is {@link PlatformType#WEB}
+     */
     public WebDriver createDriver(PlatformType platform) {
         ApiConfig cfg = ConfigFactory.getApiConfig();
 
@@ -45,6 +55,7 @@ public final class AppiumProvider implements ExecutionProvider {
         };
     }
 
+    /** Returns {@code "AppiumProvider"} for logs/reports. */
     @Override
     public String getProviderName() {
         return "AppiumProvider";

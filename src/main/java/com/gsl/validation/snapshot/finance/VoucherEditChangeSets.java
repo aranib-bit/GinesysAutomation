@@ -469,12 +469,15 @@ public final class VoucherEditChangeSets {
      *  {@code finvchmain}; non-null = row-scoped, e.g. {@code finpost}'s main-grid row) —
      *  {@code addIfChanged} style against each column's own BEFORE value, so an unaffected column
      *  still correctly asserts {@code MUST_NOT_CHANGE} rather than a spurious {@code MUST_CHANGE}. */
+    /** Applies both halves of {@code expected} (damount and camount) via {@link #addAmountColumnRule}. */
     private static void addAmountPairRules(ExpectedChangeSet.Builder builder, String tableName,
             String rowKeyContains, Map<String, Object> beforeRow, VoucherType.AmountPair expected) {
         addAmountColumnRule(builder, tableName, rowKeyContains, beforeRow, "damount", expected.damount());
         addAmountColumnRule(builder, tableName, rowKeyContains, beforeRow, "camount", expected.camount());
     }
 
+    /** {@code addIfChanged}-style single-column rule: MUST_CHANGE-to {@code expectedValue} if it
+     *  differs from {@code beforeRow}'s own value, MUST_NOT_CHANGE otherwise. */
     private static void addAmountColumnRule(ExpectedChangeSet.Builder builder, String tableName,
             String rowKeyContains, Map<String, Object> beforeRow, String column, BigDecimal expectedValue) {
         boolean changed = !DbValueNormalizer.equalsNormalized(
@@ -608,7 +611,10 @@ public final class VoucherEditChangeSets {
         builder.rule(tableName, ColumnRule.ignore("release_ecode"));
     }
 
-    private static Long resolveEcode(String username) {
+    /** Package-private (Round 12 Item 5) — {@link GeneralVoucherRevertChangeSets} reuses this
+     *  same ecode resolution for its own "same user released before → release_ecode unchanged"
+     *  check, instead of duplicating the lookup. */
+    static Long resolveEcode(String username) {
         if (username == null || username.isBlank()) return null;
         try {
             return DatabaseManager.getJdbi().onDemand(HrEmpDao.class).findEcodeByAbbre(username).orElse(null);
@@ -720,6 +726,8 @@ public final class VoucherEditChangeSets {
         return slcode == 0 ? DbValueNormalizer.displayString(null) : String.valueOf(slcode);
     }
 
+    /** {@code newValue == null} leaves {@code column} on its table-wide default (no override added);
+     *  otherwise MUST_CHANGE-to {@code newValue} if different from {@code beforeRaw}, else MUST_NOT_CHANGE. */
     private static void addIfChanged(ExpectedChangeSet.Builder builder, String tableName, String column,
             Object beforeRaw, String newValue) {
         if (newValue == null) return; // no override supplied — leave column on MUST_NOT_CHANGE default

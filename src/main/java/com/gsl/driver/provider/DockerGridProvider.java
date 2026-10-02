@@ -9,11 +9,13 @@ import com.gsl.config.ConfigFactory;
  */
 public final class DockerGridProvider extends SeleniumGridProvider {
 
+    /** Docker Grid hub URL, read from {@code docker.grid.url} instead of the base class's {@code grid.url}. */
     @Override
     protected String getGridUrl() {
         return ConfigFactory.getBrowserConfig().dockerGridUrl();
     }
 
+    /** Reports {@code "DockerGridProvider"} for logs/reports instead of inheriting the base class's simple name. */
     @Override
     public String getProviderName() {
         return "DockerGridProvider";

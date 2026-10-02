@@ -41,6 +41,11 @@ public class FinAccClassDbValidator {
         this.dao = DatabaseManager.getJdbi().onDemand(FinAccClassDao.class);
     }
 
+    /**
+     * Asserts {@code admcls} matches {@code ctx}'s expected outcome — a REJECT expects no row for
+     * the resolved Class Name, a CREATE expects exactly one row with the expected {@code
+     * clstype} — then, when present, checks the Edit and duplicate-variant facts on {@code ctx}.
+     */
     public void validate(AccountClassDbContext ctx) {
         Assert.assertNotNull(ctx, "AccountClassDbContext must not be null");
         Assert.assertNotNull(ctx.getResolvedClassName(), "resolvedClassName is null");
@@ -67,6 +72,7 @@ public class FinAccClassDbValidator {
         DatabaseLogger.validationComplete("Account Class DB Validation — [" + ctx.getResolvedClassName() + "]", true);
     }
 
+    /** Fails if any {@code admcls} row exists for a Class Name that was expected to be rejected. */
     private void validateRejected(String resolvedName) {
         int count = dao.countByName(resolvedName);
         if (count == 0) {
@@ -79,6 +85,7 @@ public class FinAccClassDbValidator {
         }
     }
 
+    /** Fails if no {@code admcls} row exists for the created Class Name, or if its {@code clstype} doesn't match the expected label's mapped code. */
     private void validateCreated(String resolvedName, String expectedClassTypeLabel) {
         Optional<AdmCls> found = dao.findByName(resolvedName);
         if (found.isEmpty()) {
@@ -101,6 +108,7 @@ public class FinAccClassDbValidator {
         }
     }
 
+    /** Verifies a rename (old name gone, new name present with the expected type) or a type-only edit (name unchanged, {@code clstype} updated), per which of {@code ctx}'s edit fields is populated. */
     private void validateEdit(AccountClassDbContext ctx) {
         if (ctx.getNewResolvedClassName() != null) {
             int oldCount = dao.countByName(ctx.getResolvedClassName());
@@ -133,6 +141,7 @@ public class FinAccClassDbValidator {
         }
     }
 
+    /** Asserts exactly one base row exists and, when the duplicate-variant name differs from it, that no row exists for the variant either (the attempted duplicate was correctly rejected). */
     private void validateDuplicateVariantRejected(AccountClassDbContext ctx) {
         int baseCount = dao.countByName(ctx.getResolvedClassName());
         Assert.assertEquals(baseCount, 1,

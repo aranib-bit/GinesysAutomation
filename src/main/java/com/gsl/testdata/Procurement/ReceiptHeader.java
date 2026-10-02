@@ -4,6 +4,14 @@ import io.github.sskorol.data.Column;
 import io.github.sskorol.data.Sheet;
 import lombok.Getter;
 
+/**
+ * Fixture-data counterpart of the "General" sheet of the Receipts workbook ({@code
+ * ConfigFactory.getExcelDataConfig().receiptsPath()}) — one Goods Receipt Challan's header
+ * (doc scheme/receipt no., vendor, stock point, owner site, term, trade group). Joined to its
+ * {@code MasterTestData} row by {@code com.gsl.utils.dataprovider.MergedReceiptDataSupplier}
+ * (mandatory — throws if a matched {@code TestCaseID} has no row here) into {@code
+ * com.gsl.testdata.dto.MergedReceiptData.receiptHeader}.
+ */
 @Getter
 @Sheet(name = "General")
 public class ReceiptHeader {

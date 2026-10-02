@@ -21,8 +21,14 @@ import com.gsl.popup.PopupMonitor;
 import com.gsl.utils.Selenium.WaitUtils;
 import com.gsl.enums.VoucherDomain;
 import com.gsl.enums.WaitType;
+import com.gsl.validation.ui.UiComponentValidator;
+import com.gsl.validation.ui.UiValidationFailure;
+import com.gsl.validation.ui.UiValidationLevel;
+import com.gsl.validation.ui.UiValidationReporter;
 
 import java.time.Duration;
+import java.util.ArrayList;
+import java.util.List;
 
 public class AdjustmentEntry {
 
@@ -86,6 +92,20 @@ public class AdjustmentEntry {
                 "/preceding-sibling::div[contains(@class,'x-column-header')]) + 1]";
 
         static final String ADJUSTED_AMOUNT_BY_DOC_XPATH = ADJUSTED_AMOUNT_CELL_BASE_XPATH + "//div";
+
+        // Same row+column shape as ADJUSTED_AMOUNT_CELL_BASE_XPATH, for the per-document
+        // "Pending Amount" column. NOTE: header text 'Pending Amount' is taken from the footer's
+        // own label wording (the grid column itself was truncated in the user's screenshots) —
+        // verify on first live run and adjust here if the column is named differently.
+        static final String PENDING_AMOUNT_BY_DOC_XPATH =
+                "//div[normalize-space()='%s']/ancestor::tr" +
+                "//td[count(//div[contains(@class,'x-column-header')]" +
+                "[.//span[normalize-space()='Pending Amount']]" +
+                "/preceding-sibling::div[contains(@class,'x-column-header')]) + 1]//div";
+
+        // The singleton ExtJS message box lingers hidden in the DOM with stale text — the
+        // Confirmation is only "showing" when this element is displayed AND carries its text.
+        static final By MESSAGE_BOX_TEXT = By.xpath("//*[@id='messagebox-1001-msg']");
 
         // After a double-click activates the ExtJS inline editor, the editor renders as a
         // floating x-editor overlay — not inside the cell's DOM subtree. Target it globally.
@@ -211,6 +231,45 @@ public class AdjustmentEntry {
         return new DocumentPopup(parent, this);
     }
 
+    /**
+     * Clicks OK and reports whether the amount-mismatch Confirmation
+     * ({@link com.gsl.enums.Finance.Operations.Common.DocumentMessageBoxMessage#ADJUSTMENT_AMOUNT_MISMATCH_CONFIRMATION})
+     * appeared — present-or-absent, since it only appears when the adjusted total differs from
+     * the row's payment amount. Does not use {@code clickAndNotePopup}: this popup is an expected
+     * part of the scenario, not an unexpected one to flag.
+     */
+    public boolean clickOkAndDetectMismatchConfirmation() {
+        SeleniumUtils.click(Loc.OK_BUTTON, WaitType.CLICKABLE, "OK Button in Adjustment Entry");
+        final String expected = com.gsl.enums.Finance.Operations.Common.DocumentMessageBoxMessage
+                .ADJUSTMENT_AMOUNT_MISMATCH_CONFIRMATION.getText();
+        try {
+            WaitUtils.fluentWaitBuilder()
+                    .withTimeout(Duration.ofSeconds(4))
+                    .until(d -> {
+                        java.util.List<org.openqa.selenium.WebElement> els = d.findElements(Loc.MESSAGE_BOX_TEXT);
+                        if (els.isEmpty() || !els.get(0).isDisplayed()) return false;
+                        String t = els.get(0).getText();
+                        return t != null && t.contains(expected);
+                    });
+            return true;
+        } catch (TimeoutException e) {
+            return false;
+        }
+    }
+
+    /** The mismatch Confirmation as a {@link DocumentPopup} wired back to this entry/parent —
+     *  call after {@link #clickOkAndDetectMismatchConfirmation()} returned {@code true}. */
+    public DocumentPopup mismatchConfirmation() {
+        return new DocumentPopup(parent, this);
+    }
+
+    /** Per-document Pending Amount read off the Adjustment Entry grid (UI is the source of truth
+     *  for the pending ceiling; callers may cross-check {@code v_pending_adj}). */
+    public String getPendingAmountForDocument(String documentNumber) {
+        By locator = By.xpath(String.format(Loc.PENDING_AMOUNT_BY_DOC_XPATH, documentNumber));
+        return SeleniumUtils.getText(locator, "PendingAmount_" + documentNumber);
+    }
+
     public AdjustmentEntry clickCancel() {
         SeleniumUtils.click(CommonButton.CANCEL.locator(), WaitType.CLICKABLE, "Cancel Button");
         return this;
@@ -269,5 +328,51 @@ public class AdjustmentEntry {
     public SelectDocumentPopup openSelectDocumentFlow() {
         openAdjustedDocumentMenu();
         return selectDocument();
+    }
+
+    // ── UI-contract validation ────────────────────────────────────────────────
+    // Label locators — UNVERIFIED (same "span text -> ancestor::div[x-form-item]" idiom
+    // Loc.TRANSACTION_AMOUNT/ADJUSTED_AMOUNT/PENDING_TO_ADJUST already use, proven live by the
+    // real captureAmounts() flow; the label <span> itself, used here for text+style checks, has
+    // not been independently confirmed).
+    private static final By TRANSACTION_AMOUNT_LABEL =
+            By.xpath("//span[text()='Transaction Amount:']");
+    private static final By ADJUSTED_AMOUNT_LABEL =
+            By.xpath("//span[text()='Adjusted Amount:']");
+    private static final By PENDING_TO_ADJUST_LABEL =
+            By.xpath("//span[text()='Pending to Adjust:']");
+
+    /** UI-contract check for the Transaction Amount / Adjusted Amount / Pending to Adjust footer
+     *  fields — confirmed by the user: always read-only, no editable path, so each uses
+     *  {@code validateReadonlyAmount} (same as GV's Balance), no {@code UiFieldState} branching
+     *  needed. */
+    public List<UiValidationFailure> validateAmountFooterUi(UiValidationLevel level) {
+        List<UiValidationFailure> failures = new ArrayList<>();
+
+        failures.addAll(UiComponentValidator.validateLabel(TRANSACTION_AMOUNT_LABEL,
+                "ADJUSTMENT_ENTRY_TRANSACTION_AMOUNT_LABEL", "Transaction Amount:",
+                com.gsl.utils.ui.FieldStyleSpec.FIELD_LABEL, level));
+        failures.addAll(UiComponentValidator.validateReadonlyAmount(Loc.TRANSACTION_AMOUNT,
+                "ADJUSTMENT_ENTRY_TRANSACTION_AMOUNT", level));
+
+        failures.addAll(UiComponentValidator.validateLabel(ADJUSTED_AMOUNT_LABEL,
+                "ADJUSTMENT_ENTRY_ADJUSTED_AMOUNT_LABEL", "Adjusted Amount:",
+                com.gsl.utils.ui.FieldStyleSpec.FIELD_LABEL, level));
+        failures.addAll(UiComponentValidator.validateReadonlyAmount(Loc.ADJUSTED_AMOUNT,
+                "ADJUSTMENT_ENTRY_ADJUSTED_AMOUNT", level));
+
+        failures.addAll(UiComponentValidator.validateLabel(PENDING_TO_ADJUST_LABEL,
+                "ADJUSTMENT_ENTRY_PENDING_TO_ADJUST_LABEL", "Pending to Adjust:",
+                com.gsl.utils.ui.FieldStyleSpec.FIELD_LABEL, level));
+        failures.addAll(UiComponentValidator.validateReadonlyAmount(Loc.PENDING_TO_ADJUST,
+                "ADJUSTMENT_ENTRY_PENDING_TO_ADJUST", level));
+
+        return failures;
+    }
+
+    /** Renders + soft-asserts {@link #validateAmountFooterUi}'s results via the same "UI
+     *  Validation" step-tree/Actual-Results-merge every other page in this framework uses. */
+    public void validateUiContract(UiValidationLevel level) {
+        UiValidationReporter.renderAndAssert(validateAmountFooterUi(level));
     }
 }

@@ -5,6 +5,15 @@ import io.github.sskorol.data.Column;
 import io.github.sskorol.data.Sheet;
 import lombok.Getter;
 
+/**
+ * One row of the "AccountGroupLifecycle" sheet — hand-crafted Account Group naming-convention
+ * and lifecycle (create, optional edit, optional delete) scenarios, at a given hierarchy
+ * {@code level}/{@code parentGroup}.
+ *
+ * <p>Excel-only test data (no DB-sourcing counterpart), read by
+ * {@code MergedAccountGroupLifecycleDataSupplier}. Distinct from the plain {@link AccountGroupRow}
+ * used for straightforward Account Group creation.
+ */
 @Getter
 @Sheet(name = "AccountGroupLifecycle")
 public class AccountGroupLifecycleRow {

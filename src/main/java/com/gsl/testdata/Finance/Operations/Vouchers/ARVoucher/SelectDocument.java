@@ -12,6 +12,13 @@ import lombok.NoArgsConstructor;
 import java.math.BigDecimal;
 import java.time.LocalDate;
 
+/**
+ * Test-data model for one row in the AR Voucher "SelectDocument" sheet — one document to tick in
+ * {@code SelectDocumentPopup}'s grid (opened from a sub-ledger adjustment) plus the adjustment
+ * amount to apply against it. Implements {@link VoucherSelectDocRow} so the shared report layer
+ * can iterate AP and AR rows without per-voucher casts. Structurally identical to
+ * {@code APVoucher.SelectDocument}.
+ */
 @Getter
 @NoArgsConstructor
 @AllArgsConstructor

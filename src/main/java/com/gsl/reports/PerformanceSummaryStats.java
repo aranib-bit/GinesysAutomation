@@ -21,26 +21,35 @@ public final class PerformanceSummaryStats {
     private static final AtomicInteger NAVIGATION_PERFORMED = new AtomicInteger();
     private static final Set<String> USERS_ASSIGNED = ConcurrentHashMap.newKeySet();
 
+    /** Tallies one new session creation and records {@code username} in the suite-wide assigned-users set. */
     public static void recordSessionCreated(String username) {
         SESSIONS_CREATED.incrementAndGet();
         if (username != null) USERS_ASSIGNED.add(username);
     }
 
+    /** Tallies one recovery across the suite. */
     public static void recordRecovery() {
         RECOVERIES.incrementAndGet();
     }
 
+    /** Tallies one skipped (already-loaded) navigation across the suite. */
     public static void recordNavigationSkipped() {
         NAVIGATION_SKIPPED.incrementAndGet();
     }
 
+    /** Tallies one performed (actually navigated) navigation across the suite. */
     public static void recordNavigationPerformed() {
         NAVIGATION_PERFORMED.incrementAndGet();
     }
 
+    /** Total sessions created across the suite so far. */
     public static int sessionsCreated()    { return SESSIONS_CREATED.get(); }
+    /** Total recoveries across the suite so far. */
     public static int recoveries()         { return RECOVERIES.get(); }
+    /** Total skipped navigations across the suite so far. */
     public static int navigationSkipped()  { return NAVIGATION_SKIPPED.get(); }
+    /** Total performed navigations across the suite so far. */
     public static int navigationPerformed() { return NAVIGATION_PERFORMED.get(); }
+    /** Unmodifiable view of every distinct username assigned a session so far. */
     public static Set<String> usersAssigned() { return Collections.unmodifiableSet(USERS_ASSIGNED); }
 }

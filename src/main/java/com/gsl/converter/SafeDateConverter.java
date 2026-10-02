@@ -10,6 +10,13 @@ import java.time.format.DateTimeParseException;
 import java.util.Arrays;
 import java.util.List;
 
+/**
+ * ZeroCell "safe" date converter for Excel test-data columns bound to a {@link LocalDate} field —
+ * tries each of {@link #SUPPORTED_FORMATS} in turn (day-first, US month-first, and ISO, each with
+ * {@code -} or {@code /} separators) and never throws: a blank cell or a value that matches none
+ * of them resolves to {@code null} (with a WARN logged so the unparseable cell is still visible in
+ * test output) instead of failing the data load.
+ */
 public class SafeDateConverter implements IConverter<LocalDate> {
 
     private static final Logger log = LogManager.getLogger(SafeDateConverter.class);
@@ -24,6 +31,12 @@ public class SafeDateConverter implements IConverter<LocalDate> {
             DateTimeFormatter.ofPattern("yyyy/MM/dd")
     );
 
+    /**
+     * Parses {@code data} against {@link #SUPPORTED_FORMATS} in order, returning the first
+     * successful match.
+     *
+     * @return the parsed date, or {@code null} if {@code data} is blank or matches no supported format
+     */
     @Override
     public LocalDate convert(String data) {
         if (data == null || data.trim().isEmpty()) {
@@ -45,6 +58,7 @@ public class SafeDateConverter implements IConverter<LocalDate> {
         return null;
     }
 
+    /** Registers this converter's target type as {@link LocalDate}. */
     @Override
     public Class<LocalDate> getType() {
         return LocalDate.class;

@@ -10,6 +10,14 @@ import lombok.Getter;
 
 import java.util.Date;
 
+/**
+ * Fixture-data counterpart of the "Store Wise Multiple Price" sheet of the Inventory Item
+ * workbook ({@code ConfigFactory.getExcelDataConfig().inventoryitemPath()}) — one row per store
+ * that overrides the item's default {@link ItemPricing} RSP/MRP from a given effective date. The
+ * only one of the seven Item-hierarchy sheets joined as a <b>list</b> (0..N rows) rather than a
+ * single optional row: {@code MergedInvItemDataSupplier} collects every row matching the {@code
+ * TestCaseID} into {@code MergedInventoryItemData.storeWiseMultiplePriceList}.
+ */
 @Getter
 @Sheet(name = "Store Wise Multiple Price")
 public class ItemStoreWiseMultiplePrice {

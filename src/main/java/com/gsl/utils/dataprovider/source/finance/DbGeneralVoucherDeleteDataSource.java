@@ -2,7 +2,6 @@ package com.gsl.utils.dataprovider.source.finance;
 
 import com.gsl.database.DatabaseManager;
 import com.gsl.database.DocumentReservationRegistry;
-import com.gsl.database.dao.finance.FinVchMainDao;
 import com.gsl.enums.Finance.Operations.Common.DocumentMessageBoxMessage;
 import com.gsl.enums.PeriodDomain;
 import com.gsl.model.finance.FinVchMain;
@@ -12,6 +11,7 @@ import com.gsl.testdata.dto.GeneralVoucherOperationMode;
 import com.gsl.testdata.dto.MergedFinanceGeneralVoucherData;
 import com.gsl.utils.Log;
 import com.gsl.utils.dataprovider.source.TestDataSource;
+import com.gsl.utils.dataprovider.source.finance.common.AccountingPeriodCache;
 import com.gsl.utils.dataprovider.source.finance.common.AccountingPeriodResolver;
 import org.jdbi.v3.core.Jdbi;
 import org.testng.SkipException;
@@ -40,6 +40,11 @@ import java.util.Set;
  */
 public class DbGeneralVoucherDeleteDataSource implements TestDataSource<MergedFinanceGeneralVoucherData> {
 
+    /**
+     * Builds the two rows {@code deleteGeneralVoucher} needs: one positive candidate (via
+     * {@link #resolvePositiveCandidate}) and, when one is available, one closed-period negative
+     * candidate (via {@link #resolveClosedPeriodNegativeCandidate}) — see the class Javadoc.
+     */
     @Override
     public List<MergedFinanceGeneralVoucherData> load(String testMethodName) {
         Jdbi jdbi = DatabaseManager.getJdbi();
@@ -73,14 +78,14 @@ public class DbGeneralVoucherDeleteDataSource implements TestDataSource<MergedFi
         gatheringLog.add("  DB DATA GATHERING — VOUCHER CLAIM (GENERAL VOUCHER DELETE)");
         gatheringLog.add("═══════════════════════════════════════════════════════════");
 
-        Long vchcode = claimOneCandidate(jdbi, claimedThisRun, false, gatheringLog)
+        // Finding B (Round 12 continued): the winning candidate's full header is already in hand
+        // from claimOneCandidate's own bulk-fetched candidate list — no second
+        // findByVoucherCode round trip for the same row.
+        FinVchMain header = claimOneCandidate(jdbi, claimedThisRun, false, gatheringLog)
                 .orElseThrow(() -> new SkipException(
                         "No documents found for the criteria: vchtype='G', release_status IN ('U','P'), "
                         + "own accounting year/financial month open, unclaimed this run — need 1."));
-
-        FinVchMain header = jdbi.onDemand(FinVchMainDao.class).findByVoucherCode(vchcode)
-                .orElseThrow(() -> new IllegalStateException(
-                        "Claimed vchcode=" + vchcode + " vanished before its header could be re-read."));
+        long vchcode = header.getVchcode();
 
         Log.info("[DB-Delete] Claimed General Voucher for Delete: vchcode={}, scheme_docno='{}', "
                 + "release_status='{}'", vchcode, header.getSchemeDocno(), header.getReleaseStatus());
@@ -132,7 +137,9 @@ public class DbGeneralVoucherDeleteDataSource implements TestDataSource<MergedFi
         gatheringLog.add("  DB DATA GATHERING — CLOSED-PERIOD VOUCHER CLAIM (GENERAL VOUCHER DELETE, NEGATIVE)");
         gatheringLog.add("═══════════════════════════════════════════════════════════");
 
-        Optional<Long> claimed = claimOneCandidate(jdbi, claimedThisRun, true, gatheringLog);
+        // Finding B (Round 12 continued): no second findByVoucherCode — reuse the header
+        // claimOneCandidate's own bulk-fetched candidate list already resolved.
+        Optional<FinVchMain> claimed = claimOneCandidate(jdbi, claimedThisRun, true, gatheringLog);
         if (claimed.isEmpty()) {
             Log.warn("[DB] GeneralVoucherDelete: No documents found for the criteria: vchtype='G', "
                     + "release_status IN ('U','P'), own accounting year/financial month closed — "
@@ -140,10 +147,8 @@ public class DbGeneralVoucherDeleteDataSource implements TestDataSource<MergedFi
             return Optional.empty();
         }
 
-        long vchcode = claimed.get();
-        FinVchMain header = jdbi.onDemand(FinVchMainDao.class).findByVoucherCode(vchcode)
-                .orElseThrow(() -> new IllegalStateException(
-                        "Claimed closed-period vchcode=" + vchcode + " vanished before its header could be re-read."));
+        FinVchMain header = claimed.get();
+        long vchcode = header.getVchcode();
 
         Log.info("[DB-Delete] Claimed closed-period General Voucher for negative scenario: vchcode={}, "
                 + "scheme_docno='{}', release_status='{}' — expecting Delete's \"Unpost if Posted\" prep step "
@@ -187,7 +192,7 @@ public class DbGeneralVoucherDeleteDataSource implements TestDataSource<MergedFi
      * claim needs a GL-account-type match (Delete doesn't care which ledger type the voucher
      * uses).
      */
-    private static Optional<Long> claimOneCandidate(Jdbi jdbi, Set<Long> claimedThisRun, boolean requireClosedPeriod,
+    private static Optional<FinVchMain> claimOneCandidate(Jdbi jdbi, Set<Long> claimedThisRun, boolean requireClosedPeriod,
             List<String> gatheringLog) {
         // requireClosedPeriod wants an OLD, closed-period document — scanning newest-first (the
         // default, correct for the positive open-period claim) forces the scan through every
@@ -196,48 +201,62 @@ public class DbGeneralVoucherDeleteDataSource implements TestDataSource<MergedFi
         // candidates to find one closed-period document. Oldest-first for requireClosedPeriod,
         // mirroring DbGeneralVoucherRevertDataSource#claimOneClosedPeriodVoucher (round 5 fix).
         String orderBy = requireClosedPeriod ? "ORDER BY ycode ASC, vchdt ASC" : "ORDER BY ycode DESC, vchdt DESC";
+        // Finding A (Round 12): SELECT * (not just vchcode) and bulk-map straight to FinVchMain via
+        // .mapToBean — the scan loop below used to re-fetch each candidate's full row individually
+        // (one SELECT * FROM finvchmain WHERE vchcode = ? round trip per candidate); this was the
+        // dominant cost of a deep/exhausted scan (confirmed live: ~4,500+ round trips / 341s for
+        // this exact closed-period scan when no matching candidate exists). Candidate order/filter
+        // predicates/reservation bookkeeping are all unchanged — this only removes the redundant
+        // per-candidate re-fetch of data already returned by this same query.
         String sql =
-            "SELECT vchcode FROM finvchmain " +
+            "SELECT * FROM finvchmain " +
             "WHERE vchtype = 'G' AND release_status IN ('U', 'P') " +
             // ycode/vchdt, never vchcode — see AccountingPeriodResolver#findCurrentYear's Javadoc
             // (an insert-order surrogate key, no guaranteed relationship to accounting period).
             orderBy;
 
-        List<Long> candidates = jdbi.withHandle(handle -> handle.createQuery(sql).mapTo(Long.class).list());
-        FinVchMainDao headerDao = jdbi.onDemand(FinVchMainDao.class);
+        List<FinVchMain> candidates = jdbi.withHandle(handle -> handle.createQuery(sql).mapToBean(FinVchMain.class).list());
+
+        // Memoizes the OU/year/month lookups baseFilter below would otherwise re-query per
+        // rejected candidate across both scan passes — see AccountingPeriodCache's own Javadoc.
+        // Created BEFORE logAndResolveCurrentYcode (Finding C, Round 12 continued) so that call's
+        // own first-candidate period lookup is cached too, not re-queried moments later by
+        // baseFilter's own isEditable check for that same candidate.
+        AccountingPeriodCache periodCache = new AccountingPeriodCache();
 
         // Current-year preference only applies to the positive (open-period) claim — the
         // closed-period negative claim deliberately wants a NON-current year.
         Long currentYcode = requireClosedPeriod
                 ? null
-                : AccountingPeriodResolver.logAndResolveCurrentYcode(jdbi, headerDao, candidates, gatheringLog);
+                : AccountingPeriodResolver.logAndResolveCurrentYcode(jdbi, candidates, gatheringLog, periodCache);
 
         java.util.function.Predicate<FinVchMain> baseFilter = header -> {
-            boolean periodOpen = AccountingPeriodResolver.isEditable(jdbi, header, PeriodDomain.FINANCE);
+            boolean periodOpen = periodCache.isEditable(jdbi, header, PeriodDomain.FINANCE);
             return requireClosedPeriod != periodOpen;
         };
 
         if (currentYcode != null) {
-            Optional<Long> claimed = scanAndClaim(headerDao, candidates, claimedThisRun,
+            Optional<FinVchMain> claimed = scanAndClaim(candidates, claimedThisRun,
                     baseFilter.and(header -> header.getYcode() == currentYcode));
             if (claimed.isPresent()) return claimed;
         }
-        return scanAndClaim(headerDao, candidates, claimedThisRun, baseFilter);
+        return scanAndClaim(candidates, claimedThisRun, baseFilter);
     }
 
-    private static Optional<Long> scanAndClaim(FinVchMainDao headerDao, List<Long> candidates,
+    /** Shared claim scan — walks {@code candidates} in their already-fetched order, accepting and
+     *  reserving (via {@link DocumentReservationRegistry}) the first one not already in
+     *  {@code claimedThisRun} that satisfies {@code filter}. */
+    private static Optional<FinVchMain> scanAndClaim(List<FinVchMain> candidates,
             Set<Long> claimedThisRun, java.util.function.Predicate<FinVchMain> filter) {
-        for (Long vchcode : candidates) {
+        for (FinVchMain header : candidates) {
+            long vchcode = header.getVchcode();
             if (claimedThisRun.contains(vchcode)) continue;
-
-            FinVchMain header = headerDao.findByVoucherCode(vchcode).orElse(null);
-            if (header == null) continue;
             if (!filter.test(header)) continue;
 
             if (!DocumentReservationRegistry.tryReserve(String.valueOf(vchcode))) continue;
 
             claimedThisRun.add(vchcode);
-            return Optional.of(vchcode);
+            return Optional.of(header);
         }
         return Optional.empty();
     }

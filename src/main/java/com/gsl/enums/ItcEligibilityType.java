@@ -3,10 +3,19 @@ package com.gsl.enums;
 import java.util.Arrays;
 import java.util.stream.Collectors;
 
+/**
+ * GST Input Tax Credit (ITC) eligibility classification for an item. Populated from the "ITC
+ * Eligibility" column of the "General" sheet in the inventory-item Excel test data (see
+ * {@code ItemGeneral.itcEligibility}) via {@link com.gsl.converter.ItcEligibilityConverter} /
+ * {@link #fromExcel}.
+ */
 public enum ItcEligibilityType {
 
+    /** ITC on this item's inward supply is claimable against output tax (revenue item). */
     INPUT_APPLICABLE("Input Applicable"),
+    /** Item is capitalized (capital goods) — ITC follows the capital-goods reversal rules. */
     CAPITAL_GOODS("Capital Goods"),
+    /** No ITC is claimable on this item. */
     NOT_APPLICABLE("Not Applicable");
 
     private final String label;
@@ -15,6 +24,7 @@ public enum ItcEligibilityType {
         this.label = label;
     }
 
+    /** Excel parse key / display label — same string for this enum (see {@link #toString}). */
     public String label() {
         return label;
     }
@@ -25,6 +35,12 @@ public enum ItcEligibilityType {
     }
 
 
+    /**
+     * Resolves {@code excelValue} to its matching {@link ItcEligibilityType} constant by
+     * case-insensitive match against each constant's {@link #label}; throws
+     * {@link IllegalArgumentException} naming {@code fileName}/{@code sheetName}/
+     * {@code columnName} for a blank or unrecognized value.
+     */
     public static ItcEligibilityType fromExcel(
             String excelValue,
             String fileName,

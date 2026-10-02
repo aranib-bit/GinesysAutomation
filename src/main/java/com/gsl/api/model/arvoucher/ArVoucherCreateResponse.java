@@ -22,7 +22,11 @@ public class ArVoucherCreateResponse {
     private String error;
     private Result result;
 
+    /** The newly created voucher's own record code — parsed by callers such as
+     *  {@code ArVoucherApBackfillStrategy} to look the voucher up by primary key in the DB.
+     *  Null when {@link #result} is null. */
     public String getVoucherCode() { return result != null ? result.code : null; }
+    /** The voucher's human-facing document scheme string. Null when {@link #result} is null. */
     public String getDocScheme()   { return result != null ? result.docScheme : null; }
 
     @Data
@@ -32,6 +36,7 @@ public class ArVoucherCreateResponse {
     @JsonIgnoreProperties(ignoreUnknown = true)
     public static class Result {
         private String docScheme;
+        /** The created voucher's own record code, despite the generic JSON field name — see {@link #getVoucherCode()}. */
         private String code;
     }
 }

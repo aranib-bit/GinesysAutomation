@@ -66,6 +66,7 @@ public final class GeneralVoucherCombinationFilter {
             case NONE -> tags.add(GeneralVoucherTag.PAYMENT_NONE);
             case CASH -> tags.add(GeneralVoucherTag.PAYMENT_CASH);
         }
+        if (variant.isMultiRowPayment()) tags.add(GeneralVoucherTag.PAYMENT_MULTI_ROW);
         return tags;
     }
 

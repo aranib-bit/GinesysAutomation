@@ -6,6 +6,15 @@ import com.gsl.pages.enums.topmenucomponent.DashboardTitle;
 import com.gsl.utils.DashboardHeaderUtils;
 import org.openqa.selenium.By;
 
+/**
+ * Page object for the Finance module's landing dashboard — the page a test lands on right after
+ * navigating into Finance, before drilling into a specific sub-menu.
+ *
+ * <p>Exposes its {@link FinanceTopMenuComponent} for switching top-menu tabs (e.g. Operations vs
+ * Setup — see {@link com.gsl.pages.enums.Finance.MainMenuType}), and implements {@link
+ * VerifiablePage} so navigation helpers can confirm the dashboard actually rendered before
+ * proceeding.
+ */
 public class FinanceHomePage implements VerifiablePage {
 
     private FinanceTopMenuComponent financeTopMenuComponent;
@@ -14,6 +23,7 @@ public class FinanceHomePage implements VerifiablePage {
         this.financeTopMenuComponent = new FinanceTopMenuComponent();
     }
 
+    /** @return this page's {@link FinanceTopMenuComponent}, for switching top-menu tabs. */
     public FinanceTopMenuComponent getFinanceTopMenuComponent() {
         return financeTopMenuComponent;
     }

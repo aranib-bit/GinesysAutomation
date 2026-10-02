@@ -15,6 +15,7 @@ public class ArVoucherFixtureContext {
     int quantity;
     int rate;
 
+    /** Builds the context from the {@code fixture.arvoucher.*} keys in {@code api.properties}. */
     public static ArVoucherFixtureContext fromConfig() {
         ApiConfig config = ConfigFactory.getApiConfig();
         return ArVoucherFixtureContext.builder()

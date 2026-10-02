@@ -3,6 +3,12 @@ package com.gsl.enums;
 import java.util.Arrays;
 import java.util.stream.Collectors;
 
+/**
+ * Whether an item tracks batch/serial expiry dates. Populated from the "Expiry Management" column
+ * of the "Inventory Tracking" sheet in the inventory-item Excel test data (see
+ * {@code ItemInventoryTracking.expiryManagement}) via
+ * {@link com.gsl.converter.ExpiryManagementConverter} / {@link #fromExcel}.
+ */
 public enum ExpiryManagementType {
     YES("Yes"),
     NO("No");
@@ -12,6 +18,7 @@ public enum ExpiryManagementType {
         this.label = label;
     }
 
+    /** Excel parse key / display label — same string for this enum (see {@link #toString}). */
     public String label() {
         return label;
     }
@@ -22,6 +29,12 @@ public enum ExpiryManagementType {
     }
 
 
+    /**
+     * Resolves {@code excelValue} to its matching {@link ExpiryManagementType} constant by
+     * case-insensitive match against each constant's {@link #label}; throws
+     * {@link IllegalArgumentException} naming {@code fileName}/{@code sheetName}/
+     * {@code columnName} for a blank or unrecognized value.
+     */
     public static ExpiryManagementType fromExcel(
             String excelValue,
             String fileName,

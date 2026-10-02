@@ -16,6 +16,7 @@ public class GrcFixtureContext {
     int quantity;
     int rate;
 
+    /** Builds the context from the {@code fixture.grc.*} keys in {@code api.properties}. */
     public static GrcFixtureContext fromConfig() {
         ApiConfig config = ConfigFactory.getApiConfig();
         return GrcFixtureContext.builder()

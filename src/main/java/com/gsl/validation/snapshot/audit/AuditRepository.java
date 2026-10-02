@@ -115,6 +115,8 @@ public class AuditRepository {
         }
     }
 
+    /** Normalizes a JDBI-returned timestamp value ({@link LocalDateTime} or {@link java.sql.Timestamp})
+     *  to {@link LocalDateTime}; {@code null} for anything else. */
     private static LocalDateTime toLocalDateTime(Object value) {
         if (value instanceof LocalDateTime ldt) return ldt;
         if (value instanceof java.sql.Timestamp ts) return ts.toLocalDateTime();

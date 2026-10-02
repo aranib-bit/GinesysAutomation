@@ -2,7 +2,10 @@ package com.gsl.pages.Finance.Operations;
 
 import com.gsl.annotations.LogStep;
 import com.gsl.pages.Common.DocumentMessageBox;
+import com.gsl.pages.Finance.Operations.Common.AdjustmentEntry;
 import com.gsl.pages.Finance.Operations.Common.DocumentPopup;
+import com.gsl.pages.Finance.Operations.Common.SubLedgerRowIdentity;
+import com.gsl.pages.VerifiablePage;
 import com.gsl.pages.pagecomponent.Finance.Common.CashBankParent;
 import com.gsl.pages.pagecomponent.Finance.Operations.APVoucher.APVoucherDocumentInformation;
 import com.gsl.pages.pagecomponent.Finance.Operations.APVoucher.APVoucherFooter;
@@ -12,11 +15,18 @@ import com.gsl.pages.pagecomponent.Finance.Operations.APVoucher.APVoucherTdsAndN
 import com.gsl.testdata.Finance.Operations.Vouchers.APVoucher.DocumentInformation;
 import com.gsl.testdata.dto.MergedFinanceApVoucherData;
 import com.gsl.driver.DriverManager;
+import com.gsl.utils.PageHeaderUtils;
 import com.gsl.utils.Selenium.JavascriptExecutorUtils;
+import com.gsl.utils.Selenium.WaitUtils;
+import com.gsl.utils.ui.UiFieldState;
+import com.gsl.validation.ui.UiValidationFailure;
+import com.gsl.validation.ui.UiValidationLevel;
+import com.gsl.validation.ui.UiValidationReporter;
 
+import java.util.ArrayList;
 import java.util.List;
 
-public class ApVoucherAdd implements CashBankParent {
+public class ApVoucherAdd implements CashBankParent, VerifiablePage {
 
     private final APVoucherDocumentInformation  apVoucherDocumentInformation;
     private final APVoucherSubLedgerInformation apVoucherSubLedgerInformation;
@@ -24,10 +34,78 @@ public class ApVoucherAdd implements CashBankParent {
     private final APVoucherFooter                apVoucherFooter;
 
     public ApVoucherAdd() {
+        com.gsl.validation.ui.UiStyleScope.set(VoucherDomain.AP);   // style baseline: Common + AP sheet
         this.apVoucherDocumentInformation  = new APVoucherDocumentInformation(this);
         this.apVoucherSubLedgerInformation = new APVoucherSubLedgerInformation();
         this.apVoucherTdsAndNetPayable     = new APVoucherTdsAndNetPayable(VoucherDomain.AP);
         this.apVoucherFooter               = new APVoucherFooter();
+    }
+
+    /** Mirrors {@code GeneralVoucherAdd#verifyOnThisPage()} — accepts either the Add or Edit
+     *  window title, since this facade serves both flows. */
+    @Override
+    public void verifyOnThisPage() {
+        String actual = PageHeaderUtils.getWindowTitleText();
+        boolean onAddOrEditForm = actual != null
+                && (actual.equalsIgnoreCase(VoucherDomain.AP.getAddFormHeader())
+                    || actual.equalsIgnoreCase(VoucherDomain.AP.getEditFormHeader()));
+        if (!onAddOrEditForm) {
+            throw new IllegalStateException(
+                    "Expected the AP Voucher Add/Edit form to be open (page header '"
+                    + VoucherDomain.AP.getAddFormHeader() + "' or '" + VoucherDomain.AP.getEditFormHeader()
+                    + "') but the live page header reads '" + actual + "' instead.");
+        }
+    }
+
+    /** Reduced-scope relative to {@code GeneralVoucherAdd#verifyEditFormFullyLoaded} — confirms
+     *  the Edit window title and waits out the post-open ExtJS mask, but does NOT round-trip a
+     *  Voucher No. field read-back: {@code APVoucherDocumentInformation} has no
+     *  {@code getSavedDocumentNo()}-style getter today (GV-only addition). */
+    public void verifyEditFormFullyLoaded(String expectedVoucherNo) {
+        WaitUtils.waitForExtMask("Open Voucher for Edit");
+        String actualTitle = PageHeaderUtils.getWindowTitleText();
+        boolean titleOk = actualTitle != null
+                && actualTitle.equalsIgnoreCase(VoucherDomain.AP.getEditFormHeader());
+        if (!titleOk) {
+            throw new IllegalStateException(
+                    "Edit form not fully loaded — expected window title '"
+                    + VoucherDomain.AP.getEditFormHeader() + "' but got '" + actualTitle + "'.");
+        }
+    }
+
+    /** Full UI-contract sweep — Document Information fields (Owner Site/Cash-Bank/Date/Remarks,
+     *  plus AP's own On Account radio), the Sub-Ledger Information grid's headers, and the footer
+     *  Save button — collecting every {@link UiValidationFailure} and soft-asserting them all at
+     *  once (same convention as {@code GeneralVoucherAdd#validateUiContract}). The conditional
+     *  TDS/Net Payable popup ({@code APVoucherTdsAndNetPayable}) is deliberately out of scope for
+     *  this pass — see the framework plan's AP section. No per-row grid-cell validation either
+     *  (see the plan's "Scope note common to both" for AR/AP).
+     *
+     *  <p>{@code isEditMode} is the same Owner-Site/Remarks state-divergence override
+     *  {@code GeneralVoucherAdd#validateUiContract} documents — see that Javadoc for why both rules
+     *  are codebase-wide facts, not GV-specific. Confirmed live for AP too (user-supplied
+     *  screenshot + DOM, 2026-10-01): AP's Remarks IS visually disabled/non-interactable on a blank
+     *  Add form, same as GV/AR — an earlier live run's {@code aria-disabled='false'} reading was a
+     *  false negative, since AP's Remarks combo sets the native {@code disabled} attribute without
+     *  syncing its ARIA mirror; {@code UiComponentValidator#validateFieldState} now checks both,
+     *  not a genuine AP business difference after all. */
+    public void validateUiContract(UiValidationLevel level, UiFieldState state, boolean isEditMode) {
+        List<UiValidationFailure> failures = new ArrayList<>();
+
+        failures.addAll(apVoucherDocumentInformation.validateDocumentInformationSectionHeaderUi(level));
+        failures.addAll(apVoucherDocumentInformation.validateOwnerSiteUi(level, isEditMode, true));
+        failures.addAll(apVoucherDocumentInformation.validateCashBankUi(level, state, true));
+        failures.addAll(apVoucherDocumentInformation.validateDateUi(level, state, true));
+        failures.addAll(apVoucherDocumentInformation.validateRemarksUi(level, state, isEditMode, false));
+        failures.addAll(apVoucherDocumentInformation.validateOnAccountUi(level));
+
+        failures.addAll(apVoucherSubLedgerInformation.validateSubLedgerGridHeaderUi(level));
+        failures.addAll(apVoucherSubLedgerInformation.validateReferenceSiteGridHeaderUi(level));
+
+        boolean saveExpectedEnabled = state == UiFieldState.EDITABLE;
+        failures.addAll(apVoucherFooter.validateSaveButtonUi(level, saveExpectedEnabled));
+
+        UiValidationReporter.renderAndAssert(failures);
     }
 
     // ── Public API ────────────────────────────────────────────────────────────
@@ -114,5 +192,36 @@ public class ApVoucherAdd implements CashBankParent {
     /** Clicks the X to close the AP Voucher form; returns the discard-confirmation dialog. */
     public DocumentMessageBox close() {
         return apVoucherFooter.clickClose();
+    }
+
+    /** Reads row {@code rowNumber}'s (1-based) own Sub-Ledger name/Reference Site/Sub Ledger Id
+     *  straight off the rendered grid — see {@code APVoucherSubLedgerInformation
+     *  #readSubLedgerRowIdentity} for why this is a UI read, not a DB join. */
+    public SubLedgerRowIdentity readSubLedgerRowIdentity(int rowNumber) {
+        return apVoucherSubLedgerInformation.readSubLedgerRowIdentity(rowNumber);
+    }
+
+    /** Opens the Adjustment Entry window (Adjust → Adjusted Document menu) for an existing,
+     *  already-populated Sub-Ledger row — see {@code APVoucherSubLedgerInformation
+     *  #openAdjustmentEntryForExistingRow} for why this doesn't re-fill the row's other fields. */
+    public AdjustmentEntry openAdjustmentEntryForExistingRow(String subLedgerName, String referenceSite, String slId) {
+        return apVoucherSubLedgerInformation.openAdjustmentEntryForExistingRow(subLedgerName, referenceSite, slId);
+    }
+
+    /** Opens the Cheque/RTGS payment popup for an existing Sub-Ledger row and submits
+     *  {@code payment} — see {@code APVoucherSubLedgerInformation
+     *  #setPaymentInformationForExistingRow} for the before/after cross-check this enables. */
+    public com.gsl.pages.Finance.Operations.Common.ApPaymentInformationPopup setPaymentInformationForExistingRow(
+            String subLedgerName, String referenceSite, String slId,
+            com.gsl.testdata.Finance.Operations.Vouchers.Common.VoucherPaymentInfo payment) {
+        return apVoucherSubLedgerInformation.setPaymentInformationForExistingRow(subLedgerName, referenceSite, slId, payment);
+    }
+
+    /** Edits an existing Advance-mode row's Amount (Dr) cell directly — see
+     *  {@code APVoucherSubLedgerInformation#setAmountForExistingRow} for why this only applies to
+     *  Advance mode (Document mode's Amount cell is read-only). */
+    public ApVoucherAdd setAmountForExistingRow(int rowIndex, String newAmount) {
+        apVoucherSubLedgerInformation.setAmountForExistingRow(rowIndex, newAmount);
+        return this;
     }
 }

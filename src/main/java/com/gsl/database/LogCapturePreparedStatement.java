@@ -54,7 +54,18 @@ public final class LogCapturePreparedStatement {
                 arg.apply(1, stub, ctx);
             } catch (Exception ignored) {}
 
-            return (wasNull[0] || box[0] == null) ? "NULL" : box[0].toString();
+            if (wasNull[0] || box[0] == null) return "NULL";
+            Object value = box[0];
+            // SQL-literal quoting: string/date/time/UUID values need single-quote wrapping (with
+            // embedded-quote escaping) to be valid, re-runnable SQL — numeric/boolean values are
+            // correct unquoted as-is. Previously every type went through a bare toString(), so a
+            // reconstructed query like "WHERE slname = AUTO_SL_..." couldn't be copy-pasted back
+            // into a SQL client without a manual fix-up.
+            if (value instanceof CharSequence || value instanceof java.time.temporal.Temporal
+                    || value instanceof java.util.Date || value instanceof java.util.UUID) {
+                return "'" + value.toString().replace("'", "''") + "'";
+            }
+            return value.toString();
         } catch (Throwable t) {
             return "?";
         }

@@ -17,11 +17,17 @@ import java.util.List;
  */
 public final class RawPropertyReader {
 
-    private static final Path CONFIG_PATH = Paths.get(
+    private static final Path CONFIG_DIR = Paths.get(
             System.getProperty("user.dir"),
-            "src", "test", "resources", "config", "config.properties");
+            "src", "test", "resources", "config");
 
     private RawPropertyReader() {}
+
+    /** Active environment's copy of {@code filename} when it exists, otherwise the shared one in config/. */
+    private static Path locate(String filename) {
+        Path envFile = EnvResolver.envDir().resolve(filename);
+        return Files.isRegularFile(envFile) ? envFile : CONFIG_DIR.resolve(filename);
+    }
 
     /**
      * Returns the raw string value for {@code key} from config.properties,
@@ -31,14 +37,17 @@ public final class RawPropertyReader {
      * characters that appear in the file.
      */
     public static String readRaw(String key, String fallback) {
-        try {
-            List<String> lines = Files.readAllLines(CONFIG_PATH, StandardCharsets.UTF_8);
-            for (String line : lines) {
-                String value = extractValue(line, key);
-                if (value != null) return value;
+        // Active environment's file first, then the shared one — per key, like the Owner MERGE sources.
+        for (Path file : new Path[]{EnvResolver.envDir().resolve("config.properties"), CONFIG_DIR.resolve("config.properties")}) {
+            if (!Files.isRegularFile(file)) continue;
+            try {
+                for (String line : Files.readAllLines(file, StandardCharsets.UTF_8)) {
+                    String value = extractValue(line, key);
+                    if (value != null) return value;
+                }
+            } catch (IOException ignored) {
+                // File unreadable — try the next one, then the caller's fallback
             }
-        } catch (IOException ignored) {
-            // File unreadable — caller falls back to Owner value
         }
         return fallback;
     }
@@ -50,7 +59,7 @@ public final class RawPropertyReader {
      * Returns an empty list if the file is absent or unreadable.
      */
     public static List<String> readAllRawValues(String filename) {
-        Path file = CONFIG_PATH.getParent().resolve(filename);
+        Path file = locate(filename);
         List<String> values = new ArrayList<>();
         try {
             for (String line : Files.readAllLines(file, StandardCharsets.UTF_8)) {
@@ -86,6 +95,7 @@ public final class RawPropertyReader {
         return trimmed.substring(sep + 1).trim();
     }
 
+    /** Index of the earlier of {@code '='} or {@code ':'} in {@code line}, or -1 if neither is present. */
     private static int indexOfSeparator(String line) {
         int eq    = line.indexOf('=');
         int colon = line.indexOf(':');

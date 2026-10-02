@@ -11,10 +11,12 @@ public final class DatabaseLogger {
 
     private DatabaseLogger() {}
 
+    /** Logs a passed DB check as a single {@code ✓ checkName: detail} line. */
     public static void checkPassed(String checkName, String detail) {
         ReportLogger.db("✓ {}: {}", checkName, detail);
     }
 
+    /** Logs a failed DB check as a {@code ✗} headline plus the full expected/actual/SQL/params/rows/time table. */
     public static void checkFailed(String checkName, Object expected, Object actual,
                                     String sql, Object params, long executionTimeMs, int rowCount) {
         ReportLogger.dbError("✗ {}", checkName);
@@ -29,10 +31,12 @@ public final class DatabaseLogger {
         });
     }
 
+    /** Logs the start marker for a named DB validation block. */
     public static void validationStart(String label) {
         ReportLogger.db("{} — START", label);
     }
 
+    /** Logs the completion marker for a named DB validation block, stating whether every check passed. */
     public static void validationComplete(String label, boolean allPassed) {
         ReportLogger.db("{} — COMPLETE [{}]", label, allPassed ? "ALL PASSED" : "FAILURES FOUND");
     }

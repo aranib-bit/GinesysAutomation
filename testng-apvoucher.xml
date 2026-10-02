@@ -33,4 +33,19 @@
         </classes>
     </test>
 
+    <test name="AP Voucher Revert/Delete/Edit" parallel="methods" thread-count="4">
+        <parameter name="apv.group" value="MANDATORY"/>
+        <classes>
+            <class name="com.tests.Finance.Operations.Vouchers.RevertApVoucher"/>
+            <class name="com.tests.Finance.Operations.Vouchers.DeleteApVoucher"/>
+            <class name="com.tests.Finance.Operations.Vouchers.EditApVoucher">
+                <methods>
+                    <include name="editApVoucherHeader"/>
+                    <include name="editApVoucherDetailLine"/>
+                    <include name="editApVoucherPaymentInfo"/>
+                </methods>
+            </class>
+        </classes>
+    </test>
+
 </suite>

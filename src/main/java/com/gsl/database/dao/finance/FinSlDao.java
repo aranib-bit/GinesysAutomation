@@ -8,7 +8,7 @@ import org.jdbi.v3.sqlobject.statement.SqlQuery;
 import java.util.List;
 
 /**
- * DAO for finsl — Sub-Ledger master table.
+ * DAO for finsl — Sub-Ledger master table (see {@link FinSl} for column meanings).
  */
 @RegisterBeanMapper(FinSl.class)
 public interface FinSlDao {

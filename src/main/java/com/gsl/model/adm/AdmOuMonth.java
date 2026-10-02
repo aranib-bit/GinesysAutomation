@@ -8,6 +8,9 @@ import org.jdbi.v3.core.mapper.reflect.ColumnName;
  * ({@link AdmMonth#getMcode()}), split by domain: {@code finMonthStatus} (Finance — General/AP/AR
  * Voucher), {@code invMonthStatus} (Inventory — e.g. Receipts), {@code cogsRunStatus}. See
  * {@link com.gsl.enums.PeriodDomain} for which status column a given voucher domain checks.
+ *
+ * <p>Fetched via {@link com.gsl.database.dao.adm.AdmOuMonthDao#findByMonthAndOu(long, long)},
+ * after {@link AdmOuYear} confirms the containing fiscal year is open for that OU.
  */
 @Data
 public class AdmOuMonth {

@@ -13,6 +13,7 @@ public final class ChequeEdgeCases {
 
     private ChequeEdgeCases() {}
 
+    /** @return the fixed catalog of negative/edge-case {@link ChequeEdgeCase} scenarios (empty, null, wrong length, duplicate, etc.), in declaration order. */
     public static List<ChequeEdgeCase> getAll() {
         return List.of(
             new ChequeEdgeCase("EMPTY",            ""),

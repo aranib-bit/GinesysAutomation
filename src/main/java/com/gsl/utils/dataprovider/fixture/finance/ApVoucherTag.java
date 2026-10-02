@@ -60,6 +60,11 @@ public enum ApVoucherTag {
     /** Document payment via Reference Sitewise FIFO ({@link ApVoucherScenarioType#DOC_REFERENCE_SITEWISE_FIFO}). */
     DOC_REF_SITEWISE_FIFO,
 
+    /** Document payment whose adjusted total differs from the payment amount, raising Adjustment
+     *  Entry's amount-mismatch Confirmation (the {@code DOC_PARTIAL_*} / {@code DOC_AMOUNT_OVER_PENDING_NEGATIVE}
+     *  scenarios). */
+    DOC_MISMATCH,
+
     // ─── Tier 3: Dimensional ──────────────────────────────────────────────────
 
     /** Variant uses a Cash GL ({@code fingl.srctype = 'C'}). */

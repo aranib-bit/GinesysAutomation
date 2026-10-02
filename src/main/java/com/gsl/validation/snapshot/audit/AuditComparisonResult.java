@@ -15,6 +15,7 @@ public record AuditComparisonResult(
         List<AuditFieldCheckResult> fieldChecks,
         List<ValidationFailure> failures
 ) {
+    /** An empty result — no field checks and no failures, just the {@code expectedAnyChange} signal. */
     public static AuditComparisonResult empty(boolean expectedAnyChange) {
         return new AuditComparisonResult(expectedAnyChange, List.of(), List.of());
     }

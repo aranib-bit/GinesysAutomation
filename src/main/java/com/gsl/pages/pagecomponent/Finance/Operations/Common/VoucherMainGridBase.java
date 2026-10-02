@@ -10,6 +10,7 @@ import com.gsl.enums.WaitType;
 import com.gsl.pages.Common.DocumentMessageBox;
 import com.gsl.pages.enums.CommonButton;
 import com.gsl.pages.enums.Finance.Operations.Common.CommonVoucherActionsMenu;
+import com.gsl.pages.enums.Finance.Operations.Common.CommonVoucherListColumn;
 import com.gsl.pages.enums.Finance.Operations.Common.IVoucherGridAction;
 import com.gsl.utils.Log;
 import com.gsl.utils.Selenium.ActionUtils;
@@ -50,8 +51,6 @@ public abstract class VoucherMainGridBase {
     private static final long CHECKBOX_STATE_POLL_INTERVAL_MS = 100L;
 
     /** TODO: confirm against the live UI — best-effort guess, not yet verified (pre-existing debt). */
-    private static final By SEARCH_BOX     = By.xpath("//TODO-search-input");
-    private static final By SEARCH_BUTTON  = By.xpath("//TODO-search-button");
     private static final By EDIT_ICON      = By.xpath("//TODO-edit-icon-first-row");
     private static final By UNPOST_BUTTON  = By.xpath("//TODO-unpost-button");
 
@@ -88,10 +87,35 @@ public abstract class VoucherMainGridBase {
         return By.xpath("//div[normalize-space()='" + documentNumber + "']");
     }
 
+    /**
+     * Searches for {@code voucherNo} and leaves its row checkbox selected. Was a fictitious,
+     * never-confirmed separate search-box + search-button pair ({@code //TODO-search-input}/
+     * {@code //TODO-search-button}) — genuinely broke every live run that reached it
+     * ({@code DeleteApVoucher}/{@code DeleteArVoucher}/{@code EditArVoucher}, confirmed live, run
+     * 20260928_095807). No such standalone search box has ever been observed in this app's grid
+     * UI — General Voucher's own tests never call this method at all; they use
+     * {@code selectDocumentFast}/{@code clickEditFromActions} instead. The real, already-proven
+     * "search by document number" mechanism (used successfully by {@code RevertApVoucher}/
+     * {@code EditApVoucher}'s own {@code selectDocumentFast}'s {@code EXACT_MATCH} tier) is the
+     * Voucher No. column header's own "Filters → Exact match..." input — delegates to the exact
+     * same {@link GridColumnMenu}/{@link #selectDocumentIfPresentOnCurrentPage} call sequence that
+     * tier already uses live, rather than a second, parallel mechanism.
+     *
+     * <p>Exact-match only — no partial/page-by-page fallback, matching this method's own narrower
+     * "single direct search" contract. A caller that needs the fuller 3-tier cascade should call
+     * {@code VoucherListPageBase#selectDocumentFast} directly instead.
+     *
+     * @throws NoSuchElementException if {@code voucherNo} isn't found via an exact-match filter
+     */
     @LogStep("Search Voucher by Document Number")
     public void searchByVoucherNo(String voucherNo) {
-        SeleniumUtils.sendKeys(SEARCH_BOX, WaitType.VISIBLE, voucherNo, "SEARCH_BOX");
-        SeleniumUtils.click(SEARCH_BUTTON, WaitType.CLICKABLE, "SEARCH_BUTTON");
+        boolean found = GridColumnMenu.filterByExactMatch(CommonVoucherListColumn.VOUCHER_NO, voucherNo)
+                && selectDocumentIfPresentOnCurrentPage(voucherNo);
+        if (!found) {
+            throw new NoSuchElementException(
+                    "searchByVoucherNo: document [" + voucherNo + "] not found via exact-match filter "
+                    + "on Voucher No.");
+        }
     }
 
     /**
@@ -235,6 +259,17 @@ public abstract class VoucherMainGridBase {
     }
 
     /**
+     * {@link CommonVoucherActionsMenu}-typed overload of {@link #clickGridAction(IVoucherGridAction,
+     * Runnable)} — resolves the menu item against this grid's own {@link #domain} internally, so
+     * callers (notably {@code VoucherListPageBase.performGridAction}) can pass the raw enum
+     * constant (DELETE/EDIT/REVERT/RELEASE) without needing their own access to {@code domain}.
+     * Keeps domain-resolution encapsulated here rather than exposing a public {@code getDomain()}.
+     */
+    public void clickGridAction(CommonVoucherActionsMenu menuItem, Runnable reselect) {
+        clickGridAction(menuItem.resolveFor(domain).orElseThrow(), reselect);
+    }
+
+    /**
      * Clicks "Revert" in the open Actions dropdown (plan §12 — moved here from
      * {@code GeneralVoucherMainGrid}, which had it as a domain-hardcoded copy; the only
      * GV-specific part was {@code VoucherDomain.GV}, replaced here with this instance's own
@@ -246,6 +281,17 @@ public abstract class VoucherMainGridBase {
     @LogStep("Click Revert")
     public void clickRevert() {
         clickGridAction(CommonVoucherActionsMenu.REVERT.resolveFor(domain).orElseThrow());
+    }
+
+    /** Round 10 (RC-11) overload — see {@link #clickGridAction(IVoucherGridAction, Runnable)}.
+     *  Added after a confirmed live "Actions dropdown is not open at all" failure on Revert
+     *  (reports/runs/20260913_133337, FIN-GV-REVERT-02): unlike {@link #clickEdit(Runnable)}/
+     *  {@link #clickDeleteForVoucher(Runnable)}, {@link #clickRevert()} previously had no
+     *  reselect-and-retry overload at all, so a lost/never-opened dropdown had no way to recover
+     *  before the bounded re-poll in the plain overload gave up. */
+    @LogStep("Click Revert")
+    public void clickRevert(Runnable reselect) {
+        clickGridAction(CommonVoucherActionsMenu.REVERT.resolveFor(domain).orElseThrow(), reselect);
     }
 
     /**

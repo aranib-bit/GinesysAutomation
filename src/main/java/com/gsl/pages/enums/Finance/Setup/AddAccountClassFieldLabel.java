@@ -16,6 +16,7 @@ public enum AddAccountClassFieldLabel {
         this.text = text;
     }
 
+    /** This field's literal label text, e.g. {@code "Class Name:"}. */
     public String text() {
         return text;
     }

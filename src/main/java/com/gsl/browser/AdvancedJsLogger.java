@@ -101,6 +101,7 @@ public final class AdvancedJsLogger {
         }
     }
 
+    /** Injects {@link #INJECTION_SCRIPT} into the current page; a guard flag inside the script makes this safe to call repeatedly (e.g. after SPA navigation). No-op (logged) if the driver can't execute JS. */
     public static void inject() {
         try {
             JavascriptExecutor js = (JavascriptExecutor) DriverManager.getDriver();

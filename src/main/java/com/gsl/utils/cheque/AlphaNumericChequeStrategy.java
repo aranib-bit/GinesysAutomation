@@ -4,8 +4,9 @@ import java.security.SecureRandom;
 import java.util.concurrent.ThreadLocalRandom;
 
 /**
- * Generates alphanumeric cheque numbers using four real-world patterns,
- * selected with equal probability per call for variety distribution.
+ * {@link ChequeNumberStrategy} that generates alphanumeric cheque numbers using four
+ * real-world patterns, selected with equal probability per call for variety distribution.
+ * Selected via {@link ChequeStrategyRotator#resolve(String)} with key {@code "ALPHANUMERIC"}.
  *
  * Patterns:
  *   BANK_BRANCH      – 3 alpha (bank code) + 3 digits (branch)  e.g. SBI001
@@ -20,6 +21,7 @@ public class AlphaNumericChequeStrategy implements ChequeNumberStrategy {
     private static final String CHARS = ALPHA + DIGITS;
     private static final SecureRandom random = new SecureRandom();
 
+    /** @return a cheque number in one of the four patterns above, chosen at random; not guaranteed unique. */
     @Override
     public String generate() {
         int pattern = ThreadLocalRandom.current().nextInt(4);

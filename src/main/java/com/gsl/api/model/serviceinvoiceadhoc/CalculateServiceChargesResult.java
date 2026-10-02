@@ -22,6 +22,7 @@ public class CalculateServiceChargesResult {
     private double totalGrossAmt;
     private double totalNetAmt;
 
+    /** One entry of {@code serviceDetails[]} — the calculated per-line totals plus that line's own {@code serviceCharges[]}. */
     @Data
     @Builder
     @NoArgsConstructor

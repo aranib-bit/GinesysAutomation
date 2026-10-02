@@ -11,6 +11,12 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 
+/**
+ * Captures browser screenshots — either as an in-memory base64 string or saved to disk under
+ * {@code reports/runs/{runId}/screenshots/} — for attaching to Extent reports on test failure or
+ * at key steps. {@link #saveScreenshotWithMetadata} additionally captures page-context metadata
+ * (URL, scroll position, viewport, last-used locator) alongside the file.
+ */
 public final class ScreenshotUtils {
 
     /** Resolved lazily so the run ID from FrameworkConstants is already set. */
@@ -21,6 +27,7 @@ public final class ScreenshotUtils {
     private ScreenshotUtils() {
     }
 
+    /** Captures the current browser screen as a base64-encoded PNG string, in memory (no disk write). */
     public static String getScreenshot() {
         return ((TakesScreenshot) DriverManager.getDriver()).getScreenshotAs(OutputType.BASE64);
     }

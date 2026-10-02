@@ -41,17 +41,20 @@ public final class LogFetchRequestValidator {
 
     // ── helpers ───────────────────────────────────────────────────────────────
 
+    /** Throws when {@code value} is null or blank. */
     private static void requireNonBlank(String value, String field) {
         if (value == null || value.isBlank())
             throw new IllegalArgumentException("LogFetchRequest." + field + " must not be blank");
     }
 
+    /** Throws when {@code host} doesn't match {@link #HOSTNAME_SAFE} (blocks shell-unsafe hostnames). */
     private static void requireHostnameSafe(String host) {
         if (!HOSTNAME_SAFE.matcher(host).matches())
             throw new IllegalArgumentException(
                     "LogFetchRequest.host contains invalid characters: " + host);
     }
 
+    /** Throws when {@code value} falls outside [{@code min}, {@code max}] inclusive. */
     private static void requireInRange(int value, int min, int max, String field) {
         if (value < min || value > max)
             throw new IllegalArgumentException(
@@ -59,23 +62,27 @@ public final class LogFetchRequestValidator {
                             + ", got: " + value);
     }
 
+    /** Throws when {@code value} is null. */
     private static void requireNonNull(Object value, String field) {
         if (value == null)
             throw new IllegalArgumentException("LogFetchRequest." + field + " must not be null");
     }
 
+    /** Throws when {@code start} is not strictly before {@code end}. */
     private static void requireBefore(Instant start, Instant end) {
         if (!start.isBefore(end))
             throw new IllegalArgumentException(
                     "LogFetchRequest.startUtc must be before endUtc");
     }
 
+    /** Throws when {@code list} is null or empty. */
     private static void requireNonEmpty(List<?> list, String field) {
         if (list == null || list.isEmpty())
             throw new IllegalArgumentException(
                     "LogFetchRequest." + field + " must not be empty");
     }
 
+    /** Throws when any entry in {@code values} matches {@link #SHELL_UNSAFE}. */
     private static void requireNoShellChars(List<String> values, String field) {
         for (String v : values) {
             if (SHELL_UNSAFE.matcher(v).find())

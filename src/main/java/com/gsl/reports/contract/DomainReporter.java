@@ -14,7 +14,7 @@ package com.gsl.reports.contract;
  *   <li>{@link #extractTestData} — called only when {@link #supports} returns true</li>
  *   <li>{@link #buildSentence} / {@link #buildRichName} — pure, no side effects</li>
  *   <li>{@link #onTestSuccess} / {@link #onTestFailure} — MUST call
- *       {@link TestResultsAccumulator#clear()} before returning (in a finally block)</li>
+ *       {@link TestResultsAccumulator#resetAccumulator()} before returning (in a finally block)</li>
  * </ul>
  */
 public interface DomainReporter {

@@ -14,6 +14,7 @@ public final class AccountClassExtentDescriptionLogger {
 
     private AccountClassExtentDescriptionLogger() {}
 
+    /** Logs {@code row}'s fields as a labeled Extent table and mirrors a one-line summary to the log file. */
     public static void log(AccountClassLifecycleRow row, String resolvedClassName) {
         String[][] table = {
                 {"Field", "Value"},

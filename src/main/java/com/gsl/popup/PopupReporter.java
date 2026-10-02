@@ -8,14 +8,25 @@ import java.nio.charset.StandardCharsets;
 import java.util.Base64;
 
 /**
- * Writes a structured popup diagnostics block into the ExtentReport.
- * Called BEFORE throwing UnexpectedPopupException so the report captures
- * full context including the pre-dismissal screenshot.
+ * Writes a structured popup diagnostics block into the ExtentReport — an info table of
+ * header/type/page title/URL/detected time, plus the full message rendered as scrollable HTML
+ * with a downloadable plain-text copy. Called by {@link PopupMonitor}, for
+ * {@link #reportUnexpectedPopup} BEFORE throwing {@code UnexpectedPopupException}, so the report
+ * captures full context including the pre-dismissal screenshot.
  */
 public final class PopupReporter {
 
     private PopupReporter() {}
 
+    /**
+     * Reports a popup that will fail the test — a prominent FAIL marker (with screenshot, if one
+     * was captured) ahead of the categorized POPUP/UNEXPECTED line so it stands out in the test
+     * summary panel, then the same diagnostics table and full-message block as
+     * {@link #reportHandledPopup}.
+     *
+     * @param popup      the detected popup to report
+     * @param actionName human-readable description of the action that triggered/preceded it
+     */
     public static void reportUnexpectedPopup(PopupResult popup, String actionName) {
         // P7: Prominent failure marker FIRST so it's visible in the test summary panel
         String failMsg = "⚠ Unexpected Popup on [" + actionName + "] — "
@@ -52,6 +63,14 @@ public final class PopupReporter {
         ExtentLogger.infoHtmlOnChildNode("Full Error Message", msgHtml);
     }
 
+    /**
+     * Reports a popup that does NOT fail the test (WARNING or CONFIRM) — a categorized
+     * POPUP/EXPECTED line, a diagnostics table, and the full message rendered as scrollable HTML
+     * with a downloadable plain-text copy.
+     *
+     * @param popup      the detected popup to report
+     * @param actionName human-readable description of the action that triggered/preceded it
+     */
     public static void reportHandledPopup(PopupResult popup, String actionName) {
         ReportLogger.popup(PopupOutcome.EXPECTED, "Handled popup on [" + actionName + "] — "
                 + popup.popupType() + " | Header: " + popup.header());
@@ -75,6 +94,7 @@ public final class PopupReporter {
         ExtentLogger.infoHtmlOnChildNode("Handled Popup — Full Message", msgHtml);
     }
 
+    /** Builds a data-URI download link for {@code popup}'s full diagnostics as a plain-text .txt file. */
     private static String buildDownloadLink(PopupResult popup, String actionName) {
         String plainText = "Header        : " + popup.header() + "\n"
                 + "Type          : " + popup.popupType().name() + "\n"
@@ -98,6 +118,7 @@ public final class PopupReporter {
                 + "&#11015; Download Error Log</a>";
     }
 
+    /** Converts messagebox inner HTML to plain text — {@code <br>} becomes a newline, other tags are stripped. */
     private static String toPlainText(String innerHTML) {
         if (innerHTML == null) return "";
         return innerHTML

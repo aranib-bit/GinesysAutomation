@@ -24,6 +24,7 @@ import java.util.Map;
  */
 public class ItemApiClient extends ApiClient {
 
+    /** Wraps an already-authenticated session {@code spec} — see {@link ApiClient}'s class Javadoc. */
     public ItemApiClient(RequestSpecification spec) {
         super(spec);
     }

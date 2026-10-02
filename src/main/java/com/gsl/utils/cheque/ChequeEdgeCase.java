@@ -7,6 +7,7 @@ package com.gsl.utils.cheque;
  */
 public class ChequeEdgeCase {
 
+    /** Human-readable label for the scenario, e.g. {@code "SHORT_LENGTH"} — used in test failure messages and reports. */
     public final String scenario;
     public final String chequeNo;   // null for the NULL scenario
 

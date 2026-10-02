@@ -33,6 +33,13 @@ public final class PageHeaderUtils {
     private static final By WINDOW_TITLE_TEXT =
             By.xpath("//div[contains(@class,'winTitleType1')]");
 
+    /** The breadcrumb label (e.g. "Finance &gt; Operations &gt; Vouchers &gt;") shown above the
+     *  page header — class-anchored (Round 23), not the ExtJS auto-generated numeric
+     *  {@code label-NNNN} id confirmed live via DevTools inspection, same "locate by class, not
+     *  generated id" convention as {@link #WINDOW_TITLE_TEXT}. */
+    private static final By BREADCRUMB_TEXT =
+            By.xpath("//label[contains(@class,'winbrdcrmbType1')]");
+
     private PageHeaderUtils() {}
 
     public static String getPageHeaderText() {
@@ -43,5 +50,17 @@ public final class PageHeaderUtils {
      *  {@link #getPageHeaderText()}, not a shared one. */
     public static String getWindowTitleText() {
         return SeleniumUtils.getText(WINDOW_TITLE_TEXT, "Window Title");
+    }
+
+    /** Live computed font-size/font-family of the window title element (Round 23 — page-styling
+     *  regression check). Same element {@link #getWindowTitleText()} reads. */
+    public static String getWindowTitleFont() {
+        return SeleniumUtils.getComputedFont(WINDOW_TITLE_TEXT, "Window Title");
+    }
+
+    /** Live computed font-size/font-family of the breadcrumb label (Round 23 — page-styling
+     *  regression check). */
+    public static String getBreadcrumbFont() {
+        return SeleniumUtils.getComputedFont(BREADCRUMB_TEXT, "Breadcrumb");
     }
 }

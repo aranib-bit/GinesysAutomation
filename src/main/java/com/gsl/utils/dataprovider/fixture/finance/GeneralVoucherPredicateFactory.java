@@ -1,9 +1,12 @@
 package com.gsl.utils.dataprovider.fixture.finance;
 
-import com.gsl.enums.Finance.Operations.GeneralVoucher.GlLineType;
+import com.gsl.enums.PaymentSelectionType;
 import com.gsl.enums.VoucherDomain;
 import com.gsl.flow.Finance.Operations.Common.PostSaveDialogHandler;
+import com.gsl.flow.Finance.Operations.Common.VoucherSaveCtx;
+import com.gsl.flow.Finance.Operations.Common.VoucherSaveFlowSteps;
 import com.gsl.pages.Common.DocumentMessageBox;
+import com.gsl.pages.Finance.Operations.Common.AllocateSitesPopup;
 import com.gsl.pages.Finance.Operations.Common.DocumentPopup;
 import com.gsl.pages.Finance.Operations.Common.PaymentInfoCheckWarning;
 import com.gsl.pages.Finance.Operations.GeneralVoucherAdd;
@@ -12,9 +15,7 @@ import com.gsl.pages.pagecomponent.Finance.Operations.GeneralVoucher.GeneralVouc
 import com.gsl.reports.ActualResultsHolder;
 import com.gsl.reports.ReportLogger;
 import com.gsl.reports.StepExecutor;
-import com.gsl.testdata.Finance.Operations.Vouchers.GeneralVoucher.DocumentInformation;
 import com.gsl.testdata.Finance.Operations.Vouchers.GeneralVoucher.ExpenseIncomeDetail;
-import com.gsl.testdata.Finance.Operations.Vouchers.GeneralVoucher.SiteAllocation;
 import com.gsl.testdata.dto.MergedFinanceGeneralVoucherData;
 import com.gsl.validation.db.finance.GeneralVoucherDbValidator;
 import com.gsl.validation.snapshot.DocumentContext;
@@ -23,12 +24,12 @@ import com.gsl.validation.snapshot.SnapshotService;
 import com.gsl.validation.snapshot.VoucherSnapshot;
 import com.gsl.validation.snapshot.VoucherSnapshotValidator;
 import com.gsl.validation.snapshot.finance.Aud2SnapshotDao;
+import com.gsl.validation.snapshot.finance.AuditStateSummary;
 import com.gsl.validation.snapshot.finance.GeneralVoucherCreateChangeSets;
 import com.gsl.validation.snapshot.finance.VoucherDocumentContextResolver;
+import com.gsl.validation.snapshot.finance.VoucherPersistenceMapFactory;
 import org.testng.asserts.SoftAssert;
 
-import java.math.BigDecimal;
-import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.Collections;
 import java.util.List;
@@ -36,160 +37,19 @@ import java.util.function.BiPredicate;
 import java.util.function.Supplier;
 
 /**
- * Negative/boundary test data + shared behavior for General Voucher — mirrors
- * {@code ApVoucherPredicateFactory}'s shape, scoped to the 3 candidate
- * scenarios the plan calls out (§4):
- * <ol>
- *     <li>{@link #siteAllocationPending()} — Type2 row where the Allocate Sites
- *         Tagging Summary's Pending Amount != 0 (under-allocation).</li>
- *     <li>{@link #subLedgerRequired()} — Type3 row with Sub Ledger deliberately
- *         left blank (exercises {@code GeneralVoucherExpenseIncomeDetail.setSubLedger}'s
- *         blank-guard, which skips the fill and lets the app's own validation fire).</li>
- *     <li>{@link #siteNotAllocated()} — Type2 row whose Site button is clicked but
- *         nothing is added in the popup (empty {@code SiteAllocation} list).</li>
- * </ol>
+ * Shared behavior for General Voucher — mirrors {@code ApVoucherPredicateFactory}'s shape:
+ * pure UI-interaction/assertion {@code BiPredicate} suppliers, no test-data construction.
  *
- * <p>Built directly in Java (not via {@code ExcelGeneralVoucherDataSource}/
- * {@code DbGeneralVoucherDataSource}) using {@code idealdb}-verified GL/Site/Sub-Ledger
- * names — "Advertisement Expenses"+"CNSStore" (Type 2) and "JHIL_01"+"HAPPY SPROUTS-KP Road"
- * (Type 3, {@link #subLedgerRequired()} only — see that method for why its GL specifically
- * needs more than one eligible Sub Ledger, unlike the DB-sourced positive test's Type3 pick).
- *
- * <p><b>UNVERIFIED — see plan's "Verification / Open items":</b> the expected
- * error-message text on each {@link NegativeValidation} constant used here is
- * a best-effort guess, not confirmed against the live UI.
+ * <p>All test-data building — including the 3 negative scenarios this class's behaviors serve
+ * ({@code NEG_SITE_ALLOCATION_PENDING}, {@code NEG_SUBLEDGER_REQUIRED},
+ * {@code NEG_SITE_NOT_ALLOCATED}, plus {@code NEG_CASH_POST_DATED}) — lives in
+ * {@link GeneralVoucherTemplateLoader}, resolved live via {@link
+ * com.gsl.utils.dataprovider.fixture.LiveGvDbRefs} exactly like the positive combination
+ * matrix, rather than hardcoded here (see that class's {@code negXxxTemplate} methods).
  */
 public final class GeneralVoucherPredicateFactory {
 
     private GeneralVoucherPredicateFactory() {}
-
-    /** idealdb-verified, srctype='B' — see plan §1's DB-verified sample. */
-    private static final String CASH_BANK_GL = "HDFC Bank";
-
-    /** idealdb-verified, srctype='C' (Cash) — see plan §Round 21's DB audit; also the exact
-     *  ledger named in every live Round 13 failure ("every failure selects 'Cash Main'"). */
-    private static final String CASH_TYPE_GL = "Cash Main";
-
-    public static MergedFinanceGeneralVoucherData siteAllocationPending() {
-        String tcId = "GV_NEG_PENDING";
-        DocumentInformation doc = new DocumentInformation(tcId, null, LocalDate.now(), null, CASH_BANK_GL,
-                "Negative: Allocate Sites Pending Amount != 0");
-
-        ExpenseIncomeDetail line = new ExpenseIncomeDetail(tcId, "1", "Advertisement Expenses", null, null,
-                "Under-allocated site", "No", null, new BigDecimal("900.00"));
-        line.setResolvedGlType(GlLineType.TYPE2_SITE_ONLY);
-
-        SiteAllocation partial = new SiteAllocation();
-        partial.setTestCaseID(tcId);
-        partial.setLineNo("1");
-        partial.setSiteName("CNSStore");
-        partial.setAmount(new BigDecimal("500.00")); // deliberately less than 900.00 → Pending != 0
-
-        return MergedFinanceGeneralVoucherData.builder()
-                .documentInformation(doc)
-                .expenseIncomeDetailList(List.of(line))
-                .siteAllocationList(List.of(partial))
-                .needsPaymentInfoWarning(false)
-                .expectedValidation(NegativeValidation.GV_SITE_ALLOCATION_PENDING)
-                .invocationIndex(1)
-                .totalInvocations(1)
-                .build();
-    }
-
-    public static MergedFinanceGeneralVoucherData subLedgerRequired() {
-        String tcId = "GV_NEG_SUBLEDGER";
-        DocumentInformation doc = new DocumentInformation(tcId, null, LocalDate.now(), null, CASH_BANK_GL,
-                "Negative: Type3 row missing Sub Ledger");
-
-        // Sub Ledger deliberately left null — GeneralVoucherExpenseIncomeDetail.setSubLedger's
-        // blank-guard skips the fill, so Save should raise the app's own "Sub Ledger required".
-        //
-        // GL must have MORE THAN ONE eligible Sub Ledger for that to actually happen. Per the
-        // app's own auto-populate rule (user-confirmed): a Type3 GL with exactly one eligible Sub
-        // Ledger (finsl_gl, ext='N') has it filled automatically, with no validation to trigger.
-        // The original GL here — "(sp)Contracter Charges" (glcode 1746) — has exactly one
-        // (idealdb: finsl_gl → slcode 36 "WB-INPUT IGST", confirmed live 2026-08-07), the very
-        // pair the class-level comment below cites as the *positive*-test Type3 example. Left in
-        // place, this scenario could never see "Sub Ledger required" regardless of any UI fix.
-        //
-        // "JHIL_01" (glcode 1697) has 4 eligible Sub Ledgers (idealdb: WB-INPUT IGST, JHIL_SL_01,
-        // Test, AJEHAR SHAIKH) — genuinely ambiguous, so the app cannot auto-pick and must ask.
-        // Same Site allocate-list as before: "HAPPY SPROUTS-KP Road" is in fingl_site for 1697 too.
-        ExpenseIncomeDetail line = new ExpenseIncomeDetail(tcId, "1", "JHIL_01", null, null,
-                "Missing sub ledger", "No", null, new BigDecimal("800.00"));
-        line.setResolvedGlType(GlLineType.TYPE3_SITE_AND_SUBLEDGER);
-
-        SiteAllocation alloc = new SiteAllocation();
-        alloc.setTestCaseID(tcId);
-        alloc.setLineNo("1");
-        alloc.setSiteName("HAPPY SPROUTS-KP Road");
-        alloc.setAmount(new BigDecimal("800.00"));
-
-        return MergedFinanceGeneralVoucherData.builder()
-                .documentInformation(doc)
-                .expenseIncomeDetailList(List.of(line))
-                .siteAllocationList(List.of(alloc))
-                .needsPaymentInfoWarning(false)
-                .expectedValidation(NegativeValidation.GV_SUBLEDGER_REQUIRED)
-                .invocationIndex(1)
-                .totalInvocations(1)
-                .build();
-    }
-
-    public static MergedFinanceGeneralVoucherData siteNotAllocated() {
-        String tcId = "GV_NEG_NOSITE";
-        DocumentInformation doc = new DocumentInformation(tcId, null, LocalDate.now(), null, CASH_BANK_GL,
-                "Negative: Type2 row, Site button clicked but nothing allocated");
-
-        ExpenseIncomeDetail line = new ExpenseIncomeDetail(tcId, "1", "Advertisement Expenses", null, null,
-                "Unallocated site", "No", null, new BigDecimal("900.00"));
-        line.setResolvedGlType(GlLineType.TYPE2_SITE_ONLY);
-
-        return MergedFinanceGeneralVoucherData.builder()
-                .documentInformation(doc)
-                .expenseIncomeDetailList(List.of(line))
-                .siteAllocationList(List.of()) // empty — Site button opens popup, nothing added, OK clicked
-                .needsPaymentInfoWarning(false)
-                .expectedValidation(NegativeValidation.GV_SITE_NOT_ALLOCATED)
-                .invocationIndex(1)
-                .totalInvocations(1)
-                .build();
-    }
-
-    /**
-     * Round 21 — {@link #siteNotAllocated()}'s sibling for the dedicated Cash+post-dated negative
-     * scenario (plan §Round 13/21): a Cash-type Cash/Bank ledger together with a post-dated
-     * Document Date makes the app correctly reject the Save. Deliberately +30 days, not just +1 —
-     * a safely future date sidesteps any midnight-boundary/Work-Date ambiguity (plan §Round 13's
-     * still-open item) entirely, since this scenario only needs to GUARANTEE post-dated, not pin
-     * down the app's exact "today".
-     */
-    public static MergedFinanceGeneralVoucherData cashPostDated() {
-        String tcId = "GV_NEG_CASH_POSTDATED";
-        LocalDate postDatedDate = LocalDate.now().plusDays(30);
-        DocumentInformation doc = new DocumentInformation(tcId, null, postDatedDate, null, CASH_TYPE_GL,
-                "Negative: Cash payment mode cannot be post-dated");
-
-        ExpenseIncomeDetail line = new ExpenseIncomeDetail(tcId, "1", "Advertisement Expenses", null, null,
-                "Cash post-dated rejection", "No", null, new BigDecimal("900.00"));
-        line.setResolvedGlType(GlLineType.TYPE2_SITE_ONLY);
-
-        SiteAllocation alloc = new SiteAllocation();
-        alloc.setTestCaseID(tcId);
-        alloc.setLineNo("1");
-        alloc.setSiteName("CNSStore");
-        alloc.setAmount(new BigDecimal("900.00"));
-
-        return MergedFinanceGeneralVoucherData.builder()
-                .documentInformation(doc)
-                .expenseIncomeDetailList(List.of(line))
-                .siteAllocationList(List.of(alloc))
-                .needsPaymentInfoWarning(false)
-                .expectedValidation(NegativeValidation.GV_CASH_POST_DATED_NOT_ALLOWED)
-                .invocationIndex(1)
-                .totalInvocations(1)
-                .build();
-    }
 
     /**
      * Positive create behavior — fill header + Expense/Income rows + Cash/Bank payment info →
@@ -202,11 +62,8 @@ public final class GeneralVoucherPredicateFactory {
     public static final Supplier<BiPredicate<MergedFinanceGeneralVoucherData, GeneralVoucherAdd>>
         POSITIVE_CREATE_BEHAVIOR = () -> (data, page) -> {
 
-            final String[] docNoRef = new String[1];
-            final DocumentMessageBox[] msgBoxRef = new DocumentMessageBox[1];
-            final DocumentPopup[] popupRef = new DocumentPopup[1];
+            final VoucherSaveCtx ctx = new VoucherSaveCtx();
             final LocalDateTime[] saveStartTimeRef = new LocalDateTime[1];
-            final SoftAssert softAssert = new SoftAssert();
 
             StepExecutor.step("Fill Document Information", () -> {
                 page.fillDocumentHeader(data.getDocumentInformation());
@@ -221,59 +78,109 @@ public final class GeneralVoucherPredicateFactory {
                 recordDocumentInformationSummary(data.getDocumentInformation(), docInfo);
             });
 
+            // Item AC (Round 5): "Fill Expense/Income Detail" and "Fill Cash/Bank Payment
+            // Information" used to be two sibling stepUnder calls under one group node — each its
+            // own step() invocation, so each rendered its own separate Summary box. Collapsed into
+            // ONE step so both actions share the same StepSummaryBuffer scope and render as a
+            // single consolidated Summary box, with payment info as the last entry.
+            // UI validation of the REAL fill (deferred - never stops Save / DB / snapshot validation):
+            // the page observes this fill, checking each row once filled and each popup while it is
+            // already open; "UI Validation — After Fill" below renders the result.
+            page.beginFilledFormUi(data, com.gsl.validation.ui.UiValidationLevel.CONTRACT);
+
             StepExecutor.step("Fill Expense/Income Detail", () -> {
                 page.fillExpenseIncomeRows(data);
                 ReportLogger.business("Expense/Income Detail section complete: "
                         + data.getExpenseIncomeDetailList().size() + " rows");
-                recordExpenseIncomeDetailSummary(data);
-            });
+                recordExpenseIncomeDetailSummary(data, page);
 
-            StepExecutor.step("Fill Cash/Bank Payment Information", () -> {
-                page.handlePaymentInformation(data.getCashBankPaymentInfo());
+                // Round 6: every grid row that carries a payment fills its own Payment Window.
+                page.handleRowPayments(data);
                 com.gsl.reports.StepSummaryBuffer.record(buildPaymentInformationSummary(data));
+
+                // Folded in per explicit request — this must not render as its own separate
+                // step/section; it belongs inside "Fill Expense/Income Detail"'s own consolidated
+                // Summary, right before Save (checking "is audit even on" reads naturally as a
+                // last check right before the state-changing action). Item AH: still deposits the
+                // resolved state into ActualResultsHolder so "Actual Results" can render its own
+                // compact audit-summary line without a second DB round-trip.
+                AuditStateSummary auditState =
+                        AuditStateSummary.resolveFor(VoucherPersistenceMapFactory.build(VoucherDomain.GV));
+                com.gsl.reports.StepSummaryBuffer.record(auditState.toSummaryLine("Audit State — Before Save"));
+                ActualResultsHolder.get().setAuditState(auditState);
+
+                // Explicit request: the Summary must appear AFTER the per-line "Line N" detail
+                // nodes fillExpenseIncomeRows just created above, not before them. The ordinary
+                // end-of-step auto-render can't do this — the ExtentReports Spark template always
+                // renders a node's own log entries (including the auto-summary) ABOVE its child
+                // nodes, regardless of call order. Rendering explicitly here, as a trailing CHILD
+                // node instead of an own-log entry, is what actually places it last — see
+                // StepExecutor.renderSummaryAsChildNode's own Javadoc.
+                // Item L (Round 9): pass the BARE step name — buildSummaryHtml already appends
+                // " — Summary" itself (same as every other renderStepSummary/
+                // renderSummaryAsChildNode caller); passing an already-suffixed heading here
+                // produced a doubled "Fill Expense/Income Detail — Summary — Summary" in the box.
+                StepExecutor.renderSummaryAsChildNode("Fill Expense/Income Detail");
             });
 
-            StepExecutor.step("Click Save", () -> {
-                saveStartTimeRef[0] = LocalDateTime.now();
-                popupRef[0] = page.clickSave();
-                com.gsl.reports.StepSummaryBuffer.record("Save clicked at "
-                        + saveStartTimeRef[0].toLocalTime().withNano(0));
-            });
+            StepExecutor.step("UI Validation — After Fill", page::endFilledFormUiDeferred);
 
-            StepExecutor.step("Handle Post-Save Dialogs", () -> {
-                msgBoxRef[0] = PostSaveDialogHandler.forDomain(VoucherDomain.GV)
-                        .handle(popupRef[0], data);
-                com.gsl.reports.StepSummaryBuffer.record(data.isNeedsPaymentInfoWarning()
-                        ? "Post-save dialogs seen: payment-info-check warning (acknowledged) --&gt; message box."
-                        : "Post-save dialogs seen: none (no payment-info warning expected) --&gt; message box.");
-            });
-
-            StepExecutor.step("Verify Save Result", () -> {
-                docNoRef[0] = msgBoxRef[0].verifyDocumentSave(softAssert).getDocumentNo();
-                ReportLogger.pass("Voucher saved. Document No: " + docNoRef[0]);
-            });
-
-            StepExecutor.step("Close Voucher Page", () -> {
-                if (msgBoxRef[0] != null) {
-                    msgBoxRef[0].clickOk();
+            // Fails fast, naming the still-open Net Amount, instead of clicking a Save button
+            // ExtJS has silently greyed out and cascading into an opaque messagebox-1001-msg
+            // timeout 4 wait-layers later (confirmed live, reports/runs/20260913_133337: Save
+            // fired while visibly disabled, voucher unbalanced — Dr != Cr). Save is an ExtJS
+            // anchor greyed via aria-disabled, not the plain HTML disabled attribute, so
+            // WaitType.CLICKABLE alone never catches this — see VoucherFooterBase
+            // #waitUntilSaveEnabled's Javadoc.
+            StepExecutor.step("Verify balanced before Save", () -> {
+                boolean saveEnabled = page.waitUntilSaveEnabled(
+                        (int) com.gsl.config.ConfigFactory.getWaitConfig().interactionWaitSeconds());
+                if (!saveEnabled) {
+                    // Best-effort diagnostic only (GeneralVoucherDocumentInformation.getNetAmount's
+                    // own Javadoc flags its locator as unverified) — a failure reading it must not
+                    // swallow the real, already-confirmed "Save disabled" finding below.
+                    String netAmount;
+                    try {
+                        netAmount = page.getDocumentInformation().getNetAmount();
+                    } catch (RuntimeException e) {
+                        netAmount = "<unreadable: " + e.getClass().getSimpleName() + ">";
+                    }
+                    throw new IllegalStateException(
+                            "[GV Add] Save is still disabled after filling all Expense/Income rows and "
+                            + "Payment Information — voucher does not balance. Net Amount reads: '"
+                            + netAmount + "'. Check the row/site-allocation test data for a missing or "
+                            + "short split line rather than clicking Save regardless.");
                 }
-                page.close().clickYes(GeneralVoucherListPage::new);
-                ReportLogger.business("Voucher page closed, returned to list");
-                com.gsl.reports.StepSummaryBuffer.record(
-                        "Voucher page closed — Document No " + docNoRef[0] + " returned to list");
             });
 
-            StepExecutor.step("Logout (deferred)", () ->
-                    ReportLogger.session("Logout deferred — session may be reused by a later test on this thread."));
+            VoucherSaveFlowSteps.clickSave(ctx, () -> saveStartTimeRef[0] = LocalDateTime.now(), () -> {
+                DocumentPopup popup = page.clickSave();
+                com.gsl.reports.StepSummaryBuffer.record("Save clicked at <b>"
+                        + saveStartTimeRef[0].toLocalTime().withNano(0) + "</b>");
+                return popup;
+            });
 
-            StepExecutor.step("Database Validation", () -> {
-                new GeneralVoucherDbValidator().validate(data, docNoRef[0], saveStartTimeRef[0]);
-                ReportLogger.pass("DB validated. Document No: " + docNoRef[0]);
+            VoucherSaveFlowSteps.handlePostSaveDialogs(ctx, VoucherDomain.GV, data, () ->
+                    com.gsl.reports.StepSummaryBuffer.record(data.isNeedsPaymentInfoWarning()
+                            ? "Post-save dialogs seen: payment-info-check warning (acknowledged) --&gt; message box."
+                            : "Post-save dialogs seen: none (no payment-info warning expected) --&gt; message box."));
+
+            VoucherSaveFlowSteps.verifySaveResult(ctx);
+
+            VoucherSaveFlowSteps.closeVoucherPage(ctx,
+                    () -> page.close().clickYes(GeneralVoucherListPage::new), GeneralVoucherListPage::new,
+                    () -> com.gsl.reports.StepSummaryBuffer.record(
+                            "Voucher page closed — Document No <b>" + ctx.docNo + "</b> returned to list"));
+
+            VoucherSaveFlowSteps.deferLogout();
+
+            VoucherSaveFlowSteps.databaseValidation(ctx, docNo -> {
+                new GeneralVoucherDbValidator().validate(data, docNo, saveStartTimeRef[0]);
                 int detailRows = data.getExpenseIncomeDetailList() == null ? 0 : data.getExpenseIncomeDetailList().size();
                 int siteRows = data.getSiteApplicableRows().size();
                 com.gsl.reports.StepSummaryBuffer.record("DB validation: Levels 1-4 passed — "
-                        + detailRows + " detail row(s), " + siteRows + " site-applicable row(s) — Document No "
-                        + docNoRef[0]);
+                        + detailRows + " detail row(s), " + siteRows + " site-applicable row(s) — Document No <b>"
+                        + docNo + "</b>");
             });
 
             // Runs ALONGSIDE (not replacing) the hand-written Level 1-4 checks above — brings
@@ -284,27 +191,28 @@ public final class GeneralVoucherPredicateFactory {
             // resolved from the DB — the document didn't exist before Save, so an empty
             // VoucherSnapshot stands in for it; DiffEngine treats a missing table as zero rows, so
             // every row genuinely present AFTER is, by construction, an INSERT.
-            StepExecutor.step("Database Snapshot Validation", () -> {
-                DocumentContext context = new VoucherDocumentContextResolver().resolve(docNoRef[0], VoucherDomain.GV);
+            // softStep: a failure here (or in "Database Validation" above, or in the UI contract)
+            // must not hide the other areas — everything is reported together by finalizeAsserts.
+            VoucherSaveFlowSteps.softStep(ctx, "Database Snapshot Validation",
+                    com.gsl.validation.CombinedValidationError.Kind.SNAPSHOT, () -> {
+                DocumentContext context = new VoucherDocumentContextResolver().resolve(ctx.docNo, VoucherDomain.GV);
                 VoucherSnapshot before = new VoucherSnapshot(Collections.emptyMap());
                 VoucherSnapshot after = new SnapshotService(new Aud2SnapshotDao()).capture(context);
                 ExpectedChangeSet changeSet = GeneralVoucherCreateChangeSets.build(context, data);
 
                 VoucherSnapshotValidator validator = new VoucherSnapshotValidator();
-                validator.validate("General Voucher Create — Snapshot Validation — [" + docNoRef[0] + "]",
+                validator.validate("General Voucher Create — Snapshot Validation — [" + ctx.docNo + "]",
                         context, before, after, changeSet);
                 validator.assertAll();
-                ReportLogger.pass("Snapshot validation complete. Document No: " + docNoRef[0]);
+                ReportLogger.pass("Snapshot validation complete. Document No: " + ctx.docNo);
                 recordSnapshotDiffSummary(after);
             });
 
-            StepExecutor.step("Finalize save assertions", () -> {
-                softAssert.assertAll();
-                com.gsl.reports.StepSummaryBuffer.record(
-                        "All soft assertions passed — Document No " + docNoRef[0] + " finalized");
-            });
+            VoucherSaveFlowSteps.finalizeAsserts(ctx, () ->
+                    com.gsl.reports.StepSummaryBuffer.record(
+                            "All soft assertions passed — Document No <b>" + ctx.docNo + "</b> finalized"));
 
-            return docNoRef[0] != null;
+            return ctx.docNo != null;
         };
 
     /**
@@ -326,16 +234,22 @@ public final class GeneralVoucherPredicateFactory {
         recordFieldCheck("Reference", input.getReference(), uiReadBack.getReference());
         recordFieldCheck("Cash/Bank", input.getCashbank(), uiReadBack.getCashBank());
         recordFieldCheck("Remarks", input.getRemarks(), uiReadBack.getRemarks());
-        com.gsl.reports.StepSummaryBuffer.record("Owner Site (UI): " + nullSafe(uiReadBack.getOwnerSite())
-                + " — resolved live, no test-data input");
+        com.gsl.reports.StepSummaryBuffer.record("Owner Site (UI): <b>" + nullSafe(uiReadBack.getOwnerSite())
+                + "</b> — resolved live, no test-data input");
     }
 
-    /** One "label: Input='X' | UI='Y'" line, tick when they match (or there's nothing to
-     *  compare), cross when they genuinely differ — see {@link #recordDocumentInformationSummary}. */
+    /** One "label — filled with X, validated in UI as Y" line, tick when they match (or there's
+     *  nothing to compare), cross when they genuinely differ — see
+     *  {@link #recordDocumentInformationSummary}. Point 7: records nothing when the test-data
+     *  input was blank — a row with nothing to say carries no information (mirrors
+     *  {@code FinVchMainBaseValidator.buildLevel1Summary}'s own skip-if-blank precedent for the
+     *  refno line). Point C: reworded from "Input: X | UI: Y" to an explicit filled-then-validated
+     *  framing, and both sides bolded to match the rest of the report's summary boxes. */
     private static void recordFieldCheck(String label, String expected, String actual) {
-        boolean match = expected == null || expected.equalsIgnoreCase(actual == null ? null : actual.trim());
-        com.gsl.reports.StepSummaryBuffer.record(label + " — Input: " + nullSafe(expected)
-                + " | UI: " + nullSafe(actual), match);
+        if (expected == null || expected.isBlank()) return;
+        boolean match = expected.equalsIgnoreCase(actual == null ? null : actual.trim());
+        com.gsl.reports.StepSummaryBuffer.record(label + " — filled with <b>" + nullSafe(expected)
+                + "</b>, validated in UI as <b>" + nullSafe(actual) + "</b>", match);
     }
 
     private static String nullSafe(String value) {
@@ -349,21 +263,36 @@ public final class GeneralVoucherPredicateFactory {
      * multi-column table) for the same readability reason as
      * {@link #recordDocumentInformationSummary}.
      */
-    private static void recordExpenseIncomeDetailSummary(MergedFinanceGeneralVoucherData data) {
+    private static void recordExpenseIncomeDetailSummary(MergedFinanceGeneralVoucherData data,
+            GeneralVoucherAdd page) {
         List<ExpenseIncomeDetail> rows = data.getExpenseIncomeDetailList();
         if (rows == null || rows.isEmpty()) return;
+
+        // Item N: each row's own "Verify Row — UI read-back" rollup, folded into this ONE
+        // consolidated per-line summary instead of only being visible in each row's own
+        // (separately-rendered) drill-down box — collected during fillExpenseIncomeRows.
+        java.util.Map<String, String> verifications = page.getExpenseIncomeDetail().getLastRowVerificationSummaries();
 
         for (ExpenseIncomeDetail row : rows) {
             java.math.BigDecimal amount = row.getExpenseDr() != null ? row.getExpenseDr() : row.getIncomeCr();
             String sites = data.getSiteAllocationsForLine(row.getLineNo()).stream()
                     .map(sa -> sa.getSiteName() + " (" + sa.getAmount() + ")")
                     .reduce((a, b) -> a + ", " + b).orElse("&mdash;");
-            com.gsl.reports.StepSummaryBuffer.record("Line " + nullSafe(row.getLineNo())
-                    + " — GL: " + nullSafe(row.getGeneralLedger())
-                    + " | Type: " + (row.getResolvedGlType() == null ? "&mdash;" : row.getResolvedGlType().name())
-                    + " | Amount: " + (amount == null ? "&mdash;" : amount)
-                    + " | Sites: " + sites
-                    + " | Sub Ledger: " + nullSafe(row.getSubLedger()));
+            String lineKey = nullSafe(row.getLineNo());
+            String verification = verifications.get(row.getLineNo());
+            // Values bolded, matching the bold-key-values convention used everywhere else in this
+            // report (e.g. recordDocumentInformationSummary's "filled with <b>X</b>..." lines) —
+            // previously only the "Line N" label itself was bold, not the values after it.
+            com.gsl.reports.StepSummaryBuffer.record("<b>Line " + lineKey + "</b>"
+                    + " — GL: <b>" + nullSafe(row.getGeneralLedger()) + "</b>"
+                    + " | Type: <b>" + (row.getResolvedGlType() == null ? "&mdash;" : row.getResolvedGlType().label()) + "</b>"
+                    + " | Amount: <b>" + (amount == null ? "&mdash;" : amount) + "</b>"
+                    + " | Sites: <b>" + sites + "</b>"
+                    + " | Sub Ledger: <b>" + nullSafe(row.getSubLedger()) + "</b>"
+                    // Was missing entirely — "Verify Row" already shows this per-row, but the
+                    // consolidated summary at the top never restated it.
+                    + " | Ledger Narration: <b>" + nullSafe(row.getLedgerNarration()) + "</b>"
+                    + " | UI Validation: <b>" + (verification == null ? "&mdash;" : verification) + "</b>");
         }
     }
 
@@ -373,14 +302,35 @@ public final class GeneralVoucherPredicateFactory {
      * now always states the payment mode, plus instrument details when applicable.
      */
     private static String buildPaymentInformationSummary(MergedFinanceGeneralVoucherData data) {
-        var info = data.getCashBankPaymentInfo();
-        if (info == null || info.getPaymentMode() == null) {
-            return "Payment mode: CASH — no instrument entry required";
+        List<com.gsl.testdata.Finance.Operations.Vouchers.GeneralVoucher.PaymentInformation> payments = data.allPayments();
+        // Single payment (every pre-Round-6 voucher): the original one-liner.
+        if (payments.size() <= 1 && data.getExpenseIncomeDetailList().size() <= 1) {
+            return paymentLine(payments.isEmpty() ? null : payments.get(0));
         }
-        return "Payment mode: " + info.getPaymentMode()
-                + (info.getInstrumentNo() == null ? "" : " | Instrument No: " + info.getInstrumentNo())
-                + (info.getInstrumentDate() == null ? "" : " | Instrument Date: " + info.getInstrumentDate())
-                + (info.getDrawnOn() == null ? "" : " | Drawn On: " + info.getDrawnOn());
+        // Several rows: one line per grid row, stating what that row carries (or that it has none).
+        StringBuilder sb = new StringBuilder();
+        for (var row : data.getExpenseIncomeDetailList()) {
+            if (sb.length() > 0) sb.append("<br>");
+            var info = data.paymentForLine(row.getLineNo());
+            sb.append("Row ").append(row.getLineNo()).append(" — ")
+              .append(info == null ? "no payment information" : paymentLine(info));
+        }
+        return sb.toString();
+    }
+
+    private static String paymentLine(com.gsl.testdata.Finance.Operations.Vouchers.GeneralVoucher.PaymentInformation info) {
+        // Point D fix: a real, explicit CASH payment mode (non-null info) previously fell through
+        // to the generic branch below and lost the "no instrument entry required" clarification —
+        // only the info==null/paymentMode==null case caught it. Mirrors the exact CASH check
+        // GeneralVoucherExpenseIncomeDetail.handlePaymentInformation already uses for the same
+        // distinction.
+        if (info == null || info.getPaymentMode() == null || info.getPaymentMode() == PaymentSelectionType.CASH) {
+            return "Payment mode: <b>CASH</b> — no instrument entry required";
+        }
+        return "Payment mode: <b>" + info.getPaymentMode() + "</b>"
+                + (info.getInstrumentNo() == null ? "" : " | Instrument No: <b>" + info.getInstrumentNo() + "</b>")
+                + (info.getInstrumentDate() == null ? "" : " | Instrument Date: <b>" + info.getInstrumentDate() + "</b>")
+                + (info.getDrawnOn() == null ? "" : " | Drawn On: <b>" + info.getDrawnOn() + "</b>");
     }
 
     /**
@@ -413,8 +363,11 @@ public final class GeneralVoucherPredicateFactory {
             StepExecutor.step("Fill Document Information", () ->
                     page.fillDocumentHeader(data.getDocumentInformation()));
 
+            // expectSiteAllocationComplete=false: NEG_SITE_ALLOCATION_PENDING/NEG_SITE_NOT_ALLOCATED
+            // deliberately leave the row's site allocation incomplete so Save raises its own
+            // validation below — see GeneralVoucherExpenseIncomeDetail.allocateSites's Javadoc.
             StepExecutor.step("Fill Expense/Income Detail", () ->
-                    page.fillExpenseIncomeRows(data));
+                    page.fillExpenseIncomeRows(data, false));
 
             final boolean[] ok = new boolean[1];
 
@@ -437,8 +390,8 @@ public final class GeneralVoucherPredicateFactory {
             StepExecutor.step("Hover row indicator — verify inline tooltip: "
                     + data.getExpectedValidation().name(), () -> {
                 // rowIndex 0 — every NEGATIVE_FORM_VALIDATION_BEHAVIOR fixture builds exactly one
-                // ExpenseIncomeDetail row (see siteAllocationPending/subLedgerRequired/
-                // siteNotAllocated below), same single-row assumption AP/AR's own hover step makes
+                // ExpenseIncomeDetail row (see GeneralVoucherTemplateLoader's negSiteAllocationPendingTemplate/
+                // negSiteNotAllocatedTemplate), same single-row assumption AP/AR's own hover step makes
                 // via data.getSubLedgerInformationList().get(0).
                 NegativeValidationSteps.assertRowTooltip(
                         GeneralVoucherExpenseIncomeDetail.rowIndicatorButton(0),
@@ -456,7 +409,7 @@ public final class GeneralVoucherPredicateFactory {
         };
 
     /**
-     * NEG_SUBLEDGER_REQUIRED_BEHAVIOR — for {@link #subLedgerRequired()}.
+     * NEG_SUBLEDGER_REQUIRED_BEHAVIOR — for {@link GeneralVoucherTemplateLoader#negSubledgerRequiredTemplate}.
      *
      * <p>Deliberately NOT {@link #NEGATIVE_FORM_VALIDATION_BEHAVIOR} (Save → generic dialog →
      * hover tooltip): this scenario's validation doesn't happen at Save at all. Confirmed live,
@@ -511,7 +464,8 @@ public final class GeneralVoucherPredicateFactory {
         };
 
     /**
-     * NEG_CASH_POST_DATED_BEHAVIOR — for {@link #cashPostDated()} (plan §Round 21).
+     * NEG_CASH_POST_DATED_BEHAVIOR — for {@link GeneralVoucherTemplateLoader#negCashPostDatedTemplate}
+     * (plan §Round 21).
      *
      * <p>Reaches Save the same way {@link #POSITIVE_CREATE_BEHAVIOR} does (fill header + row +
      * Cash/Bank payment info — a documented no-op for a Cash-type ledger, see
@@ -531,7 +485,7 @@ public final class GeneralVoucherPredicateFactory {
                     page.fillExpenseIncomeRows(data));
 
             StepExecutor.step("Fill Cash/Bank Payment Information", () ->
-                    page.handlePaymentInformation(data.getCashBankPaymentInfo()));
+                    page.handlePaymentInformation(data.getCashBankPaymentInfo(), data.isCashBankPaymentDebit()));
 
             StepExecutor.step("Click Save — expect Cash+post-dated rejection dialog", () -> {
                 DocumentPopup popup = page.clickSave();
@@ -541,6 +495,54 @@ public final class GeneralVoucherPredicateFactory {
                 ReportLogger.pass("Popup header: [" + actualHeader + "] | Expected body: ["
                         + expectedMsg + "] | Actual body: [" + actualMsg + "]");
                 popup.clickOkOnErrorDialog();
+            });
+
+            StepExecutor.step("Cancel (Logout deferred)", () -> {
+                page.close().clickYes(GeneralVoucherListPage::new);
+                ReportLogger.session("Logout deferred — session may be reused by a later test on this thread.");
+            });
+
+            return true;
+        };
+
+    /**
+     * NEG_SITE_ALLOCATION_CROSS_OU_BEHAVIOR — for
+     * {@link GeneralVoucherTemplateLoader#negSiteAllocationCrossOuTemplate} (Round 16).
+     *
+     * <p>Deliberately NOT {@link #NEGATIVE_FORM_VALIDATION_BEHAVIOR}/{@link
+     * #NEG_CASH_POST_DATED_BEHAVIOR}'s dialog-assertion shape — this scenario asserts row
+     * ABSENCE inside the Allocate Sites picker itself ({@link AllocateSitesPopup#assertSiteNotFound}),
+     * not a Save-time or Site-button-click dialog. Mirrors {@link #NEG_SUBLEDGER_REQUIRED_BEHAVIOR}'s
+     * overall shape (fill header + row basics, click Site, assert, discard) since both scenarios
+     * stop short of ever completing a real Site allocation.
+     *
+     * <ol>
+     *   <li>Fill document header.</li>
+     *   <li>Fill the row's GL/Narration/Is Reversal/Amount — stopping short of allocating a Site.</li>
+     *   <li>Click Site — open Allocate Sites normally (Type2 has no Sub-Ledger gate, unlike
+     *       {@code NEG_SUBLEDGER_REQUIRED}'s Type3 row), search for the resolved cross-OU site,
+     *       assert NO row appears, close the picker without selecting anything.</li>
+     *   <li>Close the (still site-less) Allocate Sites window, discard the form, and log out.</li>
+     * </ol>
+     */
+    public static final Supplier<BiPredicate<MergedFinanceGeneralVoucherData, GeneralVoucherAdd>>
+        NEG_SITE_ALLOCATION_CROSS_OU_BEHAVIOR = () -> (data, page) -> {
+
+            StepExecutor.step("Fill Document Information", () ->
+                    page.fillDocumentHeader(data.getDocumentInformation()));
+
+            ExpenseIncomeDetail row = data.getExpenseIncomeDetailList().get(0);
+            StepExecutor.step("Fill row basic fields (GL/Narration/Is Reversal/Amount) — "
+                    + "Site left unallocated", () ->
+                    page.getExpenseIncomeDetail().fillRowBasicFields(0, row));
+
+            StepExecutor.step("Click Site — search for a cross-OU site, expect NO results", () -> {
+                String crossOuSiteName = data.getSiteAllocationList().get(0).getSiteName();
+                AllocateSitesPopup popup = page.getExpenseIncomeDetail().clickSiteButton(0);
+                popup.assertSiteNotFound(crossOuSiteName);
+                popup.clickCancel();
+                ReportLogger.pass("Allocate Sites picker correctly returned NO row for cross-OU site '"
+                        + crossOuSiteName + "'.");
             });
 
             StepExecutor.step("Cancel (Logout deferred)", () -> {

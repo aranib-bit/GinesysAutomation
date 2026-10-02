@@ -31,6 +31,9 @@ public class DocumentPopup {
         OK_GO_AHEAD_CAPS_START ("OK, Go Ahead"),
         PROCEED_ANYWAY     ("Proceed Anyway"),
         STAY               ("Stay"),
+        /** AP Voucher's Adjustment-amount-mismatch Confirmation — confirmed live (user screenshots). */
+        UPDATE_PAYMENT_AMOUNT ("Update payment amount"),
+        I_WILL_ADJUST_MORE    ("I will adjust more"),
         CLOSE              ("Close");
 
         private final String label;
@@ -434,6 +437,30 @@ public class DocumentPopup {
     }
 
     /**
+     * Clicks "Update payment amount" on the AP amount-mismatch Confirmation
+     * ({@link DocumentMessageBoxMessage#ADJUSTMENT_AMOUNT_MISMATCH_CONFIRMATION}): the row's
+     * payment amount becomes the adjusted total. The app then shows a "Result" dialog
+     * ("… Updated Successfully.") which is dismissed here; returns the sub-ledger grid parent.
+     */
+    public AdjustmentEntryParent clickUpdatePaymentAmount() {
+        SeleniumUtils.click(ButtonText.UPDATE_PAYMENT_AMOUNT.locator(), WaitType.CLICKABLE, "Update payment amount");
+        DocumentMessageBox result = new DocumentMessageBox();
+        result.waitForMessageToContain(DocumentMessageBoxMessage.PAYMENT_AMOUNT_UPDATED_RESULT);
+        result.verifyMessage(DocumentMessageBoxMessage.PAYMENT_AMOUNT_UPDATED_RESULT);
+        result.clickOk();
+        return gridParent;
+    }
+
+    /**
+     * Clicks "I will adjust more" on the AP amount-mismatch Confirmation — stays in Adjustment
+     * Entry so further documents can be added (any of the 3 adjustment methods).
+     */
+    public AdjustmentEntry clickAdjustMore() {
+        SeleniumUtils.click(ButtonText.I_WILL_ADJUST_MORE.locator(), WaitType.CLICKABLE, "I will adjust more");
+        return adjustmentEntry;
+    }
+
+    /**
      * Clicks the OK button on the validation error popup (after {@link #verifyErrorMessage}).
      * Used by boundary scenarios that need to stay on the form after dismissing the dialog
      * (e.g. to hover the row indicator and read the inline tooltip).
@@ -490,9 +517,39 @@ public class DocumentPopup {
                         return now != null && !now.isBlank() && !now.equals(priorText);
                     });
             System.out.println("Message box changed after accepting release.");
+            handleAutoPostSameUserAlertIfPresent(driver);
         } catch (Exception e) {
             System.out.println("Release-after-save confirmation check skipped (non-fatal): " + e.getMessage());
         }
+    }
+
+    /**
+     * After accepting the release confirmation, a user who is also the auto-poster (company
+     * maker/poster policy) gets an extra Alert — see
+     * {@link DocumentMessageBoxMessage#AUTO_POST_SAME_USER_ALERT}. If it is showing, click OK and
+     * wait for the text to change to the normal save Result; otherwise a no-op. Without this the
+     * alert's text was mistaken for the save Result and "Document number was not found" failed
+     * the test (run 20260930_163632, EDIT-HEADER-01).
+     */
+    private void handleAutoPostSameUserAlertIfPresent(WebDriver driver) {
+        List<WebElement> els = driver.findElements(By.xpath("//*[@id='messagebox-1001-msg']"));
+        if (els.isEmpty() || !els.get(0).isDisplayed()) return;
+        final String alertText = els.get(0).getText();
+        if (alertText == null
+                || !alertText.contains(DocumentMessageBoxMessage.AUTO_POST_SAME_USER_ALERT.getText())) {
+            return;
+        }
+        ReportLogger.business("Auto-posting alert detected (same user cannot create/modify and post) "
+                + "— clicking OK; document will be saved Unposted");
+        SeleniumUtils.click(CommonButton.OK.locator(), WaitType.CLICKABLE, "AUTO_POST_ALERT_OK");
+        WaitUtils.fluentWaitBuilder()
+                .withMessage("the message box to change from the auto-posting alert to the save result")
+                .until(d -> {
+                    List<WebElement> now = d.findElements(By.xpath("//*[@id='messagebox-1001-msg']"));
+                    if (now.isEmpty() || !now.get(0).isDisplayed()) return false;
+                    String t = now.get(0).getText();
+                    return t != null && !t.isBlank() && !t.equals(alertText);
+                });
     }
 
     private void handleTdsAutoJournalPromptIfPresent(WebDriverWait wait, WebDriver driver) {

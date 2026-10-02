@@ -39,6 +39,13 @@ import static io.github.sskorol.data.TestDataReader.use;
  */
 public class ExcelGeneralVoucherDataSource implements TestDataSource<MergedFinanceGeneralVoucherData> {
 
+    /**
+     * Reads the General Voucher Excel fixtures, resolves each line's GL type live from
+     * {@code fingl} (see class Javadoc), resolves the owner site for the logged-in user, joins
+     * everything by {@code TestCaseID}, and expands each surviving row into
+     * {@code invocationcount} copies with globally unique {@code invocationIndex}es — mirrors
+     * {@link ExcelApVoucherDataSource#load}'s shape, simplified for GV's flatter document.
+     */
     @Override
     public List<MergedFinanceGeneralVoucherData> load(String methodName) {
 

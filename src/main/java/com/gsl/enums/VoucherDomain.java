@@ -17,6 +17,23 @@ import com.gsl.validation.snapshot.TableRule;
 import java.util.List;
 import java.util.Optional;
 
+/**
+ * The Finance voucher domain a test/validator is operating against — {@link #AR}, {@link #AP},
+ * {@link #GV} (General Voucher), and {@link #CONTRA} each map to one real voucher flow (list page,
+ * Add/Edit form, grid columns, menu navigation, {@link VoucherType}), plus {@link #COMMON} as a
+ * pseudo-domain used only to mark rules/columns/actions shared across every real domain (e.g. in
+ * {@code RuleFilter}/{@link ValidationRule}) — {@code COMMON}'s own per-domain accessors all throw
+ * {@link UnsupportedOperationException} since it has no actual page/form of its own.
+ *
+ * <p>Each domain constant overrides this enum's abstract accessors to supply its own literal
+ * strings/enum constants (page headers, field ids, menu shortcode, sub-ledger column header,
+ * {@link VoucherType}); the non-abstract methods below (e.g. {@link #getListPageHeader()}, {@link
+ * #getAddFormHeader()}) are the single computed/derived surface other code should call, delegating
+ * to those per-domain accessors rather than hardcoding domain-specific strings elsewhere.
+ * {@code CONTRA} is only partially wired — several of its accessors throw pending confirmation of
+ * its still-unautomated flow (see e.g. {@link #getMenuShortcode()}'s and {@link VoucherType#CONTRA}'s
+ * own Javadoc).
+ */
 public enum VoucherDomain implements VoucherDocumentLabels {
 
     AR {
@@ -27,6 +44,7 @@ public enum VoucherDomain implements VoucherDocumentLabels {
         /** TODO-confirm against {@code mdmenu.sys_shortcode} — same open item as GV's (plan §2/§4/§9). */
         @Override public String getMenuShortcode() { return "FinanceARVoucher"; }
         @Override public VoucherType getVoucherType() { return VoucherType.AR; }
+        @Override public String getPaymentDrawnOnLabel() { return "Drawn on:"; }
         /**
          * AR's Sub-Ledger Information grid has no "Sub Ledger Id" column (confirmed live —
          * run 20260827_133420, FIN-AR-ADD-DOC-04: columns are Sub Ledger / General Ledger /
@@ -47,6 +65,7 @@ public enum VoucherDomain implements VoucherDocumentLabels {
         /** TODO-confirm against {@code mdmenu.sys_shortcode} — same open item as GV's (plan §2/§4/§9). */
         @Override public String getMenuShortcode() { return "FinanceAPVoucher"; }
         @Override public VoucherType getVoucherType() { return VoucherType.AP; }
+        @Override public String getPaymentDrawnOnLabel() { return "Cheque label:"; }
     },
     CONTRA {
         @Override public String getDateFieldId() { return "transactionDate"; }
@@ -56,6 +75,7 @@ public enum VoucherDomain implements VoucherDocumentLabels {
         @Override public FinanceVoucherAddEditPageHeader getAddEditPageHeaderEnum() { return FinanceVoucherAddEditPageHeader.CONTRA; }
         @Override public String getMenuShortcode() { throw new UnsupportedOperationException("CONTRA has no menu shortcode resolved yet"); }
         @Override public VoucherType getVoucherType() { return VoucherType.CONTRA; }
+        @Override public String getPaymentDrawnOnLabel() { throw new UnsupportedOperationException("CONTRA has no Payment Information popup"); }
     },
     GV {
         @Override public String getDateFieldId() { return "transanctionDate"; }
@@ -66,6 +86,10 @@ public enum VoucherDomain implements VoucherDocumentLabels {
         /** TODO-confirm against {@code mdmenu.sys_shortcode} — same open item flagged in plan §2/§4/§9. */
         @Override public String getMenuShortcode() { return "FinanceGeneralVoucher"; }
         @Override public VoucherType getVoucherType() { return VoucherType.GENERAL; }
+        /** Confirmed live (screenshot) — GV's Payment Information popup labels this field
+         *  "Cheque label:", the same as AP, NOT "Drawn on:" as previously (wrongly) assumed in
+         *  the now-removed {@code GvPaymentInfoLabel.DRAWN_ON}. */
+        @Override public String getPaymentDrawnOnLabel() { return "Cheque label:"; }
     },
     COMMON {
         @Override public String getDateFieldId() { return null; }
@@ -74,9 +98,27 @@ public enum VoucherDomain implements VoucherDocumentLabels {
         @Override public FinanceVoucherAddEditPageHeader getAddEditPageHeaderEnum() { throw new UnsupportedOperationException("COMMON has no Add/Edit page"); }
         @Override public String getMenuShortcode() { throw new UnsupportedOperationException("COMMON has no menu shortcode"); }
         @Override public VoucherType getVoucherType() { throw new UnsupportedOperationException("COMMON has no voucher type"); }
+        @Override public String getPaymentDrawnOnLabel() { throw new UnsupportedOperationException("COMMON has no Payment Information popup"); }
     };
 
+    /** Returns the {@link IVoucherGridColumnHeader} constant carrying this domain's own "Sub
+     *  Ledger" grid column header (each domain declares its own {@code *GridColumnHeader} enum,
+     *  e.g. {@link ARVoucherGridColumnHeader#SUB_LEDGER}) — {@code CONTRA}/{@code COMMON} throw
+     *  {@link UnsupportedOperationException}, neither has a sub-ledger grid at all. */
     public abstract IVoucherGridColumnHeader getSubLedgerColumnHeader();
+
+    /**
+     * Returns this domain's label for the Payment Information popup's "Drawn On"/"Cheque label"
+     * field — the one field whose text genuinely differs by domain (AR: "Drawn on:"; AP/GV:
+     * "Cheque label:" — confirmed live via screenshot for all three). Single source of truth for
+     * {@code PaymentInformationPopup#setDrawnOn}, replacing what used to be three separate,
+     * duplicated single-constant enums ({@code ArPaymentInfoLabel}/{@code ApPaymentInfoLabel}/
+     * {@code GvPaymentInfoLabel}) — the GV one carried a wrong, never-live-verified guess
+     * ("Drawn on:") until this consolidation. {@code CONTRA}/{@code COMMON} throw {@link
+     * UnsupportedOperationException} — neither has a Payment Information popup at all (confirmed:
+     * no {@code ContraPaymentInformationPopup} class exists anywhere in this codebase).
+     */
+    public abstract String getPaymentDrawnOnLabel();
 
     /** Returns the {@link FinanceVoucherListPageHeader} constant carrying this domain's literal
      *  list-page header text — the single source of truth {@link #getListPageHeader()} delegates to. */

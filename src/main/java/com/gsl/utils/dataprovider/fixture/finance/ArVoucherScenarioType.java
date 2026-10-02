@@ -22,21 +22,27 @@ import java.util.function.Supplier;
 public enum ArVoucherScenarioType implements
         VoucherScenarioType<MergedFinanceArVoucherData, ArVoucherAdd, ArVoucherLiveDbRefs> {
 
+    /** Receipt payment with no adjustment type — mandatory fields only, no pending documents needed. */
     DOC_NO_ADJUSTMENT(
             ArVoucherTemplateLoader::docNoAdjustmentTemplate,
             ArVoucherPredicateFactory.POSITIVE_CREATE_BEHAVIOR
     ),
 
+    /** Receipt payment via manual Select Document popup — see {@link SelectDocumentCombinations}
+     *  for the full variant matrix driving this scenario. */
     SELECT_DOCUMENT(
             ArVoucherTemplateLoader::selectDocumentTemplate,
             ArVoucherPredicateFactory.POSITIVE_CREATE_BEHAVIOR
     ),
 
+    /** Receipt payment via FIFO automatic set-off — no pre-loaded document list, FIFO auto-selects
+     *  documents in the UI. */
     FIFO_SETOFF(
             ArVoucherTemplateLoader::fifoTemplate,
             ArVoucherPredicateFactory.POSITIVE_CREATE_BEHAVIOR
     ),
 
+    /** Receipt payment via Reference Sitewise FIFO. */
     REFERENCE_SITEWISE_FIFO(
             ArVoucherTemplateLoader::refSitewiseFifoTemplate,
             ArVoucherPredicateFactory.POSITIVE_CREATE_BEHAVIOR

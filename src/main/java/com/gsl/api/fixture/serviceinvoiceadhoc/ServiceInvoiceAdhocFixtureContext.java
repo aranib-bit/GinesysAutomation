@@ -23,6 +23,7 @@ public class ServiceInvoiceAdhocFixtureContext {
     int quantity;
     int rate;
 
+    /** Builds the context from the {@code fixture.serviceinvoiceadhoc.*} keys in {@code api.properties}. */
     public static ServiceInvoiceAdhocFixtureContext fromConfig() {
         ApiConfig config = ConfigFactory.getApiConfig();
         int ownerSiteCode = Integer.parseInt(config.fixtureServiceInvoiceAdhocOwnerSiteCode());

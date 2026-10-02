@@ -3,12 +3,19 @@ package com.gsl.pages.pagecomponent.Finance.Operations.Common;
 import com.gsl.enums.VoucherDomain;
 import com.gsl.enums.WaitType;
 import com.gsl.pages.Finance.Operations.Common.PaymentInformationPopup;
+import com.gsl.pages.Finance.Operations.Common.SubLedgerRowIdentity;
 import com.gsl.pages.enums.Finance.Operations.Common.CommonVoucherGridColumnHeader;
+import com.gsl.pages.enums.Finance.Operations.Common.IVoucherGridColumnHeader;
 import com.gsl.pages.enums.Finance.Operations.Common.SubLedgerGridButtonLabel;
 import com.gsl.pages.pagecomponent.Finance.Common.AdjustmentEntryParent;
 import com.gsl.utils.Selenium.JavascriptExecutorUtils;
 import com.gsl.utils.Selenium.SeleniumUtils;
+import com.gsl.validation.ui.UiComponentValidator;
+import com.gsl.validation.ui.UiValidationFailure;
+import com.gsl.validation.ui.UiValidationLevel;
 import org.openqa.selenium.By;
+
+import java.util.List;
 
 /**
  * Common XPath templates and button-click logic shared by AR and AP Voucher
@@ -87,6 +94,37 @@ public abstract class VoucherSubLedgerInformationBase implements AdjustmentEntry
         SeleniumUtils.click(By.xpath(xpath), WaitType.CLICKABLE, "SUBLEDGERADJUSTBUTTON");
     }
 
+    /**
+     * Reads row {@code rowNumber}'s (1-based) own Sub-Ledger name/Reference Site/Sub Ledger Id
+     * text straight off the rendered grid — the inverse of {@link #clickAdjust}'s own
+     * {@code data-columnid}-scoped locating shape: that method LOCATES a row given these three
+     * values; this method READS them, for a caller that only knows the row's position (e.g.
+     * re-tagging an already-populated Edit-mode row, which has no test-data-supplied identity to
+     * locate it by). Safe to call regardless of the row's current tag state — Sub-Ledger name/
+     * Reference Site/Sub Ledger Id are a persistent part of the document (finvchdet/finsl),
+     * unaffected by whether the row is currently tagged.
+     */
+    protected SubLedgerRowIdentity readRowIdentity(int rowNumber) {
+        String subLedgerName = SeleniumUtils.getAttribute(
+                By.xpath("(//tr[td[@data-columnid=" + colSubLedger + "]])[" + rowNumber
+                        + "]//td[@data-columnid=" + colSubLedger + "]/div"),
+                "textContent", "SUBLEDGER_NAME_ROW" + rowNumber);
+        String referenceSite = SeleniumUtils.getAttribute(
+                By.xpath("(//tr[td[@data-columnid=" + colRefSite + "]])[" + rowNumber
+                        + "]//td[@data-columnid=" + colRefSite + "]/div"),
+                "textContent", "REFERENCE_SITE_ROW" + rowNumber);
+        String slId = slIdColumnAvailable
+                ? SeleniumUtils.getAttribute(
+                        By.xpath("(//tr[td[@data-columnid=" + colSlId + "]])[" + rowNumber
+                                + "]//td[@data-columnid=" + colSlId + "]/div"),
+                        "textContent", "SL_ID_ROW" + rowNumber)
+                : null;
+        return new SubLedgerRowIdentity(
+                subLedgerName == null ? null : subLedgerName.trim(),
+                referenceSite == null ? null : referenceSite.trim(),
+                slId == null ? null : slId.trim());
+    }
+
     protected PaymentInformationPopup clickPaymentButton(String subLedger, String referenceSite, String slid) {
         String xpath = (slIdColumnAvailable && slid != null && !slid.isBlank())
                 ? String.format(PAYMENT_BUTTON_TEMPLATE_WITH_SLID, subLedger, referenceSite, slid)
@@ -108,4 +146,27 @@ public abstract class VoucherSubLedgerInformationBase implements AdjustmentEntry
     }
 
     protected abstract PaymentInformationPopup createPaymentPopup();
+
+    // ── UI-contract validation — grid header ─────────────────────────────────────────────────
+    //
+    // Placed here (not per-domain) so AR/AP/GV all inherit it for the columns common to every
+    // voucher's sub-ledger grid — same "base-class placement delivers free AR/AP reuse" reasoning
+    // as VoucherDocumentInformationBase's own validate*Ui methods.
+
+    /** Validates the Sub Ledger column header's text+style (resolved per-domain, e.g. AR/GV "Sub
+     *  Ledger" vs. AP "Sub-Ledger"). */
+    public List<UiValidationFailure> validateSubLedgerGridHeaderUi(UiValidationLevel level) {
+        IVoucherGridColumnHeader col = domain.getSubLedgerColumnHeader();
+        return UiComponentValidator.validateGridHeader(col.headerLocator(), "GRID_HEADER_SUB_LEDGER",
+                col.headerText(), level);
+    }
+
+    /** Validates the Reference Site column header's text+style — {@code CONTRA}/AR-excluded
+     *  domains should not call this (AR has no Reference Site column; see
+     *  {@link VoucherDomain#excludesCommonColumn}). */
+    public List<UiValidationFailure> validateReferenceSiteGridHeaderUi(UiValidationLevel level) {
+        IVoucherGridColumnHeader col = CommonVoucherGridColumnHeader.REFERENCE_SITE.resolveFor(domain);
+        return UiComponentValidator.validateGridHeader(col.headerLocator(), "GRID_HEADER_REFERENCE_SITE",
+                col.headerText(), level);
+    }
 }

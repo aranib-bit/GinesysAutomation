@@ -10,18 +10,22 @@ import java.util.List;
 import java.util.Map;
 
 /**
- * UiFrameworkAdapter implementation for Angular (9+ Ivy).
- * Uses window.ng (Ivy DevTools API) when available.
- * Falls back to DOM attribute scan ([ng-version], [_nghost]) for production builds
- * where window.ng is absent. Logs WARN when falling back so it is visible in reports.
+ * {@link UiFrameworkAdapter} implementation for Angular (9+ Ivy) — uses {@code window.ng} (the Ivy
+ * DevTools API) when available. Falls back to a DOM attribute scan ({@code [ng-version]},
+ * {@code [_nghost]}) for production builds where {@code window.ng} is absent, logging a WARN when
+ * falling back so it is visible in reports.
+ *
+ * <p>Siblings: {@link ExtJsUiAdapter}, {@link ReactUiAdapter}.
  */
 public final class AngularUiAdapter implements UiFrameworkAdapter {
 
     private static final Logger LOG = LogManager.getLogger(AngularUiAdapter.class);
 
+    /** {@inheritDoc} Always {@code "Angular"}. */
     @Override
     public String frameworkName() { return "Angular"; }
 
+    /** {@inheritDoc} Tries {@code window.ng.getComponent} on each Angular root element first; falls back to a DOM attribute scan (logged as a WARN) when {@code window.ng} is unavailable. */
     @Override
     @SuppressWarnings("unchecked")
     public List<ComponentState> getComponentDiagnostics(WebDriver driver) {
@@ -112,6 +116,7 @@ public final class AngularUiAdapter implements UiFrameworkAdapter {
         return result;
     }
 
+    /** {@inheritDoc} Reads the {@code name} attribute of the page's {@code router-outlet}. */
     @Override
     public String getActiveModule(WebDriver driver) {
         try {
@@ -127,6 +132,7 @@ public final class AngularUiAdapter implements UiFrameworkAdapter {
         }
     }
 
+    /** {@inheritDoc} Reads the element with {@code role="tab"} and {@code aria-selected="true"}. */
     @Override
     public String getActiveTab(WebDriver driver) {
         try {
@@ -142,6 +148,7 @@ public final class AngularUiAdapter implements UiFrameworkAdapter {
         }
     }
 
+    /** {@inheritDoc} Returns the current pathname + search + hash. */
     @Override
     public String getActiveRoute(WebDriver driver) {
         try {
@@ -153,12 +160,14 @@ public final class AngularUiAdapter implements UiFrameworkAdapter {
         }
     }
 
+    /** Normalizes a JS execution result to a trimmed string, treating {@code null}/the literal "null" as empty. */
     private static String safeString(Object o) {
         if (o == null) return "";
         String s = String.valueOf(o).trim();
         return "null".equalsIgnoreCase(s) ? "" : s;
     }
 
+    /** Normalizes a JS execution result to a boolean. */
     private static boolean safeBoolean(Object o) {
         if (o instanceof Boolean b) return b;
         return "true".equalsIgnoreCase(String.valueOf(o));

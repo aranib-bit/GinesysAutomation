@@ -23,6 +23,11 @@ public final class ExecutionProviderRegistry {
 
     private ExecutionProviderRegistry() {}
 
+    /**
+     * Looks up the {@link ExecutionProvider} registered for {@code mode}.
+     *
+     * @throws IllegalArgumentException if no provider is registered for {@code mode}
+     */
     public static ExecutionProvider get(RunMode mode) {
         ExecutionProvider provider = REGISTRY.get(mode);
         if (provider == null) {

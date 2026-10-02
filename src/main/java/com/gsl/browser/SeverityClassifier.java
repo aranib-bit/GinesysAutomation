@@ -8,6 +8,7 @@ public final class SeverityClassifier {
 
     private SeverityClassifier() {}
 
+    /** {@link #classify(String, String)} with the raw JS level defaulted to {@code "log"}. */
     public static LogSeverity classify(String message) {
         return classify(message, "log");
     }

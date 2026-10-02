@@ -23,12 +23,26 @@ import java.util.stream.Collectors;
 import static io.github.sskorol.data.TestDataReader.use;
 
 /**
- * Loads AR Voucher test data from Excel (existing behaviour — unchanged).
- * This is the exact body of the original MergedFinArVoucherDataSupplier.dataSupplier()
- * extracted verbatim.
+ * Excel-driven {@link TestDataSource} for AR Voucher's Create flow — reads every sheet a
+ * combination of sub-ledger adjustment types can touch ({@code MasterTestData},
+ * {@code DocumentInformation}, {@code SubLedgerInformation}, {@code SelectDocument},
+ * {@code ReferenceSitewiseFIFOsetoff}, {@code PaymentInformation}) and joins them by
+ * {@code TestCaseID}, filtered first by test method name then by presence in
+ * {@code DocumentInformation}.
+ *
+ * <p>This is the exact body of the original {@code MergedFinArVoucherDataSupplier.dataSupplier()},
+ * extracted verbatim — existing behaviour, unchanged. Its DB-mode sibling is
+ * {@link DbArVoucherDataSource}, which resolves the same {@link MergedFinanceArVoucherData} shape
+ * from live pending-AR documents instead of a fixture sheet.
  */
 public class ExcelArVoucherDataSource implements TestDataSource<MergedFinanceArVoucherData> {
 
+    /**
+     * Reads the AR Voucher Excel fixtures, joins them by {@code TestCaseID}, and expands each
+     * surviving {@code MasterTestData} row into {@code invocationcount} copies — each carrying a
+     * globally unique {@code invocationIndex} so {@code TestListener} can format
+     * {@code FIN-AR-ADD-01}, {@code -02}, … across the whole result list.
+     */
     @Override
     public List<MergedFinanceArVoucherData> load(String methodName) {
 

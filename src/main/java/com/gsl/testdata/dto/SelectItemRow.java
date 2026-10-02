@@ -4,7 +4,13 @@ import io.github.sskorol.data.Column;
 import io.github.sskorol.data.Sheet;
 import lombok.Data;
 
-
+/**
+ * One row of the "SelectItem" sheet in the receipts workbook — the item-search detail rows joined
+ * onto an {@link ItemBlock} by {@code MergedReceiptDataSupplier} when that block's {@link
+ * ItemDetailsRow#getItemSelectionMajorMethod()} is {@code "Item"} and {@link
+ * ItemDetailsRow#getItemSetSelectionWay()} is {@code "Select Item"}. {@link #searchKeyword1}/
+ * {@link #searchValue1} drive the item-search field/value used to locate the item in the UI.
+ */
 @Sheet(name="SelectItem")
 public class SelectItemRow {
     @Column(name = "TestCaseID")

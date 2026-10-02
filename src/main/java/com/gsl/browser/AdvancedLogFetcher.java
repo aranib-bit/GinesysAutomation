@@ -20,6 +20,12 @@ public final class AdvancedLogFetcher {
 
     private AdvancedLogFetcher() {}
 
+    /**
+     * Reads {@code window.testLogs} (falling back to the {@code sessionStorage} backup when the
+     * page just navigated and the shim hasn't restored the in-memory array yet), classifies each
+     * entry's severity via {@link SeverityClassifier}, and returns every entry except those
+     * classified {@link LogSeverity#IGNORE}. Returns an empty list (logged) on any JS/driver error.
+     */
     @SuppressWarnings("unchecked")
     public static List<BrowserLogRecord> fetchLogs() {
         List<BrowserLogRecord> records = new ArrayList<>();

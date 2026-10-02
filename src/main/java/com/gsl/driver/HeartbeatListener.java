@@ -22,6 +22,12 @@ import java.lang.reflect.Method;
  */
 public final class HeartbeatListener implements WebDriverListener {
 
+    /**
+     * Fires before every intercepted WebDriver/WebElement/etc. call; refreshes the heartbeat for
+     * the current thread's UI user, but only when that user is a SET1/UI-type credential —
+     * API-only or non-pool credentials are silently skipped since {@link UserPool} starvation
+     * detection only tracks SET1 UI holders.
+     */
     @Override
     public void beforeAnyCall(Object target, Method method, Object[] args) {
         UserCredential user = DriverManager.getCurrentUser();

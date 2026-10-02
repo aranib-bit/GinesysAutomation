@@ -94,17 +94,49 @@ public final class FoldableSectionRenderer {
      * @param headerHtml pre-built icon+title span, typically from {@link #headerLabel}
      */
     public static String sectionOpen(String openAttr, String summaryClass, String summaryStyle, String headerHtml) {
-        return "<details " + openAttr + "><summary class='" + summaryClass + "'"
+        return sectionOpen(openAttr, summaryClass, summaryStyle, headerHtml, null);
+    }
+
+    /** Same as the 4-arg overload, but with an {@code id} placed directly on the {@code <details>}
+     *  element itself — Item Y (Round 5): a scroll target used to be a separate {@code <a id>}
+     *  marker sitting BEFORE a collapsed {@code <details>}, so clicking a Validation Summary
+     *  number scrolled to a still-closed accordion with no visible content change. Putting the id
+     *  on the {@code <details>} lets {@link #scrollLink} force it open before scrolling.
+     *  {@code id} may be {@code null} (no id attribute), same as every existing call site. */
+    public static String sectionOpen(String openAttr, String summaryClass, String summaryStyle, String headerHtml, String id) {
+        return "<details " + openAttr + (id == null || id.isEmpty() ? "" : " id='" + id + "'")
+             + "><summary class='" + summaryClass + "'"
              + (summaryStyle == null || summaryStyle.isEmpty() ? "" : " style='" + summaryStyle + "'") + ">"
              + headerHtml + "<span class='rs-chev'>&#9650;</span></summary>";
     }
 
+    /** Closes a {@code <details>} block opened by {@link #sectionOpen}. */
     public static String sectionClose() {
         return "</details>";
     }
 
+    /** Builds the icon+title {@code <span>} passed as {@code headerHtml} to {@link #sectionOpen} —
+     *  {@code icon} may be {@code null}/empty (title-only), {@code gapPx} is the icon-title gap. */
     public static String headerLabel(String icon, String title, int gapPx) {
-        return "<span style='display:inline-flex;align-items:center;gap:" + gapPx + "px'>"
+        // Round 19 — bug fix: no white-space:nowrap meant a short, single-word table name
+        // (e.g. "FINPOST") could still wrap mid-word depending on the surrounding flex
+        // container's available width — confirmed live via screenshot ("FINPO"/"ST" on two
+        // lines). Table-name labels are always short single tokens; they should never wrap.
+        //
+        // Round 20 — that fix was incomplete: this span sits inside an ExtentReports log-table
+        // <td>, and ExtentReports' own bundled stylesheet applies a global td{word-break:
+        // break-all} that this span inherits. white-space:nowrap only suppresses SPACE-based
+        // wrapping — it does nothing to stop break-all from slicing an otherwise-unbreakable word
+        // once .rs-sub's flex row (all 4 children shrinkable, no floor) squeezes this item below
+        // its content width, which is exactly what still happened for "FINPOST" (its row's stats
+        // text is the longest of the three, leaving the label the least room) — reconfirmed live
+        // via screenshot, same "FINPO"/"ST" break. flex:0 0 auto + min-width:max-content stop the
+        // shrink; word-break:keep-all (inline, so it wins over the inherited td rule regardless of
+        // stylesheet specificity) removes the intra-word break opportunity entirely — the actual
+        // fix, since nowrap alone never controlled that.
+        return "<span style='display:inline-flex;align-items:center;gap:" + gapPx + "px;"
+             + "white-space:nowrap;flex:0 0 auto;min-width:max-content;"
+             + "word-break:keep-all;overflow-wrap:normal'>"
              + (icon != null && !icon.isEmpty() ? icon + " " : "") + title + "</span>";
     }
 
@@ -114,8 +146,14 @@ public final class FoldableSectionRenderer {
      *  {@code innerHtml}. {@code icon} may be {@code null}/empty when the title carries its own
      *  emoji already. */
     public static String foldableSection(String icon, String title, boolean openByDefault, String innerHtml) {
+        return foldableSection(icon, title, openByDefault, innerHtml, null);
+    }
+
+    /** Same as the 4-arg overload, but with an {@code id} on the {@code <details>} itself — see
+     *  the {@code id}-overload of {@link #sectionOpen} (Item Y). */
+    public static String foldableSection(String icon, String title, boolean openByDefault, String innerHtml, String id) {
         return CSS + "<div class='rs-wrap'>"
-             + sectionOpen(openByDefault ? "open" : "", "rs-sub", "", headerLabel(icon, title, 6))
+             + sectionOpen(openByDefault ? "open" : "", "rs-sub", "", headerLabel(icon, title, 6), id)
              + innerHtml + sectionClose() + "</div>";
     }
 
@@ -141,16 +179,26 @@ public final class FoldableSectionRenderer {
      *  "a summary for all sections and each section"). */
     public static String foldableTableWithSummary(String icon, String title, boolean openByDefault,
             String summaryLine, String[][] table, String[] widths) {
+        return foldableTableWithSummary(icon, title, openByDefault, summaryLine, table, widths, null);
+    }
+
+    /** Same as the 6-arg overload, but with an {@code id} on the {@code <details>} itself — see
+     *  the {@code id}-overload of {@link #sectionOpen} (Item Y). */
+    public static String foldableTableWithSummary(String icon, String title, boolean openByDefault,
+            String summaryLine, String[][] table, String[] widths, String id) {
         String summaryHtml = "<div style='padding:6px 14px 2px;font-size:11px;color:#64748B'>"
                 + summaryLine + "</div>";
-        return foldableSection(icon, title, openByDefault, summaryHtml + tableHtml(table, widths));
+        return foldableSection(icon, title, openByDefault, summaryHtml + tableHtml(table, widths), id);
     }
 
     /** Renders an {@code rs-tbl}-styled table body (header row + data rows) — the same visual
      *  shape {@code ActualResultsLogger}'s own sections use. {@code widths} (one entry per
      *  header column, e.g. {@code "18%"}) is optional — {@code null} leaves columns at their
-     *  browser-default (roughly even) width. */
-    private static String tableHtml(String[][] table, String[] widths) {
+     *  browser-default (roughly even) width. Public (Round 3 Item E) so a caller building its own
+     *  nested per-group sub-sections (e.g. {@code SnapshotValidationReporter}'s per-table
+     *  "Full Validation Details" groups) can render just the table body without re-wrapping CSS/
+     *  {@code rs-wrap} via {@link #foldableTable}. */
+    public static String tableHtml(String[][] table, String[] widths) {
         if (table == null || table.length == 0) {
             return "<div style='padding:8px 14px;color:#64748B;font-size:12px'>(no data)</div>";
         }
@@ -180,6 +228,74 @@ public final class FoldableSectionRenderer {
         return sb.toString();
     }
 
+    // ─── Status badges legend — promoted here (Round 3 Item E) from ActualResultsLogger's own
+    // private LEGEND constant, so SnapshotValidationReporter's reformatted "Validation Summary"
+    // can render the identical legend line instead of a differently-shaped one. ──
+
+    public static final String STATUS_LEGEND =
+        "<div class='rs-legend'>" +
+        "<span class='rs-leg-lbl'>Status Badges:</span>" +
+        "<span style='display:inline-flex;align-items:center;gap:3px;background:#EAF3DE;" +
+            "color:#27500A;font-size:11px;padding:2px 7px;border-radius:99px;font-weight:500;" +
+            "white-space:nowrap'>&#10003; Pass</span>" +
+        "<span class='rs-leg-sep'>&#8212; matched</span>" +
+        "<span style='display:inline-flex;align-items:center;gap:3px;background:#FEE2E2;" +
+            "color:#991B1B;font-size:11px;padding:2px 7px;border-radius:99px;font-weight:500;" +
+            "white-space:nowrap'>&#10007; Fail</span>" +
+        "<span class='rs-leg-sep'>&#8212; mismatch, row highlighted red</span>" +
+        "<span style='display:inline-flex;align-items:center;gap:3px;background:#FEF3C7;" +
+            "color:#92400E;font-size:11px;padding:2px 7px;border-radius:99px;font-weight:500;" +
+            "white-space:nowrap'>&#8635; Retry</span>" +
+        "<span class='rs-leg-sep'>&#8212; passed after retry, row highlighted yellow" +
+            "&nbsp;&#xB7;&#xB7;&#xB7;</span>" +
+        "<span style='display:inline-flex;align-items:center;gap:3px;background:#F1EFE8;" +
+            "color:#5F5E5A;font-size:11px;padding:2px 7px;border-radius:99px;font-weight:500;" +
+            "white-space:nowrap'>&#8722; Skip</span>" +
+        "<span class='rs-leg-sep'>&#8212; not applicable</span>" +
+        "</div>";
+
+    // ─── In-page anchors — Round 3 Item F. ExtentReports assigns its own node ids internally
+    // (not addressable by application code, and duplicated once a sidebar test's hidden
+    // .test-contents is cloned into the visible .detail-body), so a plain native <a href="#id">
+    // is unreliable. These two helpers instead hand-roll an application-controlled id and a
+    // small inline-script click handler that scrolls '.detail-body #id' into view — always
+    // resolving to the currently-visible clone, never a hidden original — genuinely relative/
+    // portable (no absolute file path, pure DOM manipulation) so the report still opens
+    // correctly from anywhere it's copied to. ──
+
+    /** Marks the target of a {@link #scrollLink}. Embed once at the top of the section a link
+     *  should jump to. */
+    public static String anchor(String id) {
+        return "<a id='" + id + "'></a>";
+    }
+
+    /** A clickable span that scrolls the element with {@code targetId} into view within the
+     *  CURRENT test's visible content — same-test-only (see class-level guidance above). */
+    public static String scrollLink(String targetId, String label) {
+        // Item Y (Round 5): force the target open BEFORE scrolling — the id now sits directly on
+        // the target <details> itself (see the id-overload of sectionOpen), so a collapsed
+        // section no longer just parks the viewport on a still-closed accordion header. The
+        // nested per-table sub-sections inside "Full Validation Details" already render
+        // open-by-default, so forcing open just this one outer <details> reveals everything
+        // underneath it too.
+        //
+        // Item E (Round 9): a persistent, unexplained "the click does nothing" report — no root
+        // cause found via static analysis of a real generated report (ids/structure all checked
+        // out). Two additive, defensive changes so the NEXT occurrence is diagnosable rather than
+        // silent: (1) fall back to a plain document.getElementById(targetId) if the .detail-body
+        // -scoped querySelector finds nothing (in case the click originates outside any
+        // .detail-body for some structural reason not yet observed); (2) console.warn with the
+        // exact id that was searched for when neither lookup finds anything, so opening DevTools
+        // on the next failing click immediately shows why.
+        return "<span onclick=\"var d=this.closest('.detail-body')||document;"
+                + "var t=d.querySelector('#" + targetId + "')||document.getElementById('" + targetId + "');"
+                + "if(t){if(t.tagName==='DETAILS'){t.open=true;}"
+                + "t.scrollIntoView({behavior:'smooth',block:'start'});}"
+                + "else{console.warn('[scrollLink] target not found: #" + targetId + "');}\" "
+                + "style='cursor:pointer;text-decoration:underline;text-decoration-style:dotted'>"
+                + label + "</span>";
+    }
+
     // ─── Shared Status/badge/icon — moved here (plan §10) from ActualResultsLogger so
     // SnapshotValidationReporter's own Result/Status columns and section headers can render the
     // same badge pills and inline-SVG icons instead of plain text and no icons at all. ──
@@ -195,16 +311,16 @@ public final class FoldableSectionRenderer {
         return switch (s) {
             case PASS -> "<span style='display:inline-flex;align-items:center;gap:3px;"
                     + "background:#EAF3DE;color:#27500A;font-size:11px;padding:2px 7px;"
-                    + "border-radius:99px;font-weight:500;white-space:nowrap'>&#10003; Pass</span>";
+                    + "border-radius:99px;font-weight:500;white-space:nowrap;word-break:keep-all;overflow-wrap:normal;flex:none'>&#10003; Pass</span>";
             case FAIL -> "<span style='display:inline-flex;align-items:center;gap:3px;"
                     + "background:#FEE2E2;color:#991B1B;font-size:11px;padding:2px 7px;"
-                    + "border-radius:99px;font-weight:500;white-space:nowrap'>&#10007; Fail</span>";
+                    + "border-radius:99px;font-weight:500;white-space:nowrap;word-break:keep-all;overflow-wrap:normal;flex:none'>&#10007; Fail</span>";
             case SKIP -> "<span style='display:inline-flex;align-items:center;gap:3px;"
                     + "background:#F1EFE8;color:#5F5E5A;font-size:11px;padding:2px 7px;"
-                    + "border-radius:99px;font-weight:500;white-space:nowrap'>&#8722; Skip</span>";
+                    + "border-radius:99px;font-weight:500;white-space:nowrap;word-break:keep-all;overflow-wrap:normal;flex:none'>&#8722; Skip</span>";
             case KNOWN_ISSUE -> "<span style='display:inline-flex;align-items:center;gap:3px;"
                     + "background:#FEF3C7;color:#92400E;font-size:11px;padding:2px 7px;"
-                    + "border-radius:99px;font-weight:500;white-space:nowrap'>&#9888; Known Issue</span>";
+                    + "border-radius:99px;font-weight:500;white-space:nowrap;word-break:keep-all;overflow-wrap:normal;flex:none'>&#9888; Known Issue</span>";
         };
     }
 

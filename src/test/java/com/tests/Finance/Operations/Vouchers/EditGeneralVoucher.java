@@ -47,11 +47,13 @@ import com.gsl.utils.dataprovider.MergedFinGeneralVoucherDataSupplier;
 import com.gsl.utils.dataprovider.fixture.finance.DocumentSearchStrategy;
 import com.gsl.utils.dataprovider.fixture.finance.GeneralVoucherEditVariant;
 import com.gsl.utils.dataprovider.fixture.finance.VoucherEditEntryMethod;
+import com.gsl.utils.ui.UiFieldState;
 import com.gsl.validation.snapshot.DocumentContext;
 import com.gsl.validation.snapshot.ExpectedChangeSet;
 import com.gsl.validation.snapshot.SnapshotService;
 import com.gsl.validation.snapshot.TableSnapshot;
 import com.gsl.validation.snapshot.VoucherSnapshot;
+import com.gsl.validation.ui.UiValidationLevel;
 import com.gsl.validation.snapshot.VoucherSnapshotValidator;
 import com.gsl.validation.snapshot.finance.Aud2SnapshotDao;
 import com.gsl.validation.snapshot.finance.VoucherDocumentContextResolver;
@@ -100,7 +102,7 @@ public class EditGeneralVoucher extends WebTest {
             dataProvider = "FinanceGeneralVoucherData", dataProviderClass = MergedFinGeneralVoucherDataSupplier.class)
     public void editGeneralVoucherHeader(UserCredential user, MergedFinanceGeneralVoucherData data) {
         Log.info("Edit General Voucher — header edit: {}", data.getExistingVoucherNo());
-        runEditFlow(data, false);
+        runEditFlow(data, GeneralVoucherEditVariant.ScenarioType.HEADER_ONLY);
     }
 
     @FrameworkAnnotation(value = TestAuthor.ARANI, module = MainModuleType.FINANCE, subModule = "FinanceGenVoucher", operation = AppOperation.MODIFY)
@@ -109,10 +111,19 @@ public class EditGeneralVoucher extends WebTest {
             dataProvider = "FinanceGeneralVoucherData", dataProviderClass = MergedFinGeneralVoucherDataSupplier.class)
     public void editGeneralVoucherDetailLine(UserCredential user, MergedFinanceGeneralVoucherData data) {
         Log.info("Edit General Voucher — detail-line edit: {}", data.getExistingVoucherNo());
-        runEditFlow(data, true);
+        runEditFlow(data, GeneralVoucherEditVariant.ScenarioType.DETAIL_LINE);
     }
 
-    private void runEditFlow(MergedFinanceGeneralVoucherData data, boolean detailLineEdit) {
+    @FrameworkAnnotation(value = TestAuthor.ARANI, module = MainModuleType.FINANCE, subModule = "FinanceGenVoucher", operation = AppOperation.MODIFY)
+    @TestCaseId("FIN-GV-EDIT-PAYMENT")
+    @Test(description = "Edit an existing General Voucher's Payment Information (Cheque instrument number)",
+            dataProvider = "FinanceGeneralVoucherData", dataProviderClass = MergedFinGeneralVoucherDataSupplier.class)
+    public void editGeneralVoucherPaymentInfo(UserCredential user, MergedFinanceGeneralVoucherData data) {
+        Log.info("Edit General Voucher — payment-info edit: {}", data.getExistingVoucherNo());
+        runEditFlow(data, GeneralVoucherEditVariant.ScenarioType.PAYMENT_INFO);
+    }
+
+    private void runEditFlow(MergedFinanceGeneralVoucherData data, GeneralVoucherEditVariant.ScenarioType scenarioType) {
 
         Log.info("Existing Voucher No.: {}, Release Status: {}", data.getExistingVoucherNo(), data.getReleaseStatus());
 
@@ -143,6 +154,7 @@ public class EditGeneralVoucher extends WebTest {
         final GeneralVoucherRevertOutcome[] unpostOutcomeRef = new GeneralVoucherRevertOutcome[1];
 
         SnapshotService snapshotService = new SnapshotService(new Aud2SnapshotDao());
+        final com.gsl.flow.Finance.Operations.Common.VoucherSaveCtx ctx = new com.gsl.flow.Finance.Operations.Common.VoucherSaveCtx();
 
         // ── Step 0: DB Pre-Check — Verify Document Exists & Release Status ───────────
         // Live release_status is the ONLY source of truth for "Unpost if Posted" below — plan
@@ -171,39 +183,35 @@ public class EditGeneralVoucher extends WebTest {
         });
 
         // ── Step 2: Navigate ──────────────────────────────────────────────────────
-        StepExecutor.step("Open Finance → General Voucher List", () -> {
-            listRef[0] = NavigationUtils.navigateToFinanceSideMenu(
-                    homeRef[0],
-                    MainMenuType.OPERATIONS,
-                    OperationsMenuType.CATEGORY,
-                    GeneralVoucherListPage.class);
-            ReportLogger.business("General Voucher list page opened");
-        });
-
-        // ── Step 2b: Clear Filter + Refresh ───────────────────────────────────────
-        // Mirrors RevertGeneralVoucher's Step 4 — clears any leftover grid filter (e.g. a
-        // "Last N Days" date-range filter) before the paginated search below, so a stale
-        // filter can't hide the target document across every page of the grid.
-        StepExecutor.step("Clear Filter and Refresh List", () -> {
-            listRef[0].clearFilterAndRefreshList().resetToFirstPageIfEnabled();
-            ReportLogger.business("Filter cleared, list refreshed, reset to first page (if not already there)");
-        });
+        // Business log + "Navigated: ..." summary are now recorded inside
+        // NavigationUtils.navigateToFinanceSideMenu itself.
+        StepExecutor.step("Open Finance → General Voucher List", () -> listRef[0] =
+                NavigationUtils.navigateToFinanceSideMenu(
+                        homeRef[0],
+                        MainMenuType.OPERATIONS,
+                        OperationsMenuType.CATEGORY,
+                        GeneralVoucherListPage.class));
 
         // ── Step 3: Select voucher in list page (paginated search, plan §9.1) ────────
         // Only needed when something downstream actually depends on the row's checkbox being
         // checked: Step 4's Revert (Actions→Revert, when the voucher is Posted) and/or Step 7's
         // Actions→Edit. DOUBLE_CLICK_EDIT on an already-unposted voucher needs neither — this
-        // step is skipped purely to avoid clicking a checkbox nothing downstream will use. Step
-        // 7's doubleClickToEdit() still does its OWN paginated search (page-turning via
-        // VoucherGridPaginationFinder#doubleClickRowAcrossPages) before double-clicking, so
-        // skipping this step does not leave DOUBLE_CLICK_EDIT without pagination — a live run
-        // once confirmed it did, before that page-turning was added to doubleClickToEdit itself.
+        // step is skipped purely to avoid clicking a checkbox nothing downstream will use.
+        //
+        // Was preceded by its own separate, unconditional "Clear Filter and Refresh List" step
+        // (ran regardless of branch, since Step 7's double-click path relied on it too) — now
+        // folded away: selectDocumentForAction (checkbox branch, below) and doubleClickForAction
+        // (Step 7's double-click branch) each clear the filter themselves via the shared
+        // VoucherListPageBase common function, so neither branch depends on this step running
+        // first anymore, and the old unconditional call (which used to run even when this whole
+        // step was skipped) is no longer needed at all.
         StepExecutor.step("Select Voucher in List Page", () -> {
             boolean checkboxNeeded = testData.getEntryMethod() != VoucherEditEntryMethod.DOUBLE_CLICK_EDIT
                     || "P".equals(liveReleaseStatusRef[0]);
             if (checkboxNeeded) {
-                listRef[0].selectDocumentFast(testData.getExistingVoucherNo(), searchStrategy);
-                ReportLogger.business("Selected voucher in list: " + testData.getExistingVoucherNo());
+                listRef[0].selectDocumentForAction(testData.getExistingVoucherNo(), searchStrategy);
+                ReportLogger.business("Filter cleared, list refreshed, selected voucher in list: "
+                        + testData.getExistingVoucherNo());
             } else {
                 ReportLogger.business("Entry method is DOUBLE_CLICK_EDIT and voucher is not Posted — "
                         + "checkbox selection not required, skipping.");
@@ -304,6 +312,14 @@ public class EditGeneralVoucher extends WebTest {
                             ? VoucherEditEntryMethod.ACTIONS_EDIT.name() + " (default)"
                             : testData.getEntryMethod().name()},
             });
+            // Item U: the "Document Context" table above only ever showed Audit-Active Tables,
+            // never Audit Trigger Disabled (only visible later, at Step 13's AFTER-snapshot check)
+            // — so the BEFORE-Save audit check was only half there. Both sets are already resolved
+            // on contextRef[0]; this just renders them in the same dedicated shape the AFTER
+            // snapshot's own "... — Audit State" table uses, so the two are directly comparable.
+            new com.gsl.validation.snapshot.finance.AuditStateSummary(
+                    contextRef[0].getAuditActiveTables(), contextRef[0].getAuditTriggerDisabledTables())
+                    .logTable("BEFORE Save — Audit State");
         });
 
         // ── Step 6: Capture BEFORE Snapshot ────────────────────────────────────────
@@ -315,7 +331,7 @@ public class EditGeneralVoucher extends WebTest {
         // ── Step 7: Open for Edit — branches on entry method (plan §9.5/9.6) ─────────
         StepExecutor.step("Open Voucher for Edit", () -> {
             if (testData.getEntryMethod() == VoucherEditEntryMethod.DOUBLE_CLICK_EDIT) {
-                editRef[0] = listRef[0].doubleClickToEditFast(testData.getExistingVoucherNo(), searchStrategy);
+                editRef[0] = listRef[0].doubleClickForAction(testData.getExistingVoucherNo(), searchStrategy);
                 ReportLogger.business("Voucher opened for edit via double-click: " + testData.getExistingVoucherNo());
             } else {
                 // Re-select immediately before Actions→Edit rather than trusting Step 3's earlier
@@ -334,17 +350,31 @@ public class EditGeneralVoucher extends WebTest {
             }
         });
 
-        // ── Step 8/8b: Apply changes to the open Edit form (plan §4K) ────────────
+        // ── Step 7b: Verify Edit form fully loaded (Round 23) ────────────────────────
+        // The click above already confirms the window title flipped (VoucherListPageBase
+        // .verifyFormOpened → GeneralVoucherAdd.verifyOnThisPage), but ExtJS flips the title
+        // before the form's own data-bound fields have finished loading — this deeper check
+        // waits out the loading mask and confirms the "Voucher No." field genuinely shows this
+        // document's number before Step 8 touches any field. Root-caused live: FIN-GV-EDIT-
+        // PAYMENT-01, run 20260926_231950, hit a NoSuchElementException filling a field on a form
+        // that looked open by title alone but hadn't actually bound its data yet. Also measures
+        // and asserts this round's page-styling (font-size/font-family) regression checks.
+        StepExecutor.step("Verify Edit form fully loaded", () ->
+                editRef[0].verifyEditFormFullyLoaded(testData.getExistingVoucherNo()));
+
+        // Deferred: UI findings are reported at the END of the test (assertNoPending below), after the
+        // edit, Save and snapshot validation have all run — never instead of them.
+        StepExecutor.step("UI Validation", () ->
+                editRef[0].validateUiContractDeferred(UiValidationLevel.CONTRACT, UiFieldState.EDITABLE, true));
+
+        // ── Step 8/8b/8c: Apply changes to the open Edit form (plan §4K) ────────────
         // Dispatches to GeneralVoucherEditPredicateFactory's HEADER_EDIT_BEHAVIOR/
-        // DETAIL_LINE_EDIT_BEHAVIOR via ScenarioType.execute(), replacing the former inline
-        // if(!detailLineEdit)/if(detailLineEdit) branch — same "named behavior constant + single
-        // dispatch point" shape ArVoucherScenarioType#execute already uses. A detail-line edit
-        // still touches ONLY the detail line: the data source already leaves
-        // testData.getDocumentInformation()'s date/reference/remarks unchanged for that scenario,
-        // so HEADER_EDIT_BEHAVIOR is simply never dispatched for it.
-        GeneralVoucherEditVariant.ScenarioType scenarioType = detailLineEdit
-                ? GeneralVoucherEditVariant.ScenarioType.DETAIL_LINE
-                : GeneralVoucherEditVariant.ScenarioType.HEADER_ONLY;
+        // DETAIL_LINE_EDIT_BEHAVIOR/PAYMENT_INFO_EDIT_BEHAVIOR via ScenarioType.execute() — same
+        // "named behavior constant + single dispatch point" shape ArVoucherScenarioType#execute
+        // already uses. A detail-line/payment-info edit still touches ONLY its own target: the
+        // data source already leaves testData.getDocumentInformation()'s date/reference/remarks
+        // unchanged for those scenarios, so HEADER_EDIT_BEHAVIOR is simply never dispatched for
+        // them.
         scenarioType.execute(testData, editRef[0]);
 
         // Plan §9c: populate ActualResultsHolder's UI-observed fields — mirrors
@@ -362,7 +392,8 @@ public class EditGeneralVoucher extends WebTest {
         });
 
         // ── Step 9: Click Save ────────────────────────────────────────────────────
-        StepExecutor.step("Click Save", () -> popupRef[0] = editRef[0].clickSave());
+        com.gsl.flow.Finance.Operations.Common.VoucherSaveFlowSteps.clickSave(ctx, null, () -> editRef[0].clickSave());
+        popupRef[0] = ctx.popup;
 
         // ── Step 9b: Negative-outcome branch ──────────────────────────────────────
         // A variant carrying an expectedValidation deliberately set an invalid date (crosses
@@ -378,12 +409,13 @@ public class EditGeneralVoucher extends WebTest {
                 ReportLogger.pass("Negative validation correctly triggered: "
                         + testData.getExpectedValidation().expectedMessage());
             });
+            com.gsl.validation.ui.UiFailureCollector.assertNoPending();
             return;
         }
 
         // ── Step 10: Handle Post-Save Dialogs ─────────────────────────────────────
-        StepExecutor.step("Handle Post-Save Dialogs", () ->
-                msgBoxRef[0] = PostSaveDialogHandler.forDomain(VoucherDomain.GV).handle(popupRef[0], testData));
+        com.gsl.flow.Finance.Operations.Common.VoucherSaveFlowSteps.handlePostSaveDialogs(ctx, VoucherDomain.GV, testData);
+        msgBoxRef[0] = ctx.msgBox;
 
         // ── Step 11: Verify Save Result ───────────────────────────────────────────
         // Clicking OK on the post-save "Result — Updated Successfully" dialog is what returns
@@ -400,19 +432,17 @@ public class EditGeneralVoucher extends WebTest {
         // own "Verify Save Result" step already uses (DocumentMessageBox.java) — hard-asserts a
         // non-null document number and soft-asserts an acceptable success header, right here,
         // before Save is ever treated as having succeeded.
-        StepExecutor.step("Verify Save Result", () -> {
-            SoftAssert saveSoftAssert = new SoftAssert();
-            docNoRef[0] = msgBoxRef[0].verifyDocumentSave(saveSoftAssert).getDocumentNo();
-            saveSoftAssert.assertAll();
+        com.gsl.flow.Finance.Operations.Common.VoucherSaveFlowSteps.verifySaveResult(ctx);
+        docNoRef[0] = ctx.docNo;
+        StepExecutor.step("Dismiss Save Dialog", () -> {
+            ctx.softAssert.assertAll();
             msgBoxRef[0].clickOk();
             ReportLogger.business("Voucher saved and dialog dismissed, returned to list. Document No: " + docNoRef[0]);
-            ReportLogger.pass("Voucher saved. Document No: " + docNoRef[0]);
         });
 
         // ── Step 12: Logout (deferred — session may be reused by a later test on this thread;
         // real logout+driver-quit happens via RecoveryManager or end-of-block cleanup only) ────
-        StepExecutor.step("Logout (deferred)", () ->
-                ReportLogger.session("Logout deferred — session may be reused by a later test on this thread."));
+        com.gsl.flow.Finance.Operations.Common.VoucherSaveFlowSteps.deferLogout();
 
         // ── Step 13: Capture AFTER Snapshot ───────────────────────────────────────
         StepExecutor.step("Capture AFTER Snapshot", () -> {
@@ -442,6 +472,12 @@ public class EditGeneralVoucher extends WebTest {
             ActualResultsHolder.get().setHeader(freshHeader);
             ActualResultsHolder.get().setVoucherNo(docNoRef[0]);
             if (freshHeader != null) {
+                // finnar ("narration registered") is normally deposited by the Create-side DB
+                // validator; Edit never runs it, so without this the Actual Results "Registered"
+                // row always read "not registered" (a false red row on every Edit run).
+                ActualResultsHolder.get().setFinnar(DatabaseManager.getJdbi()
+                        .onDemand(com.gsl.database.dao.finance.FinNarDao.class)
+                        .findByGlcodeAndNartext(freshHeader.getGlcode(), freshHeader.getNartext()).orElse(null));
                 List<FinVchDet> detRows = DatabaseManager.getJdbi().onDemand(FinVchDetDao.class)
                         .findByVoucherCode(freshHeader.getVchcode());
                 ActualResultsHolder.get().setDetRowCount(detRows.size());
@@ -462,7 +498,7 @@ public class EditGeneralVoucher extends WebTest {
         // site-redistribution check is Step 14b below, not this snapshot-diff pass).
         StepExecutor.step("Database Snapshot Validation", () -> {
             ExpectedChangeSet changeSet;
-            if (detailLineEdit) {
+            if (scenarioType == GeneralVoucherEditVariant.ScenarioType.DETAIL_LINE) {
                 DetailLineEditTarget target = testData.getEditedDetailLine();
                 changeSet = switch (target.getShape()) {
                     case GL_TYPE_TRANSITION -> GeneralVoucherEditChangeSets.detailLineGlTransition(
@@ -473,6 +509,9 @@ public class EditGeneralVoucher extends WebTest {
                     default -> GeneralVoucherEditChangeSets.detailLineEdit( // IN_PLACE, SITE_SPLIT_ONLY
                             contextRef[0], beforeRef[0], testData.getDocumentInformation(), target.getNewValues());
                 };
+            } else if (scenarioType == GeneralVoucherEditVariant.ScenarioType.PAYMENT_INFO) {
+                changeSet = GeneralVoucherEditChangeSets.paymentInfoEdit(contextRef[0], beforeRef[0],
+                        testData.getDocumentInformation(), testData.getPaymentEditTarget());
             } else {
                 changeSet = GeneralVoucherEditChangeSets.headerEdit(contextRef[0], beforeRef[0],
                         testData.getDocumentInformation());
@@ -492,7 +531,8 @@ public class EditGeneralVoucher extends WebTest {
         // applicable line on the same document) would swallow a more specific per-site predicate
         // via anyMatch, making "same table, more specific rule" impossible to layer on top — see
         // VoucherEditChangeSets' plan §4B Javadoc for the same reasoning.
-        if (detailLineEdit && testData.getEditedDetailLine().getShape() == DetailLineEditTarget.EditShape.SITE_SPLIT_ONLY) {
+        if (scenarioType == GeneralVoucherEditVariant.ScenarioType.DETAIL_LINE
+                && testData.getEditedDetailLine().getShape() == DetailLineEditTarget.EditShape.SITE_SPLIT_ONLY) {
             StepExecutor.step("Verify Site Reallocation", () -> {
                 DetailLineEditTarget target = testData.getEditedDetailLine();
                 String entcode = String.valueOf(contextRef[0].getVchcode());
@@ -531,6 +571,9 @@ public class EditGeneralVoucher extends WebTest {
                 ReportLogger.pass("Site reallocation verified: " + actualBySite);
             });
         }
+
+        // Reports the deferred UI-contract failures (if any) now that every other area has run.
+        StepExecutor.step("Finalize UI assertions", com.gsl.validation.ui.UiFailureCollector::assertNoPending);
     }
 
     /** {@code context} is passed alongside the snapshot so BOTH the BEFORE and AFTER capture

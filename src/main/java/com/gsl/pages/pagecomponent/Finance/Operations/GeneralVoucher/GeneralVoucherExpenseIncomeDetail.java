@@ -10,10 +10,16 @@ import com.gsl.enums.WaitType;
 import com.gsl.pages.Finance.Operations.Common.AllocateSitesPopup;
 import com.gsl.pages.Finance.Operations.Common.DocumentPopup;
 import com.gsl.pages.Finance.Operations.Common.GvPaymentInformationPopup;
+import com.gsl.pages.Finance.Operations.Common.GvReceiptPaymentInformationPopup;
 import com.gsl.pages.Finance.Operations.Common.PaymentInformationPopup;
 import com.gsl.pages.enums.Finance.Operations.Common.SubLedgerGridButtonLabel;
+import com.gsl.pages.enums.Finance.Operations.GeneralVoucher.GeneralVoucherGridColumnHeader;
+import com.aventstack.extentreports.ExtentTest;
 import com.gsl.pages.pagecomponent.Finance.Operations.Common.VoucherSubLedgerInformationBase;
 import com.gsl.reports.ExtentLogger;
+import com.gsl.reports.ReportLogger;
+import com.gsl.reports.StepExecutor;
+import com.gsl.reports.StepSummaryBuffer;
 import com.gsl.testdata.Finance.Operations.Vouchers.GeneralVoucher.ExpenseIncomeDetail;
 import com.gsl.testdata.Finance.Operations.Vouchers.GeneralVoucher.PaymentInformation;
 import com.gsl.testdata.Finance.Operations.Vouchers.GeneralVoucher.SiteAllocation;
@@ -22,10 +28,20 @@ import com.gsl.utils.BigDecimalUtils;
 import com.gsl.utils.Selenium.JavascriptExecutorUtils;
 import com.gsl.utils.Selenium.SeleniumUtils;
 import com.gsl.utils.Selenium.WaitUtils;
+import com.gsl.validation.ui.UiComponentValidator;
+import com.gsl.validation.ui.UiValidationFailure;
+import com.gsl.validation.ui.UiValidationLevel;
+import com.gsl.validation.ui.UiValidationScope;
+import com.gsl.pages.enums.Finance.Operations.Common.FormSection;
+import com.gsl.pages.enums.Finance.Operations.Common.GridColumnKind;
+import com.gsl.pages.enums.Finance.Operations.Common.PaymentPanelField;
+import org.openqa.selenium.Keys;
+import com.gsl.utils.ui.FieldStyleSpec;
 import org.openqa.selenium.By;
 import org.openqa.selenium.interactions.Actions;
 
 import java.math.BigDecimal;
+import java.util.ArrayList;
 import java.util.List;
 
 /**
@@ -52,11 +68,12 @@ import java.util.List;
  * {@code clickAddRowButton()} — the base's own name-keyed {@code clickAdjust}/
  * {@code clickPaymentButton(subLedger, referenceSite, slid)} are never called (this grid has
  * no Reference Site column to key them on). The Cash/Bank counter-leg's Payment Window is
- * instead driven by {@link #handlePaymentInformation}/{@link #clickCashBankPaymentButton()} —
- * a single, non-row-scoped trigger, since General Voucher has exactly one counter-leg per
- * voucher (not one per Expense/Income row — see {@code GeneralVoucherPaymentVariant}'s class
- * Javadoc). {@link #createPaymentPopup()} now returns a real {@link GvPaymentInformationPopup}
- * — see that class's Javadoc for its **UNVERIFIED, best-effort** status.
+ * instead driven by {@link #handlePaymentInformation(PaymentInformation, boolean)}/
+ * {@link #clickCashBankPaymentButton(boolean)} — a single, non-row-scoped trigger, since General
+ * Voucher has exactly one counter-leg per voucher (not one per Expense/Income row — see {@code
+ * GeneralVoucherPaymentVariant}'s class Javadoc). {@link #createPaymentPopup(boolean)} picks
+ * between {@link GvPaymentInformationPopup} (Dr) and {@link GvReceiptPaymentInformationPopup} (Cr)
+ * — see those classes' Javadocs.
  *
  * <p><b>Two boundlist shapes, two locators — do not unify them.</b> ExtJS renders a simple
  * single-column combo as {@code <li role="option">} but a multi-column picker as
@@ -154,17 +171,13 @@ public class GeneralVoucherExpenseIncomeDetail extends VoucherSubLedgerInformati
                 + "[normalize-space(.)='" + value + "']");
     }
 
-    /**
-     * The Cash/Bank counter-leg's Payment/Cheque-RTGS button. UNVERIFIED — best-effort guess
-     * reusing AP/AR's button label ({@link SubLedgerGridButtonLabel#CHEQUE_RTGS}); General
-     * Voucher has exactly one Cash/Bank counter-leg per voucher (confirmed by
-     * {@code DbGeneralVoucherDataSource} resolving it independently of the Expense/Income
-     * rows, and by {@code GeneralVoucher.PaymentInformation}'s own Javadoc), so this is a
-     * single control, not scoped to any grid row — unlike AP/AR's per-sub-ledger-row button.
-     * Fix this locator first if the first live CHEQUE/NEFT_RTGS run fails here.
-     */
-    private static final By CASH_BANK_PAYMENT_BUTTON = By.xpath(
-            "//button[normalize-space()='" + SubLedgerGridButtonLabel.CHEQUE_RTGS.label() + "']");
+    /** The popup instance {@link #clickPaymentButton(int, boolean)} last created — retained (rather
+     *  than only ever returned) so a caller that already moved past the fluent-chain call site
+     *  (e.g. {@code GeneralVoucherEditPredicateFactory#PAYMENT_INFO_EDIT_BEHAVIOR}) can still reach
+     *  back into it afterward, e.g. to read {@code ChequeRegisterPaymentInformationPopup
+     *  #getLastObservedPreviousInstrumentNo()} for a live-UI-vs-DB cross-check. {@code null} until
+     *  the first Payment popup interaction on this page instance. */
+    private PaymentInformationPopup lastPaymentPopup;
 
     public GeneralVoucherExpenseIncomeDetail() {
         super(VoucherDomain.GV);
@@ -176,24 +189,113 @@ public class GeneralVoucherExpenseIncomeDetail extends VoucherSubLedgerInformati
     }
 
     /**
-     * Clicks the Cash/Bank counter-leg's Payment/Cheque-RTGS button — see
-     * {@link #CASH_BANK_PAYMENT_BUTTON}'s Javadoc for why this isn't row-scoped.
+     * Dr/Cr-aware popup factory — see {@link com.gsl.pages.Finance.Operations.Common.GvPaymentInformationPopup}/
+     * {@link GvReceiptPaymentInformationPopup}'s class Javadocs. {@code debitLine} is the
+     * Cash/Bank/Cheque line's own Dr/Cr side (typically {@code MergedFinanceGeneralVoucherData
+     * #isCashBankPaymentDebit()}) — a Dr line behaves AP-style (cheque-book known/unknown
+     * lookup), a Cr line behaves AR-style (plain entry, no cheque-book concept).
      */
-    public PaymentInformationPopup clickCashBankPaymentButton() {
-        SeleniumUtils.click(CASH_BANK_PAYMENT_BUTTON, WaitType.CLICKABLE, "GV_CASHBANK_PAYMENT_BUTTON");
-        JavascriptExecutorUtils.waitForExtJS();
-        return createPaymentPopup();
+    private PaymentInformationPopup createPaymentPopup(boolean debitLine) {
+        return debitLine ? new GvPaymentInformationPopup() : new GvReceiptPaymentInformationPopup();
+    }
+
+    /** The popup instance created by the most recent {@link #clickPaymentButton(int, boolean)}
+     *  call — see {@link #lastPaymentPopup}'s Javadoc. */
+    public PaymentInformationPopup getLastPaymentPopup() {
+        return lastPaymentPopup;
     }
 
     /**
-     * Fills the Cash/Bank counter-leg's Payment Window when {@code payment} calls for one.
-     * No-op for {@code null} (the {@code NONE} variant deliberately carries no payment info —
-     * the app's own post-save "instrument number missing" warning is expected instead) and for
-     * {@link PaymentSelectionType#CASH} (no instrument entry required at all).
+     * Clicks the Cheque/RTGS button of grid row {@code rowIndex} (row-scoped via
+     * {@code data-recordindex}, see {@link #chequeRtgsButtonForRow}) — every grid row has its own
+     * button, so each row can carry its own payment.
+     *
+     * @param debitLine see {@link #createPaymentPopup(boolean)} — that row's own Dr/Cr side
      */
-    public void handlePaymentInformation(PaymentInformation payment) {
+    public PaymentInformationPopup clickPaymentButton(int rowIndex, boolean debitLine) {
+        SeleniumUtils.click(chequeRtgsButtonForRow(rowIndex), WaitType.CLICKABLE,
+                "GV_PAYMENT_BUTTON_ROW_" + (rowIndex + 1));
+        JavascriptExecutorUtils.waitForExtJS();
+        lastPaymentPopup = createPaymentPopup(debitLine);
+        return lastPaymentPopup;
+    }
+
+    /** Row 1's Cheque/RTGS button — the single-payment entry point Edit still uses. */
+    public PaymentInformationPopup clickCashBankPaymentButton(boolean debitLine) {
+        return clickPaymentButton(0, debitLine);
+    }
+
+    /**
+     * Fills the Payment Window of grid row {@code rowIndex} when {@code payment} calls for one.
+     * No-op for {@code null} (a row without payment info — the app's own post-save "instrument
+     * number missing" warning is expected for a Bank header) and for {@link PaymentSelectionType#CASH}.
+     *
+     * @param debitLine see {@link #createPaymentPopup(boolean)} — ignored for CASH/{@code null}.
+     */
+    public void handlePaymentInformation(int rowIndex, PaymentInformation payment, boolean debitLine) {
         if (payment == null || payment.getPaymentMode() == PaymentSelectionType.CASH) return;
-        clickCashBankPaymentButton().fillAndSubmit(payment);
+        PaymentInformationPopup popup = clickPaymentButton(rowIndex, debitLine);
+        notifyUi(l -> l.beforePaymentFill(rowIndex, popup));
+        popup.onBeforeSubmit(() -> notifyUi(l -> l.afterPaymentFilled(rowIndex, popup, payment)));
+        popup.fillAndSubmit(payment);
+        notifyUi(l -> l.afterPaymentSubmitted(rowIndex, payment));
+    }
+
+    /** Single-payment overload (Edit): row 1. */
+    public void handlePaymentInformation(PaymentInformation payment, boolean debitLine) {
+        handlePaymentInformation(0, payment, debitLine);
+    }
+
+    /**
+     * Fills the Payment Window of EVERY grid row that carries a payment in {@code data}, each through
+     * its own row's button and on that row's own Dr/Cr side. Rows are processed in grid order, one
+     * report step each; rows without a payment are skipped.
+     */
+    public void handleRowPayments(MergedFinanceGeneralVoucherData data) {
+        List<ExpenseIncomeDetail> rows = data.getExpenseIncomeDetailList();
+        for (int i = 0; i < rows.size(); i++) {
+            final int rowIndex = i;
+            ExpenseIncomeDetail row = rows.get(i);
+            PaymentInformation payment = data.paymentForLine(row.getLineNo());
+            if (payment == null || payment.getPaymentMode() == PaymentSelectionType.CASH) continue;
+            StepExecutor.step("Payment Information — Row " + (rowIndex + 1) + " ("
+                    + payment.getPaymentMode() + ")",
+                    () -> handlePaymentInformation(rowIndex, payment, data.isPaymentDebit(row.getLineNo())));
+        }
+    }
+
+    /**
+     * Observer for the real (business) fill: lets a UI-validation recorder check each popup while it
+     * is already open and each row once it is filled, without the fill code knowing anything about
+     * validation. Installed only by flows that ask for it ({@link #setFillUiListener}); every
+     * callback is isolated — an exception inside a listener is logged and never reaches the fill.
+     */
+    public interface FillUiListener {
+        default void beforeSiteAllocation(int rowIndex, AllocateSitesPopup popup) {}
+        default void afterSiteAllocation(int rowIndex, AllocateSitesPopup popup, List<SiteAllocation> allocations) {}
+        default void beforePaymentFill(int rowIndex, PaymentInformationPopup popup) {}
+        /** The popup is fully filled and still open (OK not yet clicked). */
+        default void afterPaymentFilled(int rowIndex, PaymentInformationPopup popup, PaymentInformation payment) {}
+        default void afterPaymentSubmitted(int rowIndex, PaymentInformation payment) {}
+        default void afterRowFilled(int rowIndex, ExpenseIncomeDetail row) {}
+    }
+
+    private FillUiListener fillUiListener;
+
+    /** Installs (or, with {@code null}, removes) the fill observer — see {@link FillUiListener}. */
+    public void setFillUiListener(FillUiListener listener) {
+        this.fillUiListener = listener;
+    }
+
+    private void notifyUi(java.util.function.Consumer<FillUiListener> call) {
+        FillUiListener l = fillUiListener;
+        if (l == null) return;
+        try {
+            call.accept(l);
+        } catch (RuntimeException e) {
+            ReportLogger.business("[UI validation] checkpoint skipped after an error (fill continues): "
+                    + e.getClass().getSimpleName() + " — " + e.getMessage());
+        }
     }
 
     // =========================================================================
@@ -204,37 +306,158 @@ public class GeneralVoucherExpenseIncomeDetail extends VoucherSubLedgerInformati
      * Fills every {@code ExpenseIncomeDetail} row, branching per row on its
      * (DB-resolved) {@link GlLineType}. Lives in this component, not the test
      * class — matching how AP/AR keep row-branching inside {@code *SubLedgerInformation}.
+     *
+     * <p>Equivalent to {@link #fillExpenseIncomeRows(MergedFinanceGeneralVoucherData, boolean)}
+     * with {@code expectSiteAllocationComplete=true} — every current caller except {@code
+     * GeneralVoucherPredicateFactory.NEGATIVE_FORM_VALIDATION_BEHAVIOR} expects each row's site
+     * allocation to actually balance, so that's the default rather than something every other
+     * call site has to spell out.
      */
     public GeneralVoucherExpenseIncomeDetail fillExpenseIncomeRows(MergedFinanceGeneralVoucherData data) {
+        return fillExpenseIncomeRows(data, true);
+    }
+
+    /**
+     * @param expectSiteAllocationComplete {@code false} only for the two deliberately-incomplete
+     *        negative scenarios ({@code NEG_SITE_ALLOCATION_PENDING}/{@code NEG_SITE_NOT_ALLOCATED},
+     *        driven through {@code NEGATIVE_FORM_VALIDATION_BEHAVIOR}) that need {@link
+     *        #allocateSites}/{@link #commitSiteAllocations} to accept an unbalanced Allocate Sites
+     *        popup (Cancel instead of OK) so the flow can reach Save and assert the app's own
+     *        validation message. {@code true} for every positive scenario, so a genuine test-data
+     *        gap (a missing/short split line) throws here — naming the row and pending amount —
+     *        instead of silently Cancelling and surfacing 4 wait-layers later as an opaque
+     *        {@code messagebox-1001-msg} timeout (see {@link #commitSiteAllocations}'s Javadoc).
+     */
+    public GeneralVoucherExpenseIncomeDetail fillExpenseIncomeRows(MergedFinanceGeneralVoucherData data,
+            boolean expectSiteAllocationComplete) {
         List<ExpenseIncomeDetail> rows = data.getExpenseIncomeDetailList();
+        // Item N: collect each row's own verification rollup (keyed by lineNo, insertion order
+        // preserved) so GeneralVoucherPredicateFactory.recordExpenseIncomeDetailSummary can fold
+        // it into the ONE consolidated per-line summary already shown at the end of "Fill
+        // Expense/Income Detail rows" — instead of only the per-row "Verify Row" drill-down box.
+        lastRowVerificationSummaries.clear();
         for (int i = 0; i < rows.size(); i++) {
             if (i > 0) {
                 clickAddRowButton();
                 JavascriptExecutorUtils.waitForExtJS();
             }
-            ExpenseIncomeDetail row = rows.get(i);
-            ExtentLogger.info("[GV ExpenseIncomeDetail] Row " + (i + 1) + ": GL='" + row.getGeneralLedger()
-                    + "', LineNo='" + row.getLineNo() + "', type=" + row.getResolvedGlType());
-
-            fillRowBasicFields(i, row);
-
+            final int rowIndex = i;
+            ExpenseIncomeDetail row = rows.get(rowIndex);
             GlLineType type = row.getResolvedGlType();
             if (type == null) {
                 throw new IllegalStateException(
                         "[GV ExpenseIncomeDetail] resolvedGlType not set for LineNo='" + row.getLineNo()
                         + "' — the data source (Excel or DB) must resolve it via FinGlDao before fill.");
             }
+            BigDecimal amount = row.isDebit() ? row.getExpenseDr() : row.getIncomeCr();
+            ReportLogger.trace("[GV ExpenseIncomeDetail] Row " + (rowIndex + 1) + ": GL='" + row.getGeneralLedger()
+                    + "', LineNo='" + row.getLineNo() + "', type=" + type);
+
+            // Point 9: one collapsible group node per row — mirrors AP/AR's "SL Row N" grouping
+            // (SubLedgerRowStepRegistry) instead of GV's previous flat, ungrouped fills. Label
+            // reuses GlLineType.label() so the node title matches the human-readable text
+            // GeneralVoucherPredicateFactory.recordExpenseIncomeDetailSummary shows too.
+            String rowLabel = "Line " + (row.getLineNo() != null ? row.getLineNo() : String.valueOf(rowIndex + 1))
+                    + " — GL: " + row.getGeneralLedger() + " | " + type.label()
+                    + " | Amount: " + (amount == null ? "—" : amount);
+            ExtentTest rowNode = StepExecutor.group(rowLabel);
+
+            StepExecutor.stepUnder(rowNode, "Fill GL / Narration / Reversal / Amount",
+                    () -> fillRowBasicFields(rowIndex, row));
 
             switch (type) {
                 case TYPE1_NONE -> { /* nothing further */ }
-                case TYPE2_SITE_ONLY -> allocateSites(i, data.getSiteAllocationsForLine(row.getLineNo()));
+                case TYPE2_SITE_ONLY -> StepExecutor.stepUnder(rowNode, "Allocate Sites",
+                        () -> allocateSites(rowIndex, data.getSiteAllocationsForLine(row.getLineNo()),
+                                expectSiteAllocationComplete));
                 case TYPE3_SITE_AND_SUBLEDGER -> {
-                    setSubLedger(i, row.getSubLedger(), row.getSubLedgerId());
-                    allocateSites(i, data.getSiteAllocationsForLine(row.getLineNo()));
+                    StepExecutor.stepUnder(rowNode, "Set Sub Ledger",
+                            () -> setSubLedger(rowIndex, row.getSubLedger(), row.getSubLedgerId()));
+                    StepExecutor.stepUnder(rowNode, "Allocate Sites",
+                            () -> allocateSites(rowIndex, data.getSiteAllocationsForLine(row.getLineNo()),
+                                    expectSiteAllocationComplete));
                 }
             }
+
+            // Point 9: UI validation after entry — reads every filled field back and records a
+            // tick/cross summary for this row, closing the gap where the grid's fills were never
+            // re-confirmed against the live UI (unlike the header fields' own
+            // recordDocumentInformationSummary checks). Item N: also returns a compact rollup,
+            // collected below for the end-of-section consolidated summary.
+            String lineKey = row.getLineNo() != null ? row.getLineNo() : String.valueOf(rowIndex + 1);
+            final String[] rollup = new String[1];
+            StepExecutor.stepUnder(rowNode, "Verify Row — UI read-back",
+                    () -> rollup[0] = recordRowVerification(rowIndex, row, type));
+            lastRowVerificationSummaries.put(lineKey, rollup[0]);
+            notifyUi(l -> l.afterRowFilled(rowIndex, row));
         }
         return this;
+    }
+
+    /** Item N: per-row verification rollups from the most recent {@link #fillExpenseIncomeRows}
+     *  call, keyed by line number (insertion order preserved) — each value is a short "✓ all
+     *  fields match" / "✗ 1 mismatch: X" summary, folded into
+     *  {@code GeneralVoucherPredicateFactory.recordExpenseIncomeDetailSummary}'s own consolidated
+     *  "Line N — ..." entry instead of only being visible in each row's own "Verify Row" box. */
+    private final java.util.LinkedHashMap<String, String> lastRowVerificationSummaries = new java.util.LinkedHashMap<>();
+
+    public java.util.Map<String, String> getLastRowVerificationSummaries() {
+        return lastRowVerificationSummaries;
+    }
+
+    /** See {@link #fillExpenseIncomeRows}'s "Verify Row — UI read-back" step.
+     *  @return a compact rollup of this row's checks (Item N) — {@code "✓ all fields match"} when
+     *          every check matched, otherwise {@code "✗ <n> mismatch(es): field1, field2"}. */
+    private String recordRowVerification(int rowIndex, ExpenseIncomeDetail row, GlLineType type) {
+        List<String> mismatches = new java.util.ArrayList<>();
+
+        if (!recordCheck("General Ledger", row.getGeneralLedger(), getGeneralLedger(rowIndex))) {
+            mismatches.add("General Ledger");
+        }
+        if (row.getLedgerNarration() != null && !row.getLedgerNarration().isBlank()) {
+            if (!recordCheck("Ledger Narration", row.getLedgerNarration(), getLedgerNarration(rowIndex))) {
+                mismatches.add("Ledger Narration");
+            }
+        }
+        if (!recordCheck("Is Reversal", row.isReversalYes() ? "Yes" : "No", getIsReversal(rowIndex))) {
+            mismatches.add("Is Reversal");
+        }
+
+        BigDecimal expectedAmount = row.isDebit() ? row.getExpenseDr() : row.getIncomeCr();
+        BigDecimal actualAmount = row.isDebit() ? getExpenseAmount(rowIndex) : getIncomeAmount(rowIndex);
+        boolean amountMatch = expectedAmount == null
+                || (actualAmount != null && expectedAmount.compareTo(actualAmount) == 0);
+        String amountLabel = row.isDebit() ? "Expense (Dr)" : "Income (Cr)";
+        StepSummaryBuffer.record(amountLabel
+                + " — filled with <b>" + nullSafe(expectedAmount == null ? null : expectedAmount.toPlainString())
+                + "</b>, validated in UI as <b>" + nullSafe(actualAmount == null ? null : actualAmount.toPlainString())
+                + "</b>", amountMatch);
+        if (!amountMatch) mismatches.add(amountLabel);
+
+        if (type.isSubLedgerApplicable() && row.getSubLedger() != null && !row.getSubLedger().isBlank()) {
+            if (!recordCheck("Sub Ledger", row.getSubLedger(), getSubLedger(rowIndex))) {
+                mismatches.add("Sub Ledger");
+            }
+        }
+
+        return mismatches.isEmpty()
+                ? "&#10003;&nbsp;all fields match"
+                : "&#10007;&nbsp;" + mismatches.size() + " mismatch(es): " + String.join(", ", mismatches);
+    }
+
+    /** One "label — filled with X, validated in UI as Y" line, tick when they match, cross when
+     *  they genuinely differ — same convention as
+     *  {@code GeneralVoucherPredicateFactory#recordFieldCheck}.
+     *  @return {@code true} when the values matched. */
+    private static boolean recordCheck(String label, String expected, String actual) {
+        boolean match = expected == null || expected.trim().equalsIgnoreCase(actual == null ? null : actual.trim());
+        StepSummaryBuffer.record(label + " — filled with <b>" + nullSafe(expected)
+                + "</b>, validated in UI as <b>" + nullSafe(actual) + "</b>", match);
+        return match;
+    }
+
+    private static String nullSafe(String value) {
+        return (value == null || value.isBlank()) ? "&mdash;" : value;
     }
 
     /**
@@ -302,9 +525,34 @@ public class GeneralVoucherExpenseIncomeDetail extends VoucherSubLedgerInformati
         JavascriptExecutorUtils.waitForExtJS();
         fillRowBasicFields(rowIndex, newRow);
         if (allocations != null && !allocations.isEmpty()) {
-            allocateSites(rowIndex, allocations);
+            allocateSites(rowIndex, allocations, true);
         }
         return this;
+    }
+
+    /**
+     * Fills a {@code TYPE1_NONE} row (no Site, no Sub Ledger) at the create-flow's own position in
+     * the grid — {@code rowIndex == 0} reuses the grid's default empty first row (no Add Row click,
+     * same as {@link #fillExpenseIncomeRows}'s own {@code i == 0} branch), every later index clicks
+     * Add Row first. Unlike {@link #fillExpenseIncomeRows}/{@link #addRow}, this skips the
+     * {@code GlLineType}-branching and site-allocation machinery entirely, so it works for rows
+     * built directly in a test (no DB/Excel {@code resolvedGlType} resolution) as long as the GL is
+     * genuinely {@code TYPE1_NONE} — for business-value checks (e.g. Net Amount computation) that
+     * don't need the full combination-matrix fill pipeline.
+     *
+     * <p>Confirmed live (2026-10-01): row 0 needs its own mask wait too — unlike every later index
+     * (which gets one implicitly via the Add Row click's {@code waitForExtJS()}), row 0 is filled
+     * immediately after the Add form opens, and the grid's own initial-render mask can still be up,
+     * producing an {@code ElementClickIntercepted} on the General Ledger cell.
+     */
+    public GeneralVoucherExpenseIncomeDetail fillTypeOneNoneRow(int rowIndex, ExpenseIncomeDetail row) {
+        if (rowIndex > 0) {
+            clickAddRowButton();
+            JavascriptExecutorUtils.waitForExtJS();
+        } else {
+            WaitUtils.waitForExtMask("Fill TYPE1_NONE row 0 — grid ready");
+        }
+        return fillRowBasicFields(rowIndex, row);
     }
 
     /**
@@ -321,17 +569,20 @@ public class GeneralVoucherExpenseIncomeDetail extends VoucherSubLedgerInformati
      * {@link com.gsl.utils.dataprovider.fixture.finance.NegativeValidation#GV_SITE_ALLOCATION_PENDING}
      * / {@code GV_SITE_NOT_ALLOCATED} — that the app only raises once the row is actually left
      * incomplete. Forcing OK here would throw the popup's own refusal instead and the test would
-     * never reach Save to see the message it's meant to assert on.
+     * never reach Save to see the message it's meant to assert on. Those two scenarios are the
+     * only callers that pass {@code expectComplete=false}; every other caller does, so a genuine
+     * test-data gap in a positive scenario surfaces here instead of as a downstream Save timeout.
      *
      * <p>Decided from the popup's own Pending Amount field, read after every Add — not from
      * summing {@code allocations} locally — so this reflects whatever the app actually computed,
      * the same values the diagnostic in {@link AllocateSitesPopup#clickOk()} would report if OK
      * were attempted anyway. An unreadable Pending Amount is treated as incomplete: Cancel is the
-     * side that can never make things worse.
+     * side that can never make things worse for the {@code expectComplete=false} callers; for
+     * {@code expectComplete=true} callers it throws instead, same as a non-zero pending amount.
      */
-    private void allocateSites(int rowIndex, List<SiteAllocation> allocations) {
+    private void allocateSites(int rowIndex, List<SiteAllocation> allocations, boolean expectComplete) {
         AllocateSitesPopup popup = clickSiteButton(rowIndex);
-        commitSiteAllocations(rowIndex, popup, allocations, "Allocate Sites");
+        commitSiteAllocations(rowIndex, popup, allocations, "Allocate Sites", expectComplete);
     }
 
     /**
@@ -352,27 +603,59 @@ public class GeneralVoucherExpenseIncomeDetail extends VoucherSubLedgerInformati
         ExtentLogger.info("[GV ExpenseIncomeDetail] Row " + (rowIndex + 1) + ": reallocating sites — "
                 + newSiteAllocations.size() + " target allocation(s)");
         AllocateSitesPopup popup = clickSiteButton(rowIndex);
-        commitSiteAllocations(rowIndex, popup, newSiteAllocations, "Site reallocation");
+        // Edit's SITE_SPLIT_ONLY shape always expects the re-split to balance (same total amount,
+        // only the sitewise split changes) — this is never one of the two intentionally-incomplete
+        // negative scenarios, so expectComplete=true.
+        commitSiteAllocations(rowIndex, popup, newSiteAllocations, "Site reallocation", true);
         return this;
     }
 
     /** Shared commit logic behind {@link #allocateSites}/{@link #reallocateSites} — see
-     *  {@link #allocateSites}'s Javadoc for why OK isn't always the right action. */
+     *  {@link #allocateSites}'s Javadoc for why OK isn't always the right action.
+     *
+     * @param expectComplete {@code false} for the two negative scenarios that deliberately leave
+     *        the row incomplete (see {@link #allocateSites}'s Javadoc) — Cancels quietly on a
+     *        non-zero/unreadable Pending Amount, same as before. {@code true} for every other
+     *        caller — throws instead of silently Cancelling, naming the row and the actual pending
+     *        amount, so a genuine test-data gap fails here rather than 4 wait-layers later as an
+     *        opaque {@code messagebox-1001-msg} Save timeout. */
     private void commitSiteAllocations(int rowIndex, AllocateSitesPopup popup,
-            List<SiteAllocation> allocations, String actionLabel) {
+            List<SiteAllocation> allocations, String actionLabel, boolean expectComplete) {
+        notifyUi(l -> l.beforeSiteAllocation(rowIndex, popup));
         for (SiteAllocation alloc : allocations) {
             popup.addSiteAllocation(alloc.getSiteName(), alloc.getAmount());
         }
+        notifyUi(l -> l.afterSiteAllocation(rowIndex, popup, allocations));
 
         BigDecimal pending = popup.getPendingAmount();
         if (pending != null && pending.signum() == 0) {
             popup.clickOk();
+            // Item O: this step previously had zero summary content (confirmed live — the
+            // "Allocate Sites" node showed only its duration, nothing else) — state what was
+            // actually allocated instead of leaving the reader to guess from the row's own
+            // "Sites: ..." line elsewhere.
+            String allocatedList = allocations.isEmpty() ? "&mdash;"
+                    : allocations.stream()
+                            .map(a -> a.getSiteName() + " (" + a.getAmount() + ")")
+                            .reduce((a, b) -> a + ", " + b).orElse("&mdash;");
+            StepSummaryBuffer.record("Allocated: <b>" + allocatedList
+                    + "</b> — Pending: <b>" + pending.toPlainString() + "</b>");
             return;
+        }
+
+        String pendingStr = pending == null ? "<unreadable>" : pending.toPlainString();
+        if (expectComplete) {
+            throw new IllegalStateException("[GV ExpenseIncomeDetail] Row " + (rowIndex + 1) + ": "
+                    + actionLabel + " did not balance after " + allocations.size() + " allocation(s) — "
+                    + "Pending Amount = " + pendingStr + ". This row was expected to fully allocate; "
+                    + "check the SiteAllocation test data for LineNo " + (rowIndex + 1) + " (a rounding "
+                    + "gap or a missing split line will leave the voucher unbalanced and Save silently "
+                    + "disabled).");
         }
 
         ExtentLogger.warning("[GV ExpenseIncomeDetail] Row " + (rowIndex + 1) + ": " + actionLabel + " left "
                 + "incomplete after " + allocations.size() + " allocation(s) — Pending Amount = "
-                + (pending == null ? "<unreadable>" : pending.toPlainString())
+                + pendingStr
                 + ". Cancelling instead of OK; Save is expected to raise its own site-allocation "
                 + "validation.");
         popup.clickCancel();
@@ -461,7 +744,8 @@ public class GeneralVoucherExpenseIncomeDetail extends VoucherSubLedgerInformati
         JavascriptExecutorUtils.waitForExtJS();
         int shortWaitSeconds = (int) ConfigFactory.getWaitConfig().shortWaitSeconds();
         if (!SeleniumUtils.isElementPresent(ACTIVE_EDITOR_INPUT, shortWaitSeconds)) {
-            ExtentLogger.info(logTag + ": single click did not open the editor — retrying with double-click");
+            // Item AD (Round 5): debug-gated UI_ACTION, not a plain uncategorized log.
+            ReportLogger.uiAction(logTag + ": single click did not open the editor — retrying with double-click");
             WaitUtils.fluentWaitBuilder()
                     .withMessage("grid cell " + logTag + " to accept a double-click — locator: " + cell)
                     .until(driver -> {
@@ -479,7 +763,9 @@ public class GeneralVoucherExpenseIncomeDetail extends VoucherSubLedgerInformati
         // the same option for no reason.
         String current = getGeneralLedger(rowIndex);
         if (current != null && current.trim().equalsIgnoreCase(generalLedger.trim())) {
-            ExtentLogger.info("[GV ExpenseIncomeDetail] Row " + rowIndex + ": General Ledger already '"
+            // Item AD (Round 5): debug-gated UI_ACTION, same as the other "already 'X' — skipping
+            // update" guards in this class.
+            ReportLogger.uiAction("[GV ExpenseIncomeDetail] Row " + rowIndex + ": General Ledger already '"
                     + current + "' — skipping update");
             return;
         }
@@ -499,7 +785,7 @@ public class GeneralVoucherExpenseIncomeDetail extends VoucherSubLedgerInformati
             // SeleniumUtils.clickBoundlistOptionAcrossPages's own Javadoc.
             By option = gridBoundlistOption(generalLedger, null);
             SeleniumUtils.clickBoundlistOptionAcrossPages(BOUNDLIST_ROOT, option, "GV_GL_OPTION_" + generalLedger);
-            ExtentLogger.info("GV_GL_OPTION_" + generalLedger + " clicked successfully");
+            ReportLogger.fieldEntry(generalLedger + " selected from dropdown");
             JavascriptExecutorUtils.waitForExtJS();
             JavascriptExecutorUtils.waitForPageLoad();
         }, () -> getGeneralLedger(rowIndex));
@@ -527,7 +813,8 @@ public class GeneralVoucherExpenseIncomeDetail extends VoucherSubLedgerInformati
         // out at 30s: "Sub Ledger option 'WB-INPUT IGST' to be clickable in the open combo dropdown".
         String current = getSubLedger(rowIndex);
         if (current != null && current.trim().equalsIgnoreCase(subLedger.trim())) {
-            ExtentLogger.info("[GV ExpenseIncomeDetail] Row " + rowIndex + ": Sub Ledger already '"
+            // Item AD (Round 5): debug-gated UI_ACTION, same as the other skip-guard diagnostics.
+            ReportLogger.uiAction("[GV ExpenseIncomeDetail] Row " + rowIndex + ": Sub Ledger already '"
                     + current + "' — GL has exactly one eligible Sub Ledger and the app auto-populated "
                     + "it, skipping the select flow");
             return;
@@ -546,7 +833,7 @@ public class GeneralVoucherExpenseIncomeDetail extends VoucherSubLedgerInformati
             // reasoning as setGeneralLedger above — this picker is the identical paged widget.
             By option = gridBoundlistOption(subLedger, subLedgerId);
             SeleniumUtils.clickBoundlistOptionAcrossPages(BOUNDLIST_ROOT, option, "GV_SL_OPTION_" + subLedger);
-            ExtentLogger.info("GV_SL_OPTION_" + subLedger + " clicked successfully");
+            ReportLogger.fieldEntry(subLedger + " selected from dropdown");
             JavascriptExecutorUtils.waitForExtJS();
             JavascriptExecutorUtils.waitForPageLoad();
         }, () -> getSubLedger(rowIndex));
@@ -556,7 +843,8 @@ public class GeneralVoucherExpenseIncomeDetail extends VoucherSubLedgerInformati
         if (narration == null || narration.isBlank()) return;
         String current = getLedgerNarration(rowIndex);
         if (current != null && current.trim().equalsIgnoreCase(narration.trim())) {
-            ExtentLogger.info("[GV ExpenseIncomeDetail] Row " + rowIndex + ": Ledger Narration already '"
+            // Item AD (Round 5): debug-gated UI_ACTION.
+            ReportLogger.uiAction("[GV ExpenseIncomeDetail] Row " + rowIndex + ": Ledger Narration already '"
                     + current + "' — skipping update");
             return;
         }
@@ -575,7 +863,8 @@ public class GeneralVoucherExpenseIncomeDetail extends VoucherSubLedgerInformati
         String value = reversal ? "Yes" : "No";
         String current = getIsReversal(rowIndex);
         if (current != null && current.trim().equalsIgnoreCase(value)) {
-            ExtentLogger.info("[GV ExpenseIncomeDetail] Row " + rowIndex + ": Is Reversal already '"
+            // Item AD (Round 5): debug-gated UI_ACTION.
+            ReportLogger.uiAction("[GV ExpenseIncomeDetail] Row " + rowIndex + ": Is Reversal already '"
                     + current + "' — skipping update");
             return;
         }
@@ -703,7 +992,8 @@ public class GeneralVoucherExpenseIncomeDetail extends VoucherSubLedgerInformati
         if (amount == null) return;
         BigDecimal current = getExpenseAmount(rowIndex);
         if (current != null && current.compareTo(amount) == 0) {
-            ExtentLogger.info("[GV ExpenseIncomeDetail] Row " + rowIndex + ": Expense (Dr) already '"
+            // Item AD (Round 5): debug-gated UI_ACTION.
+            ReportLogger.uiAction("[GV ExpenseIncomeDetail] Row " + rowIndex + ": Expense (Dr) already '"
                     + current + "' — skipping update");
             return;
         }
@@ -721,7 +1011,8 @@ public class GeneralVoucherExpenseIncomeDetail extends VoucherSubLedgerInformati
         if (amount == null) return;
         BigDecimal current = getIncomeAmount(rowIndex);
         if (current != null && current.compareTo(amount) == 0) {
-            ExtentLogger.info("[GV ExpenseIncomeDetail] Row " + rowIndex + ": Income (Cr) already '"
+            // Item AD (Round 5): debug-gated UI_ACTION.
+            ReportLogger.uiAction("[GV ExpenseIncomeDetail] Row " + rowIndex + ": Income (Cr) already '"
                     + current + "' — skipping update");
             return;
         }
@@ -837,5 +1128,382 @@ public class GeneralVoucherExpenseIncomeDetail extends VoucherSubLedgerInformati
             predicate = "(" + predicate + " or @data-columnid='" + explicitColumnId + "')";
         }
         return By.xpath("//table[@data-recordindex='" + rowIndex + "']//td[" + predicate + "]");
+    }
+
+    // ── UI-contract validation — Expense/Income Detail grid ─────────────────────────────────────
+    // Every column of the grid comes from GeneralVoucherGridColumnHeader (single source of truth):
+    // DEFAULT columns must be shown (FAIL if not), USER columns are validated only when displayed
+    // (SKIP "not displayed" otherwise). All results are tagged via UiValidationScope nodes so the
+    // report nests them: Grid header and toolbar / Row N (cells, Allocate Sites, Payment
+    // Information) / Grid footer. Callers wrap the whole thing in an "Expense/Income Detail" node.
+
+    /** What one grid row is expected to show and which popups apply to it — built by the test from
+     *  its own {@code ExpenseIncomeDetail} data, never read back from the page.
+     *
+     *  @param allocations Allocate Sites rows for this grid row, or empty when no Site applies
+     *  @param payment     Cheque/RTGS payment entered for this row, or {@code null} when none
+     *  @param paymentDebit whether the payment's Cash/Bank line is a debit (picks the popup variant) */
+    public record RowUiPlan(ExpenseIncomeDetail row, List<SiteAllocation> allocations,
+                            PaymentInformation payment, boolean paymentDebit) {
+        public RowUiPlan {
+            allocations = allocations == null ? List.of() : allocations;
+        }
+        public boolean hasSite() { return !allocations.isEmpty(); }
+        public boolean hasPayment() {
+            return payment != null && payment.getPaymentMode() != PaymentSelectionType.CASH;
+        }
+        public BigDecimal amount() { return row.isDebit() ? row.getExpenseDr() : row.getIncomeCr(); }
+    }
+
+    private static final java.text.DecimalFormat TWO_DECIMALS = new java.text.DecimalFormat("0.00");
+
+    private static String fmt(BigDecimal v) {
+        return TWO_DECIMALS.format(v == null ? BigDecimal.ZERO : v);
+    }
+
+    /** The report node title for one grid row: GL, SL (only if present), amount, and the
+     *  Site/Payment applicability tags — the same string every result for that row nests under, so
+     *  callers adding a checkpoint under a row reuse it and merge into the same node. */
+    public static String rowNodeLabel(int rowIndex, RowUiPlan plan) {
+        ExpenseIncomeDetail row = plan.row();
+        boolean hasSl = row.getSubLedger() != null && !row.getSubLedger().isBlank();
+        return "Row " + (rowIndex + 1) + " · GL: " + row.getGeneralLedger()
+                + (hasSl ? " · SL: " + row.getSubLedger() : "")
+                + " · " + (row.isDebit() ? "Dr " : "Cr ") + fmt(plan.amount())
+                + " · Sub Ledger: " + (hasSl ? "yes" : "no")
+                + " · Site: " + (plan.hasSite() ? "yes" : "no") + " · Payment: " + (plan.hasPayment() ? "yes" : "no");
+    }
+
+    /** NBSP / zero-width / surrounding whitespace removed — an empty ExtJS grid cell typically reads
+     *  as a lone {@code &nbsp;}, which {@link String#isBlank()} does NOT treat as blank. */
+    private static String cleanCell(String s) {
+        return s == null ? "" : s.replace(' ', ' ').replace("​", "").strip();
+    }
+
+    /** Generic sweep used by {@code validateUiContract} (Create/Edit flows, nothing to fill): header
+     *  and toolbar plus one already-filled row's cells, style only. */
+    public List<UiValidationFailure> validateExpenseIncomeGridUi(int rowIndex, UiValidationLevel level) {
+        List<UiValidationFailure> failures = new ArrayList<>(validateGridHeaderAndToolbarUi(level));
+        failures.addAll(UiValidationScope.node(rowTitleFromGrid(rowIndex), () ->
+                UiValidationScope.node("Cells and row buttons", () -> validateRowCellsUi(rowIndex, null, level))));
+        return failures;
+    }
+
+    /** Row node title for the generic sweep (no test plan available): GL, SL (only if present) and
+     *  the Dr/Cr amount read from the row itself. Falls back to just "Row N" if any read fails —
+     *  a title must never abort the sweep. */
+    private String rowTitleFromGrid(int rowIndex) {
+        String title = "Row " + (rowIndex + 1);
+        try {
+            String gl = cleanCell(getGeneralLedger(rowIndex));
+            if (gl.isEmpty()) {
+                return title + " (blank)";   // nothing filled yet: no GL / SL / amount fragments to show
+            }
+            String sl = cleanCell(getSubLedger(rowIndex));
+            BigDecimal dr = getExpenseAmount(rowIndex);
+            BigDecimal cr = getIncomeAmount(rowIndex);
+            boolean debit = dr != null && dr.signum() != 0;
+            BigDecimal amount = debit ? dr : cr;
+            return title + " · GL: " + gl
+                    + (sl.isEmpty() ? "" : " · SL: " + sl)
+                    + (amount == null ? "" : " · " + (debit ? "Dr " : "Cr ") + fmt(amount))
+                    + " · Sub Ledger: " + (sl.isEmpty() ? "no" : "yes");
+        } catch (RuntimeException e) {
+            return title;
+        }
+    }
+
+    /** Header text/style for every column plus the toolbar chrome (no row data needed). Delete Row's
+     *  state is not asserted (it depends on the grid's selection). */
+    public List<UiValidationFailure> validateGridHeaderAndToolbarUi(UiValidationLevel level) {
+        return validateGridHeaderAndToolbarUi(level, null);
+    }
+
+    /** @param deleteRowExpectedEnabled expected enabled state of the toolbar's Delete Row button —
+     *         {@code false} on a blank grid (nothing to delete), {@code null} to skip the state check */
+    public List<UiValidationFailure> validateGridHeaderAndToolbarUi(UiValidationLevel level,
+            Boolean deleteRowExpectedEnabled) {
+        return UiValidationScope.node("Grid header and toolbar", () -> {
+            List<UiValidationFailure> failures = new ArrayList<>();
+            for (GeneralVoucherGridColumnHeader col : GeneralVoucherGridColumnHeader.values()) {
+                String name = "GRID_HEADER_" + col.name();
+                failures.addAll(col.kind() == GridColumnKind.USER
+                        ? UiComponentValidator.validateGridHeaderOptional(col.headerLocator(), name, col.headerText(), level)
+                        : UiComponentValidator.validateGridHeader(col.headerLocator(), name, col.headerText(), level));
+            }
+            failures.addAll(validateGridToolbarUi(deleteRowExpectedEnabled));
+            return failures;
+        });
+    }
+
+    /** Scope of this form's Add/Edit window, so the list page behind it is never matched. */
+    private static final String WINDOW_SCOPE = FormSection.voucherWindowScope(VoucherDomain.GV);
+
+    // Toolbar buttons are icon-only: located by their mdi icon class, then up to the button anchor
+    // (confirmed from the live DOM; Delete Row's XPath verified to match exactly once).
+    private static By toolbarIcon(String mdiIconClass) {
+        return By.xpath(WINDOW_SCOPE + "//i[contains(@class,'" + mdiIconClass
+                + "')]/ancestor::a[contains(@class,'x-btn')]");
+    }
+
+    private static final By TOOLBAR_ADD_ROW    = toolbarIcon("mdi-playlist-plus");
+    private static final By TOOLBAR_SELECT     = toolbarIcon("mdi-playlist-check");
+    private static final By TOOLBAR_DELETE_ROW = toolbarIcon("mdi-playlist-remove");
+    private static final By TOOLBAR_FILTER     = toolbarIcon("mdi-filter-variant");
+    /** The grid's Search icon reuses the {@code panelheaderarrow} class (same as section chevrons). */
+    private static final By TOOLBAR_SEARCH = By.xpath(WINDOW_SCOPE
+            + "//a[contains(@class,'panelheaderarrow')][.//i[contains(@class,'mdi-magnify')]]");
+
+    /** Toolbar icons (Add Row, Select, Delete Row, Filter) and the Search icon: presence and state. */
+    public List<UiValidationFailure> validateGridToolbarUi(Boolean deleteRowExpectedEnabled) {
+        List<UiValidationFailure> failures = new ArrayList<>();
+        failures.addAll(UiComponentValidator.validateIconButton(TOOLBAR_ADD_ROW, "GRID_TOOLBAR_ADD_ROW", true));
+        failures.addAll(UiComponentValidator.validateIconButton(TOOLBAR_SELECT, "GRID_TOOLBAR_SELECT", true));
+        failures.addAll(UiComponentValidator.validateIconButton(TOOLBAR_DELETE_ROW, "GRID_TOOLBAR_DELETE_ROW",
+                deleteRowExpectedEnabled));
+        failures.addAll(UiComponentValidator.validateIconButton(TOOLBAR_FILTER, "GRID_TOOLBAR_FILTER", true));
+        failures.addAll(UiComponentValidator.validateIconButton(TOOLBAR_SEARCH, "GRID_TOOLBAR_SEARCH", true));
+        return failures;
+    }
+
+    /** Row-scoped Cheque/RTGS button (same {@code data-recordindex} scoping as {@link #siteButtonForRow}). */
+    private static By chequeRtgsButtonForRow(int rowIndex) {
+        return By.xpath("//table[@data-recordindex='" + rowIndex + "']//button[normalize-space()='"
+                + SubLedgerGridButtonLabel.CHEQUE_RTGS.label() + "']");
+    }
+
+    /**
+     * Fills one grid row (adding it first when {@code rowIndex > 0}) AND validates it in place:
+     * cells (style + value), row buttons, then — only where the plan says they apply — the Allocate
+     * Sites popup (before and after fill) and the Payment Information popup (before and after
+     * fill). A row with no Site / no Payment gets one SKIP row each instead of an empty group.
+     * Fill and validation interleave because the popup states only exist while the popup is open.
+     *
+     * @return the results, nested under a {@code "Row N · GL … · SL … · Dr/Cr amount"} node
+     */
+    public List<UiValidationFailure> fillAndValidateRowUi(int rowIndex, RowUiPlan plan, UiValidationLevel level) {
+        ExpenseIncomeDetail row = plan.row();
+        if (rowIndex > 0) {
+            clickAddRowButton();
+            JavascriptExecutorUtils.waitForExtJS();
+        } else {
+            WaitUtils.waitForExtMask("Fill row 1 — grid ready");
+        }
+        fillRowBasicFields(rowIndex, row);
+        boolean hasSl = row.getSubLedger() != null && !row.getSubLedger().isBlank();
+        if (hasSl) {
+            setSubLedger(rowIndex, row.getSubLedger(), row.getSubLedgerId());
+        }
+
+        return UiValidationScope.node(rowNodeLabel(rowIndex, plan), () -> {
+            List<UiValidationFailure> failures = new ArrayList<>();
+            failures.addAll(UiValidationScope.node("Cells and row buttons", () -> validateRowCellsUi(rowIndex, plan, level)));
+            failures.addAll(validateRowAllocateSitesUi(rowIndex, plan, hasSl, level));
+            failures.addAll(validateRowPaymentUi(rowIndex, plan, level));
+            return failures;
+        });
+    }
+
+    /** {@code plan == null} = style-only (no expected values known — generic Create/Edit sweep). */
+    public List<UiValidationFailure> validateRowCellsUi(int rowIndex, RowUiPlan plan, UiValidationLevel level) {
+        ExpenseIncomeDetail row = plan == null ? null : plan.row();
+        int n = rowIndex + 1;
+        List<UiValidationFailure> failures = new ArrayList<>();
+        for (GeneralVoucherGridColumnHeader col : GeneralVoucherGridColumnHeader.values()) {
+            String expected = row == null ? null : switch (col) {
+                case GENERAL_LEDGER -> row.getGeneralLedger();
+                case SUB_LEDGER -> row.getSubLedger() == null ? "" : row.getSubLedger();
+                case LEDGER_NARRATION -> row.getLedgerNarration() == null ? "" : row.getLedgerNarration();
+                case IS_REVERSAL -> row.isReversalYes() ? "Yes" : "No";
+                case EXPENSE_DR -> fmt(row.getExpenseDr());
+                case INCOME_CR -> fmt(row.getIncomeCr());
+                default -> null; // USER columns: style only, no expected value in the test data
+            };
+            By cell = col == GeneralVoucherGridColumnHeader.LEDGER_NARRATION
+                    ? rowCellByPosition(rowIndex, col.headerText(), LEDGER_NARRATION_COLUMN_ID)
+                    : rowCellByPosition(rowIndex, col.headerText());
+            String name = "GRID_CELL_" + col.name() + "_ROW_" + n;
+            failures.addAll(col.kind() == GridColumnKind.USER
+                    ? UiComponentValidator.validateGridCellOptional(cell, name, col.numeric(), expected, level)
+                    : UiComponentValidator.validateGridCellWithValue(cell, name, col.numeric(), expected, level));
+        }
+        failures.addAll(UiComponentValidator.validateButton(siteButtonForRow(rowIndex),
+                "GRID_ROW_BUTTON_SITE_ROW_" + n, SubLedgerGridButtonLabel.SITE.label(), true,
+                FieldStyleSpec.GRID_ROW_BUTTON, level));
+        failures.addAll(UiComponentValidator.validateButton(chequeRtgsButtonForRow(rowIndex),
+                "GRID_ROW_BUTTON_CHEQUE_RTGS_ROW_" + n, SubLedgerGridButtonLabel.CHEQUE_RTGS.label(), true,
+                FieldStyleSpec.GRID_ROW_BUTTON, level));
+        return failures;
+    }
+
+    private List<UiValidationFailure> validateRowAllocateSitesUi(int rowIndex, RowUiPlan plan, boolean hasSl,
+            UiValidationLevel level) {
+        if (!plan.hasSite()) {
+            return UiComponentValidator.skip("ALLOCATE_SITES_ROW_" + (rowIndex + 1), "applicability",
+                    "not applicable (no Site on this row)", "not applicable");
+        }
+        ExpenseIncomeDetail row = plan.row();
+        String header = "Allocate Sites · GL: " + row.getGeneralLedger() + (hasSl ? " · SL: " + row.getSubLedger() : "");
+        return UiValidationScope.node(header, () -> {
+            List<UiValidationFailure> failures = new ArrayList<>();
+            AllocateSitesPopup popup = clickSiteButton(rowIndex);
+            failures.addAll(UiValidationScope.node("Before fill", () -> {
+                List<UiValidationFailure> before = new ArrayList<>(popup.collectUiContract(level));
+                before.addAll(popup.collectValuesUi(List.of(), plan.amount(), level));
+                return before;
+            }));
+            for (SiteAllocation alloc : plan.allocations()) {
+                popup.addSiteAllocation(alloc.getSiteName(), alloc.getAmount());
+            }
+            failures.addAll(UiValidationScope.node("After fill",
+                    () -> popup.collectValuesUi(plan.allocations(), plan.amount(), level)));
+            popup.clickOk();
+            return failures;
+        });
+    }
+
+    private List<UiValidationFailure> validateRowPaymentUi(int rowIndex, RowUiPlan plan, UiValidationLevel level) {
+        if (!plan.hasPayment()) {
+            return UiComponentValidator.skip("PAYMENT_INFO_ROW_" + (rowIndex + 1), "applicability",
+                    "not applicable (no Cheque/RTGS data)", "not applicable");
+        }
+        PaymentInformation payment = plan.payment();
+        return UiValidationScope.node("Payment Information · " + payment.getPaymentMode()
+                + (payment.getInstrumentNo() == null ? "" : " · " + payment.getInstrumentNo()), () -> {
+            List<UiValidationFailure> failures = new ArrayList<>();
+            PaymentInformationPopup popup = clickPaymentButton(rowIndex, plan.paymentDebit());
+            failures.addAll(UiValidationScope.node("Before fill", () -> popup.collectUiContract(level)));
+            popup.selectPaymentMode(payment.getPaymentMode())
+                    .setInstrumentNo(payment.getInstrumentNo())
+                    .setInstrumentDate(payment.getInstrumentDate())
+                    .setDrawnOn(payment.getDrawnOn())
+                    .setReference(payment.getReference());
+            failures.addAll(UiValidationScope.node("After fill", () -> popup.collectValuesUi(payment)));
+            popup.clickOk();
+            // Select the row (click its General ledger cell), then validate the Payment Information
+            // section below the grid: it shows the selected row's payment.
+            selectRow(rowIndex);
+            failures.addAll(UiValidationScope.node("Static panel (Row " + (rowIndex + 1) + " selected)",
+                    () -> validatePaymentPanelUi(payment, level)));
+            return failures;
+        });
+    }
+
+    /** Selects a grid row by clicking its General ledger cell, then cancels the cell editor that the
+     *  click opens (Escape — no value change) so the row stays selected and nothing is left in edit
+     *  mode. The static Payment Information panel then shows that row's payment. */
+    public void selectRow(int rowIndex) {
+        SeleniumUtils.click(rowCellByPosition(rowIndex, "General ledger"), WaitType.CLICKABLE,
+                "GV_SELECT_ROW_" + rowIndex);
+        JavascriptExecutorUtils.waitForExtJS();
+        if (UiComponentValidator.quickPresent(ACTIVE_EDITOR_INPUT)) {
+            new Actions(DriverManager.getDriver()).sendKeys(Keys.ESCAPE).perform();
+            JavascriptExecutorUtils.waitForExtJS();
+        }
+    }
+
+    /**
+     * The static Payment Information panel (section below the grid; fields from
+     * {@link PaymentPanelField}): for every field the panel shows — label styled, field DISABLED and,
+     * when the expected value is known, the displayed value equal to it. A caption the panel does not
+     * show for this mode is a SKIP ("not displayed"), never a FAIL. {@code payment == null} = nothing
+     * entered yet (blank form / row without payment): every shown field is expected empty.
+     */
+    public List<UiValidationFailure> validatePaymentPanelUi(PaymentInformation payment, UiValidationLevel level) {
+        List<UiValidationFailure> failures = new ArrayList<>();
+        for (PaymentPanelField field : PaymentPanelField.values()) {
+            By label = field.labelLocator(WINDOW_SCOPE);
+            By value = field.valueLocator(WINDOW_SCOPE);
+            if (!UiComponentValidator.quickPresent(label)) {
+                failures.addAll(UiComponentValidator.skip(field.key(), "visibility",
+                        "shown when the mode uses it", "not displayed for this payment mode"));
+                continue;
+            }
+            failures.addAll(UiComponentValidator.validateLabel(label, field.key() + "_LABEL", field.caption(),
+                    FieldStyleSpec.FIELD_LABEL, level));
+            failures.addAll(UiComponentValidator.validateFieldState(value, field.key(),
+                    com.gsl.utils.ui.UiFieldState.DISABLED));
+            String expected = expectedPanelValue(field, payment);
+            if (expected != null) {
+                failures.addAll(UiComponentValidator.validateValue(value, field.key(), expected));
+            }
+        }
+        return failures;
+    }
+
+    /** Expected displayed value for {@code field}, or {@code null} when it cannot be compared
+     *  reliably (e.g. a test-data date that is not dd/MM/yyyy). */
+    private static String expectedPanelValue(PaymentPanelField field, PaymentInformation payment) {
+        if (payment == null) {
+            // Nothing entered: only the free-text fields are reliably empty (Payment Mode / date may
+            // show an app default), so those are not compared.
+            return field == PaymentPanelField.INSTRUMENT_NO || field == PaymentPanelField.REFERENCE ? "" : null;
+        }
+        return switch (field) {
+            case PAYMENT_MODE -> payment.getPaymentMode() == null ? "" : payment.getPaymentMode().label();
+            case INSTRUMENT_NO -> nz(payment.getInstrumentNo());
+            case INSTRUMENT_DATE -> {
+                String d = nz(payment.getInstrumentDate()).trim();
+                yield d.isEmpty() || d.matches("\\d{2}/\\d{2}/\\d{4}") ? d : null;
+            }
+            case CHEQUE_LABEL, DRAWN_ON -> nz(payment.getDrawnOn());
+            case REFERENCE -> nz(payment.getReference());
+        };
+    }
+
+    private static String nz(String s) {
+        return s == null ? "" : s;
+    }
+
+
+    // ── Grid footer (Record Count / Total Amount (Dr) / Total Amount (Cr)) ──────────────────
+    // Confirmed from the live DOM: a toolbar (div.gridItems-toolbar) of gsl_FieldLabel display fields;
+    // each has a label span (x-form-item-label-text) and a value div (role=textbox) holding a <b>.
+    private static final String FOOTER_FIELD = WINDOW_SCOPE
+            + "//div[contains(@class,'gridItems-toolbar')]//div[contains(@class,'gsl_FieldLabel')]"
+            + "[.//span[contains(@class,'x-form-item-label-text')][normalize-space()='%s']]";
+
+    private static By footerLabel(String text) {
+        return By.xpath(String.format(FOOTER_FIELD, text) + "//span[contains(@class,'x-form-item-label-text')]");
+    }
+
+    private static By footerValue(String text) {
+        return By.xpath(String.format(FOOTER_FIELD, text) + "//div[@role='textbox']//b");
+    }
+
+    /** Label text (always) and value (when the expected value is non-null) of the grid footer.
+     *  {@code checkpoint} names the state, e.g. "blank grid" or "after Row 2". */
+    public List<UiValidationFailure> validateGridFooterUi(String checkpoint, Integer expectedRecordCount,
+            BigDecimal expectedTotalDr, BigDecimal expectedTotalCr) {
+        List<UiValidationFailure> failures = new ArrayList<>();
+        String tag = checkpoint == null ? "" : " (" + checkpoint + ")";
+        failures.addAll(UiComponentValidator.validateStatusIndicator(footerLabel("Record Count:"),
+                "GRID_FOOTER_RECORD_COUNT_LABEL" + tag, "Record Count:", UiValidationLevel.SMOKE));
+        failures.addAll(UiComponentValidator.validateStatusIndicator(footerLabel("Total Amount (Dr):"),
+                "GRID_FOOTER_TOTAL_DR_LABEL" + tag, "Total Amount (Dr):", UiValidationLevel.SMOKE));
+        failures.addAll(UiComponentValidator.validateStatusIndicator(footerLabel("Total Amount (Cr):"),
+                "GRID_FOOTER_TOTAL_CR_LABEL" + tag, "Total Amount (Cr):", UiValidationLevel.SMOKE));
+        if (expectedRecordCount != null) {
+            failures.addAll(UiComponentValidator.validateAmountValue(footerValue("Record Count:"),
+                    "GRID_FOOTER_RECORD_COUNT" + tag, String.valueOf(expectedRecordCount), null, null,
+                    UiValidationLevel.SMOKE));
+        }
+        if (expectedTotalDr != null) {
+            failures.addAll(UiComponentValidator.validateAmountValue(footerValue("Total Amount (Dr):"),
+                    "GRID_FOOTER_TOTAL_DR" + tag, expectedTotalDr.toPlainString(), null, null,
+                    UiValidationLevel.SMOKE));
+        }
+        if (expectedTotalCr != null) {
+            failures.addAll(UiComponentValidator.validateAmountValue(footerValue("Total Amount (Cr):"),
+                    "GRID_FOOTER_TOTAL_CR" + tag, expectedTotalCr.toPlainString(), null, null,
+                    UiValidationLevel.SMOKE));
+        }
+        return failures;
+    }
+
+    /** Label-only footer check — used by the generic {@code validateUiContract} sweep (Create/Edit
+     *  business flows), where the expected sums are not known to the validator. */
+    public List<UiValidationFailure> validateGridFooterUi() {
+        return validateGridFooterUi(null, null, null, null);
     }
 }

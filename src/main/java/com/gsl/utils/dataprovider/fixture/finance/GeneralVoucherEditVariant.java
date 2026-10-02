@@ -5,6 +5,7 @@ import com.gsl.enums.Finance.Operations.GeneralVoucher.GlLineType;
 import com.gsl.enums.GlAccountType;
 import com.gsl.pages.Finance.Operations.GeneralVoucherAdd;
 import com.gsl.testdata.Finance.Operations.Vouchers.GeneralVoucher.DetailLineEditTarget;
+import com.gsl.testdata.Finance.Operations.Vouchers.GeneralVoucher.PaymentInfoEditTarget;
 import com.gsl.testdata.dto.MergedFinanceGeneralVoucherData;
 import lombok.Builder;
 import lombok.Getter;
@@ -121,6 +122,24 @@ public class GeneralVoucherEditVariant {
      */
     CashBankType requiredCashBankType;
 
+    /** Which of the three Payment-Info edit shapes this scenario is (see {@link
+     *  PaymentInfoEditTarget.PaymentModeShape}) — {@code SAME_MODE_NEW_INSTRUMENT} (the original
+     *  shape) by default, so every variant built before this field existed needs no change. Only
+     *  meaningful for {@link ScenarioType#PAYMENT_INFO}; unset/default for every other scenario
+     *  type. Mirrors {@link #detailLineEditShape}'s own Javadoc convention exactly. */
+    @Builder.Default
+    PaymentInfoEditTarget.PaymentModeShape paymentInfoEditShape = PaymentInfoEditTarget.PaymentModeShape.SAME_MODE_NEW_INSTRUMENT;
+
+    /** {@code null} (default) for every ordinary Payment-Info variant — today's existing behavior,
+     *  completely unchanged. Set only for the 4 dedicated "instrument date vs. entry date"
+     *  regression scenarios ({@link PaymentInfoDateScenario}), which additionally pin the claimed
+     *  candidate's counter-leg to Dr or Cr (see that enum's own class Javadoc for why) and override
+     *  the new Instrument Date to be genuinely future-dated. {@code paymentInfoEditShape} above is
+     *  still set explicitly alongside this (mirroring {@code dateScenario.shape()}) rather than
+     *  derived from it, so every existing {@code variant.getPaymentInfoEditShape()} call site keeps
+     *  working unchanged for both old and new variants alike. */
+    PaymentInfoDateScenario dateScenario;
+
     /**
      * Plan §4K: each constant now also carries the {@code Supplier<BiPredicate<Data, Page>>}
      * behavior that applies this scenario's change to the open Edit form — mirroring
@@ -133,7 +152,12 @@ public class GeneralVoucherEditVariant {
      */
     public enum ScenarioType {
         HEADER_ONLY(GeneralVoucherEditPredicateFactory.HEADER_EDIT_BEHAVIOR),
-        DETAIL_LINE(GeneralVoucherEditPredicateFactory.DETAIL_LINE_EDIT_BEHAVIOR);
+        DETAIL_LINE(GeneralVoucherEditPredicateFactory.DETAIL_LINE_EDIT_BEHAVIOR),
+        /** Edits the voucher's existing Cash/Bank Cheque instrument number — see
+         *  {@code GeneralVoucherEditPredicateFactory#PAYMENT_INFO_EDIT_BEHAVIOR} and {@code
+         *  PaymentInfoEditTarget}. Requires {@link #requiredCashBankType} = {@code BANK} and a
+         *  claimed candidate whose first {@code finvchdet} row is already Cheque-mode. */
+        PAYMENT_INFO(GeneralVoucherEditPredicateFactory.PAYMENT_INFO_EDIT_BEHAVIOR);
 
         private final Supplier<BiPredicate<MergedFinanceGeneralVoucherData, GeneralVoucherAdd>> behaviorSupplier;
 

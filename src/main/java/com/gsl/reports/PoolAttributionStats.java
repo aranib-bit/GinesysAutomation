@@ -44,12 +44,14 @@ public final class PoolAttributionStats {
         return Collections.unmodifiableMap(out);
     }
 
+    /** @return class simple name → cumulative cold-start warmup milliseconds. */
     public static Map<String, Long> coldStartMsByClass() {
         Map<String, Long> out = new TreeMap<>();
         COLD_START_MS_BY_CLASS.forEach((k, v) -> out.put(k, v.sum()));
         return Collections.unmodifiableMap(out);
     }
 
+    /** @return class simple name → number of cold-start warmups recorded. */
     public static Map<String, Long> coldStartCountByClass() {
         Map<String, Long> out = new TreeMap<>();
         COLD_START_COUNT_BY_CLASS.forEach((k, v) -> out.put(k, v.sum()));

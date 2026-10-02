@@ -18,6 +18,7 @@ public final class FrontendDiagnosticsInjectorFactory {
 
     private FrontendDiagnosticsInjectorFactory() {}
 
+    /** @return the injector matching {@code application.type} (case-insensitive), defaulting to {@link ExtJsFrontendInjector} for any unrecognized value. */
     public static FrontendDiagnosticsInjector get() {
         String type = ConfigFactory.getBrowserConfig().applicationType().toLowerCase().trim();
         return switch (type) {

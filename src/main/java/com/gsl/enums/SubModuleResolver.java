@@ -11,6 +11,17 @@ import com.gsl.pages.enums.topmenucomponent.MainModuleType;
 import java.util.List;
 import java.util.Map;
 
+/**
+ * Resolves a {@code FrameworkAnnotation#subModule()} short code (e.g. {@code
+ * "FinanceARVoucher"}) to the {@link ISubModule} constant it names, scoped to the annotation's
+ * {@link MainModuleType}. Used by {@code AnnotationMethodInterceptor} and {@code TestListener} to
+ * turn a test's declared sub-module string into a real enum constant (and, from there, its
+ * {@code fw.group} for CI/CD pipeline-stage filtering).
+ *
+ * <p>{@link #REGISTRY} enumerates every {@code *MenuType} enum (one per module/page-tree branch)
+ * that implements {@link ISubModule} for each {@link MainModuleType} — adding a new sub-module
+ * enum for an existing module means adding its {@code .class} to that module's list here.
+ */
 public final class SubModuleResolver {
 
     private static final Map<MainModuleType, List<Class<? extends Enum<?>>>> REGISTRY = Map.of(
@@ -32,6 +43,14 @@ public final class SubModuleResolver {
 
     private SubModuleResolver() {}
 
+    /**
+     * Scans every {@link ISubModule}-implementing enum registered for {@code module} (see {@link
+     * #REGISTRY}) and returns the constant whose {@link ISubModule#getShortCode()} matches {@code
+     * shortCode}.
+     *
+     * @throws IllegalArgumentException if {@code shortCode} isn't found among {@code module}'s
+     *                                  registered sub-module enums (or {@code module} has none registered)
+     */
     public static ISubModule resolve(MainModuleType module, String shortCode) {
         for (Class<? extends Enum<?>> cls : REGISTRY.getOrDefault(module, List.of())) {
             for (Enum<?> constant : cls.getEnumConstants()) {

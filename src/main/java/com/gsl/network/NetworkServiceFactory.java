@@ -24,6 +24,15 @@ public final class NetworkServiceFactory {
 
     private NetworkServiceFactory() {}
 
+    /**
+     * Picks the {@link NetworkCapture} implementation matching {@code driver}'s capabilities.
+     * Returns a {@link NoOpNetworkCapture} when {@code network.capture.enabled} is off, or when
+     * {@code driver} supports neither {@link org.openqa.selenium.devtools.HasDevTools} nor
+     * {@link HasBiDi}.
+     *
+     * @param driver the session's WebDriver, already created (not yet started)
+     * @return a not-yet-started {@link NetworkCapture} — callers must still call {@link NetworkCapture#start()}
+     */
     public static NetworkCapture create(WebDriver driver) {
         if (!ConfigFactory.getNetworkConfig().enableNetworkLogs()) {
             return new NoOpNetworkCapture();

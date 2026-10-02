@@ -20,10 +20,15 @@ import java.util.List;
 @NoArgsConstructor
 @AllArgsConstructor
 public class ApVoucherAttachment {
+    /** Always {@code 0} in both confirmed HAR captures — no attachment doc has been raised yet. */
     @Builder.Default
     private int doccode = 0;
+    /** Literal string {@code "0"} (not a numeric folder id) — kept as the HAR-confirmed literal
+     *  rather than guessing a real folder name/id. */
     @Builder.Default
     private String foldername = "0";
+    /** Always empty in both captures — no files are attached by this client's Customer/Vendor
+     *  Advance flow. */
     @JsonProperty("Files")
     @Builder.Default
     private List<Object> files = List.of();

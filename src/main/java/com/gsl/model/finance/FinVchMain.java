@@ -14,29 +14,47 @@ import java.time.LocalDateTime;
 @Data
 public class FinVchMain {
 
+    /** Primary key. */
     private long vchcode;
 
+    /** Internal voucher number. */
     private String vchno;
 
+    /** Document number as displayed in the UI/reports (e.g. {@code "VG/00375/26-27"}) — what test code and validators key voucher lookups by. */
     @ColumnName("scheme_docno")
     private String schemeDocno;
+
+    /** Voucher date. */
     private LocalDate vchdt;
+
+    /** Voucher type code — see {@code VoucherType#code()} ({@code 'P'}=AP, {@code 'R'}=AR, {@code 'G'}=General, {@code 'C'}=Contra). */
     private String vchtype;
+
+    /** Header reference number. */
     private String refno;
 
     /** Voucher narration / remarks. Maps to finvchmain.nartext (varchar 500). */
     private String nartext;
+
+    /** FK → {@code fingl.glcode} — the header's Cash/Bank GL. */
     private long glcode;
+
+    /** Header debit amount — see {@code VoucherType#expectedHeaderAmount} for how this balances against the detail lines per voucher domain. */
     private BigDecimal damount;
+
+    /** Header credit amount — see {@code VoucherType#expectedHeaderAmount} for how this balances against the detail lines per voucher domain. */
     private BigDecimal camount;
 
     @ColumnName("admsite_code_owner")
     private long admsiteCodeOwner;
+
+    /** Accounting year code. */
     private long ycode;
 
     @ColumnName("entry_source")
     private String entrySource;      // WEB or API
 
+    /** Document lifecycle status (distinct from {@link #releaseStatus}, which tracks release specifically). */
     private String status;
 
     @ColumnName("release_status")
@@ -74,4 +92,20 @@ public class FinVchMain {
     private long releaseEcode;
 
     private long ecode;
+
+    /** Items H/I (Round 9) — previously asserted only in the DiffEngine/changeset layer
+     *  (`GeneralVoucherCreateChangeSets`); mapped here so the hand-written "Database Validation"
+     *  layer and "Actual Results" can display/assert them too. */
+    private Long doccode;
+
+    @ColumnName("admou_code")
+    private Long admouCode;
+
+    /** {@code 'Y'}/{@code 'N'} — Advance-vs-Document payment mode, populated only for AP Voucher
+     *  (General Voucher's own rows must always have this {@code NULL} — see
+     *  {@code GeneralVoucherCreateChangeSets}'s own {@code ColumnRule.mandatoryNull("isadvance")}
+     *  rule). Mapped here (previously read only in code comments, never queried) so an AP-side DB
+     *  claim can target an Advance-mode candidate specifically — see
+     *  {@code ApVoucherTagStateClaimSupport#claimOne(Jdbi, ApVoucherTagState, Boolean)}. */
+    private String isadvance;
 }

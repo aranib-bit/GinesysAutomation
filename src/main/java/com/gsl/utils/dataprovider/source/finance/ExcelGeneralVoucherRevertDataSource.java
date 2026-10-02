@@ -45,6 +45,14 @@ import static io.github.sskorol.data.TestDataReader.use;
  */
 public class ExcelGeneralVoucherRevertDataSource implements TestDataSource<MergedFinanceGeneralVoucherData> {
 
+    /**
+     * Reads {@code MasterTestData} + {@code RevertVoucherInfo}, joined by {@code TestCaseID} and
+     * filtered to {@code methodName}, and builds one {@link MergedFinanceGeneralVoucherData} per
+     * row with {@code existingVoucherNo} set — see the class Javadoc's "Data flow" for the full
+     * shape. Throws {@link SkipException} (rather than silently returning an empty list) when
+     * either sheet has no matching row, since an empty Revert data provider is always a
+     * fixture-authoring mistake, never a legitimate "nothing to do" state.
+     */
     @Override
     public List<MergedFinanceGeneralVoucherData> load(String methodName) {
 

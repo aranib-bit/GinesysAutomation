@@ -14,8 +14,15 @@ import lombok.Data;
 @Data
 public class FinSlGl {
 
+    /** Surrogate row id for this (Sub Ledger, GL) pair — FK target for {@code finsl_gl_site.finsl_gl_code}. */
     private long code;
+
+    /** FK → {@code finsl.slcode}. */
     private long slcode;
+
+    /** FK → {@code fingl.glcode}. */
     private long glcode;
+
+    /** {@code 'N'} = active (allow-listed); anything else = logically deleted. */
     private String ext;
 }

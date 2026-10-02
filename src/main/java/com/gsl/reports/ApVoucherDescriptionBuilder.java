@@ -37,6 +37,7 @@ public final class ApVoucherDescriptionBuilder {
         return buildFromRichName(tcName);
     }
 
+    /** Maps a negative-scenario enum name to its fixed description sentence, or {@code null} if not a known negative scenario. */
     private static String buildNegativeDescription(String scenarioName) {
         if (scenarioName == null) return null;
         return switch (scenarioName) {
@@ -55,6 +56,10 @@ public final class ApVoucherDescriptionBuilder {
         };
     }
 
+    /**
+     * Parses the " | "-separated compact name and assembles an English sentence.
+     * Each token is matched defensively — unknown tokens are silently skipped.
+     */
     static String buildFromRichName(String richName) {
         String[] tokens = richName.split("\\s*\\|\\s*");
 
@@ -98,10 +103,12 @@ public final class ApVoucherDescriptionBuilder {
 
     // ── Token extractors ─────────────────────────────────────────────────────
 
+    /** {@code true} when the scenario token names the Advance Payment path. */
     private static boolean isAdvance(String scenario) {
         return scenario.toUpperCase().startsWith("ADVANCE");
     }
 
+    /** Looks for a token like {@code [Cash GL]} or {@code [Bank GL]}. */
     private static String extractGlType(String[] tokens) {
         for (String t : tokens) {
             if (t.startsWith("[") && t.endsWith("]")) {
@@ -113,6 +120,7 @@ public final class ApVoucherDescriptionBuilder {
         return null;
     }
 
+    /** Extracts "System" or "User" from tokens like {@code Vendor(System)} or {@code System SL}. */
     private static String extractSlClass(String[] tokens) {
         for (String t : tokens) {
             if (t.contains("(System)") || t.equalsIgnoreCase("System SL")) return "System";
@@ -121,6 +129,10 @@ public final class ApVoucherDescriptionBuilder {
         return null;
     }
 
+    /**
+     * Extracts the SL category label from tokens like {@code Vendor(System)}.
+     * Returns the part before the parenthesis, stripped of whitespace.
+     */
     private static String extractSlCategory(String[] tokens) {
         for (String t : tokens) {
             int paren = t.indexOf('(');
@@ -131,6 +143,7 @@ public final class ApVoucherDescriptionBuilder {
         return null;
     }
 
+    /** Maps the scenario token to an adjustment description phrase. */
     private static String adjPhrase(String scenario) {
         String s = scenario.toUpperCase();
         if (s.startsWith("SEL_DOC") || s.startsWith("SELECT_DOCUMENT")) return "with Select Document Adjustment";
@@ -140,6 +153,7 @@ public final class ApVoucherDescriptionBuilder {
         return "";
     }
 
+    /** For Advance-scenario tokens only: extracts a "with/without TDS Deduction" phrase; empty for non-Advance scenarios. */
     private static String extractTdsPhrase(String[] tokens, String scenario) {
         if (!isAdvance(scenario)) return "";
         for (String t : tokens) {
@@ -150,6 +164,10 @@ public final class ApVoucherDescriptionBuilder {
         return "";
     }
 
+    /**
+     * Extracts amount description from tokens like {@code Amt:FULL} or {@code Amt:PARTIAL}.
+     * Returns empty string when no Amt token is found.
+     */
     private static String extractAmtPhrase(String[] tokens) {
         for (String t : tokens) {
             if (t.startsWith("Amt:")) {
@@ -164,6 +182,10 @@ public final class ApVoucherDescriptionBuilder {
         return "";
     }
 
+    /**
+     * Extracts payment description from tokens like {@code Pmt:CASH}, {@code Pmt:CHEQUE}.
+     * Returns empty string when no Pmt token is found (= no payment).
+     */
     private static String extractPmtPhrase(String[] tokens) {
         for (String t : tokens) {
             if (t.startsWith("Pmt:")) {

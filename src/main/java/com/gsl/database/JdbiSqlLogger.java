@@ -40,7 +40,9 @@ public class JdbiSqlLogger implements SqlLogger {
     /** When true, SQL query lines are silently dropped instead of being logged to the report. */
     private static final ThreadLocal<Boolean> SUPPRESS = ThreadLocal.withInitial(() -> false);
 
+    /** Starts dropping SQL query lines for the current thread instead of logging them to the report. */
     public static void startSuppressing() { SUPPRESS.set(true); }
+    /** Stops suppression for the current thread and clears its {@link ThreadLocal} entry. */
     public static void stopSuppressing()  { SUPPRESS.set(false); SUPPRESS.remove(); }
 
     /**
@@ -50,12 +52,16 @@ public class JdbiSqlLogger implements SqlLogger {
      */
     private static final ThreadLocal<List<String>> CAPTURED = new ThreadLocal<>();
 
+    /** Activates capturing on the current thread — must be paired with {@link #stopCapturing()}. */
     public static void startCapturing()        { CAPTURED.set(new ArrayList<>()); }
+    /** @return the lines captured so far on the current thread, or an empty list if capturing isn't active. */
     public static List<String> getCaptured()   { var l = CAPTURED.get(); return l != null ? l : Collections.emptyList(); }
+    /** Deactivates capturing and clears the current thread's captured list. */
     public static void stopCapturing()         { CAPTURED.remove(); }
 
     // ── Before execution: resolve SQL and start timing ────────────────────────
 
+    /** Resolves {@code ctx}'s SQL (named + positional params substituted) into {@code __resolvedSql__} and records the start time; swallows all failures so a logging error never breaks the underlying query. */
     @Override
     public void logBeforeExecution(StatementContext ctx) {
         START_NS.set(System.nanoTime());
@@ -63,9 +69,23 @@ public class JdbiSqlLogger implements SqlLogger {
             String rawSql = ctx.getRawSql();
             if (rawSql == null || rawSql.isBlank()) return;
 
+            // Prefer the template-RENDERED sql over the raw sql as the base to scan for :name
+            // placeholders. bindList()'s IN-clause syntax uses a <name> template token (e.g.
+            // "IN (<tables>)"), which JDBI's template engine expands into plain :name0, :name1, ...
+            // colon params BEFORE the SQL parser ever sees it — getRenderedSql() reflects that
+            // expansion, getRawSql() does not. Previously this always scanned getRawSql(), so a
+            // <name> token here never matched the :(\w+) regex below (it's not colon-prefixed) and
+            // was left completely unresolved in the logged SQL — not a display nuance: the logged
+            // text (e.g. "IN (<tables>)") isn't valid SQL a reader could copy-paste and run, unlike
+            // every other resolved query line. getRenderedSql() is a safe universal substitute: for
+            // a query with no <name> templates at all, it's identical to getRawSql() in every way
+            // that matters here (the template engine is a no-op when there's nothing to render).
+            String renderedSql = ctx.getRenderedSql();
+            String sqlToScan = (renderedSql != null && !renderedSql.isBlank()) ? renderedSql : rawSql;
+
             // Step 1: substitute named :paramName placeholders
             var binding = ctx.getBinding();
-            Matcher m = NAMED_PARAM.matcher(rawSql);
+            Matcher m = NAMED_PARAM.matcher(sqlToScan);
             StringBuffer sb = new StringBuffer();
             while (m.find()) {
                 String name  = m.group(1);
@@ -100,6 +120,11 @@ public class JdbiSqlLogger implements SqlLogger {
 
     // ── After execution: emit with timing ─────────────────────────────────────
 
+    /**
+     * Emits the resolved SQL line with elapsed time, routed to whichever sink is active for the
+     * current thread — {@link DbQueryBuffer}, {@link #CAPTURED}, {@link com.gsl.reports.ValidationBuffer},
+     * or {@link ReportLogger} — and always echoes it into {@code trace.log} unless suppressed.
+     */
     @Override
     public void logAfterExecution(StatementContext ctx) {
         try {

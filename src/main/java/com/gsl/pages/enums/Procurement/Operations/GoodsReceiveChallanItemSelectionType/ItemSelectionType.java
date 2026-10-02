@@ -2,6 +2,15 @@ package com.gsl.pages.enums.Procurement.Operations.GoodsReceiveChallanItemSelect
 
 import org.openqa.selenium.By;
 
+/**
+ * The "item vs. set" item-selection method offered on the Goods Receive Challan Add screen's item
+ * selector (see {@code GoodsReceiveChallanItemDetails#clickItemSelector(ItemSelectionType)} and
+ * {@code GoodsReceiveChallanAdd}) — each constant is one clickable option on that selector, e.g.
+ * "Scan Item" vs. "Select Item" vs. "Copy Challan" from a previous document. Test data names a
+ * constant via its {@code itemSetSelectionWay} column (see {@code MergedReceiptDataSupplier},
+ * {@link ItemSelectionTypeEnumMapper}). The sibling {@link SetSelectionType} enum covers the
+ * separate "set" major-method options instead of this "item" major-method's options.
+ */
 public enum ItemSelectionType {
     CREATE_ITEM("Create Item"),
     SELECT_ITEM("Select Item"),
@@ -20,10 +29,17 @@ public enum ItemSelectionType {
         this.label = label;
     }
 
+    /** This option's visible selector text, e.g. {@code "Scan Item"}. */
     public String getLabel() {
         return label;
     }
 
+    /**
+     * Resolves {@code text} to a constant, matching against either the visible {@link #getLabel()}
+     * text or the constant's own name with underscores stripped (both case-insensitive).
+     *
+     * @throws IllegalArgumentException if {@code text} matches no constant
+     */
     public static ItemSelectionType fromString(String text) {
         for (ItemSelectionType b : ItemSelectionType.values()) {
             if (b.label.equalsIgnoreCase(text) || b.name().replace("_", "").equalsIgnoreCase(text)) {

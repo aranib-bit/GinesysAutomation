@@ -14,6 +14,7 @@ public class TransferOutFixtureContext {
     int quantity;
     int rate;
 
+    /** Builds the context from the {@code fixture.transferout.*} keys in {@code api.properties}. */
     public static TransferOutFixtureContext fromConfig() {
         ApiConfig config = ConfigFactory.getApiConfig();
         return TransferOutFixtureContext.builder()

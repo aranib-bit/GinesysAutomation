@@ -29,6 +29,7 @@ public final class ServiceInvoiceAdhocApiFixtureFactory {
                 default -> true;
             };
 
+    /** Returns the {@link ServiceInvoiceAdhocApiScenarioType} constants {@link #SHOULD_RUN} selects for {@code testMethodName}. */
     public static List<ServiceInvoiceAdhocApiScenarioType> scenariosFor(String testMethodName) {
         return Arrays.stream(ServiceInvoiceAdhocApiScenarioType.values())
                 .filter(scenario -> SHOULD_RUN.test(scenario, testMethodName))

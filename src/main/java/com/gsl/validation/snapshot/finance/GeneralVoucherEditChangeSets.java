@@ -7,7 +7,10 @@ import com.gsl.model.finance.FinGl;
 import com.gsl.model.finance.FinSl;
 import com.gsl.testdata.Finance.Operations.Vouchers.GeneralVoucher.DocumentInformation;
 import com.gsl.testdata.Finance.Operations.Vouchers.GeneralVoucher.ExpenseIncomeDetail;
+import com.gsl.testdata.Finance.Operations.Vouchers.GeneralVoucher.PaymentInfoEditTarget;
+import com.gsl.utils.DateUtils;
 import com.gsl.utils.Log;
+import com.gsl.utils.cheque.ChequeInstrumentResolver;
 import com.gsl.validation.snapshot.ColumnRule;
 import com.gsl.validation.snapshot.DbValueNormalizer;
 import com.gsl.validation.snapshot.DocumentContext;
@@ -16,6 +19,7 @@ import com.gsl.validation.snapshot.VoucherSnapshot;
 
 import java.math.BigDecimal;
 import java.time.LocalDate;
+import java.time.format.DateTimeParseException;
 import java.util.List;
 import java.util.Map;
 
@@ -134,6 +138,205 @@ public final class GeneralVoucherEditChangeSets {
                 beforeSnapshot, newDoc.getReference(), newDoc.getRemarks(), newDoc.getDocumentdate());
         ExpectedChangeSet withTds = withTdsAppNote(common, "GeneralVoucherEditChangeSets.headerEdit");
         return withChqdtTrackingRule(withTds, "GeneralVoucherEditChangeSets.headerEdit", beforeSnapshot, newDoc.getDocumentdate());
+    }
+
+    /**
+     * Payment-Info-edit change set (see the "Payment Info Edit" plan, including its Part C
+     * payment-mode-change extension): header fields (reference/remarks/date) are unchanged for
+     * this scenario (the data source leaves {@code newDoc} at the header's existing values, same
+     * "hold unchanged" idiom the {@code DETAIL_LINE}/{@code PAYMENT_INFO} branch of {@code
+     * DbGeneralVoucherEditDataSource#resolveOne} already uses) — so this starts from the same
+     * common {@code headerEdit} rules as every other Edit scenario, then layers a row-scoped
+     * override onto the voucher's FIRST {@code finvchdet} row (the single Cash/Bank counter-leg —
+     * see {@code PaymentInformation}'s own Javadoc) and the matching {@code finpost} row(s).
+     *
+     * <p>{@code chqno}/{@code chqdt} are each independently conditional on whether {@code
+     * target.getNewPayment()} actually carries a different value than {@code
+     * target.getBeforePayment()} for that specific column — NOT unconditionally {@code
+     * MUST_CHANGE} (a confirmed live bug, see {@code reports/runs/20260916_133846},
+     * {@code FIN-GV-EDIT-PAYMENT-01}: {@code SAME_MODE_NEW_INSTRUMENT}/{@code NEFT_TO_CHEQUE}
+     * build {@code newPayment} with {@code instrumentDate} left {@code null} — see {@code
+     * DbGeneralVoucherEditDataSource#buildPaymentEditTarget} — so {@code chqdt} is never actually
+     * touched for those shapes and must be asserted {@code MUST_NOT_CHANGE}, not {@code
+     * MUST_CHANGE}). {@code finpost.chqno} mirrors {@code finvchdet.chqno}'s same conditional
+     * rule — confirmed live that the app propagates a genuine chqno change into {@code finpost}
+     * too, which previously had no override and so wrongly inherited {@code headerEdit()}'s
+     * table-wide {@code MUST_NOT_CHANGE} default. {@code payment_mode} is asserted {@code
+     * MUST_CHANGE} only for the two mode-change shapes ({@link
+     * PaymentInfoEditTarget.PaymentModeShape#CHEQUE_TO_NEFT}/{@code NEFT_TO_CHEQUE} —
+     * {@code SAME_MODE_NEW_INSTRUMENT} keeps its original no-rule behavior, since that shape
+     * genuinely never changes {@code payment_mode}), and {@code bookcode} per shape (see below).
+     *
+     * <p>Unlike {@link #withChqdtTrackingRule} (whose Javadoc assumes GV's Cheque popup is
+     * Create-flow-only — an assumption this scenario deliberately breaks), {@code chqdt} is
+     * deliberately NOT reclassified as a {@code SYSTEM_CHANGE} default here: for a shape that DOES
+     * carry a genuine new instrument date, a {@code chqdt} change is exactly what's expected, not
+     * a side-effect to explain away — so {@link #withChqdtTrackingRule} is deliberately NOT
+     * called.
+     *
+     * <p>Deliberately does NOT assert {@code drawnon} ({@link PaymentInfoEditTarget#getNewPayment()}
+     * carries the same Drawn On as before — see {@code
+     * DbGeneralVoucherEditDataSource#buildPaymentEditTarget}'s own note).
+     *
+     * <p>The {@code bookcode} rule for {@code SAME_MODE_NEW_INSTRUMENT}/{@code NEFT_TO_CHEQUE}
+     * compares the actual before/after {@code bookcode} values (before from the snapshot, after
+     * from {@link PaymentInfoEditTarget#getNewBookcode()}) rather than inferring "same book" from
+     * {@link PaymentInfoEditTarget#getNewBankMatch()} — a same-bank match does NOT imply the same
+     * cheque book (a single bank account can have multiple books), which a live run confirmed
+     * (see the inline comment at the rule itself). The {@code CHEQUE_TO_NEFT} bookcode rule keeps
+     * its own separate, still-live-unverified assumption (see its own inline comment below), and
+     * the {@code finchqdet} table's old-row fate on a Cheque→NEFT transition is left entirely
+     * unasserted — see the plan's staged verification section before trusting either as final.
+     */
+    public static ExpectedChangeSet paymentInfoEdit(DocumentContext context, VoucherSnapshot beforeSnapshot,
+            DocumentInformation newDoc, PaymentInfoEditTarget target) {
+
+        ExpectedChangeSet common = VoucherEditChangeSets.headerEdit("GeneralVoucherEditChangeSets.paymentInfoEdit",
+                context, beforeSnapshot, newDoc.getReference(), newDoc.getRemarks(), newDoc.getDocumentdate());
+        ExpectedChangeSet withTds = withTdsAppNote(common, "GeneralVoucherEditChangeSets.paymentInfoEdit");
+
+        var finvchdetTable = beforeSnapshot.getTable("finvchdet");
+        List<Map<String, Object>> rows = finvchdetTable == null ? List.of() : finvchdetTable.getRows();
+        if (rows.isEmpty()) return withTds;
+        Map<String, Object> firstRow = rows.get(0);
+        String rowKey = "glcode=" + DbValueNormalizer.getIgnoreCase(firstRow, "glcode")
+                + ", slcode=" + DbValueNormalizer.displayString(DbValueNormalizer.getIgnoreCase(firstRow, "slcode"));
+
+        ExpectedChangeSet.Builder builder = ExpectedChangeSet.builder("GeneralVoucherEditChangeSets.paymentInfoEdit")
+                .mergeFrom(withTds);
+
+        // chqno/chqdt are each independently conditional on whether THIS scenario's target
+        // actually moves that specific value — SAME_MODE_NEW_INSTRUMENT/NEFT_TO_CHEQUE build
+        // newPayment with instrumentDate left null (DbGeneralVoucherEditDataSource
+        // #buildPaymentEditTarget), so chqdt is never touched for those shapes and must be
+        // asserted unchanged, not blindly MUST_CHANGE regardless of what the scenario actually
+        // edits. Previously both rules were unconditional, which is exactly what produced FAIL #5
+        // (reports/runs/20260916_133846, FIN-GV-EDIT-PAYMENT-01): chqdt wrongly expected to
+        // change when the scenario never supplied a new one, and finpost.chqno (see below) had no
+        // override at all so it fell back to the table-wide MUST_NOT_CHANGE default even though
+        // chqno itself genuinely changed.
+        boolean chqnoChanges = !java.util.Objects.equals(
+                target.getBeforePayment().getInstrumentNo(), target.getNewPayment().getInstrumentNo());
+
+        // chqdt must compare actual DATE VALUES, not merely "was a new date string supplied" —
+        // CHEQUE_TO_NEFT always supplies LocalDate.now() as the new instrument date, which can
+        // coincidentally equal the voucher's existing chqdt when run same-day, producing no real
+        // DB change even though a "new" value was present (confirmed live: reports/runs/
+        // 20260916_160435, FIN-GV-EDIT-PAYMENT-02 — both before and after were '2026-09-16').
+        // beforePayment's date is ISO (DbGeneralVoucherEditDataSource#buildPaymentEditTarget uses
+        // LocalDate#toString()); newPayment's is UI format (DateUtils.UI_DATE_FORMAT) for
+        // CHEQUE_TO_NEFT — parseFlexibleDate normalizes either before comparing.
+        LocalDate beforeChqdt = parseFlexibleDate(target.getBeforePayment().getInstrumentDate());
+        LocalDate afterChqdt = parseFlexibleDate(target.getNewPayment().getInstrumentDate());
+        boolean chqdtChanges = afterChqdt != null && !afterChqdt.equals(beforeChqdt);
+
+        builder.rule("finvchdet", rowKey, chqnoChanges
+                ? ColumnRule.mustChangeTo("chqno", target.getNewPayment().getInstrumentNo())
+                : ColumnRule.mustNotChange("chqno"));
+        builder.rule("finvchdet", rowKey, chqdtChanges
+                ? ColumnRule.mustChange("chqdt")
+                : ColumnRule.mustNotChange("chqdt"));
+
+        // finpost mirrors finvchdet's chqno for the matching VDG posting row(s) — confirmed live
+        // (same run: finpost.chqno moved 000066->000071 in lockstep with finvchdet.chqno) — but
+        // had no override before this fix, so it fell back to headerEdit()'s table-wide
+        // MUST_NOT_CHANGE default and failed even though the app's behavior was correct. Matched
+        // by glcode/slcode against the same finvchdet firstRow this method already keys off, not
+        // hardcoded to enttype='VDG', so it generalizes to however many finpost rows actually
+        // share that GL/SL combination.
+        var finpostTable = beforeSnapshot.getTable("finpost");
+        List<Map<String, Object>> finpostRows = finpostTable == null ? List.of() : finpostTable.getRows();
+        Object firstRowGlcode = DbValueNormalizer.getIgnoreCase(firstRow, "glcode");
+        Object firstRowSlcode = DbValueNormalizer.getIgnoreCase(firstRow, "slcode");
+        for (Map<String, Object> postRow : finpostRows) {
+            if (!DbValueNormalizer.equalsNormalized(DbValueNormalizer.getIgnoreCase(postRow, "glcode"), firstRowGlcode)
+                    || !DbValueNormalizer.equalsNormalized(DbValueNormalizer.getIgnoreCase(postRow, "slcode"), firstRowSlcode)) {
+                continue;
+            }
+            String postRowKey = "glcode=" + DbValueNormalizer.getIgnoreCase(postRow, "glcode")
+                    + ", slcode=" + DbValueNormalizer.displayString(DbValueNormalizer.getIgnoreCase(postRow, "slcode"))
+                    + ", enttype=" + DbValueNormalizer.getIgnoreCase(postRow, "enttype");
+            builder.rule("finpost", postRowKey, chqnoChanges
+                    ? ColumnRule.mustChangeTo("chqno", target.getNewPayment().getInstrumentNo())
+                    : ColumnRule.mustNotChange("chqno"));
+        }
+
+        // payment_mode: only asserted when this scenario actually changes it — SAME_MODE_NEW_INSTRUMENT
+        // stays 'C'→'C' (genuinely unchanged, no rule added, preserving that scenario's original
+        // behavior exactly); CHEQUE_TO_NEFT/NEFT_TO_CHEQUE genuinely flip it.
+        if (target.getBeforePayment().getPaymentMode() != target.getNewPayment().getPaymentMode()) {
+            builder.rule("finvchdet", rowKey,
+                    ColumnRule.mustChangeTo("payment_mode", target.getNewPayment().getPaymentMode().dbCode()));
+        }
+
+        // Dr/Cr bifurcation: a Cr-side (Receipt) row behaves AR-style — no company cheque-book
+        // concept at all — so bookcode must stay null across ANY payment-mode-shape edit,
+        // regardless of the new cheque's bank-match resolution. Confirmed live in idealdb:
+        // VG/02597/26-27 (Cr) has bookcode=NULL even though its payment_mode is Cheque.
+        if (!isDebitRow(firstRow)) {
+            builder.rule("finvchdet", rowKey, ColumnRule.mustNotChange("bookcode"));
+        } else if (target.getShape() == PaymentInfoEditTarget.PaymentModeShape.CHEQUE_TO_NEFT) {
+            // NEFT/RTGS has no cheque-book concept at all — bookcode is expected to become null.
+            // UNVERIFIED assumption: this presumes the "before" row's bookcode was actually
+            // non-null (i.e. the before-cheque really was a registered/known one) — claimOne's
+            // filter only guarantees a non-null chqno, not a non-null bookcode (see
+            // buildPaymentEditTarget's own beforeBankMatch caveat) — confirm against a live run
+            // before trusting this fully; if before's bookcode was already null this assertion
+            // may need to become mustNotChange instead.
+            builder.rule("finvchdet", rowKey, ColumnRule.mustChangeTo("bookcode", null));
+        } else {
+            // SAME_MODE_NEW_INSTRUMENT and NEFT_TO_CHEQUE both land here. bookcode identifies
+            // which cheque BOOK the instrument belongs to — NOT the same thing as newBankMatch
+            // (SAME_BANK/DIFFERENT_BANK), which only says the new cheque came from the same GL/
+            // bank account: a single bank account can have multiple cheque books issued over
+            // time, so two cheques with the same bankMatch can still carry different bookcodes.
+            // A prior version of this rule inferred "bookcode changes" purely from bankMatch and
+            // was confirmed wrong live (reports/runs/20260916_160435, FIN-GV-EDIT-PAYMENT-01:
+            // bankMatch was SAME_BANK yet bookcode stayed identical, '149629'->'149629', because
+            // the resolved instrument happened to land in the SAME book). Compare the actual
+            // resolved bookcode (target.getNewBookcode(), threaded from ChequeInstrumentResolver
+            // .ChequeResolution#bookcode()) against the before row's real bookcode instead.
+            BigDecimal beforeBookcode = DbValueNormalizer.asBigDecimal(DbValueNormalizer.getIgnoreCase(firstRow, "bookcode"));
+            BigDecimal afterBookcode = DbValueNormalizer.asBigDecimal(target.getNewBookcode());
+            boolean bookcodeChanges = beforeBookcode == null
+                    ? afterBookcode != null
+                    : afterBookcode == null || beforeBookcode.compareTo(afterBookcode) != 0;
+            builder.rule("finvchdet", rowKey, bookcodeChanges
+                    ? ColumnRule.mustChangeTo("bookcode", target.getNewBookcode())
+                    : ColumnRule.mustNotChange("bookcode"));
+        }
+
+        // finchqdet's old-row fate when a voucher moves OFF Cheque mode (does the previously-
+        // registered cheque's stat revert 'I'->'N'? does it stay orphaned?) is a confirmed,
+        // deliberately-unasserted gap — nothing in ChequeBookValidator/FinChqDet addresses it, and
+        // guessing here risks a wrong assertion rather than an honest unknown. Add a rule once a
+        // live CHEQUE_TO_NEFT run shows what the app actually does.
+
+        return builder.build();
+    }
+
+    /** Parses a {@link PaymentInformation}-carried date string that may be either ISO
+     *  ({@code yyyy-MM-dd}, how {@code beforePayment}'s date is built — see {@code
+     *  DbGeneralVoucherEditDataSource#buildPaymentEditTarget}'s {@code LocalDate#toString()} use)
+     *  or UI format ({@code dd/MM/yyyy}, {@link DateUtils#UI_DATE_FORMAT} — how {@code
+     *  CHEQUE_TO_NEFT}'s new date is built), so before/after values built by different code paths
+     *  can still be compared as real dates. {@code null}/blank input returns {@code null}. */
+    private static LocalDate parseFlexibleDate(String value) {
+        if (value == null || value.isBlank()) return null;
+        try {
+            return LocalDate.parse(value);
+        } catch (DateTimeParseException isoFailed) {
+            return LocalDate.parse(value, DateUtils.UI_DATE_FORMAT);
+        }
+    }
+
+    /** {@code true} when the given raw {@code finvchdet} snapshot row posts to the Debit side
+     *  ({@code damount} non-zero) — mirrors {@code FinVchDet.isDebit()}/{@code
+     *  ExpenseIncomeDetail.isDebit()}, operating on the {@code Map<String,Object>} shape this
+     *  snapshot-diff layer works with instead of a typed row. */
+    private static boolean isDebitRow(Map<String, Object> row) {
+        BigDecimal damount = DbValueNormalizer.asBigDecimal(DbValueNormalizer.getIgnoreCase(row, "damount"));
+        return damount != null && damount.signum() != 0;
     }
 
     /**

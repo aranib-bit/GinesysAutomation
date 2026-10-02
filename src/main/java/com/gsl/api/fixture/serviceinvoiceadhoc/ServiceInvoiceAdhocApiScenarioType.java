@@ -335,18 +335,27 @@ public enum ServiceInvoiceAdhocApiScenarioType {
         this.action = action;
     }
 
+    /** @return the endpoint name/label this scenario targets (used in report step names). */
     public String getEndpoint() {
         return endpoint;
     }
 
+    /** @return whether this constant is a {@code POSITIVE}, {@code NEGATIVE}, or {@code BOUNDARY} scenario. */
     public ScenarioKind getKind() {
         return kind;
     }
 
+    /** Runs this scenario's action against {@code client} using {@code ctx}'s reference values. */
     public ScenarioOutcome execute(ServiceInvoiceAdhocApiClient client, ServiceInvoiceAdhocFixtureContext ctx) {
         return action.apply(client, ctx);
     }
 
+    /**
+     * Resolves a real service to drive {@code calculateServiceCharges}/{@code calculateTdsRateAndAmount}
+     * scenarios, falling back to a synthetic placeholder ({@code serviceCode=1}) if the live
+     * {@code GetServices} lookup returns nothing for this site — keeps those scenarios runnable
+     * even against a site with zero configured services.
+     */
     private static ServiceLookupResult firstServiceOrDefault(ServiceInvoiceAdhocApiClient client, ServiceInvoiceAdhocFixtureContext ctx) {
         List<ServiceLookupResult> services = client.fetchServices(ctx.getOwnerSiteCode(), ctx.getOuCode());
         return (services != null && !services.isEmpty())
@@ -354,6 +363,7 @@ public enum ServiceInvoiceAdhocApiScenarioType {
                 : ServiceLookupResult.builder().serviceCode(1).serviceName("Adhoc Service").build();
     }
 
+    /** Null-safe empty check used by the negative {@code calculateServiceCharges} scenario's "no charges" test. */
     private static boolean isEmpty(List<?> list) {
         return list == null || list.isEmpty();
     }

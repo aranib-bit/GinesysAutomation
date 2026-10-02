@@ -49,7 +49,16 @@ public enum ComparisonStrategy {
     NOT_NULL,
 
     /** After (or before) is null/blank. */
-    NULL;
+    NULL,
+
+    /** After is one of {@link ColumnRule#getAllowedValues()} (case-insensitive) — e.g.
+     *  {@code release_status} must be exactly {@code "P"} or {@code "U"}, never anything else. */
+    ONE_OF,
+
+    /** After is numerically zero, OR blank/null (accepts either DB representation defensively —
+     *  a "not applicable for this domain" numeric column, e.g. {@code finpost.adjamt} for General
+     *  Voucher, is confirmed live to store a literal {@code 0}, not SQL {@code NULL}). */
+    ZERO;
 
     /**
      * Evaluates this strategy for one column.
@@ -66,6 +75,8 @@ public enum ComparisonStrategy {
             case NOT_EQUAL -> !DbValueNormalizer.equalsNormalized(before, after);
             case NOT_NULL -> !DbValueNormalizer.isBlank(after);
             case NULL -> DbValueNormalizer.isBlank(after);
+            case ONE_OF -> evaluateOneOf(after, rule);
+            case ZERO -> evaluateZero(after);
             case CURRENT_USER -> after != null && currentUser != null
                     && after.toString().trim().equalsIgnoreCase(currentUser.trim());
             case CURRENT_TIMESTAMP_TOLERANCE -> evaluateTimestampTolerance(before, after, rule);
@@ -78,6 +89,23 @@ public enum ComparisonStrategy {
         };
     }
 
+    /** {@code true} when {@code after} is a zero-valued numeric, or blank/null — see {@link #ZERO}. */
+    private static boolean evaluateZero(Object after) {
+        BigDecimal bd = DbValueNormalizer.asBigDecimal(after);
+        return bd == null ? DbValueNormalizer.isBlank(after) : bd.compareTo(BigDecimal.ZERO) == 0;
+    }
+
+    /** {@code true} when {@code after}'s trimmed string form case-insensitively matches one of
+     *  {@code rule}'s {@link ColumnRule#getAllowedValues()} — see {@link #ONE_OF}. */
+    private static boolean evaluateOneOf(Object after, ColumnRule rule) {
+        if (after == null || rule.getAllowedValues() == null) return false;
+        String afterStr = after.toString().trim();
+        return rule.getAllowedValues().stream().anyMatch(v -> v != null && v.trim().equalsIgnoreCase(afterStr));
+    }
+
+    /** {@code true} when {@code after} equals {@link ColumnRule#getExpectedValue()} — numerically
+     *  (via {@link BigDecimal#compareTo}) when the expected value is a {@link BigDecimal}, else via
+     *  {@link DbValueNormalizer#equalsNormalized}. See {@link #EXPECTED_VALUE}. */
     private static boolean evaluateExpectedValue(Object after, ColumnRule rule) {
         Object expected = rule.getExpectedValue();
         if (expected instanceof BigDecimal expectedBd) {
@@ -87,6 +115,8 @@ public enum ComparisonStrategy {
         return DbValueNormalizer.equalsNormalized(expected, after);
     }
 
+    /** {@code true} when {@code after - before} numerically equals {@link ColumnRule#getExpectedValue()};
+     *  {@code false} if any of the three isn't numeric. See {@link #EXPECTED_DELTA}. */
     private static boolean evaluateExpectedDelta(Object before, Object after, ColumnRule rule) {
         BigDecimal beforeBd = DbValueNormalizer.asBigDecimal(before);
         BigDecimal afterBd = DbValueNormalizer.asBigDecimal(after);
@@ -95,6 +125,9 @@ public enum ComparisonStrategy {
         return afterBd.subtract(beforeBd).compareTo(expectedDelta) == 0;
     }
 
+    /** {@code true} when {@code after} is timestamp-like, within {@code rule}'s
+     *  {@link ColumnRule#getToleranceSeconds()} of "now", AND (when {@code before} is itself
+     *  timestamp-like) not earlier than {@code before}. See {@link #CURRENT_TIMESTAMP_TOLERANCE}. */
     private static boolean evaluateTimestampTolerance(Object before, Object after, ColumnRule rule) {
         LocalDateTime afterTs = DbValueNormalizer.asLocalDateTime(after);
         if (afterTs == null) return false;

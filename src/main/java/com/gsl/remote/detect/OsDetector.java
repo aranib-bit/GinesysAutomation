@@ -63,10 +63,12 @@ public final class OsDetector {
 
     // ── private ───────────────────────────────────────────────────────────────
 
+    /** Builds the {@link #CACHE} key for a host/port pair. */
     private static String cacheKey(String host, int sshPort) {
         return host + ":" + sshPort;
     }
 
+    /** Opens a short-lived SSH session, runs {@code uname -s}, and maps the result to an {@link OSType}. */
     private static OSType probeViaSsh(String host, int sshPort, Credentials creds) {
         Log.debug("[OsDetector] Probing OS via SSH uname. host={} port={}", host, sshPort);
         try (SSHClient ssh = new SSHClient()) {

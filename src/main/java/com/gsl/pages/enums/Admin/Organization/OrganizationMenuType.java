@@ -2,6 +2,12 @@ package com.gsl.pages.enums.Admin.Organization;
 
 import com.gsl.enums.ISubModule;
 
+/**
+ * Admin &gt; Organization's side-menu sub-items (grouped under Hierarchy/Manage/Explore/Periods
+ * headers) — consumed by {@code OrganizationSideMenuComponent.clickMenuItem(OrganizationMenuType)}
+ * via {@link ISubModule#getGroup()}/{@link ISubModule#getName()} to expand the right group and
+ * click the matching item.
+ */
 public enum OrganizationMenuType implements ISubModule {
 
     ORGANIZATION_UNIT   ("Organization Unit",                 "AdminOrganizationUnit",   "Hierarchy"),

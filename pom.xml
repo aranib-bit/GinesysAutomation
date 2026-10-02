@@ -21,6 +21,12 @@
         <runmode>local</runmode>
         <headless>false</headless>
         <browser>chrome</browser>
+        <!--
+            Target environment folder under src/test/resources/env/ (staging, clone-staging, feature-05, ...).
+            Left empty on purpose so EnvResolver falls through to the env variable / env.local / default;
+            pass -Denv=feature-05 to pick one for a run.
+        -->
+        <env></env>
         <aspectj.version>1.9.21</aspectj.version>
         <!--
             Host-adaptive surefire JVM args. MaxRAMPercentage scales heap to the machine
@@ -48,20 +54,23 @@
             Resolving straight into ~/.m2 works identically for `mvn test` and IntelliJ's runner,
             and survives `mvn clean` since it's outside target/.
         -->
-        <test.jvm.args>-Dfile.encoding=UTF-8 -javaagent:${settings.localRepository}/org/aspectj/aspectjweaver/${aspectj.version}/aspectjweaver-${aspectj.version}.jar -XX:MaxRAMPercentage=60.0 -XX:MinRAMPercentage=30.0 -XX:InitialRAMPercentage=25.0 -XX:+UseG1GC -XX:MaxGCPauseMillis=200 -XX:+HeapDumpOnOutOfMemoryError "-XX:HeapDumpPath=${project.build.directory}/heapdumps" "-Xlog:gc*:file=${project.build.directory}/gc.log:time,uptime,level,tags:filecount=5,filesize=10M"</test.jvm.args>
+        <!--
+            -Djdk.net.unixdomain.tmpdir: on Windows, JDK 17.0.x's NIO Selector wakeup pipe is an
+            AF_UNIX socket whose socket file defaults to %TEMP%. Where security software breaks
+            AF_UNIX files in the user Temp folder, every java.net.http.HttpClient (Selenium's only
+            HTTP backend) fails with "Unable to establish loopback connection" before any browser
+            starts. Keeping the socket files inside this project's own target/ avoids that; if the
+            dir is missing or the path exceeds AF_UNIX's 108-char limit, the JDK falls back to TCP
+            loopback. Unused on Linux/Docker.
+        -->
+        <test.jvm.args>-Djdk.net.unixdomain.tmpdir=${project.build.directory} -Dfile.encoding=UTF-8 -javaagent:${settings.localRepository}/org/aspectj/aspectjweaver/${aspectj.version}/aspectjweaver-${aspectj.version}.jar -XX:MaxRAMPercentage=60.0 -XX:MinRAMPercentage=30.0 -XX:InitialRAMPercentage=25.0 -XX:+UseG1GC -XX:MaxGCPauseMillis=200 -XX:+HeapDumpOnOutOfMemoryError "-XX:HeapDumpPath=${project.build.directory}/heapdumps" "-Xlog:gc*:file=${project.build.directory}/gc.log:time,uptime,level,tags:filecount=5,filesize=10M"</test.jvm.args>
     </properties>
     <dependencies>
         <!-- https://mvnrepository.com/artifact/org.seleniumhq.selenium/selenium-java -->
         <dependency>
             <groupId>org.seleniumhq.selenium</groupId>
             <artifactId>selenium-java</artifactId>
-            <version>4.46.0</version>
-        </dependency>
-        <!-- CDP devtools v150 — bundled with Selenium 4.46.0; compatible with Chrome 148/149/150 -->
-        <dependency>
-            <groupId>org.seleniumhq.selenium</groupId>
-            <artifactId>selenium-devtools-v150</artifactId>
-            <version>4.46.0</version>
+            <version>4.49.0</version>
         </dependency>
         <!-- https://mvnrepository.com/artifact/io.github.bonigarcia/webdrivermanager -->
         <dependency>
@@ -274,7 +283,7 @@
                     <suiteXmlFiles>
                         <suiteXmlFile>testng.xml</suiteXmlFile>
                     </suiteXmlFiles>
-                    <argLine>${test.jvm.args} --add-opens java.base/java.lang=ALL-UNNAMED -Drunmode=${runmode} -Dheadless=${headless} -Dbrowser=${browser}</argLine>
+                    <argLine>${test.jvm.args} --add-opens java.base/java.lang=ALL-UNNAMED -Drunmode=${runmode} -Dheadless=${headless} -Dbrowser=${browser} -Denv=${env}</argLine>
                 </configuration>
             </plugin>
         </plugins>
@@ -294,7 +303,7 @@
                             <suiteXmlFiles>
                                 <suiteXmlFile>testng-smoke.xml</suiteXmlFile>
                             </suiteXmlFiles>
-                            <argLine>${test.jvm.args} --add-opens java.base/java.lang=ALL-UNNAMED -Drunmode=${runmode} -Dheadless=${headless} -Dbrowser=${browser}</argLine>
+                            <argLine>${test.jvm.args} --add-opens java.base/java.lang=ALL-UNNAMED -Drunmode=${runmode} -Dheadless=${headless} -Dbrowser=${browser} -Denv=${env}</argLine>
                         </configuration>
                     </plugin>
                 </plugins>
@@ -316,7 +325,45 @@
                             <suiteXmlFiles>
                                 <suiteXmlFile>testng-ap-smoke.xml</suiteXmlFile>
                             </suiteXmlFiles>
-                            <argLine>${test.jvm.args} --add-opens java.base/java.lang=ALL-UNNAMED -Drunmode=${runmode} -Dheadless=${headless} -Dbrowser=${browser}</argLine>
+                            <argLine>${test.jvm.args} --add-opens java.base/java.lang=ALL-UNNAMED -Drunmode=${runmode} -Dheadless=${headless} -Dbrowser=${browser} -Denv=${env}</argLine>
+                        </configuration>
+                    </plugin>
+                </plugins>
+            </build>
+        </profile>
+
+        <!-- AP Voucher — full testng-apvoucher.xml suite (Create + Revert/Delete/Edit) -->
+        <profile>
+            <id>apvoucher</id>
+            <build>
+                <plugins>
+                    <plugin>
+                        <groupId>org.apache.maven.plugins</groupId>
+                        <artifactId>maven-surefire-plugin</artifactId>
+                        <version>3.2.5</version>
+                        <configuration>
+                            <testFailureIgnore>true</testFailureIgnore>
+                            <suiteXmlFiles>
+                                <suiteXmlFile>testng-apvoucher.xml</suiteXmlFile>
+                            </suiteXmlFiles>
+                            <argLine>${test.jvm.args} --add-opens java.base/java.lang=ALL-UNNAMED -Drunmode=${runmode} -Dheadless=${headless} -Dbrowser=${browser} -Denv=${env}</argLine>
+                            <systemPropertyVariables>
+                                <!-- This environment has exactly 4 SET1 UI users (see testng-apvoucher.xml's
+                                     own comment) and thread-count="4" uses all of them — zero spare. The new
+                                     Revert/Delete/Edit tests' DocumentAdjustmentFlow/EditApVoucher self-acquire
+                                     a SEPARATE UI-pool credential (ApiSessionFactory.withWebApiSession) for
+                                     their untag/unpost-via-API calls, on nearly every row — a materially denser
+                                     usage than the old, sparse Create-side backfill the default headroom (1)
+                                     was sized for. Confirmed live (run 20260928_095807): default headroom
+                                     produced a genuine "[UserPool] ... holder silent for 600s (a holder is
+                                     likely stuck/hung)" timeout, editApVoucherHeader running 10-19 minutes
+                                     instead of ~150s. SessionPool.capacity() = totalUiUsers - backfillHeadroom,
+                                     so raising this throttles concurrent browsers to 2, guaranteeing (headroom
+                                     >= concurrency, 2>=2) both can self-acquire without contention — same
+                                     established technique the ap-mandatory profile below already uses for its
+                                     own reason. -->
+                                <datafallback.userPool.backfillHeadroom>2</datafallback.userPool.backfillHeadroom>
+                            </systemPropertyVariables>
                         </configuration>
                     </plugin>
                 </plugins>
@@ -337,7 +384,7 @@
                             <suiteXmlFiles>
                                 <suiteXmlFile>testng-ap-mandatory.xml</suiteXmlFile>
                             </suiteXmlFiles>
-                            <argLine>${test.jvm.args} --add-opens java.base/java.lang=ALL-UNNAMED -Drunmode=${runmode} -Dheadless=${headless} -Dbrowser=${browser}</argLine>
+                            <argLine>${test.jvm.args} --add-opens java.base/java.lang=ALL-UNNAMED -Drunmode=${runmode} -Dheadless=${headless} -Dbrowser=${browser} -Denv=${env}</argLine>
                             <systemPropertyVariables>
                                 <apv.group>MANDATORY</apv.group>
                                 <!-- RAM-constrained single-node grid: raise headroom from the
@@ -346,6 +393,27 @@
                                      this profile only via ApiConfig's new system-property source. -->
                                 <datafallback.userPool.backfillHeadroom>5</datafallback.userPool.backfillHeadroom>
                             </systemPropertyVariables>
+                        </configuration>
+                    </plugin>
+                </plugins>
+            </build>
+        </profile>
+
+        <!-- AP Voucher UI-Contract Validation — unfiltered, both Add/Edit form checks -->
+        <profile>
+            <id>ap-ui</id>
+            <build>
+                <plugins>
+                    <plugin>
+                        <groupId>org.apache.maven.plugins</groupId>
+                        <artifactId>maven-surefire-plugin</artifactId>
+                        <version>3.2.5</version>
+                        <configuration>
+                            <testFailureIgnore>true</testFailureIgnore>
+                            <suiteXmlFiles>
+                                <suiteXmlFile>testng-ap-ui.xml</suiteXmlFile>
+                            </suiteXmlFiles>
+                            <argLine>${test.jvm.args} --add-opens java.base/java.lang=ALL-UNNAMED -Drunmode=${runmode} -Dheadless=${headless} -Dbrowser=${browser} -Denv=${env}</argLine>
                         </configuration>
                     </plugin>
                 </plugins>
@@ -366,7 +434,7 @@
                             <suiteXmlFiles>
                                 <suiteXmlFile>testng-generalvoucher.xml</suiteXmlFile>
                             </suiteXmlFiles>
-                            <argLine>${test.jvm.args} --add-opens java.base/java.lang=ALL-UNNAMED -Drunmode=${runmode} -Dheadless=${headless} -Dbrowser=${browser}</argLine>
+                            <argLine>${test.jvm.args} --add-opens java.base/java.lang=ALL-UNNAMED -Drunmode=${runmode} -Dheadless=${headless} -Dbrowser=${browser} -Denv=${env}</argLine>
                         </configuration>
                     </plugin>
                 </plugins>
@@ -387,7 +455,7 @@
                             <suiteXmlFiles>
                                 <suiteXmlFile>testng-gv-mandatory.xml</suiteXmlFile>
                             </suiteXmlFiles>
-                            <argLine>${test.jvm.args} --add-opens java.base/java.lang=ALL-UNNAMED -Drunmode=${runmode} -Dheadless=${headless} -Dbrowser=${browser}</argLine>
+                            <argLine>${test.jvm.args} --add-opens java.base/java.lang=ALL-UNNAMED -Drunmode=${runmode} -Dheadless=${headless} -Dbrowser=${browser} -Denv=${env}</argLine>
                             <systemPropertyVariables>
                                 <gv.group>MANDATORY</gv.group>
                                 <gv.edit.group>MANDATORY</gv.edit.group>
@@ -412,7 +480,28 @@
                             <suiteXmlFiles>
                                 <suiteXmlFile>testng-gv-edit.xml</suiteXmlFile>
                             </suiteXmlFiles>
-                            <argLine>${test.jvm.args} --add-opens java.base/java.lang=ALL-UNNAMED -Drunmode=${runmode} -Dheadless=${headless} -Dbrowser=${browser}</argLine>
+                            <argLine>${test.jvm.args} --add-opens java.base/java.lang=ALL-UNNAMED -Drunmode=${runmode} -Dheadless=${headless} -Dbrowser=${browser} -Denv=${env}</argLine>
+                        </configuration>
+                    </plugin>
+                </plugins>
+            </build>
+        </profile>
+
+        <!-- General Voucher UI-Contract Validation — unfiltered, both Add/Edit form checks -->
+        <profile>
+            <id>gv-ui</id>
+            <build>
+                <plugins>
+                    <plugin>
+                        <groupId>org.apache.maven.plugins</groupId>
+                        <artifactId>maven-surefire-plugin</artifactId>
+                        <version>3.2.5</version>
+                        <configuration>
+                            <testFailureIgnore>true</testFailureIgnore>
+                            <suiteXmlFiles>
+                                <suiteXmlFile>testng-gv-ui.xml</suiteXmlFile>
+                            </suiteXmlFiles>
+                            <argLine>${test.jvm.args} --add-opens java.base/java.lang=ALL-UNNAMED -Drunmode=${runmode} -Dheadless=${headless} -Dbrowser=${browser} -Denv=${env}</argLine>
                         </configuration>
                     </plugin>
                 </plugins>
@@ -433,7 +522,7 @@
                             <suiteXmlFiles>
                                 <suiteXmlFile>testng-gv-edit-mandatory.xml</suiteXmlFile>
                             </suiteXmlFiles>
-                            <argLine>${test.jvm.args} --add-opens java.base/java.lang=ALL-UNNAMED -Drunmode=${runmode} -Dheadless=${headless} -Dbrowser=${browser}</argLine>
+                            <argLine>${test.jvm.args} --add-opens java.base/java.lang=ALL-UNNAMED -Drunmode=${runmode} -Dheadless=${headless} -Dbrowser=${browser} -Denv=${env}</argLine>
                             <systemPropertyVariables>
                                 <gv.edit.group>MANDATORY</gv.edit.group>
                             </systemPropertyVariables>
@@ -457,7 +546,7 @@
                             <suiteXmlFiles>
                                 <suiteXmlFile>testng-regression-generalvoucher-edit-phase1.xml</suiteXmlFile>
                             </suiteXmlFiles>
-                            <argLine>${test.jvm.args} --add-opens java.base/java.lang=ALL-UNNAMED -Drunmode=${runmode} -Dheadless=${headless} -Dbrowser=${browser}</argLine>
+                            <argLine>${test.jvm.args} --add-opens java.base/java.lang=ALL-UNNAMED -Drunmode=${runmode} -Dheadless=${headless} -Dbrowser=${browser} -Denv=${env}</argLine>
                             <systemPropertyVariables>
                                 <gv.edit.group>REGRESSION_PHASE1</gv.edit.group>
                             </systemPropertyVariables>
@@ -481,7 +570,7 @@
                             <suiteXmlFiles>
                                 <suiteXmlFile>testng-verify-site-fix.xml</suiteXmlFile>
                             </suiteXmlFiles>
-                            <argLine>${test.jvm.args} --add-opens java.base/java.lang=ALL-UNNAMED -Drunmode=${runmode} -Dheadless=${headless} -Dbrowser=${browser}</argLine>
+                            <argLine>${test.jvm.args} --add-opens java.base/java.lang=ALL-UNNAMED -Drunmode=${runmode} -Dheadless=${headless} -Dbrowser=${browser} -Denv=${env}</argLine>
                         </configuration>
                     </plugin>
                 </plugins>
@@ -503,7 +592,7 @@
                             <suiteXmlFiles>
                                 <suiteXmlFile>testng-gridcolumnmenu-smoke.xml</suiteXmlFile>
                             </suiteXmlFiles>
-                            <argLine>${test.jvm.args} --add-opens java.base/java.lang=ALL-UNNAMED -Drunmode=${runmode} -Dheadless=${headless} -Dbrowser=${browser}</argLine>
+                            <argLine>${test.jvm.args} --add-opens java.base/java.lang=ALL-UNNAMED -Drunmode=${runmode} -Dheadless=${headless} -Dbrowser=${browser} -Denv=${env}</argLine>
                         </configuration>
                     </plugin>
                 </plugins>
@@ -524,7 +613,7 @@
                             <suiteXmlFiles>
                                 <suiteXmlFile>testng-regression-generalvoucher-phase1.xml</suiteXmlFile>
                             </suiteXmlFiles>
-                            <argLine>${test.jvm.args} --add-opens java.base/java.lang=ALL-UNNAMED -Drunmode=${runmode} -Dheadless=${headless} -Dbrowser=${browser}</argLine>
+                            <argLine>${test.jvm.args} --add-opens java.base/java.lang=ALL-UNNAMED -Drunmode=${runmode} -Dheadless=${headless} -Dbrowser=${browser} -Denv=${env}</argLine>
                             <systemPropertyVariables>
                                 <gv.group>REGRESSION_PHASE1</gv.group>
                             </systemPropertyVariables>
@@ -548,7 +637,7 @@
                             <suiteXmlFiles>
                                 <suiteXmlFile>testng-regression-generalvoucher-phase2.xml</suiteXmlFile>
                             </suiteXmlFiles>
-                            <argLine>${test.jvm.args} --add-opens java.base/java.lang=ALL-UNNAMED -Drunmode=${runmode} -Dheadless=${headless} -Dbrowser=${browser}</argLine>
+                            <argLine>${test.jvm.args} --add-opens java.base/java.lang=ALL-UNNAMED -Drunmode=${runmode} -Dheadless=${headless} -Dbrowser=${browser} -Denv=${env}</argLine>
                             <systemPropertyVariables>
                                 <gv.group>REGRESSION_PHASE2</gv.group>
                             </systemPropertyVariables>
@@ -572,7 +661,7 @@
                             <suiteXmlFiles>
                                 <suiteXmlFile>testng-regression-generalvoucher-phase3.xml</suiteXmlFile>
                             </suiteXmlFiles>
-                            <argLine>${test.jvm.args} --add-opens java.base/java.lang=ALL-UNNAMED -Drunmode=${runmode} -Dheadless=${headless} -Dbrowser=${browser}</argLine>
+                            <argLine>${test.jvm.args} --add-opens java.base/java.lang=ALL-UNNAMED -Drunmode=${runmode} -Dheadless=${headless} -Dbrowser=${browser} -Denv=${env}</argLine>
                             <systemPropertyVariables>
                                 <gv.group>REGRESSION_PHASE3</gv.group>
                             </systemPropertyVariables>
@@ -596,10 +685,31 @@
                             <suiteXmlFiles>
                                 <suiteXmlFile>testng-ar-mandatory.xml</suiteXmlFile>
                             </suiteXmlFiles>
-                            <argLine>${test.jvm.args} --add-opens java.base/java.lang=ALL-UNNAMED -Drunmode=${runmode} -Dheadless=${headless} -Dbrowser=${browser}</argLine>
+                            <argLine>${test.jvm.args} --add-opens java.base/java.lang=ALL-UNNAMED -Drunmode=${runmode} -Dheadless=${headless} -Dbrowser=${browser} -Denv=${env}</argLine>
                             <systemPropertyVariables>
                                 <arv.group>MANDATORY</arv.group>
                             </systemPropertyVariables>
+                        </configuration>
+                    </plugin>
+                </plugins>
+            </build>
+        </profile>
+
+        <!-- AR Voucher UI-Contract Validation — unfiltered, both Add/Edit form checks -->
+        <profile>
+            <id>ar-ui</id>
+            <build>
+                <plugins>
+                    <plugin>
+                        <groupId>org.apache.maven.plugins</groupId>
+                        <artifactId>maven-surefire-plugin</artifactId>
+                        <version>3.2.5</version>
+                        <configuration>
+                            <testFailureIgnore>true</testFailureIgnore>
+                            <suiteXmlFiles>
+                                <suiteXmlFile>testng-ar-ui.xml</suiteXmlFile>
+                            </suiteXmlFiles>
+                            <argLine>${test.jvm.args} --add-opens java.base/java.lang=ALL-UNNAMED -Drunmode=${runmode} -Dheadless=${headless} -Dbrowser=${browser} -Denv=${env}</argLine>
                         </configuration>
                     </plugin>
                 </plugins>
@@ -621,7 +731,7 @@
                             <suiteXmlFiles>
                                 <suiteXmlFile>testng-ar-ap-mandatory.xml</suiteXmlFile>
                             </suiteXmlFiles>
-                            <argLine>${test.jvm.args} --add-opens java.base/java.lang=ALL-UNNAMED -Drunmode=${runmode} -Dheadless=${headless} -Dbrowser=${browser}</argLine>
+                            <argLine>${test.jvm.args} --add-opens java.base/java.lang=ALL-UNNAMED -Drunmode=${runmode} -Dheadless=${headless} -Dbrowser=${browser} -Denv=${env}</argLine>
                             <systemPropertyVariables>
                                 <arv.group>MANDATORY</arv.group>
                                 <apv.group>MANDATORY</apv.group>
@@ -646,7 +756,7 @@
                             <suiteXmlFiles>
                                 <suiteXmlFile>testng-mandatory.xml</suiteXmlFile>
                             </suiteXmlFiles>
-                            <argLine>${test.jvm.args} --add-opens java.base/java.lang=ALL-UNNAMED -Drunmode=${runmode} -Dheadless=${headless} -Dbrowser=${browser}</argLine>
+                            <argLine>${test.jvm.args} --add-opens java.base/java.lang=ALL-UNNAMED -Drunmode=${runmode} -Dheadless=${headless} -Dbrowser=${browser} -Denv=${env}</argLine>
                             <systemPropertyVariables>
                                 <arv.group>MANDATORY</arv.group>
                             </systemPropertyVariables>
@@ -670,7 +780,7 @@
                             <suiteXmlFiles>
                                 <suiteXmlFile>testng-regression-phase1.xml</suiteXmlFile>
                             </suiteXmlFiles>
-                            <argLine>${test.jvm.args} --add-opens java.base/java.lang=ALL-UNNAMED -Drunmode=${runmode} -Dheadless=${headless} -Dbrowser=${browser}</argLine>
+                            <argLine>${test.jvm.args} --add-opens java.base/java.lang=ALL-UNNAMED -Drunmode=${runmode} -Dheadless=${headless} -Dbrowser=${browser} -Denv=${env}</argLine>
                             <systemPropertyVariables>
                                 <arv.group>REGRESSION_PHASE1</arv.group>
                             </systemPropertyVariables>
@@ -694,7 +804,7 @@
                             <suiteXmlFiles>
                                 <suiteXmlFile>testng-regression-phase2.xml</suiteXmlFile>
                             </suiteXmlFiles>
-                            <argLine>${test.jvm.args} --add-opens java.base/java.lang=ALL-UNNAMED -Drunmode=${runmode} -Dheadless=${headless} -Dbrowser=${browser}</argLine>
+                            <argLine>${test.jvm.args} --add-opens java.base/java.lang=ALL-UNNAMED -Drunmode=${runmode} -Dheadless=${headless} -Dbrowser=${browser} -Denv=${env}</argLine>
                             <systemPropertyVariables>
                                 <arv.group>REGRESSION_PHASE2</arv.group>
                             </systemPropertyVariables>
@@ -718,7 +828,7 @@
                             <suiteXmlFiles>
                                 <suiteXmlFile>testng-regression-phase3.xml</suiteXmlFile>
                             </suiteXmlFiles>
-                            <argLine>${test.jvm.args} --add-opens java.base/java.lang=ALL-UNNAMED -Drunmode=${runmode} -Dheadless=${headless} -Dbrowser=${browser}</argLine>
+                            <argLine>${test.jvm.args} --add-opens java.base/java.lang=ALL-UNNAMED -Drunmode=${runmode} -Dheadless=${headless} -Dbrowser=${browser} -Denv=${env}</argLine>
                             <systemPropertyVariables>
                                 <arv.group>REGRESSION_PHASE3</arv.group>
                             </systemPropertyVariables>
@@ -745,7 +855,7 @@
                             <suiteXmlFiles>
                                 <suiteXmlFile>testng-accountclass-single.xml</suiteXmlFile>
                             </suiteXmlFiles>
-                            <argLine>${test.jvm.args} --add-opens java.base/java.lang=ALL-UNNAMED -Drunmode=${runmode} -Dheadless=${headless} -Dbrowser=${browser}</argLine>
+                            <argLine>${test.jvm.args} --add-opens java.base/java.lang=ALL-UNNAMED -Drunmode=${runmode} -Dheadless=${headless} -Dbrowser=${browser} -Denv=${env}</argLine>
                             <systemPropertyVariables>
                                 <finAccountClassLifecyclePath>Finance/Setup/AccountClassLifecycle_Single.xlsx</finAccountClassLifecyclePath>
                             </systemPropertyVariables>
@@ -769,7 +879,7 @@
                             <suiteXmlFiles>
                                 <suiteXmlFile>testng-regression.xml</suiteXmlFile>
                             </suiteXmlFiles>
-                            <argLine>${test.jvm.args} --add-opens java.base/java.lang=ALL-UNNAMED -Drunmode=${runmode} -Dheadless=${headless} -Dbrowser=${browser}</argLine>
+                            <argLine>${test.jvm.args} --add-opens java.base/java.lang=ALL-UNNAMED -Drunmode=${runmode} -Dheadless=${headless} -Dbrowser=${browser} -Denv=${env}</argLine>
                             <!-- No arv.group property — DbArVoucherDataSource runs all groups -->
                         </configuration>
                     </plugin>

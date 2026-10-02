@@ -7,6 +7,16 @@ import lombok.Getter;
 import java.util.HashMap;
 import java.util.Map;
 
+/**
+ * Fixture-data counterpart of an "ItemDetails" Excel sheet — a single flattened row carrying
+ * every {@link ItemDetail} variant's possible columns (item selection, batch code/expiry, serial
+ * numbers) in one shape, keyed by {@code "Item Type"}. {@link #toMap()} converts a row into the
+ * {@code Map<String, String>} shape {@link ItemDetailFactory#create} expects, to build the
+ * concrete {@link ItemDetail} variant matching this row's type.
+ *
+ * <p>{@code TODO-confirm:} no confirmed caller of {@link #toMap()} anywhere in the codebase — see
+ * {@link ItemDetail}'s Javadoc for the full orphaned-chain finding.
+ */
 @Getter
 @Sheet(name = "ItemDetails")
 public class ItemDetailsData {
@@ -37,6 +47,7 @@ public class ItemDetailsData {
 //        this.itemSetSelectionWays = itemSetSelectionWays;
 //    }
 
+    /** Converts this row's non-null fields into the column-name-keyed map {@link ItemDetailFactory#create} expects. */
     public Map<String, String> toMap() {
         Map<String, String> map = new HashMap<>();
         if (itemType != null) map.put("ItemType", itemType);

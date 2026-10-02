@@ -24,6 +24,7 @@ public final class ActionTrailBuffer {
 
     private ActionTrailBuffer() {}
 
+    /** Appends {@code action} to this thread's trail, evicting the oldest entry once {@code BUFFER_SIZE} is reached. */
     public static void record(String action) {
         if (action == null || action.isBlank()) return;
         ArrayDeque<String> q = TRAIL.get();
@@ -48,6 +49,7 @@ public final class ActionTrailBuffer {
         return TRAIL.get().size();
     }
 
+    /** Clears this thread's trail — called at the start of each test. */
     public static void clear() {
         TRAIL.remove();
     }

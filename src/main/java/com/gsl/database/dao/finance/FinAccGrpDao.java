@@ -10,16 +10,22 @@ import org.jdbi.v3.sqlobject.statement.SqlQuery;
  */
 public interface FinAccGrpDao {
 
+    /** Returns 1/0 for whether a group with this name exists under the parent node named {@code parent}. */
     // Duplicate check: group with this name whose parent node has the given parent name
     @SqlQuery("SELECT COUNT(*) FROM fingrp " +
               "WHERE grpname = :name " +
               "AND parcode = (SELECT grpcode FROM fingrp WHERE grpname = :parent LIMIT 1)")
     int countByNameAndParent(@Bind("name") String name, @Bind("parent") String parent);
 
+    /** Returns the number of fingrp rows with the given name, regardless of parent. */
     // Existence check by name alone (used for root-level nodes)
     @SqlQuery("SELECT COUNT(*) FROM fingrp WHERE grpname = :name")
     int countByName(@Bind("name") String name);
 
+    /**
+     * Returns the number of child groups under {@code grpcode} — {@code 0} means the group is a
+     * genuine leaf and safe to attach a ledger to.
+     */
     // Leaf-node check for Ledger creation: a group with any child (a row whose parcode points at
     // it) is restricted and must never be used as a ledger's grpcode — sample confirmed by the
     // user: "fingrp is 10, under fingrp 10 there are 2 leaf nodes then ledger creation fingrp is
@@ -28,6 +34,7 @@ public interface FinAccGrpDao {
     @SqlQuery("SELECT COUNT(*) FROM fingrp WHERE parcode = :grpcode")
     int countChildren(@Bind("grpcode") long grpcode);
 
+    /** Returns the names of any stray/garbled "New Group" leftovers under the given parent (see below). */
     // Detects a stray/garbled leftover from a failed rename — e.g. "New Group" itself, or a
     // botched replace like "New GroupaZZZ Test Verify Group" (confirmed to actually occur:
     // a broken Ctrl+A selection left the placeholder prefix intact and appended the real
@@ -37,6 +44,7 @@ public interface FinAccGrpDao {
               "AND parcode = (SELECT grpcode FROM fingrp WHERE grpname = :parent LIMIT 1)")
     java.util.List<String> findStrayNewGroupNamesUnderParent(@Bind("parent") String parent);
 
+    /** Returns the full ancestor chain of the named group, root-most first (see below). */
     // Full ancestor chain of a group, root-most first (excludes the group itself and the
     // virtual "Tree" root row — grpcode 1, parcode NULL — which is never rendered as a UI
     // node). Walks the live fingrp.parcode chain rather than relying on a second Excel file

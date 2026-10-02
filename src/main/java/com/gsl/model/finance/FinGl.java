@@ -38,10 +38,12 @@ public class FinGl {
     @ColumnName("type")
     private String type;      // 'A'/'L'/'I'/'E' — Assets/Liability/Income/Expense
 
+    /** True when {@link #slapp} = {@code "Y"} (Sub Ledger Applicable). */
     public boolean isSubLedgerApplicable() {
         return "Y".equalsIgnoreCase(slapp);
     }
 
+    /** True when {@link #costapp} = {@code "Y"} (Site / Cost Center Applicable). */
     public boolean isSiteApplicable() {
         return "Y".equalsIgnoreCase(costapp);
     }

@@ -2,6 +2,13 @@ package com.gsl.pages.enums.Inventory.WMS;
 
 import com.gsl.enums.ISubModule;
 
+/**
+ * Inventory &gt; WMS' side-menu sub-items (grouped under Transactions/Setup headers) — consumed
+ * by {@code WMSSideMenuComponent.clickMenuItem(WMSMenuType)} to expand the right group and click
+ * the matching item. Also registered in {@code SubModuleResolver}'s {@code INVENTORY} entry so a
+ * test's declared {@code fw.subModule} short code (e.g. {@code "binputaway"}) resolves back to
+ * one of these constants.
+ */
 public enum WMSMenuType implements ISubModule {
 
     PUT_AWAY          ("Put Away",          "binputaway",      "Transactions"),

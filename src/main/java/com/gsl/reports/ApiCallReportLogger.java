@@ -22,6 +22,14 @@ public final class ApiCallReportLogger {
 
     private ApiCallReportLogger() {}
 
+    /**
+     * Logs one API call's Method/URL table plus collapsible Payload/Response bodies to the
+     * current Extent test — see this class's own Javadoc for how call-sites are expected to wrap
+     * this in their own {@link StepExecutor#call} node.
+     *
+     * @param requestBody the call's request payload — a {@code String} is used as-is, any other
+     *                     object is serialized to JSON; {@code null} renders as {@code (none)}
+     */
     public static void logCall(String method, String url, Object requestBody, Response response, long durationMs) {
         String[][] table = {
             {"Field", "Value"},

@@ -9,10 +9,15 @@ import com.gsl.popup.PopupResult;
  */
 public final class UnexpectedPopupException extends RuntimeException {
 
+    /**
+     * @param popup      the detected popup's details (type, header, message, URL, detection time)
+     * @param actionName the action that was in progress when the popup was detected
+     */
     public UnexpectedPopupException(PopupResult popup, String actionName) {
         super(buildMessage(popup, actionName));
     }
 
+    /** Formats {@code popup}'s fields and {@code actionName} into the multi-line failure message. */
     private static String buildMessage(PopupResult popup, String actionName) {
         return String.format("""
                 Unexpected Application Popup Detected

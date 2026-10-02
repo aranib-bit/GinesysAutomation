@@ -102,6 +102,7 @@ public final class ArVoucherExtentDescriptionLogger
 
     // ── AR-specific table ──────────────────────────────────────────────────────
 
+    /** Renders the Reference Site wise FIFO Set-Off table, or does nothing when the list is empty. */
     private void logFifoTable(MergedFinanceArVoucherData data) {
         List<ReferenceSitewiseFIFOsetoff> fifoList = data.getReferenceSitewiseFIFOList();
         if (fifoList == null || fifoList.isEmpty()) return;

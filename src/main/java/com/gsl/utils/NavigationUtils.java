@@ -23,6 +23,7 @@ import com.gsl.reports.ExtentLogger;
 import com.gsl.reports.NavigationLogger;
 import com.gsl.reports.PoolAttributionStats;
 import com.gsl.reports.ReportLogger;
+import com.gsl.reports.StepSummaryBuffer;
 import com.gsl.utils.Selenium.SeleniumUtils;
 import com.gsl.utils.Selenium.WaitUtils;
 import org.openqa.selenium.By;
@@ -206,6 +207,18 @@ public final class NavigationUtils {
         // GeneralVoucherListPage (the header wait itself has no ExtJS-settle gate of its own).
         SeleniumUtils.elementDisappear(FrameworkConstants.getLoadingMask(), "Loading Mask");
         verifyAndRecordPage(ctx, page, sideMenu.getName(), true);
+
+        // Centralized here (not left to each caller) — every Finance voucher test's own
+        // navigation step used to hand-write its own "<X> list page opened" business log and,
+        // inconsistently, only one of them (CreateGeneralVoucher) also recorded a bolded
+        // "Navigated: A --> B --> C" summary. subMenu/sideMenu already carry everything the
+        // message needs, so callers no longer have to.
+        ReportLogger.business(sideMenu.getName() + " list page opened");
+        // Item AG (Round 5): explicit "Success" wording — a tick glyph alone made a reader infer
+        // status rather than read it.
+        StepSummaryBuffer.record("Navigated: <b>Finance --&gt; " + subMenu.getName()
+                + " --&gt; " + sideMenu.getName() + " List Page</b> — <b>Success</b>");
+
         ExecutionManager.logState("navigation:Finance/" + subMenu.name() + "/" + sideMenu.getName());
         finishColdStartIfInProgress(ctx, navStart);
         return page;

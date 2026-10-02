@@ -9,6 +9,41 @@
     ExcelGeneralVoucherDataSource/ExcelGeneralVoucherEditDataSource have no group filtering.
 
     Run: mvn clean test -Pgv-mandatory
+
+    parallel="none" (2026-09-28) — back to the proven-safe baseline after a 2-day investigation
+    into a "Round 13" perf experiment (parallel="tests", letting all 3 <test> blocks below run
+    concurrently — up to 5 threads/browsers at once) that never proved safe against this suite's
+    shared staging environment at ANY concurrency level tried:
+      - Uncapped parallel="tests" (runs 20260927_104721/113509): CreateGeneralVoucher's cold-start
+        navigations hung 90-140s under simultaneous multi-thread session creation, cascading into
+        near-instant "Test skipped: java.util.concurrent.TimeoutException" for every remaining row
+        on that thread.
+      - thread-count="2" (capping concurrent blocks, still headed): fixed the hang, but a Chrome
+        tab then crashed (WebDriverException: tab crashed) ~3.5 min in from sustained multi-browser
+        memory pressure, killing the whole process with no summary.html/logs.zip.
+      - headless=true (full concurrency, no thread-count cap): hit the identical tab-crash again on
+        a different code path — ruled out headed-mode rendering overhead as the cause.
+      - Run 20260928_134950 (still on uncapped parallel="tests"): 3 rows skipped with "Could not
+        start a new session ... request timed out" (same session-creation contention, different
+        exception text), and EditGeneralVoucher's editGeneralVoucherPaymentInfo FAILED on a
+        StaleElementReferenceException in VoucherMainGridBase.doubleClickRowIfPresentOnCurrentPage
+        — diagnostics.log shows the grid's loading mask took the FULL 40s timeout to clear (vs.
+        sub-second normally) while 4 other GV threads hit the same staging server concurrently; the
+        checkbox/row reference grabbed right after the mask cleared was stale by the time it was
+        used, and an immediate retry hit the identical race a second later. testng-ap-mandatory.xml
+        (parallel="none") never shows either symptom under equivalent load that same day — the
+        direct, evidenced reason AP Voucher runs don't exhibit this failure class and GV runs do.
+    parallel="none" still gives real intra-block parallelism (each <test> block below keeps its own
+    thread-count="4"/"4"/"1" — Create/Revert and Edit each run 4 rows concurrently, just never two
+    *blocks* at once; raised from 2 on 2026-10-03 to cut the ~25 min run time — if Chrome
+    tab-crashes/timeouts reappear, drop back to 3 or 2). Never more than 4 browsers hit the shared
+    staging server simultaneously. Paired with reverting
+    webdriver.command.readtimeout.seconds back to Selenium's 180s default (execution.properties —
+    the 60s value was tuned specifically to free stuck slots faster under the now-abandoned
+    uncapped concurrency, and only risked cutting off merely-slow-not-stuck commands here).
+    Do not re-enable cross-block parallel="tests" without first addressing the shared staging
+    server's own capacity for concurrent sessions — that's infrastructure/environment work, not a
+    test-suite config change.
 -->
 <suite name="General Voucher — Mandatory Suite" parallel="none" data-provider-thread-count="4">
 
@@ -19,7 +54,7 @@
         <listener class-name="com.gsl.listeners.AnnotationMethodInterceptor"/>
     </listeners>
 
-    <test name="General Voucher Create/Revert — Mandatory" parallel="methods" thread-count="2">
+    <test name="General Voucher Create/Revert — Mandatory" parallel="methods" thread-count="4">
         <parameter name="gv.group" value="MANDATORY"/>
         <classes>
             <class name="com.tests.Finance.Operations.Vouchers.CreateGeneralVoucher"/>
@@ -27,7 +62,7 @@
         </classes>
     </test>
 
-    <test name="General Voucher Edit — Mandatory" parallel="methods" thread-count="2">
+    <test name="General Voucher Edit — Mandatory" parallel="methods" thread-count="4">
         <parameter name="gv.edit.group" value="MANDATORY"/>
         <classes>
             <class name="com.tests.Finance.Operations.Vouchers.EditGeneralVoucher"/>

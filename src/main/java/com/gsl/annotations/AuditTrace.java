@@ -22,5 +22,6 @@ import java.lang.annotation.Target;
 @Retention(RetentionPolicy.RUNTIME)
 @Target(ElementType.METHOD)
 public @interface AuditTrace {
+    /** Short label identifying which decision point this is; used as the log-line prefix. */
     String value();
 }

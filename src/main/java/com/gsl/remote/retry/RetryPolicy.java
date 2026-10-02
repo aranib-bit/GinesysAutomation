@@ -13,21 +13,39 @@ import java.util.concurrent.TimeoutException;
 /**
  * Exponential-backoff retry wrapper for remote log fetching.
  *
- * Retry-eligible: TransportException, SSHException, SocketTimeoutException, TimeoutException.
- * Not retried:    RemoteCommandException (non-zero exit / bad command),
- *                 IllegalArgumentException (validation failure).
+ * <p>Used by {@link com.gsl.remote.fetcher.SshLogFetcher} and
+ * {@link com.gsl.remote.fetcher.WinRmLogFetcher} to wrap the actual remote command execution —
+ * only transient connection failures are retried; a command that ran and failed is not.
+ * <ul>
+ *   <li>Retry-eligible: {@code TransportException}, {@code SSHException},
+ *       {@code SocketTimeoutException}, {@code TimeoutException}, and transient winrm4j
+ *       exceptions (detected by class name, see {@link #isWinRmTransient}).</li>
+ *   <li>Not retried: {@link RemoteCommandException} (non-zero exit / bad command),
+ *       {@link IllegalArgumentException} (validation failure).</li>
+ * </ul>
  */
 public final class RetryPolicy {
 
     private final int  maxAttempts;
     private final long initialDelayMs;
 
+    /**
+     * @param maxAttempts    maximum number of attempts, including the first (non-retry) call
+     * @param initialDelayMs delay before the first retry; doubles on each subsequent attempt, see {@link #delayMs(int)}
+     */
     public RetryPolicy(int maxAttempts, long initialDelayMs) {
         this.maxAttempts    = maxAttempts;
         this.initialDelayMs = initialDelayMs;
     }
 
-    /** Wraps an operation in this retry policy, returning the first successful result. */
+    /**
+     * Wraps an operation in this retry policy, returning the first successful result.
+     *
+     * @throws RemoteCommandException  immediately, without retrying (see class Javadoc)
+     * @throws IllegalArgumentException immediately, without retrying (see class Javadoc)
+     * @throws Exception the last failure, once a non-retryable exception is thrown or
+     *                    {@code maxAttempts} is exhausted
+     */
     public <T> T execute(String operationLabel, Callable<T> operation) throws Exception {
         int attempt = 0;
         while (true) {
@@ -57,10 +75,12 @@ public final class RetryPolicy {
         return Math.min(delay, 30_000L);
     }
 
+    /** Configured maximum number of attempts, including the first (non-retry) call. */
     public int getMaxAttempts() { return maxAttempts; }
 
     // ── helpers ───────────────────────────────────────────────────────────────
 
+    /** True for transient transport/timeout exceptions (SSH or WinRM) that are worth retrying. */
     private static boolean isRetryable(Exception e) {
         return e instanceof TransportException
                 || e instanceof SSHException
@@ -70,6 +90,7 @@ public final class RetryPolicy {
     }
 
     // Avoid a hard compile-time dependency on winrm4j in this class — check by class name.
+    /** True when {@code e} is a winrm4j transient/IO exception, matched by class name to avoid a hard dependency on winrm4j here. */
     private static boolean isWinRmTransient(Exception e) {
         String name = e.getClass().getName();
         return name.contains("WinRmClientException")

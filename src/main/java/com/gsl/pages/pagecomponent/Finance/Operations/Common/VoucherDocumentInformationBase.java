@@ -1,22 +1,29 @@
 package com.gsl.pages.pagecomponent.Finance.Operations.Common;
 
+import com.gsl.pages.enums.Finance.Operations.Common.FormSection;
 import com.gsl.driver.DriverManager;
 import com.gsl.enums.VoucherDomain;
 import com.gsl.enums.WaitType;
 import com.gsl.pages.pagecomponent.Finance.Common.CashBankParent;
 import com.gsl.pages.pagecomponent.Finance.Common.CashBankPopup;
 import com.gsl.testdata.Finance.Operations.Vouchers.Common.VoucherDocumentHeader;
-import com.gsl.reports.ExtentLogger;
+import com.gsl.reports.ReportLogger;
 import com.gsl.utils.Log;
 import com.gsl.utils.Selenium.JavascriptExecutorUtils;
 import com.gsl.utils.Selenium.SeleniumUtils;
 import com.gsl.utils.Selenium.WaitUtils;
+import com.gsl.utils.ui.FieldStyleSpec;
+import com.gsl.utils.ui.UiFieldState;
+import com.gsl.validation.ui.UiComponentValidator;
+import com.gsl.validation.ui.UiValidationFailure;
+import com.gsl.validation.ui.UiValidationLevel;
 import org.openqa.selenium.By;
 import org.openqa.selenium.Keys;
 import org.openqa.selenium.WebElement;
 
 import java.time.LocalDate;
 import java.time.format.DateTimeFormatter;
+import java.util.List;
 import java.util.Objects;
 
 /**
@@ -45,6 +52,12 @@ public abstract class VoucherDocumentInformationBase {
     private final By cashBankSearch;
     private final By cashBankDisplay;
     private final By remarks;
+
+    // ── Label text kept around for UI-contract validation (validate*Ui methods below) ─────────
+    private static final String OWNER_SITE_LABEL_TEXT = "Owner Site:";
+    private final String cashBankLabelText;
+    private final String dateLabelText;
+    private final String remarksLabelText;
 
     private static final By ownerSiteDisplay = By.xpath(
             "//span[contains(@class,'x-form-item-label-text') and normalize-space()='Owner Site:']" +
@@ -77,11 +90,27 @@ public abstract class VoucherDocumentInformationBase {
         this.remarks        = byLabel(domain.getLabelRemarks(),
                                  "//input[contains(@id,'narration')" +
                                  " and contains(@data-componentid,'combo-')]");
+        this.cashBankLabelText = domain.getLabelCashBank();
+        this.dateLabelText     = domain.getLabelDate();
+        this.remarksLabelText  = domain.getLabelRemarks();
     }
 
     private static By byLabel(String label, String widgetXPath) {
         return By.xpath("//span[text()='" + label + "']/ancestor::label" +
                         "/following-sibling::div" + widgetXPath);
+    }
+
+    /** The label span itself, e.g. for {@link #OWNER_SITE_LABEL_TEXT}/{@link #cashBankLabelText}. */
+    private static By labelLocator(String label) {
+        return By.xpath("//span[text()='" + label + "']");
+    }
+
+    /** UNVERIFIED — placeholder locator, pending live DOM confirmation (same convention already
+     *  used by {@code GeneralVoucherDocumentInformation}'s own UNVERIFIED locators): assumes the
+     *  required-field marker renders as a sibling span immediately after the label span. Confirm
+     *  against the live app and adjust once the true DOM shape is known. */
+    private static By requiredMarkerLocator(String label) {
+        return By.xpath("//span[text()='" + label + "']/following-sibling::span[normalize-space()='*']");
     }
 
     // ── Template method — subclasses call this for the common section ─────────
@@ -133,6 +162,15 @@ public abstract class VoucherDocumentInformationBase {
             return;
         }
         Log.info("DOCUMENT_DATE current='{}', setting to '{}'", current, date);
+        // waitForExtJS() before interacting — same guard setDocScheme (above) already applies
+        // before its own clear()/sendKeys() pair. Added after a 3rd live "element not interactable"
+        // hit on this exact field (runs 20260927_190439, 20260928_111303, 20260929_125107), always
+        // within ~2s of the Edit window opening — the field passes Selenium's own visibility check
+        // (waitUntilElementVisible, used by getAttribute() just above) but isn't yet truly
+        // interactable, consistent with the Add/Edit window still settling. Not 100%-confirmed to
+        // close the gap (waitForExtJS checks Ext.isReady/Ajax/masks, not a CSS slide-in animation
+        // specifically) — if it recurs, capture a screenshot/DOM at the exact failure moment next.
+        JavascriptExecutorUtils.waitForExtJS();
         SeleniumUtils.clear(documentDate, "DOCUMENT_DATE");
         SeleniumUtils.sendKeys(documentDate, WaitType.CLICKABLE, date, "DOCUMENT_DATE");
     }
@@ -228,7 +266,7 @@ public abstract class VoucherDocumentInformationBase {
             // on screen and identical to the field's own pre-existing value). Pressing Tab here
             // mirrors the no-match branch's already-established fix for exactly this situation.
             WaitUtils.untilVisible(remarks).sendKeys(Keys.TAB);
-            ExtentLogger.info("[REMARKS] Narration Text popup did not appear — pressed Tab to commit typed value '" + remarksValue + "'");
+            ReportLogger.fieldEntry("Narration Text popup did not appear — pressed Tab to commit typed value '" + remarksValue + "'");
             return;
         }
 
@@ -237,10 +275,10 @@ public abstract class VoucherDocumentInformationBase {
 
         if (hasMatch) {
             SeleniumUtils.click(matchedNarrationRow(remarksValue), WaitType.CLICKABLE, "NARRATION_ROW");
-            ExtentLogger.info("[REMARKS] Narration Text popup — clicked matched row for '" + remarksValue + "'");
+            ReportLogger.fieldEntry("Narration Text popup — clicked matched row for '" + remarksValue + "'");
         } else {
             WaitUtils.untilVisible(remarks).sendKeys(Keys.TAB);
-            ExtentLogger.info("[REMARKS] Narration Text popup — no match, pressed Tab for '" + remarksValue + "'");
+            ReportLogger.fieldEntry("Narration Text popup — no match, pressed Tab for '" + remarksValue + "'");
         }
 
         WaitUtils.untilInvisible(NARRATION_POPUP_HEADER);
@@ -290,5 +328,89 @@ public abstract class VoucherDocumentInformationBase {
 
     public String getRemarks() {
         return SeleniumUtils.getAttribute(remarks, "value", "REMARKS");
+    }
+
+    // ── UI-contract validation ──────────────────────────────────────────────────────────────
+    //
+    // Placed on this BASE class, not on GeneralVoucherDocumentInformation, because the locators
+    // above are already shared by every VoucherDocumentInformationBase subclass (AR/AP/GV) — that
+    // placement is what makes AR/AP inherit working UI validation for these fields with no new
+    // code once they wire up their own UI-validation test class (see the framework plan's "Reuse
+    // path for AR/AP/Contra" section).
+
+    /** Confirmed live (2026-10-01) as a {@code gsl_TitlePnlType1} readonly displayfield div — the
+     *  same component shape already documented on {@code GeneralVoucherDocumentInformation
+     *  #SAVED_DOCUMENT_NO_DISPLAY} ("Voucher No." field). Identical text across GV/AR/AP's own
+     *  Add/Edit forms (common section, not a per-domain business difference) — kept here, not on
+     *  any one domain's subclass, for the same "AR/AP inherit it for free" reason as the rest of
+     *  this class. Each domain's OWN second section ("Expense/Income Detail" for GV, "Sub Ledger
+     *  Information" for AR/AP) has different text and stays on that domain's own Add page class. */
+    private static final By DOCUMENT_INFORMATION_SECTION_HEADER = By.xpath(
+            "//div[contains(@class,'gsl_TitlePnlType1') and normalize-space(.)='" + FormSection.DOCUMENT_INFORMATION.title() + "']");
+
+    /** UI-contract check for the common "Document Information" section header. */
+    public List<UiValidationFailure> validateDocumentInformationSectionHeaderUi(UiValidationLevel level) {
+        return UiComponentValidator.validateSectionHeader(
+                DOCUMENT_INFORMATION_SECTION_HEADER, "SECTION_HEADER_DOCUMENT_INFORMATION",
+                FormSection.DOCUMENT_INFORMATION.title(), level);
+    }
+
+    /** Full UI contract for Owner Site: label text+style, required-marker, input style+state. */
+    public List<UiValidationFailure> validateOwnerSiteUi(UiValidationLevel level, UiFieldState state, boolean required) {
+        return UiComponentValidator.validateField("OWNER_SITE",
+                labelLocator(OWNER_SITE_LABEL_TEXT), OWNER_SITE_LABEL_TEXT,
+                requiredMarkerLocator(OWNER_SITE_LABEL_TEXT), required,
+                ownerSiteDisplay, FieldStyleSpec.LOOKUP_INPUT,
+                state, level);
+    }
+
+    /** Owner Site is EDITABLE only on Add, {@code DISABLED} on Edit — there is no setter for it
+     *  anywhere in this codebase ({@link #getOwnerSite()} is the only accessor), confirming it's
+     *  permanently non-interactive once a voucher exists. Common across GV/AR/AP (same shared
+     *  locator/component above), not a per-domain business difference — confirmed live for GV
+     *  (2026-10-01); AR/AP inherit this rule automatically rather than each needing their own
+     *  override logic. */
+    public List<UiValidationFailure> validateOwnerSiteUi(UiValidationLevel level, boolean isEditMode, boolean required) {
+        return validateOwnerSiteUi(level, isEditMode ? UiFieldState.DISABLED : UiFieldState.EDITABLE, required);
+    }
+
+    /** Full UI contract for Cash/Bank: label text+style, required-marker, input style+state. */
+    public List<UiValidationFailure> validateCashBankUi(UiValidationLevel level, UiFieldState state, boolean required) {
+        return UiComponentValidator.validateField("CASH_BANK",
+                labelLocator(cashBankLabelText), cashBankLabelText,
+                requiredMarkerLocator(cashBankLabelText), required,
+                cashBankDisplay, FieldStyleSpec.LOOKUP_INPUT,
+                state, level);
+    }
+
+    /** Full UI contract for Date: label text+style, required-marker, input style+state. */
+    public List<UiValidationFailure> validateDateUi(UiValidationLevel level, UiFieldState state, boolean required) {
+        return UiComponentValidator.validateField("DATE",
+                labelLocator(dateLabelText), dateLabelText,
+                requiredMarkerLocator(dateLabelText), required,
+                documentDate, FieldStyleSpec.DATE_INPUT,
+                state, level);
+    }
+
+    /** Full UI contract for Remarks: label text+style, required-marker, input style+state. */
+    public List<UiValidationFailure> validateRemarksUi(UiValidationLevel level, UiFieldState state, boolean required) {
+        return UiComponentValidator.validateField("REMARKS",
+                labelLocator(remarksLabelText), remarksLabelText,
+                requiredMarkerLocator(remarksLabelText), required,
+                remarks, FieldStyleSpec.TEXT_INPUT,
+                state, level);
+    }
+
+    /** Remarks is {@code DISABLED} on a freshly-opened, nothing-yet-filled Add form (ExtJS enables
+     *  it only once Owner Site/Cash-Bank are chosen) and follows {@code state} once real data
+     *  exists (Edit, or Add after prerequisites are filled) — confirmed live for GV (2026-10-01,
+     *  user-confirmed: "Remarks in add mode enabled after cash/bank is selected"), for AR
+     *  (2026-10-01 live run, 0 failures), and for AP (2026-10-01, user-supplied screenshot + DOM —
+     *  see {@code UiComponentValidator#validateFieldState}'s Javadoc for why an earlier AP live run
+     *  misread this as EDITABLE). Common to all three — AR/AP inherit this rule automatically
+     *  rather than each needing their own override logic. */
+    public List<UiValidationFailure> validateRemarksUi(UiValidationLevel level, UiFieldState state,
+            boolean isEditMode, boolean required) {
+        return validateRemarksUi(level, isEditMode ? state : UiFieldState.DISABLED, required);
     }
 }

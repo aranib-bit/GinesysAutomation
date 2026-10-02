@@ -19,6 +19,17 @@ import com.gsl.reports.profile.TestDataConfig;
 import java.util.LinkedHashMap;
 import java.util.Map;
 
+/**
+ * Assembles a single, report-safe {@link RuntimeExecutionProfile} snapshot by reading every
+ * relevant {@code ConfigFactory} config object and copying its values into the corresponding
+ * {@code com.gsl.reports.profile} DTO — one immutable object {@link ReportConfigRenderer} and
+ * {@code RuntimeProfileHolder} can then render/hold without either of them needing to know about
+ * the underlying {@code com.gsl.config} classes.
+ *
+ * <p>All credentials (DB username/password, SSH/WinRM usernames/passwords) are replaced with
+ * {@link #MASKED} here — this is the single point where that masking happens, so nothing
+ * downstream needs to remember to do it.
+ */
 public final class RuntimeProfileBuilder {
 
     private static final String MASKED = "********";
@@ -26,6 +37,7 @@ public final class RuntimeProfileBuilder {
     private RuntimeProfileBuilder() {
     }
 
+    /** Reads every {@code ConfigFactory} config and assembles the full {@link RuntimeExecutionProfile} snapshot. */
     public static RuntimeExecutionProfile build() {
         FrameworkConfig fw = ConfigFactory.getConfig();
         DataBaseConfig db = ConfigFactory.getDataBaseConfig();
@@ -46,6 +58,7 @@ public final class RuntimeProfileBuilder {
                 .build();
     }
 
+    /** Builds the Environment &amp; Execution section from {@code FrameworkConfig}/{@code BrowserConfig}/{@code ExecutionConfig}/{@code RemoteLogConfig}. */
     private static ExecutionConfig buildExecution(FrameworkConfig fw) {
         com.gsl.config.BrowserConfig bc   = ConfigFactory.getBrowserConfig();
         com.gsl.config.ExecutionConfig ec = ConfigFactory.getExecutionConfig();
@@ -65,6 +78,7 @@ public final class RuntimeProfileBuilder {
                 .build();
     }
 
+    /** Builds the Browser section from {@code BrowserConfig}/{@code FinanceConfig}/{@code ExecutionConfig}/{@code WaitConfig}. */
     private static BrowserConfig buildBrowser(FrameworkConfig fw) {
         com.gsl.config.BrowserConfig bc    = ConfigFactory.getBrowserConfig();
         com.gsl.config.FinanceConfig fc    = ConfigFactory.getFinanceConfig();
@@ -86,6 +100,7 @@ public final class RuntimeProfileBuilder {
                 .build();
     }
 
+    /** Builds the Database section, masking username and password. */
     private static DatabaseConfig buildDatabase(DataBaseConfig db) {
         return DatabaseConfig.builder()
                 .type(db.databaseType())
@@ -104,6 +119,7 @@ public final class RuntimeProfileBuilder {
                 .build();
     }
 
+    /** Builds the Network &amp; Browser Logging section from {@code NetworkConfig}/{@code BrowserConfig}. */
     private static NetworkConfig buildNetwork() {
         com.gsl.config.NetworkConfig nc = ConfigFactory.getNetworkConfig();
         com.gsl.config.BrowserConfig bc = ConfigFactory.getBrowserConfig();
@@ -127,6 +143,7 @@ public final class RuntimeProfileBuilder {
                 .build();
     }
 
+    /** Builds the Diagnostics section from {@code DiagnosticsConfig}/{@code ReportConfig}. */
     private static DiagnosticsConfig buildDiagnostics() {
         com.gsl.config.DiagnosticsConfig dc = ConfigFactory.getDiagnosticsConfig();
         com.gsl.config.ReportConfig rpc     = ConfigFactory.getReportConfig();
@@ -149,6 +166,7 @@ public final class RuntimeProfileBuilder {
                 .build();
     }
 
+    /** Builds the Remote Log Collection section from {@code RemoteLogConfig}. */
     private static RemoteLogConfig buildRemoteLogs() {
         com.gsl.config.RemoteLogConfig rc = ConfigFactory.getRemoteLogConfig();
         return RemoteLogConfig.builder()
@@ -163,6 +181,7 @@ public final class RuntimeProfileBuilder {
                 .build();
     }
 
+    /** Builds the Remote Server section from {@code RemoteLogConfig}, masking every SSH/WinRM username and password. */
     private static RemoteServerConfig buildRemoteServer() {
         com.gsl.config.RemoteLogConfig rc = ConfigFactory.getRemoteLogConfig();
         return RemoteServerConfig.builder()
@@ -185,6 +204,7 @@ public final class RuntimeProfileBuilder {
                 .build();
     }
 
+    /** Builds the Test Data section from {@code FrameworkConfig}/{@code ExcelDataConfig}. */
     private static TestDataConfig buildTestData(FrameworkConfig fw, ExcelDataConfig ex) {
         return TestDataConfig.builder()
                 .source(fw.testDataSource())
@@ -197,6 +217,7 @@ public final class RuntimeProfileBuilder {
                 .build();
     }
 
+    /** Builds the Performance section from {@code DiagnosticsConfig}/{@code ReportConfig}. */
     private static PerformanceConfig buildPerformance() {
         com.gsl.config.DiagnosticsConfig dc = ConfigFactory.getDiagnosticsConfig();
         com.gsl.config.ReportConfig rpc     = ConfigFactory.getReportConfig();
@@ -212,6 +233,7 @@ public final class RuntimeProfileBuilder {
                 .build();
     }
 
+    /** Builds the app log sources map — each configured log path reduced to a "Configured"/"Not Configured" status. */
     private static Map<String, String> buildLogSources(AppLogPathsConfig logPaths) {
         Map<String, String> sources = new LinkedHashMap<>();
         sources.put("Finance API Error",      configured(logPaths.financeApiError()));
@@ -225,6 +247,7 @@ public final class RuntimeProfileBuilder {
         return sources;
     }
 
+    /** {@code "Configured"} unless {@code path} is null/blank. */
     private static String configured(String path) {
         return (path == null || path.isBlank()) ? "Not Configured" : "Configured";
     }

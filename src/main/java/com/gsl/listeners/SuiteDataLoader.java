@@ -63,6 +63,14 @@ public class SuiteDataLoader implements ISuiteListener {
             "AND    op.sys_shortcode           IN ('Add', 'Modify', 'Delete') " +
             "ORDER  BY m.sys_displayorder, op.sys_displayorder";
 
+    /**
+     * Resets {@link SuiteCircuitBreaker}, initializes {@link UserPool} from {@code UsersList.xlsx},
+     * runs the suite-start validations ({@link #validateUserPoolAgainstThreadCount(ISuite)},
+     * {@link ConfigValidator#validate()}), and — only when {@code testdata.source=DB} — queries
+     * every Finance-voucher menu/operation pair and registers a {@link DbIdQueue} for each via
+     * {@link MenuOperationKey#build}. A {@link UserPool} init failure is logged rather than thrown,
+     * so a broken pool surfaces as individual test failures instead of aborting the whole suite here.
+     */
     @Override
     public void onStart(ISuite suite) {
         SuiteCircuitBreaker.reset();
@@ -142,6 +150,7 @@ public class SuiteDataLoader implements ISuiteListener {
         };
     }
 
+    /** No-op — the {@link DbIdQueue} queues registered in {@link #onStart(ISuite)} are GC'd with the JVM after the suite. */
     @Override
     public void onFinish(ISuite suite) {
         // No-op — queues are GC'd with the JVM after the suite.
@@ -304,6 +313,7 @@ public class SuiteDataLoader implements ISuiteListener {
         return false;
     }
 
+    /** @return true if {@code providerClass} declares a {@code @DataSupplier(name = dataProviderName, runInParallel = true)} method. */
     private static boolean providerHasRunInParallelSupplier(Class<?> providerClass, String dataProviderName) {
         for (Method supplierMethod : providerClass.getDeclaredMethods()) {
             DataSupplier supplierAnnotation = supplierMethod.getAnnotation(DataSupplier.class);

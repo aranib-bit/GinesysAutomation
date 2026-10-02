@@ -121,4 +121,16 @@ public class ApVoucherLiveDbRefs {
      */
     @Builder.Default
     SelectDocumentVariant.PaymentMode selectDocPaymentMode = SelectDocumentVariant.PaymentMode.NONE;
+
+    /** Round 20 — {@code fingl.glcode} for {@link #cashBankName}, needed to resolve a "known"
+     *  cheque number ({@code FinChqDetDao.findFirstUnused(glcode)}) for this voucher's own
+     *  counter-leg bank. */
+    long cashBankGlcode;
+
+    /** Round 20 — the known/unknown-cheque decision {@code ApVoucherFixtureFactory
+     *  .assignKnownChequeFlags} already made on the originating {@code SelectDocumentVariant},
+     *  sourced from {@link com.gsl.utils.dataprovider.fixture.finance.ApVoucherFixtureOptions
+     *  #isKnownCheque()}. Meaningless unless {@link #selectDocPaymentMode} is {@code CHEQUE}. */
+    @Builder.Default
+    boolean selectDocKnownCheque = false;
 }

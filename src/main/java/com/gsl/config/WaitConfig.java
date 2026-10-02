@@ -2,49 +2,73 @@ package com.gsl.config;
 
 import org.aeonbits.owner.Config;
 
-@Config.Sources("file:${user.dir}/src/test/resources/config/wait.properties")
+/**
+ * Timeouts, poll intervals, and retry counts for every wait/retry loop in the framework — read
+ * from {@code wait.properties} so timing can be tuned per environment without recompiling.
+ * Consumed mainly by {@link com.gsl.utils.Selenium.WaitUtils} and the ExtJS grid/document
+ * selector helpers ({@code SelectDocumentPopup}, {@code VoucherMainGridBase}); most keys below
+ * exist because a specific race condition was diagnosed against a live run — see each key's own
+ * Javadoc (where present) for that history before changing its default.
+ */
+@Config.LoadPolicy(Config.LoadType.MERGE)
+@Config.Sources({
+        "system:properties",
+        "file:${user.dir}/src/test/resources/env/${env}/wait.properties",
+        "file:${user.dir}/src/test/resources/config/wait.properties"
+})
 public interface WaitConfig extends Config {
 
+    /** Poll interval (ms) used by the fluent waits ({@link com.gsl.utils.Selenium.WaitUtils#fluentWaitBuilder()}). */
     @Key("polling.millis")
     @DefaultValue("200")
     long pollingMillis();
 
+    /** Timeout (seconds) for a full page-load wait. */
     @Key("pageload.timeout.seconds")
     @DefaultValue("30")
     long pageLoadTimeoutSeconds();
 
+    /** Timeout (seconds) for an ExtJS component to report itself ready. */
     @Key("componentready.timeout.seconds")
     @DefaultValue("20")
     long componentReadyTimeoutSeconds();
 
+    /** Default timeout (seconds) for a routine UI interaction wait (click/type target ready). */
     @Key("interaction.wait.seconds")
     @DefaultValue("10")
     long interactionWaitSeconds();
 
+    /** Short timeout (seconds) for quick, low-risk waits. */
     @Key("short.wait.seconds")
     @DefaultValue("3")
     long shortWaitSeconds();
 
+    /** Timeout (seconds) for a popup/dialog to appear. */
     @Key("popup.wait.seconds")
     @DefaultValue("30")
     long popupWaitSeconds();
 
+    /** Max retries when waiting for/dismissing a warning message popup. */
     @Key("warning.msg.max.retries")
     @DefaultValue("2")
     int warningMsgMaxRetries();
 
+    /** Buffer wait (ms) after a document-selector grid reports loaded, before it's trusted to be interactive. */
     @Key("selectdoc.grid.load.buffer.ms")
     @DefaultValue("200")
     int selectDocGridLoadBufferMs();
 
+    /** Wait (ms) for the grid to re-render after jumping to a specific page/row. */
     @Key("selectdoc.jump.render.ms")
     @DefaultValue("500")
     int selectDocJumpRenderMs();
 
+    /** Upper bound on the number of scroll steps attempted while paging through the document-selector grid, as a runaway-loop safety cap. */
     @Key("selectdoc.scroll.safety.cap")
     @DefaultValue("1000")
     int selectDocScrollSafetyCap();
 
+    /** Wait (ms) after each scroll step on the common still-scrolling path — see {@link #selectDocScrollNoProgressConfirmWaitMs()} for the separate end-of-list confirmation wait. */
     @Key("selectdoc.scroll.step.wait.ms")
     @DefaultValue("400")
     int selectDocScrollStepWaitMs();
@@ -71,14 +95,17 @@ public interface WaitConfig extends Config {
     @DefaultValue("3")
     int selectDocScrollNoProgressStreakRequired();
 
+    /** Wait (ms) for the focused row to render after jumping to it in the document-selector grid. */
     @Key("selectdoc.focusrow.render.ms")
     @DefaultValue("1500")
     int selectDocFocusRowRenderMs();
 
+    /** Buffer wait (ms) after a click in the document-selector popup before the next action. */
     @Key("selectdoc.click.buffer.ms")
     @DefaultValue("300")
     int selectDocClickBufferMs();
 
+    /** Max retries while waiting for the document-selector grid's loading overlay to clear. */
     @Key("selectdoc.loader.max.retries")
     @DefaultValue("3")
     int selectDocLoaderMaxRetries();
@@ -106,6 +133,7 @@ public interface WaitConfig extends Config {
     @DefaultValue("3")
     int selectDocMaxSelectAttempts();
 
+    /** Max retries for a click blocked by a transient overlay before giving up. */
     @Key("click.overlay.retry.max")
     @DefaultValue("3")
     int clickOverlayRetryMax();
@@ -189,30 +217,37 @@ public interface WaitConfig extends Config {
     @DefaultValue("")
     String dashboardVerificationDisabledModules();
 
+    /** Master switch for {@link com.gsl.popup.PopupMonitor}'s active-popup detection. */
     @Key("popup.detection.enabled")
     @DefaultValue("true")
     boolean popupDetectionEnabled();
 
+    /** Timeout (ms) for a single popup-detection check. */
     @Key("popup.detection.timeout.ms")
     @DefaultValue("1500")
     int popupDetectionTimeoutMs();
 
+    /** Poll interval (ms) for popup detection. */
     @Key("popup.detection.polling.ms")
     @DefaultValue("100")
     int popupDetectionPollingMs();
 
+    /** Selection strategy for the document-selector popup (e.g. POSITIVE), consumed by {@code SelectDocumentPopup}. */
     @Key("doc.selector.mode")
     @DefaultValue("POSITIVE")
     String docSelectorMode();
 
+    /** Multiplier applied to the requested document count when over-fetching candidates from the document-selector grid. */
     @Key("doc.selector.overfetch.multiplier")
     @DefaultValue("3")
     int docSelectorOverfetchMultiplier();
 
+    /** Backoff (ms) between retries when the document-selector grid doesn't yet have enough matching candidates. */
     @Key("doc.selector.retry.backoff.ms")
     @DefaultValue("1500")
     long docSelectorRetryBackoffMs();
 
+    /** Default number of documents the document-selector popup selects when the caller doesn't specify one. */
     @Key("doc.selector.documentcount.default")
     @DefaultValue("1")
     int docSelectorDocumentCountDefault();

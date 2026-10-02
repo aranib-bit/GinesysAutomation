@@ -13,6 +13,13 @@ public final class DataSourceRouter {
 
     private DataSourceRouter() {}
 
+    /**
+     * Picks the {@link ApiPlatform} to backfill {@code neededQuantity} records with:
+     * {@link ApiPlatform#K6BULK} once {@code neededQuantity} exceeds
+     * {@link com.gsl.config.ApiConfig#smallQuantityThreshold()}, otherwise the first available
+     * platform in {@link com.gsl.config.ApiConfig#smallQtyPreferredOrder()} (WEBAPI, then
+     * PUBLICAPI, by default), falling back to WEBAPI itself if none report available.
+     */
     public static ApiPlatform decide(int neededQuantity) {
         int smallQtyThreshold = ConfigFactory.getApiConfig().smallQuantityThreshold();
         if (neededQuantity > smallQtyThreshold) {
@@ -27,6 +34,7 @@ public final class DataSourceRouter {
         return ApiPlatform.WEBAPI; // ultimate fallback — internal API, assumed always reachable
     }
 
+    /** Availability check per small-quantity platform candidate; {@code K6BULK} never reaches here (already routed above). */
     private static boolean isAvailable(ApiPlatform candidate) {
         return switch (candidate) {
             case WEBAPI -> true; // internal API — always available whenever UserPool has API users

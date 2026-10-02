@@ -3,7 +3,14 @@ package com.gsl.enums;
 import java.util.Arrays;
 import java.util.stream.Collectors;
 
+/**
+ * The unit an item's shelf-life/validity period is expressed in, as configured in the "Validity
+ * Mode" column of the "Inventory Tracking" sheet in the inventory-item Excel test data ({@code
+ * ItemInventoryTracking.validityMode}, paired with the free-text {@code validityPeriod} value) —
+ * resolved from the raw cell text by {@link #fromExcel} via {@code ValidityModeConverter}.
+ */
 public enum ValidityModeType {
+    /** No expiry/validity tracking applies. */
     NONE("None"),
     DAY("Day"),
     MONTH("Month"),
@@ -15,6 +22,7 @@ public enum ValidityModeType {
         this.label = label;
     }
 
+    /** Excel/UI label for this validity mode. */
     public String label() {
         return label;
     }
@@ -25,6 +33,9 @@ public enum ValidityModeType {
     }
 
 
+    /** Resolves a raw Excel cell value to its matching constant (case-insensitive label match);
+     *  throws {@link IllegalArgumentException} naming the offending file/sheet/column and the
+     *  allowed values for a blank or unrecognized value. */
     public static ValidityModeType fromExcel(
             String excelValue,
             String fileName,

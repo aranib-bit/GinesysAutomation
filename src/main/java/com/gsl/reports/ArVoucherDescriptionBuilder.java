@@ -36,6 +36,7 @@ public final class ArVoucherDescriptionBuilder {
         return buildFromRichName(tcName);
     }
 
+    /** Maps a negative-scenario enum name to its fixed description sentence, or {@code null} if not a known negative scenario. */
     private static String buildNegativeDescription(String scenarioName) {
         if (scenarioName == null) return null;
         return switch (scenarioName) {

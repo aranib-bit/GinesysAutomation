@@ -65,6 +65,7 @@ public final class WaitUtils {
 
     // ── Expected-condition waits (public, reusable; default polling = no timing change) ──
 
+    /** Waits for {@code by}'s element to be clickable, at the default {@code timeout()}. */
     public static WebElement untilClickable(By by) {
         ReportLogger.uiAction("waitUntilClickable {}", by);
         try {
@@ -74,6 +75,7 @@ public final class WaitUtils {
         }
     }
 
+    /** {@link #untilClickable(By)} at an explicit timeout instead of the default. */
     public static WebElement untilClickable(By by, long seconds) {
         ReportLogger.uiAction("waitUntilClickable {}s {}", seconds, by);
         try {
@@ -83,6 +85,7 @@ public final class WaitUtils {
         }
     }
 
+    /** Waits for {@code by}'s element to be present in the DOM (not necessarily visible), at the default {@code timeout()}. */
     public static WebElement untilPresent(By by) {
         ReportLogger.uiAction("waitUntilPresent {}", by);
         try {
@@ -92,6 +95,7 @@ public final class WaitUtils {
         }
     }
 
+    /** {@link #untilPresent(By)} at an explicit timeout instead of the default. */
     public static WebElement untilPresent(By by, long seconds) {
         ReportLogger.uiAction("waitUntilPresent {}s {}", seconds, by);
         try {
@@ -101,6 +105,7 @@ public final class WaitUtils {
         }
     }
 
+    /** Waits for {@code by}'s element to be visible, at the default {@code timeout()}. */
     public static WebElement untilVisible(By by) {
         ReportLogger.uiAction("waitUntilVisible {}", by);
         try {
@@ -110,6 +115,7 @@ public final class WaitUtils {
         }
     }
 
+    /** {@link #untilVisible(By)} at an explicit timeout instead of the default. */
     public static WebElement untilVisible(By by, long seconds) {
         ReportLogger.uiAction("waitUntilVisible {}s {}", seconds, by);
         try {
@@ -317,6 +323,11 @@ public final class WaitUtils {
         return extJsTimeout();
     }
 
+    /**
+     * FluentWait for {@code by}'s element to be clickable, polling every 2s up to
+     * {@code itemscanmaxtimeout} — a slower, item-scan-specific ceiling distinct from the
+     * standard clickable wait's {@code timeout()}.
+     */
     public static WebElement fluentWait(By by) {
         long startMs = System.currentTimeMillis();
         try {
@@ -332,6 +343,7 @@ public final class WaitUtils {
         }
     }
 
+    /** Waits for ExtJS's Ajax queue to drain, then for {@code by}'s element to become clickable. */
     public static WebElement waitUntilAjaxAndElementClickable(By by) {
         long startMs = System.currentTimeMillis();
         try {
@@ -796,6 +808,7 @@ public final class WaitUtils {
         }
     }
 
+    /** Clicks {@code locator} after waiting for the ExtJS mask/Ajax to clear, then waits for both again post-click. */
     public static void extSafeClick(By locator) {
         // Composite method — individual wait calls inside are already instrumented;
         // do NOT add a WaitDurationBuffer entry here to avoid ambiguous double entries.

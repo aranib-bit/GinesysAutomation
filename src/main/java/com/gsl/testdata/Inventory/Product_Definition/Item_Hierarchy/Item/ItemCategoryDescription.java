@@ -5,6 +5,15 @@ import io.github.sskorol.data.Column;
 import io.github.sskorol.data.Sheet;
 import lombok.Getter;
 
+/**
+ * Fixture-data counterpart of the "Category&amp;Description" sheet of the Inventory Item workbook
+ * ({@code ConfigFactory.getExcelDataConfig().inventoryitemPath()}) — up to 6 category/description
+ * pairs for one item. Optional sheet: {@code MergedInvItemDataSupplier} joins a row in only when
+ * one exists for the {@code TestCaseID} (unlike the mandatory {@link ItemGeneral}), and skips
+ * {@link com.gsl.validation.MandatoryFieldValidator#validate} entirely when it's absent. When present, {@link
+ * com.gsl.testdata.annotations.AtLeastOneMandatory} requires at least one of the six category
+ * columns to be filled. Feeds {@code MergedInventoryItemData.itemCategoryDescription}.
+ */
 @Getter
 @AtLeastOneMandatory(
         fields = {

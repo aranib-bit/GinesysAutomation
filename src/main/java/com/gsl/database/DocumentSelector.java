@@ -259,6 +259,7 @@ public final class DocumentSelector {
         }
     }
 
+    /** Sleeps {@code req.getRetryBackoffMs()} between retry attempts; restores the interrupt flag and stops retrying early if interrupted. */
     private static void sleepBackoff(SelectorRequest req, int attempt) {
         long ms = Math.max(0L, req.getRetryBackoffMs());
         if (ms == 0L) return;
@@ -271,6 +272,7 @@ public final class DocumentSelector {
         }
     }
 
+    /** Builds the diagnostic {@link org.testng.SkipException} thrown when every retry attempt is exhausted — logs and returns rather than throws so {@link #selectAtomic} can add its own throw statement. */
     private static org.testng.SkipException failHard(SelectorRequest req,
                                                   int lastCandidatesSize,
                                                   int lastReservedSize,

@@ -31,6 +31,13 @@ public class AdjAmtCascadeValidator {
         this.finTagDao = DatabaseManager.getJdbi().onDemand(FinTagDao.class);
     }
 
+    /**
+     * For each invoice in {@code context}'s pre/post snapshots, asserts {@code adjamt} didn't
+     * decrease, its delta matches the amount tagged in {@code fintag} for this voucher, and it
+     * never exceeds the invoice's own {@code camount}. Skips entirely when either snapshot is
+     * empty (ADVANCE_PAYMENT — no invoice rows to compare). All failures are collected via
+     * {@link SoftAssert} and reported together.
+     */
     public void validate(VoucherDbContext context,
                          FinVchMain header,
                          List<FinPost> postEntries) {
@@ -100,6 +107,7 @@ public class AdjAmtCascadeValidator {
         ExtentLogger.info("Level 4b — PASSED for voucherNo [" + voucherNo + "]");
     }
 
+    /** Sums {@code fintag.amount} linking any of {@code voucherEntries}' postcodes to {@code invoiceRow}'s own — the expected adjamt delta for this invoice. */
     private BigDecimal resolveTaggedAmount(List<FinPost> voucherEntries, FinPost invoiceRow) {
         for (FinPost ve : voucherEntries) {
             List<FinTag> tags = finTagDao.findByPostCode1AndPostCode2(

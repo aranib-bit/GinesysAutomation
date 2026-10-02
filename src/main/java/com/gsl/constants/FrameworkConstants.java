@@ -4,6 +4,14 @@ import org.openqa.selenium.By;
 
 import java.nio.file.Paths;
 
+/**
+ * Static, run-scoped constants shared across the framework: the JVM-wide run identifier, the
+ * report directory layout derived from it, and the {@link By} locators for the app's various
+ * boot-time loading overlays (splash screen, ExtJS loading window/mask, Select-Document grid
+ * loader). Other utils and page objects look these up here instead of hardcoding the locator or
+ * recomputing the run-scoped path themselves, so every artifact (report, screenshot, HAR) for a
+ * given JVM run lands under the same {@link #getRunReportDir()}.
+ */
 public final class FrameworkConstants {
 
     private FrameworkConstants() {
@@ -45,6 +53,7 @@ public final class FrameworkConstants {
         return reportPath;
     }
 
+    /** Parent directory of {@link #getReportPath()} — the run-scoped report directory as a plain path string. */
     public static String getReportDir() {
         return Paths.get(getReportPath()).getParent().toString();
     }
@@ -54,18 +63,22 @@ public final class FrameworkConstants {
         return System.getProperty("user.dir") + "/reports/latest";
     }
 
+    /** Locator for the maximized ExtJS app window shown while the app boots ({@code x-window-maximized}). */
     public static By getLoadingWindow() {
         return BY_LOADING_WINDOW;
     }
 
+    /** Locator for the fixed-position ExtJS loading mask ({@code .x-mask-fixed}) shown during page/route loads. */
     public static By getLoadingMask() {
         return BY_LOADING_MASK;
     }
 
+    /** Locator for the app-level {@code #splashScreen} overlay, which clears via a CSS opacity fade rather than removal/hide. */
     public static By getSplashScreen() {
         return BY_SPLASH_SCREEN;
     }
 
+    /** Locator for the Select-Document popup's grid loading progress bar ({@code aria-valuetext="Loading..."}). */
     public static By getSelectDocGridLoader() {
         return BY_SELECT_DOC_GRID_LOADER;
     }

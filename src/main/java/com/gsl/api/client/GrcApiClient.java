@@ -22,6 +22,7 @@ import java.util.Map;
  */
 public class GrcApiClient extends ApiClient {
 
+    /** Wraps an already-authenticated session {@code spec} — see {@link ApiClient}'s class Javadoc. */
     public GrcApiClient(RequestSpecification spec) {
         super(spec);
     }

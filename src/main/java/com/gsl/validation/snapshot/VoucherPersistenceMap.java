@@ -15,10 +15,13 @@ public class VoucherPersistenceMap {
 
     private final List<TableRule> tableRules;
 
+    /** Defensively copies {@code tableRules} (declared order preserved); {@code null} becomes empty. */
     public VoucherPersistenceMap(List<TableRule> tableRules) {
         this.tableRules = tableRules == null ? Collections.emptyList() : List.copyOf(tableRules);
     }
 
+    /** Every table rule declared for this voucher type, regardless of per-document participation
+     *  — see {@link #activeTables(DocumentContext)} for the narrowed, per-document list. */
     public List<TableRule> getTableRules() {
         return tableRules;
     }
@@ -30,6 +33,7 @@ public class VoucherPersistenceMap {
                 .collect(Collectors.toList());
     }
 
+    /** Looks up a declared {@link TableRule} by name (case-insensitive), or {@code null} if none matches. */
     public TableRule findByTableName(String tableName) {
         return tableRules.stream()
                 .filter(r -> r.getTableName().equalsIgnoreCase(tableName))

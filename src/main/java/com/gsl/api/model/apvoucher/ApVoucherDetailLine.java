@@ -21,6 +21,7 @@ import lombok.NoArgsConstructor;
 @NoArgsConstructor
 @AllArgsConstructor
 public class ApVoucherDetailLine {
+    /** Null for a new line being created; would carry the existing line's code when editing one. */
     private Integer code;
     private long subLedgerCode;
     private String subLedgerName;
@@ -49,7 +50,8 @@ public class ApVoucherDetailLine {
     @Builder.Default
     private boolean useExceptionRate = false;
 
-    /** 'C' in both captures. */
+    /** 'C' in both captures. The instrument fields below are consequently always left null in
+     *  every observed request, since this flow's payment mode never varies from that value. */
     @Builder.Default
     private String paymentMode = "C";
     private String bookCode;
@@ -57,7 +59,10 @@ public class ApVoucherDetailLine {
     private String instrumentDate;
     private String chequeLabel;
     private String paymentReference;
+    /** Optimistic-concurrency stamp — {@code 0} for a newly created line. */
     @Builder.Default
     private int dataVersion = 0;
+    /** Always null in both captures — no adjustment (e.g. against a pending AR document) is
+     *  wired up by this client's Customer/Vendor Advance flow. */
     private Object apVoucherAdjustmentDetail;
 }

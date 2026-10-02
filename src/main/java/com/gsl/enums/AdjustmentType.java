@@ -3,10 +3,19 @@ package com.gsl.enums;
 import java.util.Arrays;
 import java.util.stream.Collectors;
 
+/**
+ * Reconciliation strategy for an AR voucher's Sub-Ledger Information row — how a debit/credit
+ * pair should be squared off against outstanding documents on the sub-ledger. Populated from the
+ * "AdjustmentType" column of the "SubLedgerInformation" sheet in the AR voucher Excel test data
+ * via {@link com.gsl.converter.AdjustmentTypeConverter} / {@link #fromExcel}.
+ */
 public enum AdjustmentType {
 
+    /** Manually pick the specific outstanding document(s) to adjust against. */
     SELECT_DOCUMENT("SelectDocument",                          "Select Document"),
+    /** Auto-adjust against outstanding documents oldest-first (First In, First Out). */
     FIFO_SETOFF("FIFO Set-Off",                               "FIFO Set-Off"),
+    /** FIFO set-off scoped to documents sharing the same reference site. */
     REFERENCE_SITEWISE_FIFO_SETOFF("Reference Site wise FIFO set-off", "Reference Site wise FIFO set-off");
 
     private final String label;
@@ -32,6 +41,13 @@ public enum AdjustmentType {
         return label;
     }
 
+    /**
+     * Resolves {@code excelValue} to its matching {@link AdjustmentType} constant by
+     * case-insensitive match against each constant's {@link #label}; returns {@code null} for a
+     * blank/missing cell (unlike most sibling {@code fromExcel} methods, which throw on blank —
+     * this column is optional), and throws {@link IllegalArgumentException} naming
+     * {@code fileName}/{@code sheetName}/{@code columnName} for an unrecognized value.
+     */
     public static AdjustmentType fromExcel(
             String excelValue,
             String fileName,

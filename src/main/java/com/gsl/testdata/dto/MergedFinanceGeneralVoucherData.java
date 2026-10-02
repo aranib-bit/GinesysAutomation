@@ -8,6 +8,7 @@ import com.gsl.testdata.Finance.Operations.Vouchers.Common.VoucherSelectDocRow;
 import com.gsl.testdata.Finance.Operations.Vouchers.GeneralVoucher.DetailLineEditTarget;
 import com.gsl.testdata.Finance.Operations.Vouchers.GeneralVoucher.DocumentInformation;
 import com.gsl.testdata.Finance.Operations.Vouchers.GeneralVoucher.ExpenseIncomeDetail;
+import com.gsl.testdata.Finance.Operations.Vouchers.GeneralVoucher.PaymentInfoEditTarget;
 import com.gsl.testdata.Finance.Operations.Vouchers.GeneralVoucher.PaymentInformation;
 import com.gsl.testdata.Finance.Operations.Vouchers.GeneralVoucher.SiteAllocation;
 import com.gsl.testdata.InvocationData;
@@ -97,12 +98,36 @@ public class MergedFinanceGeneralVoucherData
     private Set<GeneralVoucherTag> tags = Collections.emptySet();
 
     /**
-     * Payment info for the Cash/Bank counter-leg — non-null only for
-     * {@code GeneralVoucherPaymentVariant.CASH} today (Cheque/NEFT-RTGS are blocked pending a
-     * UI-discovery spike, and NONE deliberately carries none — see
-     * {@code GeneralVoucherPaymentVariant}'s class Javadoc).
+     * Payment info for the Cash/Bank counter-leg — set for CASH, CHEQUE, and NEFT_RTGS payment
+     * variants (NONE deliberately carries none — see {@code GeneralVoucherPaymentVariant}'s class
+     * Javadoc). For CHEQUE, whether this line behaves AP-style (Dr) or AR-style (Cr) is decided by
+     * {@link #isCashBankPaymentDebit()}.
      */
     private PaymentInformation cashBankPaymentInfo;
+
+    /** Round 23 — the REAL outcome of GeneralVoucherTemplateLoader's cheque resolution (as opposed
+     *  to GeneralVoucherFixtureOptions#isKnownCheque()'s pre-decided INTENT) — null for every
+     *  non-Cheque payment mode; SAME_BANK/DIFFERENT_BANK on a genuine finchqdet resolution; UNKNOWN
+     *  both for a deliberately-unknown row AND for a "known" row whose resolver silently fell back
+     *  (ChequeInstrumentResolver.resolveKnownSameBank found no available cheque for that GL) — the
+     *  two are indistinguishable from a pure business-value perspective (both mean "no finchqdet
+     *  row exists to resolve bookcode against"), which is exactly what GeneralVoucherCreateChangeSets
+     *  needs to know for its bookcode rule. */
+    private com.gsl.utils.cheque.ChequeInstrumentResolver.ChequeBankMatch actualChequeBankMatch;
+
+    /**
+     * Round 6 — one payment per grid row that carries one, keyed by the row's {@code lineNo}
+     * ({@link PaymentInformation#getLineNo()}); rows without an entry have no payment. {@code null}
+     * for Excel/Edit/negative data that never set it — those keep using the single
+     * {@link #cashBankPaymentInfo} on the first row (see {@link #paymentForLine}). For a Create built
+     * by {@code GeneralVoucherTemplateLoader}, {@link #cashBankPaymentInfo} is the FIRST of these
+     * (kept so Edit/Revert/loggers that only know one payment keep working).
+     */
+    private List<PaymentInformation> rowPayments;
+
+    /** Round 6 — the real cheque/bank outcome of each CHEQUE row, keyed by {@code lineNo}
+     *  (per-row counterpart of {@link #actualChequeBankMatch}); {@code null} when not set. */
+    private java.util.Map<String, com.gsl.utils.cheque.ChequeInstrumentResolver.ChequeBankMatch> rowChequeBankMatches;
 
     /** Structured log of DB data-gathering steps, rendered before test steps begin. */
     @Builder.Default
@@ -176,6 +201,17 @@ public class MergedFinanceGeneralVoucherData
      */
     private DetailLineEditTarget editedDetailLine;
 
+    /**
+     * The before/after Payment Information pair a Payment-Info Edit scenario targets — {@code
+     * null} for every other scenario (HEADER_ONLY/DETAIL_LINE Edit, Create, Revert, Delete).
+     * Mirrors {@link #editedDetailLine} in being Edit-only. {@link #cashBankPaymentInfo}/{@link
+     * #actualChequeBankMatch} are ALSO set (to this target's {@code newPayment}/{@code
+     * newBankMatch}) for this scenario so the shared Extent report header (see {@code
+     * GeneralVoucherExtentDescriptionLogger#appendExtraHeaderRows}) renders the post-edit
+     * instrument number with no special-casing there.
+     */
+    private PaymentInfoEditTarget paymentEditTarget;
+
     /** Plan §6 (following the report-review finding that the test description was scope-blind):
      *  which header field(s) a {@code HEADER_ONLY} edit actually changed — carried forward from
      *  {@link GeneralVoucherEditVariant#getHeaderFieldScope()} at data-generation time so
@@ -236,7 +272,46 @@ public class MergedFinanceGeneralVoucherData
      */
     @Override
     public List<VoucherPaymentInfo> getPaymentInformationList() {
+        if (rowPayments != null && !rowPayments.isEmpty()) return new ArrayList<>(rowPayments);
         return cashBankPaymentInfo == null ? Collections.emptyList() : List.of(cashBankPaymentInfo);
+    }
+
+    /** All payments of this voucher in row order — {@link #rowPayments} when set, else the single {@link #cashBankPaymentInfo}. */
+    public List<PaymentInformation> allPayments() {
+        if (rowPayments != null && !rowPayments.isEmpty()) return rowPayments;
+        return cashBankPaymentInfo == null ? Collections.emptyList() : List.of(cashBankPaymentInfo);
+    }
+
+    /**
+     * The payment of the grid row with {@code lineNo}, or {@code null} when that row carries none.
+     * When {@link #rowPayments} is unset (Excel/Edit/negative data) the single {@link #cashBankPaymentInfo}
+     * belongs to the first row — exactly the pre-Round-6 behaviour.
+     */
+    public PaymentInformation paymentForLine(String lineNo) {
+        if (lineNo == null) return null;
+        if (rowPayments != null) {
+            return rowPayments.stream().filter(p -> lineNo.equalsIgnoreCase(p.getLineNo())).findFirst().orElse(null);
+        }
+        if (cashBankPaymentInfo == null || expenseIncomeDetailList == null || expenseIncomeDetailList.isEmpty()) return null;
+        return lineNo.equalsIgnoreCase(expenseIncomeDetailList.get(0).getLineNo()) ? cashBankPaymentInfo : null;
+    }
+
+    /** Cheque/bank outcome of the row with {@code lineNo} — falls back to {@link #actualChequeBankMatch} for the first row. */
+    public com.gsl.utils.cheque.ChequeInstrumentResolver.ChequeBankMatch chequeBankMatchForLine(String lineNo) {
+        if (lineNo == null) return null;
+        if (rowChequeBankMatches != null) return rowChequeBankMatches.get(lineNo);
+        if (expenseIncomeDetailList == null || expenseIncomeDetailList.isEmpty()) return actualChequeBankMatch;
+        return lineNo.equalsIgnoreCase(expenseIncomeDetailList.get(0).getLineNo()) ? actualChequeBankMatch : null;
+    }
+
+    /** Whether the row with {@code lineNo} is on the Debit side (that row's own side, not row 1's). */
+    public boolean isPaymentDebit(String lineNo) {
+        if (expenseIncomeDetailList != null && lineNo != null) {
+            for (ExpenseIncomeDetail row : expenseIncomeDetailList) {
+                if (lineNo.equalsIgnoreCase(row.getLineNo())) return row.isDebit();
+            }
+        }
+        return isCashBankPaymentDebit();
     }
 
     private int invocationIndex;
@@ -266,5 +341,21 @@ public class MergedFinanceGeneralVoucherData
         return siteAllocationList.stream()
                 .filter(sa -> lineNo.equalsIgnoreCase(sa.getLineNo()))
                 .toList();
+    }
+
+    /**
+     * Whether the Cash/Bank/Cheque counter-leg (the sole {@link ExpenseIncomeDetail} row for
+     * every combination-matrix CHEQUE/NEFT_RTGS scenario — see {@link #cashBankPaymentInfo}) is
+     * on the Debit side. Drives which Payment Information popup shape {@code
+     * GeneralVoucherExpenseIncomeDetail#createPaymentPopup(boolean)} uses (Dr → AP-style, Cr →
+     * AR-style) — confirmed live via idealdb that GV's cheque-book participation (bookcode/
+     * finchqdet) only ever happens on the Dr side, exactly like AP Voucher; Cr lines behave like
+     * AR Voucher instead (VG/02556/26-27 vs. VG/02597/26-27). Defaults to {@code true} (today's
+     * AP-only behavior) when {@link #expenseIncomeDetailList} is empty/null, so any caller not yet
+     * covered by this fix keeps its pre-fix behavior.
+     */
+    public boolean isCashBankPaymentDebit() {
+        return expenseIncomeDetailList == null || expenseIncomeDetailList.isEmpty()
+                || expenseIncomeDetailList.get(0).isDebit();
     }
 }

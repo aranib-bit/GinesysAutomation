@@ -19,6 +19,30 @@ import java.time.format.DateTimeFormatter;
 import java.util.ArrayDeque;
 import java.util.Deque;
 
+/**
+ * AspectJ aspect that provides the framework's generic method-trace logging — indented
+ * {@code [START]}/{@code [END]} lines (with parameters, structured element info, and return
+ * values) written to {@code trace.log} via the {@code MethodTrace} logger, plus exception-to-Extent
+ * translation so a caught/recovered exception doesn't misleadingly paint a passing test's report
+ * node red.
+ *
+ * <p>Three independent pieces of advice:
+ * <ul>
+ *   <li>{@link #logMethod(ProceedingJoinPoint)} — wraps every method execution across
+ *       {@code com.gsl}/{@code com.tests} (excluding a few noisy/self-referential packages).</li>
+ *   <li>{@link #logDaoCall(ProceedingJoinPoint)} — wraps JDBI DAO interface calls, which need a
+ *       {@code call()} pointcut instead of {@code execution()} because JDBI's runtime proxies never
+ *       trigger execution-based advice.</li>
+ *   <li>{@link #logAnnotatedStep(ProceedingJoinPoint, LogStep)} — wraps {@code @LogStep}-annotated
+ *       methods with a simple Extent/Log4j2 step announcement.</li>
+ * </ul>
+ *
+ * <p>Consults {@link DataLoadScope#isActive()} in its exception-handling paths so an
+ * {@link IllegalStateException} raised while resolving test data — destined to become a
+ * {@code SkipException} at the data-source boundary — doesn't log a red {@code ExtentLogger.fail(...)}
+ * per advised frame it unwinds through; see {@link DataLoadScope}'s own Javadoc for the full
+ * rationale.
+ */
 @Aspect
 public class LoggingAspect {
 
@@ -54,6 +78,8 @@ public class LoggingAspect {
         return CALL_STACK.get().size();
     }
 
+    /** Renders a single value for a trace-log line — quotes strings, previews collections (first 5
+     *  items), and truncates any other value's {@code toString()} past 200 chars. */
     private String formatParamValue(Object v) {
         if (v == null) return "null";
         if (v instanceof String) return "\"" + v + "\"";
@@ -89,6 +115,7 @@ public class LoggingAspect {
                 || v instanceof java.io.OutputStream;
     }
 
+    /** Writes the indented {@code [START]} line for a traced method call, dot-padded to {@link #LINE_WIDTH}. */
     private void logStart(int depth, String className, String methodName) {
         String indent = indent(depth);
         String ts     = now();
@@ -98,6 +125,7 @@ public class LoggingAspect {
         TRACE.info("{} {} [{}]", label, ".".repeat(dots), ts);
     }
 
+    /** Writes the indented {@code [END]} line for a traced method call, dot-padded to {@link #LINE_WIDTH}. */
     private void logEnd(int depth, String className, String methodName) {
         String indent = indent(depth);
         String ts     = now();

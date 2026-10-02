@@ -9,6 +9,11 @@ import lombok.NoArgsConstructor;
 
 import java.math.BigDecimal;
 
+/**
+ * Test-data model for one row in the AP Voucher "TDS&amp;NetPayable" sheet — drives the TDS
+ * section that appears when a sub-ledger line's supplier has TDS applicable, keyed by
+ * {@code lineNo} to match a {@code SubLedgerInformation} row.
+ */
 @Getter
 @NoArgsConstructor
 @AllArgsConstructor

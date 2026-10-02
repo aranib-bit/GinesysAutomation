@@ -3,9 +3,13 @@ package com.gsl.popup;
 import org.openqa.selenium.By;
 
 /**
- * Centralized locators for the application's ExtJS messagebox.
- * IDs are stable across sessions in this application (messagebox-1001 pattern).
- * These match the IDs already used by DocumentMessageBox in the pages layer.
+ * Centralized locators for the application's ExtJS messagebox — the single popup dialog that
+ * {@link PopupHandler} probes for and {@link PopupMonitor} decides how to react to.
+ * IDs are stable across sessions in this application (the {@code messagebox-1001} pattern), and
+ * these match the IDs already used by {@code DocumentMessageBox} in the pages layer.
+ *
+ * <p>Package-private — only {@link PopupHandler} should reference these locators directly; other
+ * code should go through {@link PopupMonitor}'s higher-level API instead.
  */
 final class AppPopupLocators {
 

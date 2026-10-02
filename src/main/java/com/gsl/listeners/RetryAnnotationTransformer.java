@@ -24,6 +24,8 @@ import java.lang.reflect.Method;
  */
 public class RetryAnnotationTransformer extends DataProviderTransformer {
 
+    /** Delegates to {@code super.transform()} for {@code @DataSupplier} routing, then wires
+     *  {@link RetryAnalyzer} onto {@code testMethod} when {@code retry.max.count > 0}. */
     @Override
     public void transform(ITestAnnotation annotation,
                           Class testClass,

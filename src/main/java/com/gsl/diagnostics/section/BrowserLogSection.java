@@ -6,6 +6,11 @@ import com.gsl.reports.AdvancedExtentLogger;
 
 import java.util.List;
 
+/**
+ * DiagnosticSection that renders captured browser console log entries.
+ * Only created when {@code browser.logs.enabled=true} and the driver is still live
+ * (see {@code FailureBundleOrchestrator.browserLogSection}).
+ */
 public final class BrowserLogSection implements DiagnosticSection {
 
     private final List<BrowserLogRecord> logs;

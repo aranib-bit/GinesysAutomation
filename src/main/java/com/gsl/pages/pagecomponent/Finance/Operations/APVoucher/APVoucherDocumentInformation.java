@@ -7,8 +7,15 @@ import com.gsl.pages.pagecomponent.Finance.Common.CashBankParent;
 import com.gsl.pages.pagecomponent.Finance.Operations.Common.VoucherDocumentInformationBase;
 import com.gsl.reports.ReportLogger;
 import com.gsl.testdata.Finance.Operations.Vouchers.APVoucher.DocumentInformation;
+import com.gsl.utils.ui.FieldStyleSpec;
 import com.gsl.utils.Selenium.ExtJsUtils;
 import com.gsl.utils.Selenium.SeleniumUtils;
+import com.gsl.validation.ui.UiComponentValidator;
+import com.gsl.validation.ui.UiValidationFailure;
+import com.gsl.validation.ui.UiValidationLevel;
+import org.openqa.selenium.By;
+
+import java.util.List;
 
 /**
  * Document Information section for AP Voucher.
@@ -82,5 +89,18 @@ public class APVoucherDocumentInformation extends VoucherDocumentInformationBase
 
     public String getOnAccount() {
         return ExtJsUtils.getSelectedExtJsRadioLabel(VoucherDocumentFormLabel.ON_ACCOUNT);
+    }
+
+    private static final By ON_ACCOUNT_LABEL = By.xpath(
+            "//span[contains(@class,'x-form-item-label-text') and normalize-space()='"
+            + VoucherDocumentFormLabel.ON_ACCOUNT.getFieldLabel() + "']");
+
+    /** UI-contract check for the AP-only "On Account" radio group — label text+style only; the
+     *  individual Yes/No option styling has no {@link FieldStyleSpec} role defined yet (a radio
+     *  group is a different shape from the label/input/marker roles the framework otherwise
+     *  covers) — extend here if per-option styling is wanted later. */
+    public List<UiValidationFailure> validateOnAccountUi(UiValidationLevel level) {
+        return UiComponentValidator.validateLabel(ON_ACCOUNT_LABEL, "AP_ON_ACCOUNT",
+                VoucherDocumentFormLabel.ON_ACCOUNT.getFieldLabel(), FieldStyleSpec.FIELD_LABEL, level);
     }
 }

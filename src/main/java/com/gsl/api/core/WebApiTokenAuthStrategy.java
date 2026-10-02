@@ -17,6 +17,15 @@ import io.restassured.specification.RequestSpecification;
  */
 public final class WebApiTokenAuthStrategy implements ApiAuthStrategy {
 
+    /**
+     * {@inheritDoc}
+     *
+     * <p>Logs in via {@link WebApiSessionClient#login}, then picks the config-driven header
+     * names for the active tenant (single- vs multi-tenant, per {@link TenantUtils#isMultiTenant})
+     * and attaches the resulting tokens — {@code ginesysauth} is only attached when the login
+     * actually returned one (absent on some multi-tenant responses), and the multi-tenant extra
+     * header is only attached when configured.
+     */
     @Override
     public AuthResult authenticate(String baseUri, UserCredential credential) {
         WebApiLoginResult login = WebApiSessionClient.login(credential);

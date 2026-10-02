@@ -2,23 +2,23 @@ package com.gsl.validation.snapshot.finance;
 
 import com.gsl.config.ConfigFactory;
 import com.gsl.database.DatabaseManager;
+import com.gsl.database.dao.finance.FinChqDetDao;
 import com.gsl.database.dao.finance.FinGlDao;
 import com.gsl.database.dao.finance.FinVchDetDao;
 import com.gsl.database.dao.finance.FinVchMainDao;
 import com.gsl.driver.DriverManager;
 import com.gsl.enums.GlAccountType;
+import com.gsl.enums.PaymentSelectionType;
 import com.gsl.enums.VoucherDomain;
+import com.gsl.model.finance.FinChqDet;
 import com.gsl.model.finance.FinGl;
 import com.gsl.model.finance.FinVchDet;
 import com.gsl.model.finance.FinVchMain;
 import com.gsl.testdata.UserCredential;
 import com.gsl.validation.snapshot.DocumentContext;
-import com.gsl.validation.snapshot.audit.AuditTriggerStateResolver;
 import org.jdbi.v3.core.Jdbi;
 
-import java.util.HashSet;
 import java.util.List;
-import java.util.Set;
 
 /**
  * Resolves a {@link DocumentContext} for one existing voucher, by its {@code scheme_docno} —
@@ -37,9 +37,14 @@ import java.util.Set;
  */
 public class VoucherDocumentContextResolver {
 
-    private final Aud2AuditStateResolver auditStateResolver = new Aud2AuditStateResolver();
-    private final AuditTriggerStateResolver triggerStateResolver = new AuditTriggerStateResolver();
-
+    /**
+     * Resolves the full {@link DocumentContext} for the existing voucher identified by
+     * {@code voucherNo} — see class Javadoc for what each resolved field covers.
+     *
+     * @param voucherNo {@code finvchmain.scheme_docno} of the document to resolve
+     * @param domain    which voucher domain (GV/AR/AP) this document belongs to
+     * @throws IllegalStateException if no {@code finvchmain} row matches {@code voucherNo}
+     */
     public DocumentContext resolve(String voucherNo, VoucherDomain domain) {
         Jdbi jdbi = DatabaseManager.getJdbi();
         FinVchMain header = jdbi.onDemand(FinVchMainDao.class).findBySchemeDocno(voucherNo)
@@ -57,24 +62,27 @@ public class VoucherDocumentContextResolver {
             return accountType == GlAccountType.INCOME || accountType == GlAccountType.EXPENSE;
         });
 
-        com.gsl.validation.snapshot.VoucherPersistenceMap persistenceMap = VoucherPersistenceMapFactory.build(domain);
-        Set<String> tableNames = persistenceMap.getTableRules().stream()
-                .filter(rule -> !rule.isAuditTable())
-                .map(rule -> rule.getTableName())
-                .collect(java.util.stream.Collectors.toSet());
-        Set<String> auditActiveTables = auditStateResolver.resolveAuditActiveTables(tableNames);
+        // Round 23: cheque-book (finchqdet/finchqmain) applicability — domain-agnostic, reusing
+        // the SAME lookup ChequeBookValidator's Level 5 already uses, so this naturally evaluates
+        // false for AR (which never touches the company's own issued-cheque register at all) and
+        // for a GV/AP document using a synthetic/unregistered cheque number (the common test-data
+        // case) — no per-domain branch needed.
+        FinChqDetDao finChqDetDao = jdbi.onDemand(FinChqDetDao.class);
+        FinVchDet chequeDetailRow = detailRows.stream()
+                .filter(d -> PaymentSelectionType.CHEQUE.dbCode().equalsIgnoreCase(d.getPaymentMode())
+                        && d.getChqno() != null && !d.getChqno().isBlank())
+                .findFirst()
+                .orElse(null);
+        FinChqDet knownChequeRow = chequeDetailRow != null
+                ? finChqDetDao.findByChqnoAndGlcode(chequeDetailRow.getChqno(), chequeDetailRow.getGlcode())
+                : null;
+        boolean chequeBookApplicable = knownChequeRow != null;
 
-        // Trigger-drift check (user's explicit caution): aud2_active_table registration alone
-        // doesn't guarantee the trigger is physically enabled on this environment — checked
-        // per-table, only for tables that ARE registered active (no point checking a table whose
-        // audit isn't even configured).
-        Set<String> auditTriggerDisabledTables = new HashSet<>();
-        for (String tableName : auditActiveTables) {
-            AuditTriggerStateResolver.TriggerStatus status = triggerStateResolver.resolveTriggerStatus(tableName);
-            if (status == AuditTriggerStateResolver.TriggerStatus.DISABLED) {
-                auditTriggerDisabledTables.add(tableName);
-            }
-        }
+        com.gsl.validation.snapshot.VoucherPersistenceMap persistenceMap = VoucherPersistenceMapFactory.build(domain);
+        // Item U: shared with AuditStateSummary.resolveFor, which also lets Create-mode check this
+        // same state BEFORE a document exists (no vchcode needed) — this method's own resolution
+        // is unchanged, just delegated instead of duplicated.
+        AuditStateSummary auditState = AuditStateSummary.resolveFor(persistenceMap);
 
         UserCredential threadUser = DriverManager.getCurrentUser();
         String currentUsername = threadUser != null ? threadUser.username() : ConfigFactory.getConfig().username();
@@ -85,9 +93,13 @@ public class VoucherDocumentContextResolver {
                 .documentType(domain.getVoucherType())
                 .currentUser(currentUsername)
                 .persistenceMap(persistenceMap)
-                .auditActiveTables(auditActiveTables)
-                .auditTriggerDisabledTables(auditTriggerDisabledTables)
+                .auditActiveTables(auditState.auditActiveTables())
+                .auditTriggerDisabledTables(auditState.auditTriggerDisabledTables())
                 .costTagApplicable(costTagApplicable)
+                .chequeBookApplicable(chequeBookApplicable)
+                .knownChqno(chequeDetailRow != null ? chequeDetailRow.getChqno() : null)
+                .knownChequeGlcode(chequeDetailRow != null ? chequeDetailRow.getGlcode() : null)
+                .knownChequeBookcode(knownChequeRow != null ? knownChequeRow.getBookcode() : null)
                 .build();
     }
 }

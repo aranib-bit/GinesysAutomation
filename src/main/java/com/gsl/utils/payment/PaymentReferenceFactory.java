@@ -3,14 +3,16 @@ package com.gsl.utils.payment;
 import java.util.List;
 
 /**
- * Produces one valid PaymentReference per payment system.
- * Every call to validReferences() invokes the generators fresh,
- * so values are unique across test runs.
+ * Produces one valid {@link PaymentReference} per payment system, sourced from {@link
+ * PaymentReferenceGenerator}. Every call to {@link #validReferences()} invokes the generators
+ * fresh, so values are unique across test runs. Consumed by {@link PaymentReferenceFixture}
+ * as the "valid" half of each system's scenario set.
  */
 public final class PaymentReferenceFactory {
 
     private PaymentReferenceFactory() {}
 
+    /** @return one valid, freshly-generated {@link PaymentReference} for each supported payment system (IMPS, UPI, NEFT, RTGS, SWIFT, ACH, SEPA). */
     public static List<PaymentReference> validReferences() {
         return List.of(
             new PaymentReference("IMPS",  PaymentReferenceGenerator.generateIMPS(),  true, "Valid IMPS"),

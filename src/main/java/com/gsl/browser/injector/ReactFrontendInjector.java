@@ -205,6 +205,7 @@ public final class ReactFrontendInjector implements FrontendDiagnosticsInjector 
             }
             """;
 
+    /** Executes {@link #INIT_SCRIPT}, {@link #COMMON_SCRIPT}, then {@link #REACT_SCRIPT} in order; failures are logged, never thrown. */
     @Override
     public void inject(WebDriver driver) {
         if (driver == null) return;

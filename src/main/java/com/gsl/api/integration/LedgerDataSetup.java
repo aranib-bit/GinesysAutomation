@@ -20,6 +20,15 @@ public final class LedgerDataSetup {
 
     private LedgerDataSetup() {}
 
+    /**
+     * Creates a GL master matching {@code type}/{@code subLedgerApplicable}/{@code siteApplicable}
+     * via {@code client}, throwing if the response reports failure.
+     *
+     * @param subLedgerApplicable whether the new GL must be Sub-Ledger-Applicable ({@code fingl.slapp = 'Y'})
+     * @param siteApplicable      whether the new GL must be Site-Applicable ({@code fingl.costapp = 'Y'})
+     * @param assignedSiteCodes   the calling test's logged-in user's assigned sites; ignored when {@code siteApplicable} is false
+     * @throws com.gsl.api.core.ApiException if the response's {@code success}/{@code result} flags indicate failure
+     */
     public static LedgerCreationOutcome createLedgerForTest(
             LedgerApiClient client, GlAccountType type, boolean subLedgerApplicable, boolean siteApplicable,
             Collection<Long> assignedSiteCodes) {

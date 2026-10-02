@@ -2,6 +2,8 @@ package com.gsl.utils.dataprovider.fixture.finance;
 
 import com.gsl.enums.VoucherDomain;
 import com.gsl.flow.Finance.Operations.Common.PostSaveDialogHandler;
+import com.gsl.flow.Finance.Operations.Common.VoucherSaveCtx;
+import com.gsl.flow.Finance.Operations.Common.VoucherSaveFlowSteps;
 import com.gsl.pages.Common.DocumentMessageBox;
 import com.gsl.pages.Finance.Operations.ArVoucherAdd;
 import com.gsl.pages.Finance.Operations.ArVoucherListPage;
@@ -30,15 +32,20 @@ import java.util.function.Supplier;
 import java.util.stream.Collectors;
 
 /**
- * Behavior predicates for each AR Voucher scenario type.
+ * Behavior predicates for each AR Voucher scenario type — mirrors {@link ApVoucherPredicateFactory}'s
+ * shape for the AR domain (AR has no Advance/Document split, so there is a single positive-create
+ * behavior instead of AP's two).
  *
- * Each constant is a {@code Supplier<BiPredicate>} — the Supplier provides lazy
- * evaluation, making predicates safe for parallel test execution (no shared state).
+ * <p>Each constant is a {@code Supplier<BiPredicate>} — the {@code Supplier} wrapper
+ * ensures lazy evaluation, making predicates safe for parallel test execution
+ * (no shared mutable state between threads).
  *
- * {@code BiPredicate<MergedFinanceArVoucherData, ArVoucherAdd>}:
- *   left  = test data built by ArVoucherTemplateLoader
- *   right = ArVoucherAdd page component (injected at runtime by the test method)
- *   returns true if the voucher was saved successfully
+ * <p>{@code BiPredicate<MergedFinanceArVoucherData, ArVoucherAdd>}:
+ * <ul>
+ *   <li>left  = test data built by {@code ArVoucherTemplateLoader}</li>
+ *   <li>right = {@link ArVoucherAdd} page component (injected at runtime by the test method)</li>
+ *   <li>returns {@code true} when the voucher was saved (or validation error confirmed)</li>
+ * </ul>
  */
 public final class ArVoucherPredicateFactory {
 
@@ -66,10 +73,7 @@ public final class ArVoucherPredicateFactory {
     public static final Supplier<BiPredicate<MergedFinanceArVoucherData, ArVoucherAdd>>
         POSITIVE_CREATE_BEHAVIOR = () -> (data, page) -> {
 
-            final String[] docNoRef = new String[1];
-            final DocumentMessageBox[] msgBoxRef = new DocumentMessageBox[1];
-            final DocumentPopup[] popupRef = new DocumentPopup[1];
-            final SoftAssert softAssert = new SoftAssert();
+            final VoucherSaveCtx ctx = new VoucherSaveCtx();
 
             StepExecutor.step("Fill Document Information", () -> {
                 page.fillDocumentHeader(data.getDocumentInformation());
@@ -92,44 +96,21 @@ public final class ArVoucherPredicateFactory {
             StepExecutor.step("Capture Pre-Save DB State (finpost snapshot)", () ->
                     VoucherDbContextBuilder.capturePreState(data));
 
-            StepExecutor.step("Click Save", () -> {
-                VoucherDbContextBuilder.markSaveStart();
-                popupRef[0] = page.clickSave();
-            });
-
-            StepExecutor.step("Handle Post-Save Dialogs", () ->
-                    msgBoxRef[0] = PostSaveDialogHandler.forDomain(VoucherDomain.AR)
-                            .handle(popupRef[0], data));
-
-            StepExecutor.step("Verify Save Result", () -> {
-                docNoRef[0] = msgBoxRef[0].verifyDocumentSave(softAssert).getDocumentNo();
-                Log.info("Extracted Document No: {}", docNoRef[0]);
-                ReportLogger.pass("Voucher saved. Document No: " + docNoRef[0]);
-            });
+            VoucherSaveFlowSteps.clickSave(ctx, VoucherDbContextBuilder::markSaveStart, page::clickSave);
+            VoucherSaveFlowSteps.handlePostSaveDialogs(ctx, VoucherDomain.AR, data);
+            VoucherSaveFlowSteps.verifySaveResult(ctx);
 
             StepExecutor.step("Capture Post-Save DB State (finpost snapshot)", () ->
                     VoucherDbContextBuilder.capturePostState());
 
-            StepExecutor.step("Close Voucher Page", () -> {
-                if (msgBoxRef[0] != null) {
-                    msgBoxRef[0].clickOk();
-                }
-                page.close().clickYes(ArVoucherListPage::new);
-                ReportLogger.business("Voucher page closed, returned to list");
-            });
+            VoucherSaveFlowSteps.closeVoucherPage(ctx,
+                    () -> page.close().clickYes(ArVoucherListPage::new), ArVoucherListPage::new);
+            VoucherSaveFlowSteps.deferLogout();
+            VoucherSaveFlowSteps.databaseValidation(ctx, docNo ->
+                    new ARVoucherDbValidator().validate(VoucherDbContextBuilder.build(docNo, data)));
+            VoucherSaveFlowSteps.finalizeAsserts(ctx);
 
-            StepExecutor.step("Logout (deferred)", () ->
-                    ReportLogger.session("Logout deferred — session may be reused by a later test on this thread."));
-
-            StepExecutor.step("Database Validation", () -> {
-                new ARVoucherDbValidator().validate(
-                        VoucherDbContextBuilder.build(docNoRef[0], data));
-                ReportLogger.pass("DB validated. Document No: " + docNoRef[0]);
-            });
-
-            StepExecutor.step("Finalize save assertions", softAssert::assertAll);
-
-            return docNoRef[0] != null;
+            return ctx.docNo != null;
         };
 
     // ─── T-03 Negative scenario behavior ──────────────────────────────────────

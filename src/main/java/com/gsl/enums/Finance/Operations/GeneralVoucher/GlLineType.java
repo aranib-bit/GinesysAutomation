@@ -59,4 +59,18 @@ public enum GlLineType {
     public boolean isSubLedgerApplicable() {
         return this == TYPE3_SITE_AND_SUBLEDGER;
     }
+
+    /**
+     * Human-readable label for report display — a business reader has no reason to know what
+     * "TYPE2_SITE_ONLY" means. Mirrors the exact phrases
+     * {@link com.gsl.reports.GeneralVoucherDescriptionBuilder#build}'s {@code glTypePhrase} switch
+     * already uses in the test-case-name sentence, so the two never drift.
+     */
+    public String label() {
+        return switch (this) {
+            case TYPE1_NONE -> "No Site/Sub Ledger";
+            case TYPE2_SITE_ONLY -> "Site allocation only";
+            case TYPE3_SITE_AND_SUBLEDGER -> "Site + Sub Ledger";
+        };
+    }
 }

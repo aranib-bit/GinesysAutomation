@@ -27,6 +27,22 @@ import static com.gsl.pages.enums.Finance.Operations.OperationsMenuType.*;
 import static com.gsl.pages.enums.Finance.Setup.SetupMenuType.*;
 import static com.gsl.pages.enums.topmenucomponent.MainModuleType.*;
 
+/**
+ * Owns the top-level {@link ExtentReports} instance (the combined main report) plus one
+ * per-module/sub-module/operation "shard" {@link ExtentReports} each test also mirrors into (see
+ * {@link #initShards()}) — so a reviewer can open either the full run or just, say, the AP
+ * Voucher shard, without the other's noise.
+ *
+ * <p>{@link #initReports()} must run once at suite start-up before any test creates a node.
+ * {@link #recordTestResult(ITestResult, String)} is the per-test bookkeeping entry point:
+ * it appends a crash-safe JSON line to the delta file (R-01 Tier 1, survives a JVM crash even if
+ * the batched HTML flush below never runs), feeds {@link SummaryReportBuilder}'s per-shard
+ * tallies, and periodically flushes the full HTML via {@link #flushReports()} (R-01 Tier 2,
+ * batched per {@code report.flushBatchSize} unless {@code report.flushBatchEnabled} is off).
+ * {@link #createTest(String, MainModuleType, ISubModule, AppOperation)} attaches the current
+ * test to its matching shard; {@link ExtentManager} tracks which {@link ExtentTest} (main and
+ * shard) is current on this thread.
+ */
 public final class ExtentReport {
 
     private ExtentReport() {
@@ -46,6 +62,12 @@ public final class ExtentReport {
 
     // ─────────────────────────────────────────────────────────────────────────
 
+    /**
+     * One-time suite start-up: creates the main {@link ExtentReports} + its Spark HTML reporter,
+     * registers a shutdown-hook emergency flush (so an OOM/SIGTERM still writes whatever test
+     * nodes already exist), initializes the crash-safe delta file (R-01 Tier 1), and registers
+     * every per-module/sub-module/operation shard file (R-02, see {@link #initShards()}).
+     */
     public static void initReports() {
         extent = new ExtentReports();
         ExtentSparkReporter sparkReporter = new ExtentSparkReporter(FrameworkConstants.getReportPath());
@@ -93,6 +115,10 @@ public final class ExtentReport {
         initShards();
     }
 
+    /** Registers one shard {@link ExtentReports} file per module/sub-module/operation combination
+     *  this framework covers — every module/operation pairing a test could run under must be
+     *  registered here up front so {@link #createTest(String, MainModuleType, ISubModule,
+     *  AppOperation)} always resolves a shard, even for a shard that ends up with zero tests. */
     private static void initShards() {
         // Finance › Vouchers
         register(FINANCE, ARVOUCHER,     ADD, MODIFY, DELETE, RELEASE, REVERT, PRINT, AUTORELEASE);
@@ -139,12 +165,16 @@ public final class ExtentReport {
         register(FINANCE, OPENINGSUBLEDGER, ADD, MODIFY, DELETE);
     }
 
+    /** Registers one shard file per {@code op} in {@code ops} for the given module/sub-module. */
     private static void register(MainModuleType mod, ISubModule sm, AppOperation... ops) {
         for (AppOperation op : ops) {
             createShardFile(mod, sm, op);
         }
     }
 
+    /** Creates one shard's HTML file path/directory and its own {@link ExtentReports} instance,
+     *  storing it under a {@link ShardKey} for later lookup by {@link #createTest(String,
+     *  MainModuleType, ISubModule, AppOperation)}. */
     private static void createShardFile(MainModuleType mod, ISubModule sm, AppOperation op) {
         String dir  = mod.getName().toLowerCase()
                          .replace(" & ", "_and_").replace(" ", "_");
@@ -183,14 +213,19 @@ public final class ExtentReport {
 
         // R-02: accumulate per-shard stats for summary.html
         ExtentTest shardTest = ExtentManager.getShardTest();
-        if (shardTest != null) {
-            // Determine the ShardKey by reverse-looking up which shard has this test node.
-            // We stored it under the key used in createTest(name, module, subModule, op),
-            // so we track it via a separate ThreadLocal in ExtentManager.
-            ShardKey currentKey = ExtentManager.getCurrentShardKey();
-            if (currentKey != null) {
-                SummaryReportBuilder.record(currentKey, status);
-            }
+        // Determine the ShardKey by reverse-looking up which shard has this test node.
+        // We stored it under the key used in createTest(name, module, subModule, op),
+        // so we track it via a separate ThreadLocal in ExtentManager.
+        ShardKey currentKey = shardTest != null ? ExtentManager.getCurrentShardKey() : null;
+        if (currentKey != null) {
+            SummaryReportBuilder.record(currentKey, status);
+        } else {
+            // No shard context — e.g. a @DataProvider-level failure/skip (TestNG's synthetic
+            // wrapper for a provider that threw) never reaches the annotated test method, so
+            // never resolves a module/subModule/operation. Previously silently dropped here,
+            // which let a real failure go entirely uncounted in summary.html's own totals — see
+            // SummaryReportBuilder#UNCATEGORIZED's Javadoc.
+            SummaryReportBuilder.recordUncategorized(status);
         }
 
         int count = FLUSH_COUNTER.incrementAndGet();
@@ -250,10 +285,14 @@ public final class ExtentReport {
         }
     }
 
+    /** Returns the main (non-shard) {@link ExtentReports} instance. */
     public static ExtentReports getExtentReports() {
         return extent;
     }
 
+    /** Flushes the main report and every shard report to disk, then republishes
+     *  {@code reports/latest/index.html} for CI pickup (see {@link #copyToLatest()}). Called
+     *  directly by {@link #recordTestResult}'s batching logic; safe to call more often. */
     public static void flushReports() {
         extent.flush();
         SHARD_EXTENTS.values().forEach(e -> {
@@ -314,6 +353,8 @@ public final class ExtentReport {
         }
     }
 
+    /** Creates the main-report test node and makes it the current thread's {@link ExtentTest} —
+     *  call once per test from {@code onTestStart}, before the shard-attaching overload below. */
     public static void createTest(String testCaseName) {
         ExtentTest test = extent.createTest(testCaseName);
         ExtentManager.setExtentTest(test);
@@ -354,10 +395,14 @@ public final class ExtentReport {
         }
     }
 
+    /** Returns every registered shard's {@link ExtentReports}, keyed by {@link ShardKey} — used
+     *  by {@link SummaryReportBuilder#groupShards()} as the source of truth for which shards
+     *  exist (including ones with zero tests). */
     public static ConcurrentHashMap<ShardKey, ExtentReports> getShardExtents() {
         return SHARD_EXTENTS;
     }
 
+    /** Assigns {@code author} (an enum constant's name) as the current test's Extent "author" tag. */
     public static void assignAuthor(Enum<?> author) {
         ExtentManager.getExtentTest().assignAuthor(author.toString());
     }

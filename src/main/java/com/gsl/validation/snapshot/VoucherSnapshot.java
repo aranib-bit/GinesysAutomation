@@ -15,19 +15,24 @@ public class VoucherSnapshot {
     private final Map<String, TableSnapshot> tables;
     private final LocalDateTime capturedAt;
 
+    /** Defensively copies {@code tables} (order preserved); {@code null} becomes empty. Stamps
+     *  {@link #capturedAt} as "now". */
     public VoucherSnapshot(Map<String, TableSnapshot> tables) {
         this.tables = tables == null ? Collections.emptyMap() : new LinkedHashMap<>(tables);
         this.capturedAt = LocalDateTime.now();
     }
 
+    /** This snapshot's capture for {@code tableName}, or {@code null} if that table wasn't active. */
     public TableSnapshot getTable(String tableName) {
         return tables.get(tableName);
     }
 
+    /** Every captured table, keyed by table name, in declared persistence-map order. */
     public Map<String, TableSnapshot> getTables() {
         return Collections.unmodifiableMap(tables);
     }
 
+    /** When this snapshot was taken (used for report display, not comparison). */
     public LocalDateTime getCapturedAt() {
         return capturedAt;
     }

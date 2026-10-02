@@ -1,11 +1,14 @@
 package com.gsl.utils.dataprovider.fixture.finance;
 
+import com.gsl.pages.Finance.Operations.Common.ChequeRegisterPaymentInformationPopup;
 import com.gsl.pages.Finance.Operations.GeneralVoucherAdd;
 import com.gsl.reports.ReportLogger;
 import com.gsl.reports.StepExecutor;
 import com.gsl.testdata.Finance.Operations.Vouchers.GeneralVoucher.DetailLineEditTarget;
+import com.gsl.testdata.Finance.Operations.Vouchers.GeneralVoucher.PaymentInfoEditTarget;
 import com.gsl.testdata.dto.MergedFinanceGeneralVoucherData;
 
+import java.util.Objects;
 import java.util.function.BiPredicate;
 import java.util.function.Supplier;
 
@@ -83,6 +86,51 @@ public final class GeneralVoucherEditPredicateFactory {
                                 + "' (row index " + rowIndex + ")");
                     }
                 }
+            });
+            return true;
+        };
+
+    /** Step 8c — apply the claimed {@link PaymentInfoEditTarget}'s new instrument number to the
+     *  already-open Edit form's Cash/Bank Payment popup. First live exercise of {@code
+     *  GeneralVoucherAdd#handlePaymentInformation} in Edit mode — previously Create-flow-only (see
+     *  {@code ChequeRegisterPaymentInformationPopup}'s class Javadoc); {@code setInstrumentNo}'s
+     *  clear-before-type fix is what makes reusing it here safe against a pre-filled Instrument
+     *  No. field.
+     *
+     *  <p>After the popup interaction, cross-checks {@code ChequeRegisterPaymentInformationPopup
+     *  #getLastObservedPreviousInstrumentNo()} (the live DOM's own pre-edit value) against {@code
+     *  target.getBeforePayment().getInstrumentNo()} (the value the DB-side data source resolved as
+     *  "before" when it claimed this voucher) — a mismatch means the live form didn't actually
+     *  hold what the DB said it should, and fails loudly here, BEFORE Save, rather than only
+     *  surfacing as a confusing snapshot-diff/audit-trail failure afterward. */
+    public static final Supplier<BiPredicate<MergedFinanceGeneralVoucherData, GeneralVoucherAdd>>
+        PAYMENT_INFO_EDIT_BEHAVIOR = () -> (data, page) -> {
+            StepExecutor.step("Apply Changes to Payment Information", () -> {
+                PaymentInfoEditTarget target = data.getPaymentEditTarget();
+                if (target == null) {
+                    throw new IllegalStateException(
+                            "[GeneralVoucherEditPredicateFactory] editGeneralVoucherPaymentInfo requires "
+                            + "MergedFinanceGeneralVoucherData.paymentEditTarget to be set by the data source.");
+                }
+                page.handlePaymentInformation(target.getNewPayment(), data.isCashBankPaymentDebit());
+
+                var popup = page.getExpenseIncomeDetail().getLastPaymentPopup();
+                if (popup instanceof ChequeRegisterPaymentInformationPopup chequePopup) {
+                    String observedPrevious = chequePopup.getLastObservedPreviousInstrumentNo();
+                    String expectedPrevious = target.getBeforePayment() != null
+                            ? target.getBeforePayment().getInstrumentNo() : null;
+                    if (!Objects.equals(observedPrevious, expectedPrevious)) {
+                        throw new IllegalStateException(
+                                "[GeneralVoucherEditPredicateFactory] Live UI's pre-edit Instrument No. ('"
+                                + observedPrevious + "') did not match the DB-resolved before-value ('"
+                                + expectedPrevious + "') — the wrong voucher may have been claimed, or the "
+                                + "field wasn't actually pre-filled as expected. Aborting before Save.");
+                    }
+                }
+
+                ReportLogger.business("Updated Cheque Instrument No. '"
+                        + target.getBeforePayment().getInstrumentNo() + "' → '"
+                        + target.getNewPayment().getInstrumentNo() + "' via handlePaymentInformation");
             });
             return true;
         };

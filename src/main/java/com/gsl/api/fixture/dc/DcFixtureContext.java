@@ -13,6 +13,7 @@ public class DcFixtureContext {
     int quantity;
     int rate;
 
+    /** Builds the context from the {@code fixture.dc.*} keys in {@code api.properties}. */
     public static DcFixtureContext fromConfig() {
         ApiConfig config = ConfigFactory.getApiConfig();
         return DcFixtureContext.builder()

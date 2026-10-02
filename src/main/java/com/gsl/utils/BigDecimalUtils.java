@@ -2,6 +2,14 @@ package com.gsl.utils;
 
 import java.math.BigDecimal;
 
+/**
+ * Generic parsing helper for turning a UI-rendered numeric string (grid cell, summary field,
+ * exported report value) into a {@link BigDecimal} without throwing on the formatting noise
+ * real UI text carries — thousands separators, currency symbols, non-breaking spaces, and
+ * accounting-style parenthesized negatives. Never throws: any unparseable input resolves to
+ * {@link BigDecimal#ZERO} rather than propagating a {@link NumberFormatException}, so callers can
+ * use this directly in assertions/reconciliation math without their own try/catch.
+ */
 public class BigDecimalUtils {
 
     private BigDecimalUtils() {}

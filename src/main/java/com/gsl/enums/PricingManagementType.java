@@ -3,8 +3,16 @@ package com.gsl.enums;
 import java.util.Arrays;
 import java.util.stream.Collectors;
 
+/**
+ * Granularity at which an item's pricing is maintained. Populated from the "Pricing Management"
+ * column of the "Inventory Tracking" sheet in the inventory-item Excel test data (see
+ * {@code ItemInventoryTracking.pricingManagement}) via
+ * {@link com.gsl.converter.PricingManagementConverter} / {@link #fromExcel}.
+ */
 public enum PricingManagementType {
+    /** A single price applies to the whole item, regardless of batch/serial. */
     ITEM_LEVEL("Item level"),
+    /** Price can vary per batch/serial. */
     BATCH_SERIAL_WISE("Batch/Serial level");
 
     private final String label;
@@ -13,6 +21,7 @@ public enum PricingManagementType {
         this.label = label;
     }
 
+    /** Excel parse key / display label — same string for this enum (see {@link #toString}). */
     public String label() {
         return label;
     }
@@ -23,6 +32,12 @@ public enum PricingManagementType {
     }
 
 
+    /**
+     * Resolves {@code excelValue} to its matching {@link PricingManagementType} constant by
+     * case-insensitive match against each constant's {@link #label}; throws
+     * {@link IllegalArgumentException} naming {@code fileName}/{@code sheetName}/
+     * {@code columnName} for a blank or unrecognized value.
+     */
     public static PricingManagementType fromExcel(
             String excelValue,
             String fileName,

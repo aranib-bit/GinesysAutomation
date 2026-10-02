@@ -64,8 +64,18 @@ public final class GridColumnMenu {
     private static final int SHORT_TIMEOUT_SECONDS = 3;
     private static final int SORT_BADGE_CHECK_TIMEOUT_SECONDS = 2;
 
-    /** Retry budget for {@link #openFilterFlyoutAndType} — see its Javadoc for what this guards. */
-    private static final int FLYOUT_OPEN_MAX_ATTEMPTS = 2;
+    /**
+     * Retry budget for {@link #openFilterFlyoutAndType} — see its Javadoc for what this guards.
+     * Raised from 2 to 4 after a 6th confirmed live recurrence of the same documented hover-flyout
+     * auto-collapse race (reports/runs/20260913_141449, FIN-GV-EDIT-DETAIL-02): the retry loop
+     * itself already re-opens the flyout from scratch and re-types on every attempt (a real
+     * re-click + re-verify each time, not a blind re-poll of the same lost state), but 2 attempts
+     * have now been observed to both lose the race back-to-back across several separate runs — see
+     * [[feedback_no_threshold_masking]] for why this is a bounded-retry-count increase for an
+     * already-documented, physically-real ExtJS timing behavior, not a timeout raised to hide an
+     * unexplained symptom.
+     */
+    private static final int FLYOUT_OPEN_MAX_ATTEMPTS = 4;
 
     /** One entry in a {@link #sortByPriority(List)} call — priority is the list position. */
     public record SortSpec(IVoucherListColumn column, boolean ascending) {}

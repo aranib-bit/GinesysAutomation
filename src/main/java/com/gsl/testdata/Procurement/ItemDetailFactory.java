@@ -3,8 +3,28 @@ package com.gsl.testdata.Procurement;
 import java.util.Arrays;
 import java.util.Map;
 
+/**
+ * Selects and builds the right {@link ItemDetail} variant from one raw row's column map, keyed by
+ * its {@code "ItemType"} value ("Item" → {@link ItemItemDetail} or {@link ScanItemAdapter}
+ * depending on {@code "Item/Set Selection ways"}; "Batch" → {@link BatchItemDetail}; "Serial" →
+ * {@link SerialItemDetail}; "Regular" → {@link RegularItemDetail}). The row shape matches {@link
+ * ItemDetailsData#toMap()}'s output.
+ *
+ * <p>{@code TODO-confirm:} {@link #create} has no confirmed caller anywhere in the codebase
+ * (confirmed by repo-wide search) — see {@link ItemDetail}'s Javadoc for the full orphaned-chain
+ * finding.
+ */
 public class ItemDetailFactory {
 
+    /**
+     * Builds the {@link ItemDetail} variant matching {@code row}'s {@code "ItemType"} entry — see
+     * the class Javadoc for the type-to-variant mapping.
+     *
+     * @param row column-name-to-value map for one item-detail row (see {@link
+     *            ItemDetailsData#toMap()})
+     * @throws IllegalArgumentException if {@code "ItemType"} is missing or names none of
+     *                                   Item/Batch/Serial/Regular
+     */
     public static ItemDetail create(Map<String, String> row) {
         String type = row.get("ItemType");
         if ("Item".equalsIgnoreCase(type)) {

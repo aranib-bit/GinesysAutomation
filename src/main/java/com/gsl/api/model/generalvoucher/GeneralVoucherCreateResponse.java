@@ -22,9 +22,12 @@ public class GeneralVoucherCreateResponse {
     private String error;
     private Result result;
 
+    /** {@code result.code} (the created voucher's document code), or null if the response has no result. */
     public String getVoucherCode() { return result != null ? result.code : null; }
+    /** {@code result.docScheme}, or null if the response has no result. */
     public String getDocScheme()   { return result != null ? result.docScheme : null; }
 
+    /** Raw shape of the response's {@code result} object — only the fields consumed here. */
     @Data
     @Builder
     @NoArgsConstructor

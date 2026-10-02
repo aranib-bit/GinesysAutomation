@@ -5,12 +5,19 @@ import org.openqa.selenium.WebDriver;
 import java.util.List;
 
 /**
- * Framework-agnostic contract for UI component diagnostics.
- * Implementations exist for ExtJS, React, and Angular.
- * Switch via application.type in config.properties — no code change required.
+ * Framework-agnostic contract for UI component diagnostics — implemented once per front-end
+ * stack and selected at runtime by {@link UiFrameworkAdapterFactory} via {@code application.type}
+ * in config.properties, so switching frameworks needs no code change.
  *
- * Isolation rule: this package knows only WebDriver and Java.
- * Zero imports from com.gsl.browser, com.gsl.diagnostics, or com.gsl.reports.
+ * <p>Isolation rule: this package knows only {@link WebDriver} and Java — zero imports from
+ * {@code com.gsl.browser}, {@code com.gsl.diagnostics}, or {@code com.gsl.reports}.
+ *
+ * <ul>
+ *   <li>{@link ExtJsUiAdapter}</li>
+ *   <li>{@link ReactUiAdapter}</li>
+ *   <li>{@link AngularUiAdapter}</li>
+ *   <li>{@link UiFrameworkAdapterFactory}</li>
+ * </ul>
  */
 public interface UiFrameworkAdapter {
 

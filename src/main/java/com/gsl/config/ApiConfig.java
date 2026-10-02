@@ -3,8 +3,21 @@ package com.gsl.config;
 import com.gsl.enums.ApiPlatform;
 import org.aeonbits.owner.Config;
 
+/**
+ * Configuration for every API surface the framework's API tests/backfills talk to — WEBAPI
+ * (the app's own REST API), PUBLICAPI (OAuth2 client-credentials), mobile/Appium, the hybrid
+ * API+DB data-setup strategy, the k6-based data-availability backfill, tenant selection, and
+ * fixture reference ids used by {@code com.gsl.api.fixture} positive scenarios. Merges {@code
+ * system:properties} ahead of {@code api.properties} so any key can be overridden per run with
+ * {@code -Dkey=value} without editing the file.
+ */
 @Config.LoadPolicy(Config.LoadType.MERGE)
-@Config.Sources({"system:properties", "file:${user.dir}/src/test/resources/config/api.properties"})
+@Config.Sources({
+        "system:properties",
+        "file:${user.dir}/src/test/resources/env/${env}/secrets.local.properties",
+        "file:${user.dir}/src/test/resources/env/${env}/api.properties",
+        "file:${user.dir}/src/test/resources/config/api.properties"
+})
 public interface ApiConfig extends Config {
 
     // ── WEBAPI ────────────────────────────────────────────────────────────────
@@ -58,18 +71,22 @@ public interface ApiConfig extends Config {
     // camelCase — so the header *names* sent on every call are equally plausible to differ,
     // not hardcoded in Java; single-tenant's names are the ones confirmed via captured HAR.)
 
+    /** Header name carrying the ginesysauth token for a single-tenant login. */
     @Key("webapi.auth.singleTenant.ginesysAuthHeaderName")
     @DefaultValue("ginesysauth")
     String singleTenantGinesysAuthHeaderName();
 
+    /** Header name carrying the bearer/authorization token for a single-tenant login. */
     @Key("webapi.auth.singleTenant.authorizationHeaderName")
     @DefaultValue("authorization")
     String singleTenantAuthorizationHeaderName();
 
+    /** Header name carrying the ginesysauth token for a multi-tenant login. */
     @Key("webapi.auth.multiTenant.ginesysAuthHeaderName")
     @DefaultValue("ginesysauth")
     String multiTenantGinesysAuthHeaderName();
 
+    /** Header name carrying the bearer/authorization token for a multi-tenant login. */
     @Key("webapi.auth.multiTenant.authorizationHeaderName")
     @DefaultValue("authorization")
     String multiTenantAuthorizationHeaderName();
@@ -79,58 +96,72 @@ public interface ApiConfig extends Config {
     @DefaultValue("")
     String multiTenantExtraHeaderName();
 
+    /** Extra header value paired with {@link #multiTenantExtraHeaderName()}. */
     @Key("webapi.auth.multiTenant.extraHeaderValue")
     @DefaultValue("")
     String multiTenantExtraHeaderValue();
 
     // ── PUBLICAPI ─────────────────────────────────────────────────────────────
 
+    /** Master switch for PUBLICAPI (OAuth2 client-credentials) usage. */
     @Key("publicapi.enabled")
     @DefaultValue("false")
     boolean publicApiEnabled();
 
+    /** Base URI of the PUBLICAPI. */
     @Key("publicapi.baseuri")
     String publicApiBaseUri();
 
+    /** OAuth2 token endpoint URL for PUBLICAPI client-credentials login. */
     @Key("publicapi.tokenUrl")
     String publicApiTokenUrl();
 
+    /** OAuth2 client id for PUBLICAPI. */
     @Key("publicapi.clientId")
     String publicApiClientId();
 
+    /** OAuth2 client secret for PUBLICAPI. */
     @Key("publicapi.clientSecret")
     String publicApiClientSecret();
 
     // ── Data setup strategy (hybrid API + DB) ────────────────────────────────
 
+    /** Data-setup strategy (e.g. HYBRID) for the flow identified by {@code flowKey}. */
     @Key("datasetup.${0}.strategy")
     @DefaultValue("HYBRID")
     String dataSetupStrategy(String flowKey);
 
     // ── Data-availability backfill (WEB -> no data -> WEBAPI/PUBLICAPI/k6 -> WEB) ──
 
+    /** Quantity below which the "small quantity" backfill path (see {@link #smallQtyPreferredOrder()}) applies. */
     @Key("datafallback.smallQuantityThreshold")
     @DefaultValue("20")
     int smallQuantityThreshold();
 
+    /** Ordered platform preference for a small-quantity data-availability backfill. */
     @Key("datafallback.smallQty.preferredOrder")
     @DefaultValue("WEBAPI,PUBLICAPI")
     ApiPlatform[] smallQtyPreferredOrder();
 
+    /** Default mobile platform (ANDROID/IOS) when a test doesn't specify one. */
     @Key("mobile.defaultPlatform")
     @DefaultValue("ANDROID")
     com.gsl.enums.PlatformType mobileDefaultPlatform();
 
+    /** Appium server URL. */
     @Key("mobile.appiumUrl")
     @DefaultValue("http://localhost:4723")
     String mobileAppiumUrl();
 
+    /** Target mobile device name for the Appium session. */
     @Key("mobile.deviceName")
     String mobileDeviceName();
 
+    /** Target mobile platform version for the Appium session. */
     @Key("mobile.platformVersion")
     String mobilePlatformVersion();
 
+    /** Appium automation engine name (e.g. UiAutomator2, XCUITest). */
     @Key("mobile.automationName")
     String mobileAutomationName();
 
@@ -139,6 +170,7 @@ public interface ApiConfig extends Config {
     @DefaultValue("")
     String mobileApp();
 
+    /** iOS bundle id of the app under test. Blank until available. */
     @Key("mobile.bundleId")
     @DefaultValue("")
     String mobileBundleId();
@@ -168,6 +200,7 @@ public interface ApiConfig extends Config {
     @DefaultValue("WARN")
     String backfillHeadroomValidationMode();
 
+    /** Path/command used to invoke the k6 binary for a data-availability backfill scenario. */
     @Key("datafallback.k6.binaryPath")
     @DefaultValue("k6")
     String k6BinaryPath();
@@ -178,10 +211,12 @@ public interface ApiConfig extends Config {
 
     // ── Tenant ────────────────────────────────────────────────────────────────
 
+    /** Currently active tenant name (e.g. "stage-ideal"). */
     @Key("api.tenant.active")
     @DefaultValue("stage-ideal")
     String activeTenant();
 
+    /** Comma-separated tenant names treated as multi-tenant — see {@link TenantUtils#isMultiTenant(ApiConfig, String)}. */
     @Key("api.tenant.multiTenantNames")
     @DefaultValue("qafeature,qahbros")
     String[] multiTenantNames();
@@ -189,43 +224,56 @@ public interface ApiConfig extends Config {
     // ── Fixture-driven API endpoint testing (com.gsl.api.fixture) ───────────────
     // Real, valid live reference ids each flow's positive scenarios exercise against.
 
+    /** Owner site code fixture for Service Invoice Adhoc positive scenarios. */
     @Key("fixture.serviceinvoiceadhoc.ownerSiteCode")
     String fixtureServiceInvoiceAdhocOwnerSiteCode();
 
+    /** Vendor subledger code fixture for Service Invoice Adhoc positive scenarios. */
     @Key("fixture.serviceinvoiceadhoc.vendorSlCode")
     String fixtureServiceInvoiceAdhocVendorSlCode();
 
+    /** Inventory group code fixture for item-endpoint positive scenarios. */
     @Key("fixture.item.inventoryGroupCode")
     @DefaultValue("28")
     int fixtureItemInventoryGroupCode();
 
+    /** Vendor code fixture for GRC (Goods Receipt/Certificate) positive scenarios. */
     @Key("fixture.grc.vendorCode")
     int fixtureGrcVendorCode();
 
+    /** Site code fixture for GRC positive scenarios. */
     @Key("fixture.grc.siteCode")
     int fixtureGrcSiteCode();
 
+    /** Operating unit code fixture for GRC positive scenarios. */
     @Key("fixture.grc.ouCode")
     int fixtureGrcOuCode();
 
+    /** Item code fixture for GRC positive scenarios. */
     @Key("fixture.grc.itemCode")
     String fixtureGrcItemCode();
 
+    /** Item code fixture for DC (Distribution Center) positive scenarios. */
     @Key("fixture.dc.itemCode")
     String fixtureDcItemCode();
 
+    /** DC code fixture for TransferOut positive scenarios. */
     @Key("fixture.transferout.dcCode")
     String fixtureTransferOutDcCode();
 
+    /** Item code fixture for TransferOut positive scenarios. */
     @Key("fixture.transferout.itemCode")
     String fixtureTransferOutItemCode();
 
+    /** Owner site code fixture for AR voucher positive scenarios. */
     @Key("fixture.arvoucher.ownerSiteCode")
     int fixtureArVoucherOwnerSiteCode();
 
+    /** Operating unit code fixture for AR voucher positive scenarios. */
     @Key("fixture.arvoucher.ouCode")
     int fixtureArVoucherOuCode();
 
+    /** Employee code fixture for AR voucher positive scenarios. */
     @Key("fixture.arvoucher.empCode")
     long fixtureArVoucherEmpCode();
 

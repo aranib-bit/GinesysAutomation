@@ -132,6 +132,71 @@ public enum ApVoucherScenarioType implements
             false
     ),
 
+    // ─── Adjustment amount-mismatch Confirmation ("Update payment amount" / "I will adjust more") ──
+    // Document payments whose adjusted total deliberately differs from the row's payment amount.
+    // All share DOC_MISMATCH_BEHAVIOR; the per-scenario script (mismatch plan + expected payment)
+    // comes from ApVoucherTemplateLoader#docPartialTemplate. Confirmed live in Add (user screenshot,
+    // 2026-09-30). Tiering: MANDATORY = UPDATE_SINGLE; PHASE1 = ADJUST_MORE_SELECT_DOC, MULTI_DOC_UPDATE,
+    // PER_DOC_LESS_THAN_PENDING; PHASE2 = ADJUST_MORE_FIFO / _REFSITE_FIFO / _THEN_UPDATE;
+    // PHASE3 = OVER_PENDING (exploratory).
+
+    /** One document adjusted for half its pending → "Update payment amount". */
+    DOC_PARTIAL_UPDATE_PAYMENT_SELECT_DOC(
+            refs -> ApVoucherTemplateLoader.docPartialTemplate(refs, ApVoucherTemplateLoader.DocPartialKind.UPDATE_SINGLE),
+            ApVoucherPredicateFactory.DOC_MISMATCH_BEHAVIOR,
+            false
+    ),
+
+    /** Adjust the first document, then "I will adjust more" with a second via Select Document. */
+    DOC_PARTIAL_ADJUST_MORE_SELECT_DOC(
+            refs -> ApVoucherTemplateLoader.docPartialTemplate(refs, ApVoucherTemplateLoader.DocPartialKind.ADJUST_MORE_SELECT_DOC),
+            ApVoucherPredicateFactory.DOC_MISMATCH_BEHAVIOR,
+            false
+    ),
+
+    /** As above, adding the remainder via FIFO Set-off. */
+    DOC_PARTIAL_ADJUST_MORE_FIFO(
+            refs -> ApVoucherTemplateLoader.docPartialTemplate(refs, ApVoucherTemplateLoader.DocPartialKind.ADJUST_MORE_FIFO),
+            ApVoucherPredicateFactory.DOC_MISMATCH_BEHAVIOR,
+            false
+    ),
+
+    /** As above, adding the remainder via Reference Site wise FIFO set-off. */
+    DOC_PARTIAL_ADJUST_MORE_REFSITE_FIFO(
+            refs -> ApVoucherTemplateLoader.docPartialTemplate(refs, ApVoucherTemplateLoader.DocPartialKind.ADJUST_MORE_REFSITE_FIFO),
+            ApVoucherPredicateFactory.DOC_MISMATCH_BEHAVIOR,
+            false
+    ),
+
+    /** Two documents each adjusted for half their pending → "Update payment amount". */
+    DOC_PARTIAL_MULTI_DOC_UPDATE_PAYMENT(
+            refs -> ApVoucherTemplateLoader.docPartialTemplate(refs, ApVoucherTemplateLoader.DocPartialKind.MULTI_DOC_UPDATE),
+            ApVoucherPredicateFactory.DOC_MISMATCH_BEHAVIOR,
+            false
+    ),
+
+    /** One document adjusted just below its pending (in range) → "Update payment amount". */
+    DOC_PARTIAL_PER_DOC_AMOUNT_LESS_THAN_PENDING(
+            refs -> ApVoucherTemplateLoader.docPartialTemplate(refs, ApVoucherTemplateLoader.DocPartialKind.PER_DOC_LESS_THAN_PENDING),
+            ApVoucherPredicateFactory.DOC_MISMATCH_BEHAVIOR,
+            false
+    ),
+
+    /** Adjust more once (partial second document), still short → then "Update payment amount". */
+    DOC_PARTIAL_ADJUST_MORE_THEN_UPDATE(
+            refs -> ApVoucherTemplateLoader.docPartialTemplate(refs, ApVoucherTemplateLoader.DocPartialKind.ADJUST_MORE_THEN_UPDATE),
+            ApVoucherPredicateFactory.DOC_MISMATCH_BEHAVIOR,
+            false
+    ),
+
+    /** Exploratory negative: per-document amount above the document's pending — the app's response
+     *  (clamp / block / popup) is unconfirmed; a failure here records the observed behavior. */
+    DOC_AMOUNT_OVER_PENDING_NEGATIVE(
+            refs -> ApVoucherTemplateLoader.docPartialTemplate(refs, ApVoucherTemplateLoader.DocPartialKind.OVER_PENDING),
+            ApVoucherPredicateFactory.DOC_MISMATCH_BEHAVIOR,
+            false
+    ),
+
     // ─── T-03 Negative scenarios (expect a validation-error popup) ────────────
     // All run on the advance path so a usable vendor SL is resolved without needing
     // pending documents; each template mutates exactly one field to trigger its error.

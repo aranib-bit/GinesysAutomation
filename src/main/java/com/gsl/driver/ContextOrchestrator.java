@@ -66,6 +66,7 @@ public final class ContextOrchestrator {
         logSwitch(previous, label);
     }
 
+    /** Switches {@link DriverManager} to WEB, lazily calling {@link Driver#initDriver()} if no WEB driver exists yet. */
     private static void switchToWeb() {
         String previous = lastLabel.get();
         DriverManager.switchContext(PlatformType.WEB);
@@ -75,6 +76,7 @@ public final class ContextOrchestrator {
         logSwitch(previous, "WEB");
     }
 
+    /** Switches {@link DriverManager} to {@code mobilePlatform} (ANDROID/IOS only), lazily creating the Appium driver via {@link AppiumProvider} if none exists yet for that context. */
     private static void switchToMobile(PlatformType mobilePlatform) {
         if (mobilePlatform != PlatformType.ANDROID && mobilePlatform != PlatformType.IOS) {
             throw new IllegalArgumentException("MOBILE requires PlatformType.ANDROID or .IOS, got " + mobilePlatform);
@@ -92,6 +94,7 @@ public final class ContextOrchestrator {
         logSwitch(previous, "MOBILE:" + mobilePlatform);
     }
 
+    /** Logs the context transition, updates {@link TestContextManager}'s active-surface label, and records {@code next} as the new {@link #current()}. */
     private static void logSwitch(String previous, String next) {
         ReportLogger.contextSwitch("[CONTEXT SWITCH] {} -> {}", previous == null ? "(none)" : previous, next);
         TestContextManager.setActiveSurface(next);

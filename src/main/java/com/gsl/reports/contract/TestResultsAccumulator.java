@@ -10,6 +10,12 @@ package com.gsl.reports.contract;
  * the concrete Finance type.
  */
 public interface TestResultsAccumulator {
+
+    /** Whether the current test is a negative scenario (drives positive-vs-negative rendering choice). */
     boolean isNegativeScenario();
+
+    /** Clears this thread's accumulated results. MUST be called by {@link DomainReporter#onTestSuccess}
+     *  / {@link DomainReporter#onTestFailure} in a {@code finally} block so the next test on this
+     *  thread never inherits stale results. */
     void resetAccumulator();
 }

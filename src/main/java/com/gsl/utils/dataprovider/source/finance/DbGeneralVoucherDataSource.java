@@ -22,6 +22,7 @@ import com.gsl.model.finance.FinGlSite;
 import com.gsl.model.finance.FinSl;
 import com.gsl.model.finance.FinSlGl;
 import com.gsl.model.finance.FinSlGlSite;
+import com.gsl.reports.GeneralVoucherDescriptionBuilder;
 import com.gsl.testdata.UserCredential;
 import com.gsl.testdata.dto.MergedFinanceGeneralVoucherData;
 import com.gsl.utils.Log;
@@ -42,6 +43,7 @@ import org.testng.SkipException;
 import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.List;
+import java.util.Objects;
 import java.util.Set;
 import java.util.stream.Collectors;
 
@@ -70,14 +72,22 @@ public class DbGeneralVoucherDataSource implements TestDataSource<MergedFinanceG
     private final String xmlGroupParam;
     private final String xmlTagParam;
 
+    /** No execution-group/tag filter — every scenario/combination is emitted (full-suite run). */
     public DbGeneralVoucherDataSource() {
         this(null, null);
     }
 
+    /** @param xmlGroupParam fallback {@code gv.group} value from TestNG {@code <parameter>}, used
+     *                       when the {@code gv.group} system property is absent (IntelliJ direct-run path) */
     public DbGeneralVoucherDataSource(String xmlGroupParam) {
         this(xmlGroupParam, null);
     }
 
+    /**
+     * @param xmlGroupParam see {@link #DbGeneralVoucherDataSource(String)}
+     * @param xmlTagParam   fallback {@code gv.tag} value from TestNG {@code <parameter>}, used
+     *                      when the {@code gv.tag} system property is absent
+     */
     public DbGeneralVoucherDataSource(String xmlGroupParam, String xmlTagParam) {
         this.xmlGroupParam = xmlGroupParam;
         this.xmlTagParam = xmlTagParam;
@@ -87,6 +97,14 @@ public class DbGeneralVoucherDataSource implements TestDataSource<MergedFinanceG
     // Phase 1 — placeholder emission
     // =========================================================================
 
+    /**
+     * Emits one placeholder per {@link GeneralVoucherScenarioType} surviving the active
+     * {@code gv.group}/{@code gv.tag} filter — {@code MIXED_TYPES} gets its own single, hand-built
+     * placeholder (see the inline comment below); every other scenario emits one placeholder per
+     * surviving {@link GeneralVoucherVariant} from {@link GeneralVoucherCombinations#allCombinations()}.
+     * No DB resolution happens here — that's deferred to {@link #loadFreshForScenario}/
+     * {@link #loadFreshForMixedTypes}, called per placeholder at test-execution time.
+     */
     @Override
     public List<MergedFinanceGeneralVoucherData> load(String methodName) {
         GeneralVoucherExecutionGroup activeGroup = GeneralVoucherCombinationFilter.resolveActiveGroup(xmlGroupParam);
@@ -102,30 +120,58 @@ public class DbGeneralVoucherDataSource implements TestDataSource<MergedFinanceG
                 // DbGeneralVoucherDataSource.loadFreshForMixedTypes, so this placeholder carries no
                 // fixtureOptions/variant of its own (same idiom as GeneralVoucherPredicateFactory's
                 // hand-built negative fixtures, which also legitimately hardcode a single row).
-                placeholders.add(MergedFinanceGeneralVoucherData.builder()
+                // Bug fix (2026-09): the Round 5 fix here hand-typed "GV | Mixed ledger types
+                // (Asset/Liability/Income/Expense, Type1/2/3) in one voucher" as testcasename,
+                // *believing* it mirrored GeneralVoucherDescriptionBuilder.build()'s own sentence
+                // for this scenario — it didn't (that method actually returns "Verify that a
+                // General Voucher is created successfully with entries across multiple ledger
+                // types (Asset/Liability/Income/Expense, Type1/2/3) in a single voucher."),
+                // confirmed live (Test Data — Header's "TestCase Name" visibly differed from the
+                // report's own title sentence). Fixed by actually CALLING that builder against
+                // this placeholder (it only needs scenarioType + existingVoucherNo=null, both
+                // already true at this point) instead of hand-duplicating its wording, so the two
+                // can never drift apart again.
+                MergedFinanceGeneralVoucherData mixedPlaceholder = MergedFinanceGeneralVoucherData.builder()
                         .scenarioType(scenario)
-                        // Same reason buildPlaceholder() sets this for the combination-matrix rows below:
-                        // without it, VoucherExtentDescriptionLogger.logHeaderTable()'s "TestCase ID"/
-                        // "TestCase Name" cells render blank for the MIXED_TYPES report row.
-                        .masterTestData(new com.gsl.testdata.MasterTestData(
-                                "MIXED_TYPES", null, null, null, "MIXED_TYPES", 1))
                         .expenseIncomeDetailList(List.of())   // empty = placeholder signal
                         .siteAllocationList(List.of())
                         .needsPaymentInfoWarning(false)
                         .scenarioTypeLabel("MIXED_TYPES")
                         .invocationIndex(1)
                         .totalInvocations(1)
-                        .build());
+                        .build();
+                String mixedSentence = GeneralVoucherDescriptionBuilder.build(mixedPlaceholder);
+                // Same reason buildPlaceholder() sets this for the combination-matrix rows below:
+                // without it, VoucherExtentDescriptionLogger.logHeaderTable()'s "TestCase ID"/
+                // "TestCase Name" cells render blank for the MIXED_TYPES report row. TestCase ID
+                // stays the short "MIXED_TYPES" token (there's only ever one such row, so it's
+                // already unique).
+                mixedPlaceholder.setMasterTestData(new com.gsl.testdata.MasterTestData(
+                        mixedSentence, null, null, null, "MIXED_TYPES", 1));
+                placeholders.add(mixedPlaceholder);
                 continue;
             }
-            for (GeneralVoucherVariant variant : GeneralVoucherCombinations.allCombinations()) {
+            // Round 20: the Fixture Factory itself decides known-vs-unknown for every CHEQUE row
+            // here, at an exact ratio (com.gsl.utils.WeightedSequenceBuilder), before this loop
+            // ever filters/iterates the list — so the decision is made once per run, not per row.
+            for (GeneralVoucherVariant variant
+                    : GeneralVoucherFixtureFactory.assignKnownChequeFlags(GeneralVoucherCombinations.allCombinations())) {
                 if (!GeneralVoucherCombinationFilter.survives(variant, activeGroup, activeTags)) continue;
 
                 Set<GeneralVoucherTag> tags = GeneralVoucherCombinationFilter.tagsFor(variant);
+                // Round 20: carry the variant's already-decided known/unknown-cheque flag across
+                // into the placeholder's own opts — buildVariantFromOptions (Phase 2) rebuilds a
+                // fresh GeneralVoucherVariant from opts alone, not this original variant object.
                 GeneralVoucherFixtureOptions opts = GeneralVoucherFixtureOptions.of(
                         variant.getAccountType(), variant.getGlLineType(),
                         variant.isDebitSide(), variant.isReversal(), variant.getPaymentVariant(),
-                        variant.getGlCount(), variant.getSiteCount());
+                        variant.getGlCount(), variant.getSiteCount())
+                        .toBuilder().knownCheque(variant.isKnownCheque())
+                        // Round 6: same hand-off for the per-row payment assignment.
+                        .multiRowPayment(variant.isMultiRowPayment())
+                        .rowPayments(variant.getRowPayments())
+                        .rowKnownCheque(variant.getRowKnownCheque())
+                        .build();
 
                 placeholders.add(buildPlaceholder(scenario, opts, variant, tags));
             }
@@ -144,6 +190,9 @@ public class DbGeneralVoucherDataSource implements TestDataSource<MergedFinanceG
         return placeholders;
     }
 
+    /** Builds one thin combination-matrix placeholder carrying only {@code scenarioType}/
+     *  {@code fixtureOptions}/{@code tags} — real DB resolution happens later, in
+     *  {@link #loadFreshForScenario}. */
     private static MergedFinanceGeneralVoucherData buildPlaceholder(GeneralVoucherScenarioType scenario,
             GeneralVoucherFixtureOptions opts, GeneralVoucherVariant variant, Set<GeneralVoucherTag> tags) {
         // MasterTestData carries the variant's ledger-type/count label into the Extent report's
@@ -217,12 +266,23 @@ public class DbGeneralVoucherDataSource implements TestDataSource<MergedFinanceG
                         "'. Check appusername in config.properties."));
         gatheringLog.add("  Resolved login user '" + loginName + "' → ecode=" + ecode);
 
-        // 2. Owner site + counter-leg Cash/Bank GL (mirrors DbApVoucherDataSource's own pair) —
-        // unrelated to Site-Allocation validity below; kept exactly as-is.
+        // 2. Owner site + counter-leg Cash/Bank GL (mirrors DbApVoucherDataSource's own pair).
+        // Round 15: ownerSite.admouCode is now threaded into resolveType2Sites/resolveType3Sites
+        // below (step 4) — a Type2/Type3 candidate site belonging to a DIFFERENT Organizational
+        // Unit than this Owner Site is invisible to the app's Allocate Sites picker regardless of
+        // GL/user-assignment linkage (confirmed live: "S&CM" — admou_code=3 "Prawns Corner" — was
+        // linked to the same GL and assigned to the same user as valid sites under the Owner
+        // Site's own OU (admou_code=1), yet the picker returned "No data to display" for it).
         OwnerSiteRef ownerSite = findFirstUsableOwnerSite(jdbi, ecode);
         String cashBankName = pickGlByType(jdbi, List.of(ownerSite.code), opts.cashBankType());
+        // Round 20: resolved once here (reusing the existing FinGlDao.findByGlName lookup this
+        // codebase already uses elsewhere for the same "name -> glcode" purpose) so a "known"
+        // cheque number can later be looked up against THIS voucher's own counter-leg bank.
+        long cashBankGlcode = jdbi.onDemand(com.gsl.database.dao.finance.FinGlDao.class)
+                .findByGlName(cashBankName).getGlcode();
         gatheringLog.add("  Owner site='" + ownerSite.name + "' (code=" + ownerSite.code
-                + "), Cash/Bank GL='" + cashBankName + "' (" + opts.cashBankType() + ")");
+                + ", OU=" + ownerSite.admouCode + "), Cash/Bank GL='" + cashBankName + "' (glcode="
+                + cashBankGlcode + ", " + opts.cashBankType() + ")");
 
         // 2b. Sites assigned to the logged-in user — same DAO/query the sibling
         // DbApVoucherDataSource/DbArVoucherDataSource already use for this exact purpose
@@ -264,12 +324,40 @@ public class DbGeneralVoucherDataSource implements TestDataSource<MergedFinanceG
                                         .anyMatch(s -> siteCodeSet.contains(s.getAdmsiteCode())))
                                 .collect(Collectors.toList());
                     }
+                    // GeneralVoucherFixtureOptions#requireAmbiguousSubLedger — only set by the
+                    // NEG_SUBLEDGER_REQUIRED negative scenario, which needs a Type3 GL with MORE
+                    // THAN ONE eligible finsl_gl row (a GL with exactly one has it auto-filled by
+                    // the app, with nothing left to block on). Every positive combination leaves
+                    // this false and is unaffected.
+                    if (opts.isRequireAmbiguousSubLedger()) {
+                        FinSlGlDao ambiguityCheckDao = jdbi.onDemand(FinSlGlDao.class);
+                        found = found.stream()
+                                .filter(candidate -> ambiguityCheckDao.findByGlcode(candidate.getGlcode()).size() > 1)
+                                .collect(Collectors.toList());
+                    }
+                    // Round 16 — GeneralVoucherFixtureOptions#requireCrossOuSite — only set by the
+                    // NEG_SITE_ALLOCATION_CROSS_OU negative scenario, which needs a GL with at
+                    // least one fingl_site-linked, user-assigned site belonging to a DIFFERENT
+                    // Organizational Unit than the resolved Owner Site (see isCrossOu(...)) — the
+                    // inverse of Round 15's own same-OU requirement for every positive scenario.
+                    if (opts.isRequireCrossOuSite()) {
+                        found = found.stream()
+                                .filter(candidate -> glSiteDao.findByGlcode(candidate.getGlcode()).stream()
+                                        .anyMatch(s -> siteCodeSet.contains(s.getAdmsiteCode())
+                                                && isCrossOu(jdbi, s.getAdmsiteCode(), ownerSite.admouCode)))
+                                .collect(Collectors.toList());
+                    }
                     if (found.size() < glCount) {
                         throw new SkipException("Skipped due to lack of data: found " + found.size()
                                 + " fingl row(s) for type=" + opts.getAccountType() + " (" + opts.getAccountType().code()
                                 + "), site=" + costapp + ", subLedger=" + slapp
                                 + (siteApplicable ? ", matching any of the logged-in user's assigned sites "
-                                        + siteCodeSet : "") + " — need " + glCount + ".");
+                                        + siteCodeSet : "")
+                                + (opts.isRequireAmbiguousSubLedger() ? ", with more than one eligible finsl_gl row" : "")
+                                + (opts.isRequireCrossOuSite() ? ", with at least one site belonging to a "
+                                        + "DIFFERENT Organizational Unit than the Owner Site (admou_code="
+                                        + ownerSite.admouCode + ")" : "")
+                                + " — need " + glCount + ".");
                     }
                     return found;
                 },
@@ -344,9 +432,17 @@ public class DbGeneralVoucherDataSource implements TestDataSource<MergedFinanceG
                 gatheringLog.add("  Sub Ledger='" + subLedgerName + "' (slcode=" + subLedger.getSlcode()
                         + "), pair code=" + chosenPair.getCode() + ", GL='" + gl.getGlname() + "'");
 
-                siteNames = resolveType3Sites(jdbi, gl, chosenPair, siteCodeSet, siteCount, gatheringLog);
+                siteNames = resolveType3Sites(jdbi, gl, chosenPair, siteCodeSet, ownerSite.admouCode,
+                        siteCount, gatheringLog);
             } else if (opts.getGlLineType() == GlLineType.TYPE2_SITE_ONLY) {
-                siteNames = resolveType2Sites(jdbi, gl, siteCodeSet, siteCount, gatheringLog);
+                // Round 16: NEG_SITE_ALLOCATION_CROSS_OU deliberately wants the ONE site step 3's
+                // new filter above already guaranteed exists — resolved via the inverse method
+                // instead of resolveType2Sites (which, per Round 15, now excludes exactly this
+                // kind of candidate). Result still lands in the same siteNames/ResolvedGlRow slot
+                // every other scenario already uses.
+                siteNames = opts.isRequireCrossOuSite()
+                        ? List.of(resolveCrossOuSiteForNegativeTest(jdbi, gl, siteCodeSet, ownerSite.admouCode, gatheringLog))
+                        : resolveType2Sites(jdbi, gl, siteCodeSet, ownerSite.admouCode, siteCount, gatheringLog);
             }
 
             resolvedRows.add(LiveGvDbRefs.ResolvedGlRow.builder()
@@ -360,6 +456,7 @@ public class DbGeneralVoucherDataSource implements TestDataSource<MergedFinanceG
         LiveGvDbRefs refs = LiveGvDbRefs.builder()
                 .ownerSiteName(ownerSite.name)
                 .cashBankName(cashBankName)
+                .cashBankGlcode(cashBankGlcode)
                 .cashBankType(opts.cashBankType())
                 .resolvedRows(resolvedRows)
                 .variant(buildVariantFromOptions(placeholder, opts))
@@ -450,7 +547,59 @@ public class DbGeneralVoucherDataSource implements TestDataSource<MergedFinanceG
                 .debitSide(opts.isDebitSide())
                 .reversal(opts.isReversal())
                 .paymentVariant(opts.getPaymentVariant())
+                // Round 20: carries the known/unknown-cheque decision through from opts — see
+                // GeneralVoucherFixtureOptions.knownCheque's own Javadoc for why this rebuild step
+                // is where that decision would otherwise silently get lost.
+                .knownCheque(opts.isKnownCheque())
+                // Round 6: per-row payment assignment, same hand-off.
+                .multiRowPayment(opts.isMultiRowPayment())
+                .rowPayments(opts.getRowPayments())
+                .rowKnownCheque(opts.getRowKnownCheque())
                 .build();
+    }
+
+    /**
+     * Round 15/16 — {@code true} when {@code candidateSiteCode}'s own {@code admou_code} differs
+     * from {@code ownerSiteAdmouCode}. Shared by Round 15's positive-scenario exclusion filter
+     * (see {@link #resolveType2Sites}/{@link #resolveType3Sites}) and Round 16's negative-scenario
+     * inverse filter (see {@link #resolveCrossOuSiteForNegativeTest}). {@code false} when
+     * {@code ownerSiteAdmouCode} is {@code null} (can't determine "different" without a baseline)
+     * or the candidate site can't be resolved at all.
+     */
+    private static boolean isCrossOu(Jdbi jdbi, long candidateSiteCode, Long ownerSiteAdmouCode) {
+        if (ownerSiteAdmouCode == null) return false;
+        AdmSite site = jdbi.onDemand(AdmSiteDao.class).findByCode(candidateSiteCode);
+        return site != null && !Objects.equals(site.getAdmouCode(), ownerSiteAdmouCode);
+    }
+
+    /**
+     * Round 16 — resolves ONE Site for the {@code NEG_SITE_ALLOCATION_CROSS_OU} negative
+     * scenario: same GL-linkage ({@code fingl_site}) + user-assignment ({@code siteCodeSet})
+     * filtering {@link #resolveType2Sites} already uses, but keeps the FIRST candidate whose own
+     * OU DIFFERS from the Owner Site's — the exact inverse of Round 15's exclusion filter — since
+     * this scenario deliberately needs a site the app's Allocate Sites picker cannot show.
+     */
+    private static String resolveCrossOuSiteForNegativeTest(Jdbi jdbi, FinGl gl, Set<Long> siteCodeSet,
+            Long ownerSiteAdmouCode, List<String> gatheringLog) {
+        FinGlSiteDao glSiteDao = jdbi.onDemand(FinGlSiteDao.class);
+        AdmSiteDao admSiteDao = jdbi.onDemand(AdmSiteDao.class);
+        AdmSite crossOuSite = glSiteDao.findByGlcode(gl.getGlcode()).stream()
+                .map(FinGlSite::getAdmsiteCode)
+                .filter(siteCodeSet::contains)
+                .distinct()
+                .map(admSiteDao::findByCode)
+                .filter(Objects::nonNull)
+                .filter(site -> isCrossOu(jdbi, site.getCode(), ownerSiteAdmouCode))
+                .findFirst()
+                .orElseThrow(() -> new SkipException("Skipped due to lack of data: found no fingl_site row "
+                        + "matching any of the logged-in user's assigned sites " + siteCodeSet
+                        + " AND belonging to a DIFFERENT Organizational Unit than the Owner Site (admou_code="
+                        + ownerSiteAdmouCode + ") for GL '" + gl.getGlname() + "' (glcode=" + gl.getGlcode()
+                        + ") — this negative scenario needs one."));
+        gatheringLog.add("  Cross-OU site under test='" + crossOuSite.getName() + "' (admou_code="
+                + crossOuSite.getAdmouCode() + ", differs from Owner Site's admou_code=" + ownerSiteAdmouCode
+                + ") — the app's Allocate Sites picker is expected to show NO row for this site.");
+        return crossOuSite.getName();
     }
 
     /**
@@ -460,26 +609,48 @@ public class DbGeneralVoucherDataSource implements TestDataSource<MergedFinanceG
      * (the {@code N_SITES}/{@code MULTI_GL_N_SITES} regression variants) is new — see class Javadoc
      * "GL count × Site count" breakup. Throws {@link SkipException} rather than silently returning
      * fewer sites than requested if the DB doesn't have enough today.
+     *
+     * @param ownerSiteAdmouCode the resolved Owner Site's own {@code admou_code} (Round 15) — a
+     *                           candidate site belonging to a DIFFERENT Organizational Unit is
+     *                           excluded, since it's invisible to the app's Allocate Sites picker
+     *                           regardless of GL/user-assignment linkage (confirmed live: "S&CM",
+     *                           OU=3, was linked to the same GL and assigned to the same user as
+     *                           valid OU=1 sites, yet the picker returned "No data to display" for
+     *                           it). {@code null} (owner's own OU unresolved — not expected given
+     *                           live evidence, but handled defensively) skips this filter entirely
+     *                           rather than excluding every candidate.
      */
-    private static List<String> resolveType2Sites(Jdbi jdbi, FinGl gl, Set<Long> siteCodeSet, int siteCount,
-            List<String> gatheringLog) {
+    private static List<String> resolveType2Sites(Jdbi jdbi, FinGl gl, Set<Long> siteCodeSet,
+            Long ownerSiteAdmouCode, int siteCount, List<String> gatheringLog) {
+        if (ownerSiteAdmouCode == null) {
+            Log.warn("[DbGeneralVoucherDataSource] Owner Site's own admou_code is null — "
+                    + "resolveType2Sites falls back to GL+assigned-site filtering only, without "
+                    + "the Round 15 same-OU constraint.");
+        }
+        AdmSiteDao admSiteDao = jdbi.onDemand(AdmSiteDao.class);
         FinGlSiteDao glSiteDao = jdbi.onDemand(FinGlSiteDao.class);
-        List<Long> matchedCodes = glSiteDao.findByGlcode(gl.getGlcode()).stream()
+        List<AdmSite> matchedSites = glSiteDao.findByGlcode(gl.getGlcode()).stream()
                 .map(FinGlSite::getAdmsiteCode)
                 .filter(siteCodeSet::contains)
                 .distinct()
+                .map(admSiteDao::findByCode)
+                .filter(Objects::nonNull)
+                .filter(site -> ownerSiteAdmouCode == null
+                        || Objects.equals(site.getAdmouCode(), ownerSiteAdmouCode))
                 .limit(siteCount)
                 .collect(Collectors.toList());
-        if (matchedCodes.size() < siteCount) {
-            throw new SkipException("Skipped due to lack of data: found " + matchedCodes.size()
+        if (matchedSites.size() < siteCount) {
+            throw new SkipException("Skipped due to lack of data: found " + matchedSites.size()
                     + " fingl_site row(s) matching any of the logged-in user's assigned sites " + siteCodeSet
+                    + (ownerSiteAdmouCode != null
+                            ? " AND belonging to the Owner Site's own Organizational Unit (admou_code="
+                                    + ownerSiteAdmouCode + ")"
+                            : "")
                     + " for GL '" + gl.getGlname() + "' (glcode=" + gl.getGlcode() + ") — need " + siteCount + ".");
         }
-        List<String> names = matchedCodes.stream()
-                .map(code -> jdbi.onDemand(AdmSiteDao.class).findByCode(code).getName())
-                .collect(Collectors.toList());
-        gatheringLog.add("  Type2 site(s)=" + names + " (matches assigned sites via fingl_site, GL='"
-                + gl.getGlname() + "')");
+        List<String> names = matchedSites.stream().map(AdmSite::getName).collect(Collectors.toList());
+        gatheringLog.add("  Type2 site(s)=" + names + " (matches assigned sites via fingl_site, same OU as "
+                + "Owner Site, GL='" + gl.getGlname() + "')");
         return names;
     }
 
@@ -489,40 +660,60 @@ public class DbGeneralVoucherDataSource implements TestDataSource<MergedFinanceG
      * when present and falling back to the GL's own {@code fingl_site} otherwise, exactly like the
      * original single-site version. {@code siteCount=1} preserves the original behavior; {@code >1}
      * is new — see {@link #resolveType2Sites}'s Javadoc for the same rationale.
+     *
+     * @param ownerSiteAdmouCode see {@link #resolveType2Sites}'s Javadoc — applied identically in
+     *                           BOTH the {@code finsl_gl_site} pair-specific branch and the
+     *                           {@code fingl_site} fallback branch below.
      */
     private static List<String> resolveType3Sites(Jdbi jdbi, FinGl gl, FinSlGl chosenPair, Set<Long> siteCodeSet,
-            int siteCount, List<String> gatheringLog) {
+            Long ownerSiteAdmouCode, int siteCount, List<String> gatheringLog) {
+        if (ownerSiteAdmouCode == null) {
+            Log.warn("[DbGeneralVoucherDataSource] Owner Site's own admou_code is null — "
+                    + "resolveType3Sites falls back to GL+assigned-site filtering only, without "
+                    + "the Round 15 same-OU constraint.");
+        }
+        AdmSiteDao admSiteDao = jdbi.onDemand(AdmSiteDao.class);
         FinSlGlSiteDao slGlSiteDao = jdbi.onDemand(FinSlGlSiteDao.class);
         List<FinSlGlSite> narrowSites = slGlSiteDao.findByFinslGlCode(chosenPair.getCode());
-        List<Long> matchedCodes;
+        List<AdmSite> matchedSites;
         String source;
         if (!narrowSites.isEmpty()) {
-            matchedCodes = narrowSites.stream()
+            matchedSites = narrowSites.stream()
                     .map(FinSlGlSite::getAdmsiteCode)
                     .filter(siteCodeSet::contains)
                     .distinct()
+                    .map(admSiteDao::findByCode)
+                    .filter(Objects::nonNull)
+                    .filter(site -> ownerSiteAdmouCode == null
+                            || Objects.equals(site.getAdmouCode(), ownerSiteAdmouCode))
                     .limit(siteCount)
                     .collect(Collectors.toList());
             source = "finsl_gl_site (pair-specific override)";
         } else {
             FinGlSiteDao glSiteDao = jdbi.onDemand(FinGlSiteDao.class);
-            matchedCodes = glSiteDao.findByGlcode(gl.getGlcode()).stream()
+            matchedSites = glSiteDao.findByGlcode(gl.getGlcode()).stream()
                     .map(FinGlSite::getAdmsiteCode)
                     .filter(siteCodeSet::contains)
                     .distinct()
+                    .map(admSiteDao::findByCode)
+                    .filter(Objects::nonNull)
+                    .filter(site -> ownerSiteAdmouCode == null
+                            || Objects.equals(site.getAdmouCode(), ownerSiteAdmouCode))
                     .limit(siteCount)
                     .collect(Collectors.toList());
             source = "fingl_site fallback (no finsl_gl_site override)";
         }
-        if (matchedCodes.size() < siteCount) {
-            throw new SkipException("Skipped due to lack of data: found " + matchedCodes.size() + " site(s) via "
+        if (matchedSites.size() < siteCount) {
+            throw new SkipException("Skipped due to lack of data: found " + matchedSites.size() + " site(s) via "
                     + source + " matching any of the logged-in user's assigned sites " + siteCodeSet
+                    + (ownerSiteAdmouCode != null
+                            ? " AND belonging to the Owner Site's own Organizational Unit (admou_code="
+                                    + ownerSiteAdmouCode + ")"
+                            : "")
                     + " for GL '" + gl.getGlname() + "' (glcode=" + gl.getGlcode() + ") — need " + siteCount + ".");
         }
-        List<String> names = matchedCodes.stream()
-                .map(code -> jdbi.onDemand(AdmSiteDao.class).findByCode(code).getName())
-                .collect(Collectors.toList());
-        gatheringLog.add("  Type3 site(s) resolved via " + source + ": " + names);
+        List<String> names = matchedSites.stream().map(AdmSite::getName).collect(Collectors.toList());
+        gatheringLog.add("  Type3 site(s) resolved via " + source + " (same OU as Owner Site): " + names);
         return names;
     }
 
@@ -530,11 +721,20 @@ public class DbGeneralVoucherDataSource implements TestDataSource<MergedFinanceG
     // Shared helpers (unchanged from the original single-phase version)
     // =========================================================================
 
-    /** Carries the numeric {@code admsite.code} and display name of an owner site. */
+    /** Carries the numeric {@code admsite.code}, display name, and Organizational Unit
+     *  ({@code admou_code}) of an owner site. {@code admouCode} added Round 15 — needed so
+     *  {@link #resolveType2Sites}/{@link #resolveType3Sites} can reject a candidate Type2/Type3
+     *  site belonging to a DIFFERENT OU than this one; nullable defensively (not expected to be
+     *  null in practice, since every {@code admsite} row observed live carries one). */
     private static final class OwnerSiteRef {
         final long code;
         final String name;
-        OwnerSiteRef(long code, String name) { this.code = code; this.name = name; }
+        final Long admouCode;
+        OwnerSiteRef(long code, String name, Long admouCode) {
+            this.code = code;
+            this.name = name;
+            this.admouCode = admouCode;
+        }
     }
 
     /**
@@ -545,7 +745,7 @@ public class DbGeneralVoucherDataSource implements TestDataSource<MergedFinanceG
      */
     private static OwnerSiteRef findFirstUsableOwnerSite(Jdbi jdbi, long ecode) {
         String sql =
-            "SELECT a.code, a.name " +
+            "SELECT a.code, a.name, a.admou_code " +
             "FROM hrdemp_ou ho " +
             "JOIN admsite a ON a.code = ho.admsite_code " +
             "WHERE ho.hrdemp_code = :ecode " +
@@ -556,7 +756,13 @@ public class DbGeneralVoucherDataSource implements TestDataSource<MergedFinanceG
         List<OwnerSiteRef> candidates = jdbi.withHandle(handle ->
             handle.createQuery(sql)
                 .bind("ecode", ecode)
-                .map((rs, ctx) -> new OwnerSiteRef(rs.getLong("code"), rs.getString("name")))
+                .map((rs, ctx) -> {
+                    // getLong()+wasNull(), not getObject()+cast — avoids a ClassCastException risk
+                    // if the driver maps admou_code to a non-Long numeric wrapper (Integer/BigDecimal).
+                    long ouRaw = rs.getLong("admou_code");
+                    Long ou = rs.wasNull() ? null : ouRaw;
+                    return new OwnerSiteRef(rs.getLong("code"), rs.getString("name"), ou);
+                })
                 .list()
         );
         if (candidates.isEmpty()) {

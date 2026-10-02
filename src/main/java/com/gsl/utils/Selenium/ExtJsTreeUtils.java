@@ -4,6 +4,15 @@ import com.gsl.driver.DriverManager;
 import org.openqa.selenium.JavascriptExecutor;
 import java.util.List;
 
+/**
+ * Debug/diagnostic helpers for inspecting ExtJS {@code treepanel} components via direct
+ * {@code Ext.ComponentQuery} JavaScript execution — dumping the full node structure to the
+ * console/log and counting children under a named parent node.
+ *
+ * <p>Not part of the normal page-object interaction path; reach for this when a tree-based UI
+ * (e.g. a category/item hierarchy picker) needs to be inspected or asserted on directly rather
+ * than driven through visible DOM elements.
+ */
 public final class ExtJsTreeUtils {
 
     private ExtJsTreeUtils() {}

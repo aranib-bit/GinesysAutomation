@@ -14,5 +14,6 @@ import java.lang.annotation.*;
 @Retention(RetentionPolicy.RUNTIME)
 @Target(ElementType.TYPE)
 public @interface ApiFlow {
+    /** The Finance API flow (and its URL pattern) this test class exercises. */
     FinanceApiPattern value();
 }

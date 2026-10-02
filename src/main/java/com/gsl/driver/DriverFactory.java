@@ -12,6 +12,7 @@ public final class DriverFactory {
 
     private DriverFactory() {}
 
+    /** Parses {@code runmode}/{@code browserName} (case-insensitive) into their enums and delegates to {@link MasterDriverFactory#create}. */
     public static WebDriver getDriver(String runmode, String browserName) {
         RunMode  mode    = RunMode.valueOf(runmode.toUpperCase());
         Browser  browser = Browser.valueOf(browserName.toUpperCase());

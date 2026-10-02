@@ -2,6 +2,11 @@ package com.gsl.pages.enums.Finance.Setup;
 
 import org.openqa.selenium.By;
 
+/**
+ * Items on the Account Group tree page's right-click context menu — see
+ * {@code AccountGroupListPage}'s {@code clickContextMenuItem(AccountGroupContextMenu)}, used by
+ * both {@code CreateAccountGroup} (ADD) and {@code AccountGroupLifecycle} (EDIT_GROUP/DELETE).
+ */
 public enum AccountGroupContextMenu {
 
     ADD          ("Add"),

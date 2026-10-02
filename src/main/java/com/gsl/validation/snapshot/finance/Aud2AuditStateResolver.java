@@ -1,6 +1,7 @@
 package com.gsl.validation.snapshot.finance;
 
 import com.gsl.database.DatabaseManager;
+import com.gsl.reports.ReportLogger;
 import com.gsl.utils.Log;
 import org.jdbi.v3.core.Jdbi;
 
@@ -60,6 +61,13 @@ public class Aud2AuditStateResolver {
             for (String tableName : found) {
                 result.add(tableName.toLowerCase());
             }
+            // Item G (Round 9): this query runs well before "Actual Results"' own
+            // JdbiSqlLogger.startCapturing()/stopCapturing() window opens (Expected Results runs
+            // at Test Data Resolution time, before login) — so without an explicit log line here,
+            // this query's execution is invisible everywhere in the report, indistinguishable from
+            // "never ran" even though it genuinely did.
+            ReportLogger.trace("[Aud2AuditStateResolver] aud2_active_table query for " + tableNames
+                    + " -> active: " + result);
             return result;
         } catch (RuntimeException e) {
             Log.warn("[Aud2AuditStateResolver] aud2_active_table query failed against this environment's schema "

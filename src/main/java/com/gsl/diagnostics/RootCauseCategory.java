@@ -24,6 +24,7 @@ public enum RootCauseCategory {
     LOCATOR_MISMATCH       ("LOCATOR MISMATCH",              ReportSeverity.HIGH),
     DOM_REBUILT            ("DOM REBUILT DURING INTERACTION", ReportSeverity.MEDIUM),
     DB_VALIDATION_FAILURE  ("DB VALIDATION FAILURE",         ReportSeverity.CRITICAL),
+    UI_CONTRACT_MISMATCH   ("UI CONTRACT MISMATCH",          ReportSeverity.MEDIUM),
     ASSERTION_FAILURE      ("ASSERTION FAILURE",             ReportSeverity.HIGH),
     JS_ERROR_BLOCKED_RENDER("JS ERROR BLOCKED RENDER",       ReportSeverity.CRITICAL),
     SERVER_ERROR           ("SERVER ERROR",                  ReportSeverity.CRITICAL),

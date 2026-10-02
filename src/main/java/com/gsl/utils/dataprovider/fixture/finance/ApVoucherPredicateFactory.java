@@ -2,6 +2,8 @@ package com.gsl.utils.dataprovider.fixture.finance;
 
 import com.gsl.enums.VoucherDomain;
 import com.gsl.flow.Finance.Operations.Common.PostSaveDialogHandler;
+import com.gsl.flow.Finance.Operations.Common.VoucherSaveCtx;
+import com.gsl.flow.Finance.Operations.Common.VoucherSaveFlowSteps;
 import com.gsl.pages.Common.DocumentMessageBox;
 import com.gsl.pages.Finance.Operations.ApVoucherAdd;
 import com.gsl.pages.Finance.Operations.ApVoucherListPage;
@@ -16,6 +18,7 @@ import com.gsl.testdata.dto.MergedFinanceApVoucherData;
 import com.gsl.model.finance.FinPost;
 import com.gsl.utils.Log;
 import com.gsl.validation.db.finance.APVoucherDbValidator;
+import com.gsl.validation.db.finance.AdjustmentTotalsValidator;
 import com.gsl.validation.db.finance.ApVoucherDbContext;
 import com.gsl.validation.db.finance.StateCapture;
 import com.gsl.validation.db.finance.VoucherDbContextBuilder;
@@ -75,10 +78,7 @@ public final class ApVoucherPredicateFactory {
     public static final Supplier<BiPredicate<MergedFinanceApVoucherData, ApVoucherAdd>>
         ADVANCE_POSITIVE_BEHAVIOR = () -> (data, page) -> {
 
-            final String[] docNoRef = new String[1];
-            final DocumentMessageBox[] msgBoxRef = new DocumentMessageBox[1];
-            final DocumentPopup[] popupRef = new DocumentPopup[1];
-            final SoftAssert softAssert = new SoftAssert();
+            final VoucherSaveCtx ctx = new VoucherSaveCtx();
 
             StepExecutor.step("Fill Document Information", () -> {
                 page.fillDocumentHeader(data.getDocumentInformation());
@@ -112,40 +112,17 @@ public final class ApVoucherPredicateFactory {
                 }
             });
 
-            StepExecutor.step("Click Save", () -> {
-                VoucherDbContextBuilder.markSaveStart();
-                popupRef[0] = page.clickSave();
-            });
+            VoucherSaveFlowSteps.clickSave(ctx, VoucherDbContextBuilder::markSaveStart, page::clickSave);
+            VoucherSaveFlowSteps.handlePostSaveDialogs(ctx, VoucherDomain.AP, data);
+            VoucherSaveFlowSteps.verifySaveResult(ctx);
+            VoucherSaveFlowSteps.closeVoucherPage(ctx,
+                    () -> page.close().clickYes(ApVoucherListPage::new), ApVoucherListPage::new);
+            VoucherSaveFlowSteps.deferLogout();
+            VoucherSaveFlowSteps.databaseValidation(ctx, docNo ->
+                    new APVoucherDbValidator().validate(VoucherDbContextBuilder.buildAp(docNo, data)));
+            VoucherSaveFlowSteps.finalizeAsserts(ctx);
 
-            StepExecutor.step("Handle Post-Save Dialogs", () ->
-                    msgBoxRef[0] = PostSaveDialogHandler.forDomain(VoucherDomain.AP)
-                            .handle(popupRef[0], data));
-
-            StepExecutor.step("Verify Save Result", () -> {
-                docNoRef[0] = msgBoxRef[0].verifyDocumentSave(softAssert).getDocumentNo();
-                ReportLogger.pass("Voucher saved. Document No: " + docNoRef[0]);
-            });
-
-            StepExecutor.step("Close Voucher Page", () -> {
-                if (msgBoxRef[0] != null) {
-                    msgBoxRef[0].clickOk();
-                }
-                page.close().clickYes(ApVoucherListPage::new);
-                ReportLogger.business("Voucher page closed, returned to list");
-            });
-
-            StepExecutor.step("Logout (deferred)", () ->
-                    ReportLogger.session("Logout deferred — session may be reused by a later test on this thread."));
-
-            StepExecutor.step("Database Validation", () -> {
-                new APVoucherDbValidator().validate(
-                        VoucherDbContextBuilder.buildAp(docNoRef[0], data));
-                ReportLogger.pass("DB validated. Document No: " + docNoRef[0]);
-            });
-
-            StepExecutor.step("Finalize save assertions", softAssert::assertAll);
-
-            return docNoRef[0] != null;
+            return ctx.docNo != null;
         };
 
     /**
@@ -156,12 +133,26 @@ public final class ApVoucherPredicateFactory {
      * steps 3-9.
      */
     public static final Supplier<BiPredicate<MergedFinanceApVoucherData, ApVoucherAdd>>
-        DOC_POSITIVE_BEHAVIOR = () -> (data, page) -> {
+        DOC_POSITIVE_BEHAVIOR = () -> (data, page) -> runDocumentPayment(data, page, false);
 
-            final String[] docNoRef = new String[1];
-            final DocumentMessageBox[] msgBoxRef = new DocumentMessageBox[1];
-            final DocumentPopup[] popupRef = new DocumentPopup[1];
-            final SoftAssert softAssert = new SoftAssert();
+    /**
+     * DOC_MISMATCH_BEHAVIOR — Document Payment scenarios that deliberately adjust a total different
+     * from the row's payment amount so Adjustment Entry's OK raises the amount-mismatch
+     * Confirmation; {@code data.getAdjustmentMismatchPlan()} scripts how it is answered ("Update
+     * payment amount" / "I will adjust more"). Same step sequence as {@link #DOC_POSITIVE_BEHAVIOR}
+     * (the plan is consumed inside {@code fillSubLedgerRowsForDocument → fillAdjustments}), except
+     * DB validation: the Create-shaped {@code APVoucherDbValidator} compares row amount and per-document
+     * tags against the ORIGINAL test data, which by design no longer holds after Update-payment /
+     * extra documents — so the invariant is asserted instead via {@link AdjustmentTotalsValidator}
+     * (payment == expected, payment == fintag total, tagged documents == selected + added).
+     */
+    public static final Supplier<BiPredicate<MergedFinanceApVoucherData, ApVoucherAdd>>
+        DOC_MISMATCH_BEHAVIOR = () -> (data, page) -> runDocumentPayment(data, page, true);
+
+    private static boolean runDocumentPayment(MergedFinanceApVoucherData data, ApVoucherAdd page,
+                                              boolean mismatchScenario) {
+
+            final VoucherSaveCtx ctx = new VoucherSaveCtx();
 
             StepExecutor.step("Fill Document Information", () -> {
                 page.fillDocumentHeader(data.getDocumentInformation());
@@ -186,44 +177,64 @@ public final class ApVoucherPredicateFactory {
             StepExecutor.step("Capture Pre-Save DB State (finpost snapshot)", () ->
                     VoucherDbContextBuilder.capturePreState(data));
 
-            StepExecutor.step("Click Save", () -> {
-                VoucherDbContextBuilder.markSaveStart();
-                popupRef[0] = page.clickSave();
-            });
-
-            StepExecutor.step("Handle Post-Save Dialogs", () ->
-                    msgBoxRef[0] = PostSaveDialogHandler.forDomain(VoucherDomain.AP)
-                            .handle(popupRef[0], data));
-
-            StepExecutor.step("Verify Save Result", () -> {
-                docNoRef[0] = msgBoxRef[0].verifyDocumentSave(softAssert).getDocumentNo();
-                ReportLogger.pass("Voucher saved. Document No: " + docNoRef[0]);
-            });
+            VoucherSaveFlowSteps.clickSave(ctx, VoucherDbContextBuilder::markSaveStart, page::clickSave);
+            VoucherSaveFlowSteps.handlePostSaveDialogs(ctx, VoucherDomain.AP, data);
+            VoucherSaveFlowSteps.verifySaveResult(ctx);
 
             StepExecutor.step("Capture Post-Save DB State (finpost snapshot)", () ->
                     VoucherDbContextBuilder.capturePostState());
 
-            StepExecutor.step("Close Voucher Page", () -> {
-                if (msgBoxRef[0] != null) {
-                    msgBoxRef[0].clickOk();
+            VoucherSaveFlowSteps.closeVoucherPage(ctx,
+                    () -> page.close().clickYes(ApVoucherListPage::new), ApVoucherListPage::new);
+            VoucherSaveFlowSteps.deferLogout();
+            VoucherSaveFlowSteps.databaseValidation(ctx, docNo ->
+                    new APVoucherDbValidator().validate(VoucherDbContextBuilder.buildAp(docNo, data)));
+            VoucherSaveFlowSteps.finalizeAsserts(ctx);
+            VoucherSaveFlowSteps.databaseValidation(ctx, docNo -> {
+                if (mismatchScenario) {
+                    AdjustmentTotalsValidator.assertPaymentMatchesTags(docNo, data.getExpectedPaymentAmount());
+                    if (!hasServerChosenDocuments(data)) {
+                        AdjustmentTotalsValidator.assertTaggedDocuments(docNo, expectedTaggedDocuments(data));
+                    }
+                } else {
+                    new APVoucherDbValidator().validate(VoucherDbContextBuilder.buildAp(docNo, data));
                 }
-                page.close().clickYes(ApVoucherListPage::new);
-                ReportLogger.business("Voucher page closed, returned to list");
             });
+            VoucherSaveFlowSteps.finalizeAsserts(ctx);
 
-            StepExecutor.step("Logout (deferred)", () ->
-                    ReportLogger.session("Logout deferred — session may be reused by a later test on this thread."));
+            return ctx.docNo != null;
+    }
 
-            StepExecutor.step("Database Validation", () -> {
-                new APVoucherDbValidator().validate(
-                        VoucherDbContextBuilder.buildAp(docNoRef[0], data));
-                ReportLogger.pass("DB validated. Document No: " + docNoRef[0]);
+    /** True when any adjustment in the scenario lets the server pick documents (FIFO / Ref-Site FIFO),
+     *  so the exact tagged-document set cannot be predicted — only the totals are asserted then. */
+    private static boolean hasServerChosenDocuments(MergedFinanceApVoucherData data) {
+        boolean rowFifo = data.getSubLedgerInformationList() != null && data.getSubLedgerInformationList().stream()
+                .anyMatch(r -> r.getAdjustmentType() != null
+                        && r.getAdjustmentType() != com.gsl.enums.AdjustmentType.SELECT_DOCUMENT);
+        boolean extraFifo = data.getAdjustmentMismatchPlan() != null && data.getAdjustmentMismatchPlan().getSteps().stream()
+                .anyMatch(s -> s.getExtra() != null
+                        && s.getExtra().getType() != com.gsl.enums.AdjustmentType.SELECT_DOCUMENT);
+        return rowFifo || extraFifo;
+    }
+
+    /** Documents expected tagged after a mismatch scenario: the selected list plus any documents
+     *  added via "I will adjust more" (SELECT_DOCUMENT extras only — FIFO-added documents are
+     *  server-chosen, so when any FIFO extra is present the exact-set check is skipped by
+     *  returning the selected list only and relying on the totals assertion). */
+    private static java.util.Set<String> expectedTaggedDocuments(MergedFinanceApVoucherData data) {
+        java.util.Set<String> docs = new java.util.TreeSet<>();
+        if (data.getSelectDocumentList() != null) {
+            data.getSelectDocumentList().forEach(d -> docs.add(d.getDocumentNumber()));
+        }
+        if (data.getAdjustmentMismatchPlan() != null) {
+            data.getAdjustmentMismatchPlan().getSteps().forEach(s -> {
+                if (s.getExtra() != null && s.getExtra().getDocs() != null) {
+                    s.getExtra().getDocs().forEach(d -> docs.add(d.getDocumentNumber()));
+                }
             });
-
-            StepExecutor.step("Finalize save assertions", softAssert::assertAll);
-
-            return docNoRef[0] != null;
-        };
+        }
+        return docs;
+    }
 
     // ─── Negative scenario behavior ───────────────────────────────────────────
 

@@ -18,6 +18,19 @@ import java.util.Collections;
 import java.util.List;
 import java.util.stream.Collectors;
 
+/**
+ * Merged AR Voucher test data — the AR analogue of {@link MergedFinanceApVoucherData}, produced
+ * by {@code MergedFinArVoucherDataSupplier} (Excel mode via {@code ExcelArVoucherDataSource}, DB
+ * mode via {@code DbArVoucherDataSource}). Carries the header, sub-ledger, select-document,
+ * FIFO-setoff and payment-information rows a single AR Voucher test invocation needs, plus
+ * DB-mode-only scenario/fixture metadata and Edit/Delete/Revert bookkeeping (see the individual
+ * field Javadocs below).
+ *
+ * <p>Implements {@link VoucherReportData} directly (its rows already satisfy {@code
+ * VoucherSubLedgerRow}/{@code VoucherSelectDocRow}/{@code VoucherPaymentInfo} without an adapter,
+ * unlike {@link com.gsl.testdata.dto.MergedFinanceGeneralVoucherData}), so the report layer
+ * ({@code VoucherExtentDescriptionLogger}) can work against it uniformly alongside AP/GV.
+ */
 @Data
 @Builder
 @AllArgsConstructor

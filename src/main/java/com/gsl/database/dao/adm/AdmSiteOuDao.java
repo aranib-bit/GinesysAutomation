@@ -14,6 +14,9 @@ import java.util.List;
  */
 public interface AdmSiteOuDao {
 
+    /** Returns the {@code admou_code}(s) the given {@code admsite_code} bridges to; callers (e.g.
+     *  {@code AccountingPeriodResolver#resolveOuCode}) take the first result per this class's
+     *  live-verified one-to-one guarantee for this tenant. */
     @SqlQuery("SELECT DISTINCT admou_code FROM admsite_ou WHERE admsite_code = :admsiteCode")
     List<Long> findOuCodesByAdmsiteCode(@Bind("admsiteCode") long admsiteCode);
 }

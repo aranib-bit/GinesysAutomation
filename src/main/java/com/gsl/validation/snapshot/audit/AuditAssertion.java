@@ -119,6 +119,8 @@ public final class AuditAssertion {
                 + " — a no-op save must not produce a business audit change.");
     }
 
+    /** Latest {@code aud2_<table>} row matching {@code action} and {@code businessKey}, by
+     *  {@code transaction_id} recency ({@link #isLater}) — {@code null} if none match. */
     private static Map<String, Object> mostRecentMatching(TableRule tableRule, List<Map<String, Object>> rows,
             String businessKey, String action) {
         Map<String, Object> best = null;
@@ -130,6 +132,8 @@ public final class AuditAssertion {
         return best;
     }
 
+    /** {@code true} if {@code candidate}'s {@code transaction_id} is numerically (falling back to
+     *  lexicographically) greater than {@code current}'s. */
     private static boolean isLater(Map<String, Object> candidate, Map<String, Object> current) {
         Object candidateId = DbValueNormalizer.getIgnoreCase(candidate, "transaction_id");
         Object currentId = DbValueNormalizer.getIgnoreCase(current, "transaction_id");
@@ -140,6 +144,9 @@ public final class AuditAssertion {
         }
     }
 
+    /** Column-by-column diff of {@code expectedRow} against {@code actualRow} (skipping meta and
+     *  excluded columns), returned as human-readable {@code "column: expected='...' audit='...'"}
+     *  mismatch strings — empty if every (checked) column agrees. */
     private static List<String> compareColumns(Map<String, Object> expectedRow, Map<String, Object> actualRow,
             Set<String> excludedColumns) {
         List<String> mismatches = new ArrayList<>();
@@ -155,11 +162,14 @@ public final class AuditAssertion {
         return mismatches;
     }
 
+    /** Audit-shadow-table bookkeeping columns that are never themselves reportable "changes". */
     private static boolean isMetaColumn(String column) {
         return column != null && (column.equalsIgnoreCase("action") || column.equalsIgnoreCase("action_subtype")
                 || column.equalsIgnoreCase("transaction_id"));
     }
 
+    /** Business-key display string for {@code row} — same "col1=val1, col2=val2" format used
+     *  throughout this package (see {@link AuditChange#recordId()}). */
     private static String businessKeyOf(TableRule tableRule, Map<String, Object> row) {
         List<String> columns = tableRule.getBusinessKeyColumns();
         if (columns == null || columns.isEmpty()) return "(no key)";

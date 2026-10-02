@@ -210,14 +210,17 @@ public enum ArVoucherApiScenarioType {
         this.action = action;
     }
 
+    /** @return the endpoint name/label this scenario targets (used in report step names). */
     public String getEndpoint() {
         return endpoint;
     }
 
+    /** @return whether this constant is a {@code POSITIVE}, {@code NEGATIVE}, or {@code BOUNDARY} scenario. */
     public ScenarioKind getKind() {
         return kind;
     }
 
+    /** Runs this scenario's action against {@code client} using {@code ctx}'s reference values. */
     public ScenarioOutcome execute(ArVoucherApiClient client, ArVoucherFixtureContext ctx) {
         return action.apply(client, ctx);
     }

@@ -3,6 +3,7 @@ package com.gsl.validation.snapshot;
 import lombok.Builder;
 import lombok.Getter;
 
+import java.util.Set;
 import java.util.function.Function;
 
 /**
@@ -56,6 +57,10 @@ public class ColumnRule {
      *  report. {@code false} for every other factory. */
     @Builder.Default
     private final boolean knownIssue = false;
+
+    /** Allowed value set for {@link ComparisonStrategy#ONE_OF} — e.g. {@code {"P", "U"}} for
+     *  {@code release_status}. {@code null} for every other strategy. */
+    private final Set<String> allowedValues;
 
     /** Convenience factory for the common {@code MUST_NOT_CHANGE}/{@code UNCHANGED} case. */
     public static ColumnRule mustNotChange(String column) {
@@ -158,6 +163,68 @@ public class ColumnRule {
                 .expectation(ChangeExpectation.SYSTEM_CHANGE)
                 .strategy(ComparisonStrategy.EXPECTED_VALUE)
                 .expectedValue(expectedValue)
+                .build();
+    }
+
+    /**
+     * Convenience factory for a column that must never be null/blank on a freshly-inserted (or
+     * freshly-deleted) row — e.g. {@code finvchmain.ycode}/{@code vchtype}/{@code entry_source} on
+     * Create. Only meaningful for {@code DiffEngine}'s INSERT/DELETE row-explode path (see that
+     * class's mandatory-column check) — a table-wide default never uses this, only an explicit
+     * per-column override declared on the {@link TableRule}.
+     */
+    public static ColumnRule mandatoryNotNull(String column) {
+        return ColumnRule.builder()
+                .column(column)
+                .expectation(ChangeExpectation.MANDATORY)
+                .strategy(ComparisonStrategy.NOT_NULL)
+                .build();
+    }
+
+    /**
+     * Convenience factory for a column that must ALWAYS stay null/blank for this voucher domain
+     * — e.g. {@code finvchmain.isadvance} on General Voucher, which is only ever populated for AP
+     * (Advance = Yes). Same {@code MANDATORY} expectation as {@link #mandatoryNotNull(String)}
+     * (a system-controlled invariant either way), just the opposite comparison strategy — so this
+     * stays compatible with every place that already pattern-matches a "MANDATORY"-prefixed label
+     * (the collapse predicate in {@code SnapshotValidationReporter}, {@code ChangeClassifier}'s
+     * mapping to {@code SYSTEM_CHANGE}) without needing a new case anywhere.
+     */
+    public static ColumnRule mandatoryNull(String column) {
+        return ColumnRule.builder()
+                .column(column)
+                .expectation(ChangeExpectation.MANDATORY)
+                .strategy(ComparisonStrategy.NULL)
+                .build();
+    }
+
+    /**
+     * Convenience factory for a column whose value must be one of a small, known set — e.g.
+     * {@code finvchmain.release_status} must be exactly {@code "P"} or {@code "U"}, never blank
+     * and never anything else. Same {@code MANDATORY} expectation as {@link #mandatoryNotNull},
+     * for the same "no new case needed elsewhere" reason as {@link #mandatoryNull(String)}.
+     */
+    public static ColumnRule mandatoryOneOf(String column, String... values) {
+        return ColumnRule.builder()
+                .column(column)
+                .expectation(ChangeExpectation.MANDATORY)
+                .strategy(ComparisonStrategy.ONE_OF)
+                .allowedValues(Set.of(values))
+                .build();
+    }
+
+    /**
+     * Convenience factory for a numeric column that must be zero (not applicable for this
+     * domain) — e.g. {@code finpost.adjamt} on General Voucher, confirmed live to store a literal
+     * {@code 0}, not SQL {@code NULL}, unlike {@link #mandatoryNull(String)}'s columns. Same
+     * {@code MANDATORY} expectation as the other {@code mandatoryXxx} factories, for the same
+     * "no new case needed elsewhere" reason.
+     */
+    public static ColumnRule mandatoryZero(String column) {
+        return ColumnRule.builder()
+                .column(column)
+                .expectation(ChangeExpectation.MANDATORY)
+                .strategy(ComparisonStrategy.ZERO)
                 .build();
     }
 

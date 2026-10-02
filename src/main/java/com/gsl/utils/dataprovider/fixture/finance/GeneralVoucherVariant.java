@@ -69,4 +69,50 @@ public class GeneralVoucherVariant {
      * existing combination — capability-only, per the Round 22 GV plan.
      */
     java.time.LocalDate instrumentDateOverride;
+
+    /**
+     * Round 20 — {@code true} when this CHEQUE-payment row should resolve a real, registered
+     * cheque number ({@code FinChqDetDao.findFirstUnused}) instead of a synthetic never-registered
+     * one ({@code UniqueChequeGenerator.generateUnique()}). Meaningless for any other {@link
+     * #paymentVariant}. Assigned by {@code GeneralVoucherFixtureFactory.assignKnownChequeFlags}
+     * once per run, over the exact set of CHEQUE rows {@link GeneralVoucherCombinations
+     * #allCombinations()} produced — an exact-ratio "controlled sequence, shuffled" assignment
+     * (see {@code com.gsl.utils.WeightedSequenceBuilder}), not a per-row random roll. Defaults to
+     * {@code false} (unknown) for any row the assignment pass never reaches (e.g. a non-CHEQUE
+     * row, where the flag is simply never read).
+     */
+    @Builder.Default
+    boolean knownCheque = false;
+
+    /**
+     * Round 6 — {@code true} for a Bank-header voucher whose {@link #glCount} grid rows EACH draw
+     * their own payment ({@link #rowPayments}), instead of the legacy single payment on row 1.
+     * {@link #paymentVariant} stays {@link GeneralVoucherPaymentVariant#CHEQUE} for these (it only
+     * selects the Bank header). The per-row assignment itself is NOT hardcoded: it is made once per
+     * run by {@code GeneralVoucherFixtureFactory.assignKnownChequeFlags} from the
+     * {@code gv.row.payment.*.weight} config.
+     */
+    @Builder.Default
+    boolean multiRowPayment = false;
+
+    /** Round 6 — payment of grid row {@code i} (index = row order), set only when {@link #multiRowPayment}
+     *  and after the factory's assignment pass; {@code null} otherwise (legacy single payment). */
+    java.util.List<GeneralVoucherPaymentVariant> rowPayments;
+
+    /** Round 6 — known/unknown decision of grid row {@code i}'s cheque (only meaningful where that
+     *  row's payment is {@code CHEQUE}); {@code null} unless {@link #rowPayments} is set. */
+    java.util.List<Boolean> rowKnownCheque;
+
+    /** Payment variant of grid row {@code rowIndex}: its assigned one, else (legacy) {@link #paymentVariant}
+     *  on row 0 and no payment on any other row. */
+    public GeneralVoucherPaymentVariant paymentForRow(int rowIndex) {
+        if (rowPayments != null) return rowIndex < rowPayments.size() ? rowPayments.get(rowIndex) : GeneralVoucherPaymentVariant.NONE;
+        return rowIndex == 0 ? paymentVariant : GeneralVoucherPaymentVariant.NONE;
+    }
+
+    /** Known-cheque decision of grid row {@code rowIndex} (see {@link #rowKnownCheque}; legacy = {@link #knownCheque} on row 0). */
+    public boolean knownChequeForRow(int rowIndex) {
+        if (rowKnownCheque != null) return rowIndex < rowKnownCheque.size() && Boolean.TRUE.equals(rowKnownCheque.get(rowIndex));
+        return rowIndex == 0 && knownCheque;
+    }
 }

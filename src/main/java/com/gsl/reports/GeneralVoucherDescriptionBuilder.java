@@ -3,6 +3,8 @@ package com.gsl.reports;
 import com.gsl.enums.Finance.Operations.GeneralVoucher.GlLineType;
 import com.gsl.testdata.Finance.Operations.Vouchers.GeneralVoucher.DetailLineEditTarget;
 import com.gsl.testdata.Finance.Operations.Vouchers.GeneralVoucher.ExpenseIncomeDetail;
+import com.gsl.testdata.Finance.Operations.Vouchers.GeneralVoucher.PaymentInfoEditTarget;
+import com.gsl.testdata.Finance.Operations.Vouchers.GeneralVoucher.PaymentInformation;
 import com.gsl.testdata.dto.GeneralVoucherOperationMode;
 import com.gsl.testdata.dto.MergedFinanceGeneralVoucherData;
 import com.gsl.utils.dataprovider.fixture.finance.GeneralVoucherEditVariant;
@@ -71,6 +73,15 @@ public final class GeneralVoucherDescriptionBuilder {
                         + "Expense/Income Detail line (LineNo '" + data.getEditedDetailLine().getLineNo() + "')"
                         + buildDetailLineEditSummary(data.getEditedDetailLine()) + ".";
             }
+            // Checked BEFORE the header fallback below — a Payment-Info-Edit scenario (report run
+            // 20260916_133846, FIN-GV-EDIT-PAYMENT-01) previously fell all the way through to the
+            // header-field-scope sentence below and mislabeled itself as a header edit, since
+            // nothing here ever checked getPaymentEditTarget(). Mirrors the getEditedDetailLine()
+            // check immediately above.
+            if (data.getPaymentEditTarget() != null) {
+                return "Verify that a General Voucher is edited successfully with an updated "
+                        + "Payment Information" + buildPaymentInfoEditSummary(data.getPaymentEditTarget()) + ".";
+            }
             // Plan §6/§9b: state the actual isolated field AND its precise old→new value for a
             // HeaderFieldScope-scoped variant, instead of always naming all three fields
             // regardless of what really changed (4D) or naming the field with no value at all
@@ -130,6 +141,16 @@ public final class GeneralVoucherDescriptionBuilder {
             case NONE -> "no Payment info (instrument-missing warning expected)";
             case CASH -> "Cash payment";
         };
+        if (o.isMultiRowPayment() && o.getRowPayments() != null) {
+            // Round 6: each grid row carries its own payment — name them in row order.
+            paymentPhrase = "a payment per row (" + o.getRowPayments().stream()
+                    .map(v -> switch (v) {
+                        case CHEQUE -> "Cheque";
+                        case NEFT_RTGS -> "NEFT/RTGS";
+                        case NONE -> "no payment info";
+                        case CASH -> "Cash";
+                    }).collect(java.util.stream.Collectors.joining(", ")) + ")";
+        }
 
         int glCount = Math.max(1, o.getGlCount());
         int siteCount = Math.max(1, o.getSiteCount());
@@ -179,6 +200,61 @@ public final class GeneralVoucherDescriptionBuilder {
                     + "', Remarks: '" + oldRemarks + "' → '" + newRemarks
                     + "', Date: " + oldDate + " → " + newDate + ")";
         };
+    }
+
+    /**
+     * Whether {@code target}'s Payment Mode/Instrument No./Instrument Date actually differs
+     * between {@link PaymentInfoEditTarget#getBeforePayment()} and {@code #getNewPayment()} —
+     * the one place this comparison is made, shared by {@link #buildPaymentInfoEditSummary} (the
+     * report title) and {@code GeneralVoucherExtentDescriptionLogger}'s "Payment Information"
+     * table, so the two can never disagree about what changed.
+     *
+     * <p>{@code instrumentDate} treats a {@code null}/blank {@code newPayment.getInstrumentDate()}
+     * as "not changed" rather than comparing it against {@code beforePayment}'s value —
+     * {@code SAME_MODE_NEW_INSTRUMENT}/{@code NEFT_TO_CHEQUE} deliberately build {@code newPayment}
+     * with {@code instrumentDate} left {@code null} (see {@code
+     * DbGeneralVoucherEditDataSource#buildPaymentEditTarget}), since the app auto-derives it
+     * server-side in that case rather than this scenario ever supplying one.
+     */
+    static PaymentInfoDiff diffPaymentInfo(PaymentInfoEditTarget target) {
+        PaymentInformation before = target.getBeforePayment();
+        PaymentInformation after = target.getNewPayment();
+        boolean modeChanged = before.getPaymentMode() != after.getPaymentMode();
+        boolean instrumentNoChanged = !Objects.equals(before.getInstrumentNo(), after.getInstrumentNo());
+        boolean instrumentDateChanged = after.getInstrumentDate() != null && !after.getInstrumentDate().isBlank()
+                && !Objects.equals(before.getInstrumentDate(), after.getInstrumentDate());
+        return new PaymentInfoDiff(modeChanged, instrumentNoChanged, instrumentDateChanged);
+    }
+
+    /** @param modeChanged true if {@code payment_mode} genuinely differs before→after
+     *  @param instrumentNoChanged true if {@code chqno}/instrument no. genuinely differs before→after
+     *  @param instrumentDateChanged true only if the scenario supplied a real new instrument date
+     *         (see {@link #diffPaymentInfo}'s Javadoc on the null/blank handling) */
+    record PaymentInfoDiff(boolean modeChanged, boolean instrumentNoChanged, boolean instrumentDateChanged) {}
+
+    /**
+     * States precisely which Payment Information field(s) a Payment-Info-Edit scenario actually
+     * changed and their old→new values — mirrors {@link #buildDetailLineEditSummary}'s
+     * before→after phrasing convention rather than always naming every field regardless of what
+     * really changed.
+     */
+    private static String buildPaymentInfoEditSummary(PaymentInfoEditTarget target) {
+        PaymentInformation before = target.getBeforePayment();
+        PaymentInformation after = target.getNewPayment();
+        PaymentInfoDiff diff = diffPaymentInfo(target);
+        List<String> clauses = new ArrayList<>();
+
+        clauses.add("Payment Mode" + (diff.modeChanged()
+                ? ": '" + before.getPaymentMode() + "' → '" + after.getPaymentMode() + "'"
+                : " unchanged"));
+        clauses.add("Instrument No." + (diff.instrumentNoChanged()
+                ? ": '" + before.getInstrumentNo() + "' → '" + after.getInstrumentNo() + "'"
+                : " unchanged"));
+        clauses.add("Instrument Date" + (diff.instrumentDateChanged()
+                ? ": '" + before.getInstrumentDate() + "' → '" + after.getInstrumentDate() + "'"
+                : " unchanged"));
+
+        return " (" + String.join(", ", clauses) + ")";
     }
 
     /**
@@ -236,11 +312,16 @@ public final class GeneralVoucherDescriptionBuilder {
         return " (" + String.join(", ", clauses) + ")";
     }
 
+    /** GL name, suffixed with its resolved account class in brackets when known (e.g.
+     *  {@code "Bank GL [Asset]"}) — used by {@link #buildDetailLineEditSummary}'s "new line added"
+     *  phrasing. */
     private static String glLabel(ExpenseIncomeDetail row) {
         return row.getGeneralLedger() + (row.getResolvedAccountClass() != null
                 ? " [" + row.getResolvedAccountClass().label() + "]" : "");
     }
 
+    /** Maps a GV negative-validation enum constant to its fixed report-title sentence, or
+     *  {@code null} when {@code expected} isn't one of the known GV negative scenarios. */
     private static String buildNegativeDescription(NegativeValidation expected) {
         return switch (expected) {
             case GV_SITE_ALLOCATION_PENDING -> "Verify that saving a Site-applicable line with an "
@@ -249,6 +330,9 @@ public final class GeneralVoucherDescriptionBuilder {
                     + "with no Sub Ledger selected shows the sub-ledger-required validation error.";
             case GV_SITE_NOT_ALLOCATED -> "Verify that saving a Site-applicable line whose Site was "
                     + "never allocated shows the site-not-allocated validation error.";
+            case GV_PAYMENT_NEFT_FUTURE_INSTRUMENT_DATE_NOT_ALLOWED -> "Verify that editing a General "
+                    + "Voucher's Payment Information to NEFT/RTGS with an Instrument Date later than "
+                    + "the voucher's own entry date is correctly REJECTED by the application.";
             default -> null;
         };
     }

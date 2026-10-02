@@ -1,5 +1,11 @@
 package com.gsl.pages.enums.Finance.Operations.Common;
 
+/**
+ * DOM attribute(s) used to read computed field values off the Calculate TDS &amp; Net Payable
+ * popup — see {@code APVoucherTdsAndNetPayable}'s reads of its TDS Amount and Net Payable
+ * fields, both disabled number fields whose value isn't exposed the normal way (see
+ * {@link #ARIA_VALUE_NOW}).
+ */
 public enum TdsNetPayableFieldAttribute {
 
     /**
@@ -14,6 +20,7 @@ public enum TdsNetPayableFieldAttribute {
         this.attribute = attribute;
     }
 
+    /** The DOM attribute name to read, e.g. {@code "aria-valuenow"}. */
     public String attribute() {
         return attribute;
     }

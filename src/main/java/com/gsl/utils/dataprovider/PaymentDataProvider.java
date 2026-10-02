@@ -12,6 +12,7 @@ public final class PaymentDataProvider {
 
     private PaymentDataProvider() {}
 
+    /** Wraps every {@link PaymentReferenceFixture#allScenarios()} entry into its own single-element {@code Object[]} row. */
     @DataProvider(name = "paymentRefs")
     public static Object[][] getData() {
         return PaymentReferenceFixture.allScenarios()

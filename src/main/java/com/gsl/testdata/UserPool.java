@@ -107,12 +107,26 @@ public final class UserPool {
     private static final EnumMap<UserType, ConcurrentHashMap<String, AtomicLong>> LAST_ACTIVITY_MS =
             new EnumMap<>(UserType.class);
 
+    /**
+     * Every configured SET-1 credential per type, in load order — retained purely for
+     * reporting/introspection (e.g. the Extent report's "User Pool Status" table, see
+     * {@code TestListener#onTestStart}). Distinct from {@link #SET1_QUEUES} (which only ever
+     * holds the currently-FREE subset — removed on acquire, re-offered on release) and from
+     * {@link #ACTIVE_USERS} (which only holds currently-busy holders, and goes stale under
+     * {@code SessionPool}'s session-reuse model since it's only refreshed at session
+     * *creation*, not on every reuse — see {@code SessionPool.currentTestCaseIdsByUsername()}
+     * for the live, reuse-aware counterpart of "who's using this user right now").
+     */
+    private static final EnumMap<UserType, List<UserCredential>> ALL_SET1_USERS =
+            new EnumMap<>(UserType.class);
+
     static {
         for (UserType type : UserType.values()) {
             SET1_QUEUES.put(type, new LinkedBlockingQueue<>());
             INITIAL_COUNTS.put(type, 0);
             ACTIVE_USERS.put(type, new ConcurrentHashMap<>());
             LAST_ACTIVITY_MS.put(type, new ConcurrentHashMap<>());
+            ALL_SET1_USERS.put(type, List.of());
         }
     }
 
@@ -120,25 +134,37 @@ public final class UserPool {
 
     // ─── Initialization ───────────────────────────────────────────────────────
 
+    /**
+     * (Re-)initializes the whole pool from a freshly-loaded credential list — clears and rebuilds
+     * the SET1 queues/permits/roster and the SET2 groups from scratch. Idempotent and safe to call
+     * more than once (e.g. suite re-runs); each call fully replaces the previous state rather than
+     * merging into it. {@code SET1} credentials populate {@link #SET1_QUEUES}/{@link #SET1_PERMITS}
+     * /{@link #ALL_SET1_USERS} per {@link UserType}; everything else is grouped by
+     * {@link UserCredential#groupId()} into {@link #SET2_GROUPS}.
+     */
     public static synchronized void initialize(List<UserCredential> credentials) {
         SET1_QUEUES.values().forEach(LinkedBlockingQueue::clear);
         SET2_GROUPS.clear();
+        Map<UserType, List<UserCredential>> roster = new EnumMap<>(UserType.class);
         for (UserType type : UserType.values()) {
             INITIAL_COUNTS.put(type, 0);
             ACTIVE_USERS.get(type).clear();
             LAST_ACTIVITY_MS.get(type).clear();
+            roster.put(type, new java.util.ArrayList<>());
         }
 
         for (UserCredential cred : credentials) {
             if (cred.executionSet() == ExecutionSet.SET1) {
                 SET1_QUEUES.get(cred.userType()).offer(cred);
                 INITIAL_COUNTS.merge(cred.userType(), 1, Integer::sum);
+                roster.get(cred.userType()).add(cred);
             } else {
                 SET2_GROUPS
                         .computeIfAbsent(cred.groupId(), k -> new java.util.ArrayList<>())
                         .add(cred);
             }
         }
+        roster.forEach((type, users) -> ALL_SET1_USERS.put(type, List.copyOf(users)));
 
         for (Map.Entry<UserType, Integer> e : INITIAL_COUNTS.entrySet()) {
             Log.info("[UserPool] Initialized — SET1 {}={} user(s)", e.getKey(), e.getValue());
@@ -165,6 +191,18 @@ public final class UserPool {
      */
     public static int initialCountOf(UserType type) {
         return INITIAL_COUNTS.getOrDefault(type, 0);
+    }
+
+    /**
+     * Returns every configured SET-1 username of the given type, in load order — the full
+     * roster a "used/unused" status table should enumerate (as opposed to {@link #SET1_QUEUES}'s
+     * currently-free subset or {@link #ACTIVE_USERS}'s currently-busy subset). See
+     * {@link #ALL_SET1_USERS}'s Javadoc for why neither of those alone is the right source.
+     */
+    public static List<String> allUsernamesOfType(UserType type) {
+        List<UserCredential> creds = ALL_SET1_USERS.get(type);
+        if (creds == null) return List.of();
+        return creds.stream().map(UserCredential::username).toList();
     }
 
     // ─── Acquire / Release ────────────────────────────────────────────────────
@@ -194,6 +232,7 @@ public final class UserPool {
         return acquireSet1UserInternal(type, testLabel, ConfigFactory.getExecutionConfig().poolAcquireTimeoutSeconds());
     }
 
+    /** Shared implementation behind both {@code acquireSet1User} overloads — see that method's Javadoc for the poll/warn/timeout behavior; {@code timeoutSeconds} is broken out purely so callers/tests can override the configured default. */
     private static UserCredential acquireSet1UserInternal(UserType type, String testLabel, long timeoutSeconds) {
         int configured = INITIAL_COUNTS.getOrDefault(type, 0);
 
@@ -289,6 +328,7 @@ public final class UserPool {
         }
     }
 
+    /** Largest idle time (ms since last heartbeat) among {@code type}'s currently-active holders; {@code 0} if none. */
     private static long computeMaxHolderIdleMs(UserType type, long now) {
         ConcurrentHashMap<String, AtomicLong> heartbeats = LAST_ACTIVITY_MS.get(type);
         long maxIdle = 0;
@@ -299,6 +339,7 @@ public final class UserPool {
         return maxIdle;
     }
 
+    /** Renders one line per currently-active holder of {@code type} — username, holding test, thread, idle/held seconds, and a flag for duplicate thread names (a sign of overlapping TestNG pools) — for warn/timeout diagnostics. */
     private static String buildActiveUserSnapshot(UserType type, long now) {
         ConcurrentHashMap<String, ActiveUserEntry> map = ACTIVE_USERS.get(type);
         if (map == null || map.isEmpty()) return "  (none)";

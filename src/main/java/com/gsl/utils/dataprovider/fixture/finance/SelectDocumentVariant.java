@@ -23,7 +23,7 @@ import lombok.Getter;
  *             (e.g. {@code finsl.admcls_code = admcls.code})</li>
  * </ul>
  */
-@Builder
+@Builder(toBuilder = true)
 @Getter
 public class SelectDocumentVariant {
 
@@ -215,4 +215,26 @@ public class SelectDocumentVariant {
      * Set via {@link ArVoucherExecutionGroup}.
      */
     ArVoucherExecutionGroup executionGroup;
+
+    /**
+     * Round 20 — {@code true} when this CHEQUE-payment row (shared by AP+AR) should resolve a
+     * real, registered cheque number instead of a synthetic never-registered one. Meaningless for
+     * any other {@link PaymentMode}. Assigned once per run by {@code ApVoucherFixtureFactory
+     * .assignKnownChequeFlags}/{@code ArVoucherFixtureFactory.assignKnownChequeFlags} — an
+     * exact-ratio "controlled sequence, shuffled" assignment (see {@code
+     * com.gsl.utils.WeightedSequenceBuilder}), not a per-row random roll.
+     */
+    @Builder.Default
+    boolean knownCheque = false;
+
+    /**
+     * AR-only sub-case, within the (rare, 1%) subset {@link #knownCheque} marks {@code true}:
+     * {@code true} = deliberately resolve a known cheque registered against a DIFFERENT bank's
+     * cheque book than this voucher's own selected Cash/Bank GL (tests the app correctly treats a
+     * cross-bank cheque as unrecognized); {@code false} (default) = the normal same-bank match.
+     * Assigned by {@code ArVoucherFixtureFactory.assignChequeBankMatchFlags}. Meaningless unless
+     * {@link #knownCheque} is {@code true}; AP never sets this (no different-bank case for AP).
+     */
+    @Builder.Default
+    boolean knownChequeDifferentBank = false;
 }

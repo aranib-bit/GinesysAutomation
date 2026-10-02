@@ -16,6 +16,12 @@ import lombok.NoArgsConstructor;
 import java.time.LocalDate;
 
 
+/**
+ * Test-data model for the AR Voucher "DocumentInformation" sheet — the voucher header fields
+ * (owner site, voucher no., cash/bank, remarks, date, reference). Unlike AP, AR has no "On
+ * Account" concept, so this class implements {@link VoucherDocumentHeader} directly with no
+ * base class.
+ */
 @Getter
 @NoArgsConstructor
 @AllArgsConstructor

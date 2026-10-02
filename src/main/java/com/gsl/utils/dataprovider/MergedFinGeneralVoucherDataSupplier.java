@@ -1,6 +1,7 @@
 package com.gsl.utils.dataprovider;
 
 import com.aventstack.extentreports.ExtentTest;
+import com.gsl.annotations.TestCaseId;
 import com.gsl.config.ConfigFactory;
 import com.gsl.reports.ExtentReport;
 import com.gsl.testdata.dto.MergedFinanceGeneralVoucherData;
@@ -64,6 +65,25 @@ public class MergedFinGeneralVoucherDataSupplier {
     // wrapper — zero stack trace, zero screenshot, no indication which data source or build-method
     // actually threw). Logging every path here — before rethrowing unchanged — is the only way to
     // make the *next* such failure diagnosable instead of a dead end.
+    /**
+     * Resolves the configured {@link TestDataSource} (EXCEL or DB, switched further by {@code
+     * method}'s name for Revert/Edit/Delete vs. default-Create — see the class Javadoc's
+     * method-to-source mapping), loads that source's scenario rows, stamps each row's {@code
+     * TestCaseId}/{@code testcasename} from the method's own {@link TestCaseId} annotation when
+     * missing or blank, and emits one {@code Object[]} (null credential + row) per scenario.
+     *
+     * <p>Every exception path — including one thrown before the try block would otherwise start,
+     * since this whole method is reflectively invoked via {@code org.joor.Reflect} — is logged
+     * (SLF4J) and also surfaced into the Extent HTML report via {@link
+     * #reportDataSupplierFailure} before being converted to (or rethrown as) a {@link
+     * org.testng.SkipException}, so a data-load failure is diagnosable instead of a bare, opaque
+     * {@code ReflectException} wrapper.
+     *
+     * @param method  the TestNG-injected test method — its name selects the data source and
+     *                supplies the {@link TestCaseId} annotation used for row stamping
+     * @param context supplies the TestNG XML {@code gv.group}/{@code gv.tag}/{@code gv.edit.group}
+     *                parameters
+     */
     @DataSupplier(name = "FinanceGeneralVoucherData", flatMap = true, runInParallel = false)
     public StreamEx<Object[]> dataSupplier(Method method, ITestContext context) {
         String source = ConfigFactory.getConfig().testDataSource();
@@ -84,19 +104,62 @@ public class MergedFinGeneralVoucherDataSupplier {
                     "DB".equalsIgnoreCase(source)
                             ? switch (method.getName()) {
                                 case "revertGeneralVoucher" -> new DbGeneralVoucherRevertDataSource(xmlGroupParam, xmlTagParam);
-                                case "editGeneralVoucherHeader", "editGeneralVoucherDetailLine" ->
+                                case "editGeneralVoucherHeader", "editGeneralVoucherDetailLine",
+                                     "editGeneralVoucherPaymentInfo" ->
                                         new DbGeneralVoucherEditDataSource(xmlEditGroupParam);
                                 case "deleteGeneralVoucher" -> new DbGeneralVoucherDeleteDataSource();
                                 default -> new DbGeneralVoucherDataSource(xmlGroupParam, xmlTagParam);
                               }
                             : switch (method.getName()) {
                                 case "revertGeneralVoucher" -> new ExcelGeneralVoucherRevertDataSource();
-                                case "editGeneralVoucherHeader", "editGeneralVoucherDetailLine" ->
+                                case "editGeneralVoucherHeader", "editGeneralVoucherDetailLine",
+                                     "editGeneralVoucherPaymentInfo" ->
                                         new ExcelGeneralVoucherEditDataSource();
                                 default -> new ExcelGeneralVoucherDataSource();
                               };
 
             List<MergedFinanceGeneralVoucherData> scenarios = loader.load(method.getName());
+
+            // Point 1 (recurring fix — TestCase ID in the "Test Data — Header" table): `method`
+            // is the ACTUAL TestNG-injected test method here, so its real @TestCaseId annotation
+            // is directly available — the one genuine source of truth, already what the report's
+            // own title banner is built from (TestListener.onTestStart uses the identical
+            // String.format("%s-%02d", ...) shape). Every prior attempt at this field guessed at
+            // an internal placeholder string (a combination-matrix token, or a literal
+            // "MIXED_TYPES") instead of the real id — stamping it here, once, right after load(),
+            // fixes it for every scenario this data source can produce (combination-matrix rows
+            // AND the MIXED_TYPES row alike) without touching TestDataSource's shared interface
+            // or any individual loader implementation.
+            //
+            // Item 4 (Round 12): the above claim ("fixes it for every scenario") was only ever
+            // true for DbGeneralVoucherDataSource (Create) — confirmed live (blank "TestCase ID"/
+            // "TestCase Name" in "Test Data — Header" for both editGeneralVoucherHeader and
+            // revertGeneralVoucher): DbGeneralVoucherEditDataSource/DbGeneralVoucherRevertDataSource
+            // never construct/set masterTestData on any row at all, so the old
+            // `if (row.getMasterTestData() != null)` guard silently skipped every one of their
+            // rows. Now builds a MasterTestData when missing instead of skipping — testcasename
+            // reuses GeneralVoucherDescriptionBuilder.build(row), the SAME sentence already proven
+            // correct for the title banner (same idiom as Round 11's MIXED_TYPES fix), so the two
+            // can never drift apart. No changes needed in the individual Edit/Revert/Delete data
+            // source classes themselves.
+            TestCaseId tcIdAnnotation = method.getAnnotation(TestCaseId.class);
+            if (tcIdAnnotation != null) {
+                for (MergedFinanceGeneralVoucherData row : scenarios) {
+                    String stampedId = String.format("%s-%02d", tcIdAnnotation.value(), row.getInvocationIndex());
+                    if (row.getMasterTestData() == null) {
+                        row.setMasterTestData(new com.gsl.testdata.MasterTestData(
+                                com.gsl.reports.GeneralVoucherDescriptionBuilder.build(row),
+                                null, null, null, stampedId, row.getInvocationIndex()));
+                    } else {
+                        row.getMasterTestData().setTestcaseid(stampedId);
+                        String existingName = row.getMasterTestData().getTestcasename();
+                        if (existingName == null || existingName.isBlank()) {
+                            row.getMasterTestData().setTestcasename(
+                                    com.gsl.reports.GeneralVoucherDescriptionBuilder.build(row));
+                        }
+                    }
+                }
+            }
 
             Log.info("[DataSupplier] Emitting {} General Voucher scenario row(s) for '{}' — "
                     + "users assigned by pool at runtime.", scenarios.size(), method.getName());

@@ -3,6 +3,13 @@ package com.gsl.enums;
 import java.util.Arrays;
 import java.util.stream.Collectors;
 
+/**
+ * The payment mode selected in a voucher's Payment Information popup, stored in {@code
+ * finvchdet.payment_mode}. Bridges three directions: {@link #fromExcel} resolves curated test
+ * input (throws on an unrecognized label), {@link #fromDbCode} resolves live DB data read back for
+ * report display (never throws), and {@link #label()} supplies the UI dropdown text used to drive
+ * the popup itself.
+ */
 public enum PaymentSelectionType {
 
     CHEQUE("Cheque",       "C"),
@@ -27,11 +34,26 @@ public enum PaymentSelectionType {
         return dbCode;
     }
 
+    /** Reverse lookup — resolves a raw {@code finvchdet.payment_mode} DB value ('C'/'R'/'H') back
+     *  to its enum/label, for report display. {@code null} for a blank/unrecognized code (never
+     *  throws — unlike {@link #fromExcel}, this reads live DB data, not curated test input). */
+    public static PaymentSelectionType fromDbCode(String dbCode) {
+        if (dbCode == null || dbCode.isBlank()) return null;
+        String trimmed = dbCode.trim();
+        for (PaymentSelectionType type : values()) {
+            if (type.dbCode.equalsIgnoreCase(trimmed)) return type;
+        }
+        return null;
+    }
+
     @Override
     public String toString() {
         return label;
     }
 
+    /** Resolves a raw Excel cell value to its matching constant (case-insensitive label match);
+     *  {@code null} for a blank value, or throws {@link IllegalArgumentException} naming the
+     *  offending file/sheet/column and the allowed values for an unrecognized one. */
     public static PaymentSelectionType fromExcel(
             String excelValue,
             String fileName,

@@ -71,6 +71,12 @@ import static io.github.sskorol.data.TestDataReader.use;
  */
 public class ExcelGeneralVoucherEditDataSource implements TestDataSource<MergedFinanceGeneralVoucherData> {
 
+    /**
+     * Reads {@code MasterTestData}, {@code EditVoucherInfo}, {@code ExpenseIncomeDetail}, and
+     * {@code SiteAllocation}, filters to rows matching {@code methodName} with a corresponding
+     * {@code EditVoucherInfo} row, then delegates each surviving row to {@link #buildOne} — see
+     * the class Javadoc's "Data flow" for what each built row contains.
+     */
     @Override
     public List<MergedFinanceGeneralVoucherData> load(String methodName) {
 
@@ -135,6 +141,16 @@ public class ExcelGeneralVoucherEditDataSource implements TestDataSource<MergedF
                 .collect(Collectors.toList());
     }
 
+    /**
+     * Builds one {@link MergedFinanceGeneralVoucherData} for {@code tc}: fetches the claimed
+     * voucher's live {@code finvchmain} header, computes the new date/reference/remarks (held at
+     * the header's existing values for a {@code DETAIL_LINE} row — see the "Scope fix" note
+     * inline below — or read/defaulted from {@code editInfo} for a header-only row), and, for a
+     * {@code DETAIL_LINE} row, resolves the existing {@code Edited Line No.} into a
+     * {@link DetailLineEditTarget}.
+     *
+     * @throws SkipException if {@code editInfo.getExistingVoucherNo()} has no {@code finvchmain} row
+     */
     private MergedFinanceGeneralVoucherData buildOne(MasterTestData tc, List<EditVoucherInfo> editInfoList,
             List<ExpenseIncomeDetail> allDetailRows, List<SiteAllocation> allSiteRows,
             int invocationIndex, int totalInvocations) {

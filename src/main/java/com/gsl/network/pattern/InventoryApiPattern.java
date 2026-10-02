@@ -2,7 +2,10 @@ package com.gsl.network.pattern;
 
 import java.util.List;
 
-/** API URL patterns for the Inventory module. Populate as endpoints are confirmed. */
+/**
+ * {@link ApiPattern} constants for the Inventory module. Populate as endpoints are confirmed —
+ * see {@link FinanceApiPattern} for a worked example of confirmed, per-endpoint constants.
+ */
 public enum InventoryApiPattern implements ApiPattern {
 
     PLACEHOLDER("Inventory (stub)", List.of("/Inventory/api/"));

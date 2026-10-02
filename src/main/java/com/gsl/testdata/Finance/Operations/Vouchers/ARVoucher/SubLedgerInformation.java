@@ -16,6 +16,14 @@ import lombok.NoArgsConstructor;
 
 import java.math.BigDecimal;
 
+/**
+ * Test-data model for one sub-ledger row in the AR Voucher SubLedgerInformation sheet — the AR
+ * counterpart of {@code APVoucher.SubLedgerInformation}, posting to Amount(Cr) instead of
+ * Amount(Dr). AR has no Deduct-TDS concept, so unlike AP's version this class declares no
+ * {@code deductTds} column. Extends {@link SubLedgerInformationBase}, which — despite living in
+ * this ARVoucher package — is also the base class AP's own {@code SubLedgerInformation} extends
+ * (see that base class's Javadoc).
+ */
 @Getter
 @NoArgsConstructor
 @AllArgsConstructor

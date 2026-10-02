@@ -5,7 +5,13 @@ import lombok.Value;
 
 import java.time.Instant;
 
-/** A single parsed log line from a remote server. */
+/**
+ * A single parsed log line from a remote server.
+ *
+ * <p>Produced by {@link com.gsl.remote.parser.LogParser} implementations, screened by
+ * {@link com.gsl.remote.filter.LogFilter}, and ultimately rendered by
+ * {@link com.gsl.remote.formatter.LogFormatter} implementations for the test report.
+ */
 @Value
 @Builder
 public class LogEntry {

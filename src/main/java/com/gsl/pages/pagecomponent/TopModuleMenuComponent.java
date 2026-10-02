@@ -23,6 +23,19 @@ import com.gsl.reports.ReportLogger;
 import com.gsl.utils.Selenium.SeleniumUtils;
 import org.openqa.selenium.By;
 
+/**
+ * Drives the application's top-level module switcher — the Admin/Inventory/Procurement/Finance/
+ * Sales &amp; Distribution/POS Management/Report tabs in the app's own top nav bar — keyed by
+ * {@link MainModuleType}. {@link #navigateToModule(MainModuleType)} is the entry point test code
+ * should call to land on a given module's home page: it skips the click entirely when the URL
+ * already shows the module as active (important when a session is reused across tests), always
+ * clears the post-click "Loading Package..." bootstrap mask, and — for a module with a confirmed
+ * dashboard header (see {@link DashboardTitle#forModule(MainModuleType)}) — verifies the dashboard
+ * actually rendered, auto-recovering via a browser refresh on the known ExtJS rendering race.
+ * <p>Returns a fresh instance of the target module's own home-page object (e.g. {@link
+ * AdminHomePage}, {@link FinanceHomePage}) so callers can chain straight into that module's own
+ * navigation.
+ */
 public class TopModuleMenuComponent {
 
     private static final String MENU_ITEM = "//a[text()='%s']";

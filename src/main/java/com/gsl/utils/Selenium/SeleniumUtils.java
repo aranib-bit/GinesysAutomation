@@ -21,8 +21,21 @@ import org.openqa.selenium.support.ui.ExpectedConditions;
 import org.openqa.selenium.support.ui.WebDriverWait;
 
 import java.time.Duration;
+import java.util.LinkedHashMap;
+import java.util.Map;
 import java.util.function.Supplier;
 
+/**
+ * Primary interaction layer for page objects — click, sendKeys, getText/getAttribute, and their
+ * wait-integrated, retry-hardened, report-logging variants. Every wait blocks through
+ * {@link WaitUtils}; every click routes through {@link #clickWithOverlayRetry} so a transient
+ * ExtJS mask/backdrop is retried automatically instead of failing the test outright.
+ *
+ * <p>Prefer the {@code (By, WaitType, String)} overloads from new page-object code — they make
+ * the wait strategy explicit at the call site instead of relying on a method-specific default.
+ * {@link #fluentClick(By, String)} and {@link #clickBoundlistOptionAcrossPages} are opt-in
+ * variants for specific known-slow or paginated widgets.
+ */
 public class SeleniumUtils {
 
     private SeleniumUtils() {}
@@ -159,10 +172,15 @@ public class SeleniumUtils {
         }
     }
 
+    /** {@link #click(By, String, LogCategory)} with the default {@code UI_ACTION} category. */
     public static void click(By by, String elementName) {
         click(by, elementName, LogCategory.UI_ACTION);
     }
 
+    /**
+     * Waits for {@code by}'s element to be present, clicks it (with overlay retry), then waits
+     * for the ExtJS mask to clear and checks for a resulting popup.
+     */
     public static void click(By by, String elementName, LogCategory category) {
         WebElement element = waitUntilElementPresent(by);
         clickWithOverlayRetry(element, elementName);
@@ -171,10 +189,16 @@ public class SeleniumUtils {
         PopupMonitor.checkAfterAction(elementName);
     }
 
+    /** {@link #click(By, WaitType, String, LogCategory)} with the default {@code UI_ACTION} category. */
     public static void click(By by, WaitType waitType, String elementName) {
         click(by, waitType, elementName, LogCategory.UI_ACTION);
     }
 
+    /**
+     * Waits for {@code by}'s element per {@code waitType} (present/clickable/visible), clicks it
+     * (with overlay retry), then waits for the ExtJS mask to clear and checks for a resulting
+     * popup.
+     */
     public static void click(By by, WaitType waitType, String elementName, LogCategory category) {
         JavascriptExecutorUtils.waitForPageLoad();
         JavascriptExecutorUtils.waitForExtJS();
@@ -192,10 +216,15 @@ public class SeleniumUtils {
         PopupMonitor.checkAfterAction(elementName);
     }
 
+    /** {@link #click(WebElement, WaitType, String, LogCategory)} with the default {@code UI_ACTION} category. */
     public static void click(WebElement element, WaitType waitType, String elementName) {
         click(element, waitType, elementName, LogCategory.UI_ACTION);
     }
 
+    /**
+     * Same as {@link #click(By, WaitType, String, LogCategory)} but for an already-located
+     * {@code element} rather than a fresh {@code By} lookup.
+     */
     public static void click(WebElement element, WaitType waitType, String elementName, LogCategory category) {
         JavascriptExecutorUtils.waitForPageLoad();
         JavascriptExecutorUtils.waitForExtJS();
@@ -276,10 +305,15 @@ public class SeleniumUtils {
         }
     }
 
+    /** {@link #jsClick(By, String, LogCategory)} with the default {@code UI_ACTION} category. */
     public static void jsClick(By by, String elementName) {
         jsClick(by, elementName, LogCategory.UI_ACTION);
     }
 
+    /**
+     * Clicks {@code by}'s element via JavaScript ({@link JavascriptExecutorUtils#click}) instead
+     * of a native Selenium click — bypasses overlay-interception entirely.
+     */
     public static void jsClick(By by, String elementName, LogCategory category) {
         JavascriptExecutorUtils.waitForPageLoad();
         JavascriptExecutorUtils.waitForExtJS();
@@ -288,11 +322,13 @@ public class SeleniumUtils {
         ReportLogger.info(category, elementName + " is clicked successfully");
     }
 
+    /** Waits for and returns {@code childLocator}'s element nested inside {@code parentLocator}'s element. */
     public static WebElement findChildElement(By parentLocator, By childLocator) {
         return WaitUtils.webDriverWait()
                 .until(ExpectedConditions.presenceOfNestedElementLocatedBy(parentLocator, childLocator));
     }
 
+    /** Waits (default timeout) for {@code by}'s element to become genuinely invisible; logs and returns whether it did rather than throwing. */
     public static boolean elementDisappear(By by, String elementName) {
         boolean state = waitUntilElementInVisible(by);
         if (state) {
@@ -317,6 +353,10 @@ public class SeleniumUtils {
         }
         return state;
     }
+    /**
+     * Waits for {@code by}'s element per {@code waitType}, clears it, and sends {@code value} —
+     * masking the logged value for sensitive fields (see {@link SensitiveDataMasker}).
+     */
     public static void sendKeys(By by, WaitType waitType,String value, String elementName) {
         JavascriptExecutorUtils.waitForPageLoad();
         JavascriptExecutorUtils.waitForExtJS();
@@ -328,20 +368,21 @@ public class SeleniumUtils {
             element = waitUntilElementPresent(by);
             element.clear();
             element.sendKeys(value);
-            ExtentLogger.info("SendKeys is done successfully for element " + elementName + " with value " + display);
+            ReportLogger.fieldEntry(elementName + " filled with input value: '" + display + "'");
         } else if (waitType == WaitType.CLICKABLE) {
             element = waitUntilElementClickable(by);
             element.clear();
             element.sendKeys(value);
-            ExtentLogger.info("SendKeys is done successfully for element " + elementName + " with value " + display);
+            ReportLogger.fieldEntry(elementName + " filled with input value: '" + display + "'");
         } else if (waitType == WaitType.VISIBLE) {
             element = waitUntilElementVisible(by);
             element.clear();
             element.sendKeys(value);
-            ExtentLogger.info("SendKeys is done successfully for element " + elementName + " with value " + display);
+            ReportLogger.fieldEntry(elementName + " filled with input value: '" + display + "'");
         }
     }
 
+    /** {@link #sendKeys(By, WaitType, String, String)} using {@link WaitType#PRESENCE}. */
     public static void sendKeys(By by, String value, String elementName) {
         String display = SensitiveDataMasker.isSensitiveByName(elementName)
                 || SensitiveDataMasker.isSensitive(null, by)
@@ -349,13 +390,16 @@ public class SeleniumUtils {
         WebElement element = waitUntilElementPresent(by);
         element.clear();
         element.sendKeys(value);
-        ExtentLogger.info(display + " is entered sucessfully in " + elementName);
+        ReportLogger.fieldEntry(elementName + " filled with input value: '" + display + "'");
     }
 
+    /** Sends TAB to {@code by}'s element — commits the current field and (for a grid cell editor) advances to the next column. */
     public static void pressTab(By by, String elementName) {
         WebElement element = waitUntilElementPresent(by);
         element.sendKeys(Keys.TAB);
-        ExtentLogger.info("Tab key pressed on element: " + elementName);
+        // Item AD (Round 5): debug-gated UI_ACTION, not a plain uncategorized log — this is
+        // routine key-press noise, same treatment as click()/jsClick() already get.
+        ReportLogger.uiAction("Tab key pressed on element: " + elementName);
     }
 
     /**
@@ -371,7 +415,8 @@ public class SeleniumUtils {
     public static void pressEnter(By by, String elementName) {
         WebElement element = waitUntilElementPresent(by);
         element.sendKeys(Keys.ENTER);
-        ExtentLogger.info("Enter key pressed on element: " + elementName);
+        // Item AD (Round 5): debug-gated UI_ACTION, same as pressTab above.
+        ReportLogger.uiAction("Enter key pressed on element: " + elementName);
     }
 
     /**
@@ -473,24 +518,92 @@ public class SeleniumUtils {
         element.sendKeys(Keys.chord(Keys.CONTROL, "a"));
         element.sendKeys(Keys.DELETE);
         String after = element.getAttribute("value");
-        ExtentLogger.info("Cleared " + elementName + " — value before: '" + before + "', after: '"
+        ReportLogger.fieldEntry("Cleared " + elementName + " — value before: '" + before + "', after: '"
                 + after + "'"
                 + (after != null && !after.isEmpty() && after.equals(before)
                     ? " (UNCHANGED — the field is likely read-only; Ctrl+A+DELETE had no effect)"
                     : ""));
     }
+    /** Reads {@code attributeName} from {@code by}'s element and logs it as a field-validation entry. */
     public static String getAttribute(By by, String attributeName, String elementName) {
-        WebElement element = waitUntilElementVisible(by);
+        return getAttribute(waitUntilElementVisible(by), attributeName, elementName);
+    }
+
+    /** {@link #getAttribute(By, String, String)} against an already-resolved element — for callers
+     *  that must disambiguate among multiple DOM matches themselves (e.g. via
+     *  {@link WaitUtils#untilAnyVisible(By, long)} when a locator can resolve to more than one
+     *  element and only one is genuinely visible/rendered) before reading the attribute. */
+    public static String getAttribute(WebElement element, String attributeName, String elementName) {
         String value = element.getAttribute(attributeName);
-        ExtentLogger.info("Attribute '" + attributeName + "' from " + elementName + " is: '" + value + "'");
+        // Item P: FIELD_VALIDATION (read-back), not FIELD_ENTRY (write) — visually distinct badge.
+        ReportLogger.fieldValidation(elementName + " validated from UI after entry: '" + value + "'");
         return value;
     }
 
+    /** Reads DOM property {@code propertyName} from {@code by}'s element and logs it. */
     public static String getDomProperty(By by, String propertyName, String elementName) {
         WebElement element = waitUntilElementVisible(by);
         String value = element.getDomProperty(propertyName);
         ExtentLogger.info("Property '" + propertyName + "' from " + elementName + " is: '" + value + "'");
         return value;
+    }
+
+    /** Reads {@code by}'s element's live computed {@code font-size}/{@code font-family} via
+     *  {@code window.getComputedStyle} — same JS mechanism already used by
+     *  {@code WaitUtils#isGenuinelyVisibleElement}/{@code isGenuineMaskVisible} for their own
+     *  bounding-box checks, applied here to a page-styling regression check instead. Returns
+     *  {@code "<size>|<family>"}, e.g. {@code "13px|Segoe UI Light, Open Sans"}. */
+    public static String getComputedFont(By by, String elementName) {
+        return getComputedFont(waitUntilElementVisible(by), elementName);
+    }
+
+    /** {@link #getComputedFont(By, String)} against an already-resolved element — same use case as
+     *  {@link #getAttribute(WebElement, String, String)}: a locator that can resolve to more than
+     *  one DOM match, where the caller has already picked the genuinely-visible one (e.g. via
+     *  {@link WaitUtils#untilAnyVisible(By, long)}). */
+    public static String getComputedFont(WebElement element, String elementName) {
+        Map<String, String> style = getComputedStyle(element, elementName, "fontSize", "fontFamily");
+        return style.get("fontSize") + "|" + style.get("fontFamily");
+    }
+
+    /** Reads one or more live {@code window.getComputedStyle} properties off {@code by}'s element —
+     *  the general-purpose sibling {@link #getComputedFont(By, String)} is a thin wrapper over.
+     *  Property names are JS camelCase computed-style keys (e.g. {@code "color"},
+     *  {@code "backgroundColor"}, {@code "borderColor"}, {@code "fontWeight"}, {@code "width"},
+     *  {@code "height"}, {@code "padding"}), not CSS kebab-case. Added for the UI-contract
+     *  validation framework ({@code com.gsl.validation.ui}), which needs color/border/dimension
+     *  properties {@link #getComputedFont} alone can't provide. */
+    public static Map<String, String> getComputedStyle(By by, String elementName, String... properties) {
+        return getComputedStyle(waitUntilElementVisible(by), elementName, properties);
+    }
+
+    /** {@link #getComputedStyle(By, String, String...)} against an already-resolved element — same
+     *  use case as {@link #getAttribute(WebElement, String, String)}.
+     *
+     *  <p>{@code properties} are inlined directly into the JS source (as {@code s.<property>}
+     *  reads) rather than passed as an {@code executeScript} array argument — this codebase has no
+     *  existing precedent for passing array args through {@link JavascriptExecutorUtils#executeScript},
+     *  and every caller here only ever passes fixed internal literal property names (never
+     *  test/user data), so string-building the script is both simpler and safe. */
+    public static Map<String, String> getComputedStyle(WebElement element, String elementName, String... properties) {
+        StringBuilder script = new StringBuilder("var s=window.getComputedStyle(arguments[0]); return ");
+        for (int i = 0; i < properties.length; i++) {
+            if (i > 0) script.append(" + '|' + ");
+            script.append("s.").append(properties[i]);
+        }
+        script.append(";");
+        Object result = JavascriptExecutorUtils.executeScript(script.toString(), element);
+        // Chrome's getComputedStyle serializes non-generic font-family names wrapped in double
+        // quotes (e.g. "Segoe UI Light", "Open Sans") — a CSSOM serialization detail, not
+        // meaningful content, so it's stripped here to keep comparisons against plain expected
+        // strings (e.g. PageStylingSpec/FieldStyleSpec) accurate.
+        String[] values = String.valueOf(result).replace("\"", "").split("\\|", -1);
+        Map<String, String> style = new LinkedHashMap<>();
+        for (int i = 0; i < properties.length; i++) {
+            style.put(properties[i], i < values.length ? values[i] : null);
+        }
+        ReportLogger.fieldValidation(elementName + " computed style " + style);
+        return style;
     }
 
     // Wait wrappers delegate to the centralized WaitUtils (single home for all explicit waits).
@@ -511,6 +624,7 @@ public class SeleniumUtils {
         return WaitUtils.untilVisible(by);
     }
 
+    /** Whether {@code by}'s element becomes visible within {@code timeoutInSeconds} — never throws. */
     public static boolean isElementPresent(By by, int timeoutInSeconds) {
         try {
             WaitUtils.untilVisible(by, timeoutInSeconds);
@@ -528,10 +642,12 @@ public class SeleniumUtils {
         return WaitUtils.untilInvisible(by, seconds);
     }
 
+    /** {@link #getText(By, String, LogCategory)} with the default {@code UI_ACTION} category. */
     public static String getText(By by, String elementName) {
         return getText(by, elementName, LogCategory.UI_ACTION);
     }
 
+    /** Reads and logs {@code by}'s element's {@code innerText}. */
     public static String getText(By by, String elementName, LogCategory category) {
         WebElement element = waitUntilElementVisible(by);
         String text = element.getAttribute("innerText");
@@ -541,22 +657,27 @@ public class SeleniumUtils {
 
     // --- ElementMeta overloads (delegate to existing String elementName methods) ---
 
+    /** {@link ElementMeta} overload of {@link #click(By, String)}. */
     public static void click(By by, ElementMeta meta) {
         click(by, meta.getName());
     }
 
+    /** {@link ElementMeta} overload of {@link #click(By, WaitType, String)}. */
     public static void click(By by, WaitType waitType, ElementMeta meta) {
         click(by, waitType, meta.getName());
     }
 
+    /** {@link ElementMeta} overload of {@link #click(WebElement, WaitType, String)}. */
     public static void click(WebElement element, WaitType waitType, ElementMeta meta) {
         click(element, waitType, meta.getName());
     }
 
+    /** {@link ElementMeta} overload of {@link #sendKeys(By, String, String)}. */
     public static void sendKeys(By by, String value, ElementMeta meta) {
         sendKeys(by, value, meta.getName());
     }
 
+    /** {@link ElementMeta} overload of {@link #sendKeys(By, WaitType, String, String)}. */
     public static void sendKeys(By by, WaitType waitType, String value, ElementMeta meta) {
         sendKeys(by, waitType, value, meta.getName());
     }
@@ -608,6 +729,7 @@ public class SeleniumUtils {
         fluentClick(by, meta.getName());
     }
 
+    /** Waits until {@code locator}'s element is displayed, enabled, and not read-only. */
     public static void waitForInputReady(By locator) {
         WebDriverWait wait = WaitUtils.webDriverWait(ConfigFactory.getWaitConfig().interactionWaitSeconds());
         wait.until(driver -> {

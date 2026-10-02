@@ -2,6 +2,20 @@ package com.gsl.enums.Finance.Operations.Common;
 
 import com.gsl.enums.PopupType;
 
+/**
+ * Catalog of every confirmation/info/warning popup that can appear across the finance voucher
+ * document flows (AP/AR/GV), pairing each popup's expected literal text with its {@link
+ * PopupType} classification. {@link com.gsl.pages.Common.DocumentMessageBox#verifyMessage} uses
+ * a constant to assert the popup actually on screen matches what the caller expects, and the
+ * various {@code *Transaction}/{@code *Flow}/{@code *Handler} classes (e.g. {@code
+ * TdsAutoReleaseTransaction}, {@code OnAccountClearConfirmHandler}) use it to decide which
+ * confirmation popup they are dismissing and which button to click next.
+ *
+ * <p>Where the live popup text carries a dynamic prefix (e.g. {@code "Document No: <docno> - "}),
+ * the constant deliberately omits that prefix and relies on {@code verifyMessage}'s {@code
+ * contains()}-style check to still match regardless of which document triggered it — see
+ * individual constants' notes for which ones do this.
+ */
 public enum DocumentMessageBoxMessage {
 
     /** Appears when On Account is toggled to Yes — "OK, Go Ahead" button clears sub-ledger/TDS/payment rows. */
@@ -160,6 +174,38 @@ public enum DocumentMessageBoxMessage {
     DELETE_SUCCESS_RESULT(
             "Deleted Successfully.",
             PopupType.INFO
+    ),
+
+    /**
+     * "Alert" shown after accepting {@link #RELEASE_AFTER_SAVE_CONFIRMATION} when the saving user
+     * is also the one who would auto-post (company maker/poster policy): {@code "Document is
+     * eligible for Auto posting. As per the company policy, same user can not create/modify and
+     * post the document. Document will get saved in Unposted state."} — confirmed live (run
+     * 20260930_163632, EDIT-HEADER-01, user 'arn'). Single OK button; clicking it reveals the
+     * normal "Document No: … saved" Result dialog. Role/user-dependent, so detected defensively.
+     */
+    AUTO_POST_SAME_USER_ALERT(
+            "Document is eligible for Auto posting",
+            PopupType.INFO
+    ),
+
+    /**
+     * "Confirmation" raised by Adjustment Entry's OK button for a non-advance (On Account = No)
+     * AP voucher when the adjusted total differs from the row's payment amount — confirmed live
+     * in both Add and Edit (user screenshots, 2026-09-30). Buttons: "Update payment amount" /
+     * "I will adjust more".
+     */
+    ADJUSTMENT_AMOUNT_MISMATCH_CONFIRMATION(
+            "Document adjustment is mandatory for non-advance type payment voucher. "
+                    + "Adjusted amount should be equal to payment amount of current record.",
+            PopupType.CONFIRM
+    ),
+
+    /** "Result" shown after "Update payment amount": {@code "Document No: <docno> - Updated Successfully."}
+     *  (Edit screenshot); prefix omitted, same convention as the other Result constants. */
+    PAYMENT_AMOUNT_UPDATED_RESULT(
+            "Updated Successfully.",
+            PopupType.INFO
     );
 
     private final String text;
@@ -170,6 +216,9 @@ public enum DocumentMessageBoxMessage {
         this.expectedType = expectedType;
     }
 
+    /** Returns this popup's expected (or dynamic-prefix-omitting partial) literal text. */
     public String getText()            { return text; }
+
+    /** Returns the {@link PopupType} this popup is expected to render as. */
     public PopupType getExpectedType() { return expectedType; }
 }

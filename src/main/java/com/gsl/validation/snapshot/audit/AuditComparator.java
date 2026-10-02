@@ -117,12 +117,39 @@ public class AuditComparator {
     private record ExpectedAuditChange(String recordId, AuditOperation operation, String column,
             Object expectedOld, Object expectedNew) {}
 
+    /** Derives the Expected Audit side directly from the data table's own passed
+     *  {@link ColumnCheckResult}s (row-level INSERT/DELETE plus per-column MUST_CHANGE/
+     *  SYSTEM_CHANGE) — see the inline comments below for the insert/delete-explode guard that
+     *  keeps a freshly inserted/deleted row's own columns from also generating a bogus UPDATE
+     *  expectation. */
     @AuditTrace("deriveExpected")
     private List<ExpectedAuditChange> deriveExpected(String tableName, List<ColumnCheckResult> checks,
             Set<String> excludedColumnsUpper) {
         List<ExpectedAuditChange> expected = new ArrayList<>();
         if (checks == null) return expected;
         Set<String> excluded = excludedColumnsUpper == null ? Set.of() : excludedColumnsUpper;
+
+        // Regression fix (Item Z follow-up): a MUST_CHANGE/SYSTEM_CHANGE column belonging to a row
+        // that is ITSELF being freshly inserted or deleted (DiffEngine's INSERT/DELETE-explode
+        // enrichment — Items G/Z) never gets its own separate in-place audit UPDATE entry — the
+        // whole row is new/gone, already covered by the <row>-level INSERT/DELETE expectation
+        // below, and the real aud2_* trail records ONE row-level INSERT/DELETE change, not a
+        // per-column UPDATE. Without this guard, every MUST_CHANGE-overridden column on a Create
+        // row (e.g. finvchdet.damount/isreversal/nartext) falsely expected an audit UPDATE that
+        // can never exist — confirmed live: "damount — expected an audit-recorded UPDATE but no
+        // matching audit change was found" on every Create invocation once Item Z added those
+        // overrides. Collected first so the per-column pass below can skip these business keys
+        // entirely, regardless of which display-string convention produced beforeDisplay/afterDisplay
+        // for a given column check.
+        Set<String> insertedOrDeletedKeys = new java.util.HashSet<>();
+        for (ColumnCheckResult check : checks) {
+            if (check.passed() && "<row>".equals(check.column())) {
+                String rowLabel = check.expectationLabel();
+                if (rowLabel.startsWith("EXPECTED INSERT") || rowLabel.startsWith("EXPECTED DELETE")) {
+                    insertedOrDeletedKeys.add(check.businessKey());
+                }
+            }
+        }
 
         for (ColumnCheckResult check : checks) {
             if (!check.passed()) continue;
@@ -137,6 +164,8 @@ public class AuditComparator {
                 continue;
             }
 
+            if (insertedOrDeletedKeys.contains(check.businessKey())) continue;
+
             String label = check.expectationLabel();
             boolean isRealChangeExpectation = label.startsWith("MUST_CHANGE") || label.startsWith("SYSTEM_CHANGE");
             boolean actuallyDiffered = !java.util.Objects.equals(check.beforeDisplay(), check.afterDisplay());
@@ -149,10 +178,13 @@ public class AuditComparator {
         return expected;
     }
 
+    /** First actual {@link AuditChange} satisfying {@link #matches} for {@code exp}; {@code null} if none. */
     private AuditChange findMatch(List<AuditChange> actual, TableRule dataTableRule, ExpectedAuditChange exp) {
         return actual.stream().filter(a -> matches(a, dataTableRule, exp)).findFirst().orElse(null);
     }
 
+    /** Whether actual audit change {@code act} satisfies expected change {@code exp} — see the
+     *  inline comments below for the row-level and reconciled-DELETE+INSERT matching rules. */
     private boolean matches(AuditChange act, TableRule dataTableRule, ExpectedAuditChange exp) {
         String tableName = dataTableRule.getTableName();
         if (!act.table().equalsIgnoreCase(tableName)) return false;
@@ -238,6 +270,8 @@ public class AuditComparator {
         return best;
     }
 
+    /** {@code true} if {@code candidate}'s {@code transaction_id} is numerically (falling back to
+     *  lexicographically) greater than {@code current}'s. */
     private boolean isLater(Map<String, Object> candidate, Map<String, Object> current) {
         Object candidateId = DbValueNormalizer.getIgnoreCase(candidate, "transaction_id");
         Object currentId = DbValueNormalizer.getIgnoreCase(current, "transaction_id");
@@ -248,6 +282,7 @@ public class AuditComparator {
         }
     }
 
+    /** First row in {@code snapshot} whose business key equals {@code businessKey}; {@code null} if none. */
     private static Map<String, Object> findByBusinessKey(TableRule tableRule, TableSnapshot snapshot, String businessKey) {
         if (snapshot == null) return null;
         for (Map<String, Object> row : snapshot.getRows()) {
@@ -256,6 +291,8 @@ public class AuditComparator {
         return null;
     }
 
+    /** Business-key display string for {@code row} — same "col1=val1, col2=val2" format used
+     *  throughout this package (see {@link AuditChange#recordId()}). */
     private static String businessKeyOf(TableRule tableRule, Map<String, Object> row) {
         List<String> columns = tableRule.getBusinessKeyColumns();
         if (columns == null || columns.isEmpty()) return "(no key)";

@@ -14,9 +14,11 @@ import java.util.Optional;
 @RegisterBeanMapper(AdmCls.class)
 public interface FinAccClassDao {
 
+    /** Returns the number of admcls rows with the given name — used as an existence/duplicate check. */
     @SqlQuery("SELECT COUNT(*) FROM admcls WHERE clsname = :name")
     int countByName(@Bind("name") String name);
 
+    /** Looks up the admcls row by exact {@code clsname} match. */
     @SqlQuery("SELECT clscode, cmpcode, clsname, clstype, ext FROM admcls WHERE clsname = :name")
     Optional<AdmCls> findByName(@Bind("name") String name);
 

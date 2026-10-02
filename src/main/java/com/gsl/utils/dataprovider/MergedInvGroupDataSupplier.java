@@ -14,8 +14,31 @@ import java.util.stream.Collectors;
 
 import static io.github.sskorol.data.TestDataReader.use;
 
+/**
+ * DataSupplier for Inventory Group creation tests (e.g. {@code CreateGroup#CreateDivision}) —
+ * joins the shared {@code MasterTestData} sheet against the group-hierarchy Excel sheet
+ * ({@code ConfigFactory.getExcelDataConfig().inventorygroupPath()}, "CreateGroup" sheet) on
+ * {@code TestCaseID}, keeping only rows whose {@code testcasename} matches the invoking test
+ * method's own name AND whose {@code TestCaseID} appears in both sheets.
+ *
+ * <p>{@code flatMap=true} — each matched {@link com.gsl.testdata.Inventory.Product_Definition.Item_Hierarchy.Group.Group}
+ * row becomes its own {@link MergedInventoryGroupData} invocation (one test invocation per row,
+ * unlike the Account Group suppliers' single-invocation model).
+ *
+ * <p>{@code TODO-confirm:} the {@code System.out.println}/emoji debug lines below look like
+ * leftover diagnostic scaffolding rather than intentional reporting (unlike this framework's
+ * {@code Log}/{@code ReportLogger} calls elsewhere) — left as-is since removing them is a
+ * behavior change outside this Javadoc-only pass.
+ */
 public class MergedInvGroupDataSupplier {
 
+    /**
+     * {@code true} iff {@code value} (case/space-insensitive, spaces mapped to underscores) names
+     * a constant of {@code enumClass}. {@code TODO-confirm:} not currently called anywhere in this
+     * class's own {@link #dataSupplier} — appears to be leftover scaffolding (the sibling {@link
+     * MergedReceiptDataSupplier} has an identical helper that IS used for its item/set-selection
+     * filtering); left in place since removing it is a behavior change outside this Javadoc-only pass.
+     */
     private <E extends Enum<E>> boolean isInEnum(String value, Class<E> enumClass) {
         if (value == null || value.trim().isEmpty()) {
             return false;
@@ -28,6 +51,16 @@ public class MergedInvGroupDataSupplier {
         }
     }
 
+    /**
+     * Joins {@code MasterTestData} against the group-hierarchy sheet on {@code TestCaseID} for
+     * every row matching {@code method}'s name — see the class Javadoc's join/filter rule.
+     *
+     * @param method the TestNG-injected test method; only its name is used, to match {@code
+     *               testcasename} in the {@code MasterTestData} sheet
+     * @throws IllegalStateException if a matched {@code TestCaseID} has no corresponding row in
+     *                               the group-hierarchy sheet (should be unreachable given the
+     *                               join already filters on that same {@code TestCaseID})
+     */
     @DataSupplier(name = "dataSupplier", flatMap = true)
     public StreamEx<MergedInventoryGroupData> dataSupplier(Method method) {
         String methodName = method.getName();

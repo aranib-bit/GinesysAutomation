@@ -25,6 +25,15 @@ import java.util.stream.Collectors;
  */
 public class AnnotationMethodInterceptor implements IMethodInterceptor {
 
+    /**
+     * Filters {@code methods} down to those matching every {@code fw.*} system property that was
+     * supplied for this run. A method without a {@link FrameworkAnnotation} always runs; when
+     * {@code fw.group} is set, the group is resolved via {@link SubModuleResolver} and a method
+     * whose sub-module can't be resolved is excluded (logged as a warning) rather than crashing
+     * the filter.
+     *
+     * @return {@code methods} unchanged when no {@code fw.*} property is set, otherwise the filtered subset
+     */
     @Override
     public List<IMethodInstance> intercept(List<IMethodInstance> methods, ITestContext context) {
         String propModule    = System.getProperty("fw.module");

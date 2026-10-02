@@ -23,9 +23,13 @@ public class TdsSectionLookupResult {
     private long code;
     private String tdsName;
     private String section;
+    /** Coded source classification for this TDS entry with its human-readable name below — same
+     *  concept as {@code ApVoucherApiClient}'s {@code srcCode} query parameter (1 = "COMPANY" in
+     *  every captured request). */
     private int tdsSource;
     private String tdsSourceName;
     private double tdsRate;
+    /** The tax authority/agency this TDS is deposited against, with its name below. */
     private long tdsAgencyCode;
     private String tdsAgencyName;
     private String tdsSourceType;

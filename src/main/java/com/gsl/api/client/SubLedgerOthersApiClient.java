@@ -34,6 +34,7 @@ public class SubLedgerOthersApiClient extends ApiClient {
     /** Confirmed via HAR: {@code GetSubledgerClassLookup?classType=O} resolves to clscode 6 ("Others") — never hardcoded here. */
     private static final String OTHERS_CLASS_TYPE = "O";
 
+    /** Wraps an already-authenticated session {@code spec} — see {@link ApiClient}'s class Javadoc. */
     public SubLedgerOthersApiClient(RequestSpecification spec) {
         super(spec);
     }

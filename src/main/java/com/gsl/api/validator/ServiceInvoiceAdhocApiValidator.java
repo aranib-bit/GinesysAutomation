@@ -23,48 +23,76 @@ public final class ServiceInvoiceAdhocApiValidator {
 
     private ServiceInvoiceAdhocApiValidator() {}
 
-    /** The terminal Save response — success flag + non-blank scheme doc number. */
+    /**
+     * The terminal Save response — success flag + non-blank scheme doc number.
+     *
+     * @throws ApiException if {@code response} reports {@code success=false} or has a blank {@code schemeDocno}
+     */
     public static void validate(ServiceInvoiceAdhocCreateResponse response) {
         ApiResponseValidator.requireSuccess(response.isSuccess(), response.getError(), "ServiceInvoice/Save");
         ApiResponseValidator.requireNonBlank(response.getSchemeDocno(), "schemeDocno", "ServiceInvoice/Save");
     }
 
-    /** GetOwnerSiteOtherDetails — must resolve to a non-null result. */
+    /**
+     * GetOwnerSiteOtherDetails — must resolve to a non-null result.
+     *
+     * @throws ApiException if {@code detail} is {@code null}
+     */
     public static void validateOwnerSiteDetail(OwnerSiteDetail detail) {
         if (detail == null) {
             throw new ApiException("GetOwnerSiteOtherDetails returned no result", 0);
         }
     }
 
-    /** GetServices — a well-formed (possibly empty) list; never null. */
+    /**
+     * GetServices — a well-formed (possibly empty) list; never null.
+     *
+     * @throws ApiException if {@code services} is {@code null}
+     */
     public static void validateServices(List<ServiceLookupResult> services) {
         if (services == null) {
             throw new ApiException("GetServices returned a null list", 0);
         }
     }
 
-    /** GetAdmSchemeDocList — a well-formed (possibly empty) list; never null. */
+    /**
+     * GetAdmSchemeDocList — a well-formed (possibly empty) list; never null.
+     *
+     * @throws ApiException if {@code schemes} is {@code null}
+     */
     public static void validateSchemeDocList(List<AdmSchemeDocEntry> schemes) {
         if (schemes == null) {
             throw new ApiException("GetAdmSchemeDocList returned a null list", 0);
         }
     }
 
-    /** GetVendors — must resolve at least one live vendor for a valid site/ou. */
+    /**
+     * GetVendors — must resolve at least one live vendor for a valid site/ou.
+     *
+     * @throws ApiException if {@code vendors} is {@code null} or empty
+     */
     public static void validateVendors(List<VendorLookupResult> vendors) {
         if (vendors == null || vendors.isEmpty()) {
             throw new ApiException("GetVendors returned no vendors", 0);
         }
     }
 
-    /** GetOtherDetails — must resolve to a non-null result for a valid vendor. */
+    /**
+     * GetOtherDetails — must resolve to a non-null result for a valid vendor.
+     *
+     * @throws ApiException if {@code details} is {@code null}
+     */
     public static void validateOtherDetails(GetOtherDetailsResult details) {
         if (details == null) {
             throw new ApiException("GetOtherDetails returned no result", 0);
         }
     }
 
-    /** CalculateServiceCharges — must resolve to a non-null result for valid input. */
+    /**
+     * CalculateServiceCharges — must resolve to a non-null result for valid input.
+     *
+     * @throws ApiException if {@code result} is {@code null}
+     */
     public static void validateServiceCharges(CalculateServiceChargesResult result) {
         if (result == null) {
             throw new ApiException("CalculateServiceCharges returned no result", 0);

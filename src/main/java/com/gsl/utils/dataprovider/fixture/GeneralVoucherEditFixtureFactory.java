@@ -20,6 +20,7 @@ public final class GeneralVoucherEditFixtureFactory {
             (scenario, methodName) -> switch (methodName) {
                 case "editGeneralVoucherHeader" -> scenario == GeneralVoucherEditVariant.ScenarioType.HEADER_ONLY;
                 case "editGeneralVoucherDetailLine" -> scenario == GeneralVoucherEditVariant.ScenarioType.DETAIL_LINE;
+                case "editGeneralVoucherPaymentInfo" -> scenario == GeneralVoucherEditVariant.ScenarioType.PAYMENT_INFO;
                 // Unknown method name — DbGeneralVoucherEditDataSource#load already throws its own
                 // SkipException for this case before ever calling shouldRun(), so this default is
                 // unreachable in practice; false is the safe value if that guard is ever removed.

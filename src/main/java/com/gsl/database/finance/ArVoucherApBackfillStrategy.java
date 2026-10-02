@@ -41,6 +41,12 @@ public final class ArVoucherApBackfillStrategy implements BackfillStrategy {
     private final int ouCode;
     private final long empCode;
 
+    /**
+     * @param requiredClsCode the {@code admcls.clscode} the AR Voucher must be raised against
+     * @param ownerSiteCode   AP Voucher's owner site (drives which site's user/session creates the AR Voucher)
+     * @param ouCode          organizational unit code for the created AR Voucher
+     * @param empCode         logged-in employee code used to create the AR Voucher
+     */
     public ArVoucherApBackfillStrategy(long requiredClsCode, int ownerSiteCode, int ouCode, long empCode) {
         this.requiredClsCode = requiredClsCode;
         this.ownerSiteCode = ownerSiteCode;
@@ -48,6 +54,7 @@ public final class ArVoucherApBackfillStrategy implements BackfillStrategy {
         this.empCode = empCode;
     }
 
+    /** Creates {@code neededQuantity} AR Vouchers against {@link #requiredClsCode} via {@code platform}; see the class Javadoc for the data shape this produces. */
     @Override
     public void backfill(ApiPlatform platform, int neededQuantity) {
         ApiSessionBundle session = ApiSessionFactory.create(platform);
@@ -109,6 +116,7 @@ public final class ArVoucherApBackfillStrategy implements BackfillStrategy {
         }
     }
 
+    /** {@inheritDoc} Always {@code "arVoucherBackfill"} — see the inline comment below for why {@code K6BULK} never actually reaches this path. */
     @Override
     public String k6ScriptKey() {
         // No k6 script exists for this path yet — quantities here are always small (well under

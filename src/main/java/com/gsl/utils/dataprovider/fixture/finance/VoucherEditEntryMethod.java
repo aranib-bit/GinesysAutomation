@@ -10,7 +10,9 @@ package com.gsl.utils.dataprovider.fixture.finance;
  * package for the same reason.
  */
 public enum VoucherEditEntryMethod {
+    /** Opens the voucher via the grid row's Actions menu → Edit item. */
     ACTIONS_EDIT,
+    /** Opens the voucher by double-clicking its grid row directly. */
     DOUBLE_CLICK_EDIT;
 
     /**

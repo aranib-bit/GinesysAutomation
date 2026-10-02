@@ -4,7 +4,6 @@ import com.gsl.database.DataAvailabilityGuard;
 import com.gsl.database.DatabaseManager;
 import com.gsl.database.DbQueryBuffer;
 import com.gsl.database.DocumentReservationRegistry;
-import com.gsl.database.dao.finance.FinVchMainDao;
 import com.gsl.database.finance.GeneralVoucherApiBackfillStrategy;
 import com.gsl.enums.Finance.Operations.Common.DocumentMessageBoxMessage;
 import com.gsl.enums.GlAccountType;
@@ -23,6 +22,7 @@ import com.gsl.utils.dataprovider.fixture.finance.GeneralVoucherScenarioType;
 import com.gsl.utils.dataprovider.fixture.finance.GeneralVoucherTag;
 import com.gsl.utils.dataprovider.fixture.finance.GeneralVoucherVariant;
 import com.gsl.utils.dataprovider.source.TestDataSource;
+import com.gsl.utils.dataprovider.source.finance.common.AccountingPeriodCache;
 import com.gsl.utils.dataprovider.source.finance.common.AccountingPeriodResolver;
 import org.jdbi.v3.core.Jdbi;
 import org.testng.SkipException;
@@ -62,19 +62,33 @@ public class DbGeneralVoucherRevertDataSource implements TestDataSource<MergedFi
     private final String xmlGroupParam;
     private final String xmlTagParam;
 
+    /** No execution-group/tag filter — every combination is emitted (full-suite run). */
     public DbGeneralVoucherRevertDataSource() {
         this(null, null);
     }
 
+    /** @param xmlGroupParam fallback {@code gv.group} value from TestNG {@code <parameter>}, used
+     *                       when the {@code gv.group} system property is absent (IntelliJ direct-run path) */
     public DbGeneralVoucherRevertDataSource(String xmlGroupParam) {
         this(xmlGroupParam, null);
     }
 
+    /**
+     * @param xmlGroupParam see {@link #DbGeneralVoucherRevertDataSource(String)}
+     * @param xmlTagParam   fallback {@code gv.tag} value from TestNG {@code <parameter>}, used
+     *                      when the {@code gv.tag} system property is absent
+     */
     public DbGeneralVoucherRevertDataSource(String xmlGroupParam, String xmlTagParam) {
         this.xmlGroupParam = xmlGroupParam;
         this.xmlTagParam = xmlTagParam;
     }
 
+    /**
+     * Builds one row per {@link GeneralVoucherVariant} surviving the active {@code gv.group}/
+     * {@code gv.tag} filter (via {@link #resolveOneRevertCandidate}) plus, when one is available,
+     * the one closed-period negative row (via {@link #resolveClosedPeriodNegativeCandidate}) —
+     * see the class Javadoc.
+     */
     @Override
     public List<MergedFinanceGeneralVoucherData> load(String methodName) {
         GeneralVoucherExecutionGroup activeGroup = GeneralVoucherCombinationFilter.resolveActiveGroup(xmlGroupParam);
@@ -94,8 +108,16 @@ public class DbGeneralVoucherRevertDataSource implements TestDataSource<MergedFi
 
         List<MergedFinanceGeneralVoucherData> results = new ArrayList<>();
         for (GeneralVoucherScenarioType scenario : scenarios) {
-            for (GeneralVoucherVariant variant : GeneralVoucherCombinations.allCombinations()) {
+            // Round 20: wrapped for consistency with Create's own call site — Revert resolves an
+            // EXISTING posted voucher rather than generating new payment data, so this variant's
+            // knownCheque flag is never actually read anywhere in the Revert flow today; harmless
+            // to assign regardless.
+            for (GeneralVoucherVariant variant
+                    : GeneralVoucherFixtureFactory.assignKnownChequeFlags(GeneralVoucherCombinations.allCombinations())) {
                 if (!GeneralVoucherCombinationFilter.survives(variant, activeGroup, activeTags)) continue;
+                // Round 6: multi-row-payment vouchers are a Create-only dimension — Revert reverts an
+                // existing Posted voucher and does not depend on per-row payments.
+                if (variant.isMultiRowPayment()) continue;
                 results.add(resolveOneRevertCandidate(jdbi, variant, claimedThisRun));
             }
         }
@@ -138,9 +160,11 @@ public class DbGeneralVoucherRevertDataSource implements TestDataSource<MergedFi
         gatheringLog.add("  Combination='" + variant.getVariantId() + "', required account type=" + accountType);
 
         DbQueryBuffer.start();
-        Long vchcode;
+        // Finding B (Round 12 continued): claimOnePostedVoucher now hands back the already-fetched
+        // FinVchMain directly — no second findByVoucherCode round trip for the same row.
+        FinVchMain header;
         try {
-            vchcode = DataAvailabilityGuard.selectOrBackfill(
+            header = DataAvailabilityGuard.selectOrBackfill(
                     () -> claimOnePostedVoucher(jdbi, accountType, claimedThisRun, gatheringLog)
                             .orElseThrow(() -> new SkipException(
                                     "No documents found for the criteria: vchtype='G', release_status='P', "
@@ -158,10 +182,7 @@ public class DbGeneralVoucherRevertDataSource implements TestDataSource<MergedFi
                 gatheringLog.addAll(executedQueries);
             }
         }
-
-        FinVchMain header = jdbi.onDemand(FinVchMainDao.class).findByVoucherCode(vchcode)
-                .orElseThrow(() -> new IllegalStateException(
-                        "Claimed vchcode=" + vchcode + " vanished before its header could be re-read."));
+        long vchcode = header.getVchcode();
 
         gatheringLog.add("  Claimed voucher scheme_docno='" + header.getSchemeDocno()
                 + "' (vchcode=" + vchcode + "), release_status='" + header.getReleaseStatus() + "'");
@@ -238,7 +259,7 @@ public class DbGeneralVoucherRevertDataSource implements TestDataSource<MergedFi
      * "current" (or that none could be, falling back immediately) so a report reader can see why a
      * given candidate was or wasn't preferred.
      */
-    private static Optional<Long> claimOnePostedVoucher(
+    private static Optional<FinVchMain> claimOnePostedVoucher(
             Jdbi jdbi, GlAccountType type, Set<Long> claimedThisRun, List<String> gatheringLog) {
         // No DISTINCT here (round 6 fix) — the account-type match is expressed as an EXISTS
         // subquery rather than a JOIN, so m.vchcode is already unique per row (finvchmain is the
@@ -248,32 +269,42 @@ public class DbGeneralVoucherRevertDataSource implements TestDataSource<MergedFi
         // ycode/vchdt weren't selected — confirmed live (Jenkins run 20260831_213639): this
         // crashed claimOnePostedVoucher on every call, skipping 100% of revertGeneralVoucher's
         // rows via SkipException before a single one loaded.
+        //
+        // Finding A (Round 12): SELECT m.* (not just m.vchcode) + .mapToBean — removes the scan
+        // loop's own per-candidate SELECT * FROM finvchmain WHERE vchcode = ? round trip, the
+        // dominant cost of a deep/exhausted scan. Candidate order/filters/reservation bookkeeping
+        // are unchanged.
         String sql =
-            "SELECT m.vchcode FROM finvchmain m " +
+            "SELECT m.* FROM finvchmain m " +
             "WHERE m.vchtype = 'G' AND m.release_status = 'P' " +
             "AND EXISTS (SELECT 1 FROM finvchdet d JOIN fingl g ON g.glcode = d.glcode " +
             "WHERE d.vchcode = m.vchcode AND g.type = :type) " +
             "AND NOT EXISTS (SELECT 1 FROM finvchdet d2 WHERE d2.vchcode = m.vchcode AND d2.brsdt IS NOT NULL) " +
             "ORDER BY m.ycode DESC, m.vchdt DESC";
 
-        List<Long> candidates = jdbi.withHandle(handle ->
+        List<FinVchMain> candidates = jdbi.withHandle(handle ->
             handle.createQuery(sql)
                 .bind("type", type.code())
-                .mapTo(Long.class)
+                .mapToBean(FinVchMain.class)
                 .list()
         );
 
-        FinVchMainDao headerDao = jdbi.onDemand(FinVchMainDao.class);
-        Long currentYcode = AccountingPeriodResolver.logAndResolveCurrentYcode(jdbi, headerDao, candidates, gatheringLog);
+        // One cache for both passes below — same candidate pool, same OU/year/month data, so a
+        // period lookup resolved in pass 1 (or for a candidate pass 1 rejects) is reused in pass 2
+        // instead of re-querying admmonth/admou_month/admsite_ou/admou_year per candidate again.
+        // Created BEFORE logAndResolveCurrentYcode (Finding C) — see that method's own Javadoc for
+        // why: routes its first-candidate lookup through this same cache instead of duplicating it.
+        AccountingPeriodCache periodCache = new AccountingPeriodCache();
+        Long currentYcode = AccountingPeriodResolver.logAndResolveCurrentYcode(jdbi, candidates, gatheringLog, periodCache);
 
         // Pass 1: current-year candidates only.
         if (currentYcode != null) {
-            Optional<Long> claimed = scanForClaim(jdbi, headerDao, candidates, claimedThisRun,
+            Optional<FinVchMain> claimed = scanForClaim(jdbi, candidates, claimedThisRun, periodCache,
                     header -> header.getYcode() == currentYcode);
             if (claimed.isPresent()) return claimed;
         }
         // Pass 2 (fallback): any open-period candidate, same ycode DESC/vchdt DESC order.
-        return scanForClaim(jdbi, headerDao, candidates, claimedThisRun, header -> true);
+        return scanForClaim(jdbi, candidates, claimedThisRun, periodCache, header -> true);
     }
 
     /**
@@ -281,22 +312,24 @@ public class DbGeneralVoucherRevertDataSource implements TestDataSource<MergedFi
      * first one that's not already claimed this run, whose period is OPEN, and that satisfies
      * {@code extraFilter} (e.g. "same ycode as today") — reserving it via
      * {@link DocumentReservationRegistry} before returning. Used for both passes of
-     * {@link #claimOnePostedVoucher}.
+     * {@link #claimOnePostedVoucher}. {@code periodCache} memoizes the OU/year/month lookups
+     * {@link AccountingPeriodResolver#isEditable} would otherwise re-query per rejected candidate
+     * (see {@link AccountingPeriodCache}'s own Javadoc) — callers pass one shared instance across
+     * both scan passes.
      */
-    private static Optional<Long> scanForClaim(Jdbi jdbi, FinVchMainDao headerDao, List<Long> candidates,
-            Set<Long> claimedThisRun, java.util.function.Predicate<FinVchMain> extraFilter) {
-        for (Long vchcode : candidates) {
+    private static Optional<FinVchMain> scanForClaim(Jdbi jdbi, List<FinVchMain> candidates,
+            Set<Long> claimedThisRun, AccountingPeriodCache periodCache,
+            java.util.function.Predicate<FinVchMain> extraFilter) {
+        for (FinVchMain header : candidates) {
+            long vchcode = header.getVchcode();
             if (claimedThisRun.contains(vchcode)) continue;
-
-            FinVchMain header = headerDao.findByVoucherCode(vchcode).orElse(null);
-            if (header == null) continue;
-            if (!AccountingPeriodResolver.isEditable(jdbi, header, PeriodDomain.FINANCE)) continue;
+            if (!periodCache.isEditable(jdbi, header, PeriodDomain.FINANCE)) continue;
             if (!extraFilter.test(header)) continue;
 
             if (!DocumentReservationRegistry.tryReserve(String.valueOf(vchcode))) continue;
 
             claimedThisRun.add(vchcode);
-            return Optional.of(vchcode);
+            return Optional.of(header);
         }
         return Optional.empty();
     }
@@ -316,7 +349,9 @@ public class DbGeneralVoucherRevertDataSource implements TestDataSource<MergedFi
     private static Optional<MergedFinanceGeneralVoucherData> resolveClosedPeriodNegativeCandidate(
             Jdbi jdbi, Set<Long> claimedThisRun) {
 
-        Optional<Long> claimed = claimOneClosedPeriodVoucher(jdbi, claimedThisRun);
+        // Finding B (Round 12 continued): no second findByVoucherCode — reuse the header
+        // claimOneClosedPeriodVoucher's own bulk-fetched candidate list already resolved.
+        Optional<FinVchMain> claimed = claimOneClosedPeriodVoucher(jdbi, claimedThisRun);
         if (claimed.isEmpty()) {
             Log.warn("[DB] GeneralVoucherRevert: No documents found for the criteria: vchtype='G', "
                     + "release_status='P', not already BRS'd, own accounting year/financial month closed "
@@ -324,10 +359,8 @@ public class DbGeneralVoucherRevertDataSource implements TestDataSource<MergedFi
             return Optional.empty();
         }
 
-        long vchcode = claimed.get();
-        FinVchMain header = jdbi.onDemand(FinVchMainDao.class).findByVoucherCode(vchcode)
-                .orElseThrow(() -> new IllegalStateException(
-                        "Claimed closed-period vchcode=" + vchcode + " vanished before its header could be re-read."));
+        FinVchMain header = claimed.get();
+        long vchcode = header.getVchcode();
 
         List<String> gatheringLog = new ArrayList<>();
         gatheringLog.add("═══════════════════════════════════════════════════════════");
@@ -368,13 +401,14 @@ public class DbGeneralVoucherRevertDataSource implements TestDataSource<MergedFi
      * positive claim, so this can never collide with a positive combination's own claim within
      * the same {@link #load} call or across concurrently-running test methods.
      */
-    private static Optional<Long> claimOneClosedPeriodVoucher(Jdbi jdbi, Set<Long> claimedThisRun) {
+    private static Optional<FinVchMain> claimOneClosedPeriodVoucher(Jdbi jdbi, Set<Long> claimedThisRun) {
         // No DISTINCT here (round 6 fix) — no JOIN in this query at all, so m.vchcode was already
         // unique per row; DISTINCT was never needed and, combined with the ORDER BY below, was a
         // hard PostgreSQL error the moment execution reached this method (masked in the live run
         // only because claimOnePostedVoucher's own copy of the same bug crashed first).
+        // Finding A (Round 12): SELECT m.* + .mapToBean — see claimOnePostedVoucher's own comment.
         String sql =
-            "SELECT m.vchcode FROM finvchmain m " +
+            "SELECT m.* FROM finvchmain m " +
             "WHERE m.vchtype = 'G' AND m.release_status = 'P' " +
             "AND NOT EXISTS (SELECT 1 FROM finvchdet d2 WHERE d2.vchcode = m.vchcode AND d2.brsdt IS NOT NULL) " +
             // ycode/vchdt, never vchcode (an insert-order surrogate with no guaranteed
@@ -383,21 +417,21 @@ public class DbGeneralVoucherRevertDataSource implements TestDataSource<MergedFi
             // negative scenario) but kept consistent with the positive claim above.
             "ORDER BY m.ycode ASC, m.vchdt ASC";
 
-        List<Long> candidates = jdbi.withHandle(handle -> handle.createQuery(sql).mapTo(Long.class).list());
+        List<FinVchMain> candidates = jdbi.withHandle(handle -> handle.createQuery(sql).mapToBean(FinVchMain.class).list());
 
-        FinVchMainDao headerDao = jdbi.onDemand(FinVchMainDao.class);
-        for (Long vchcode : candidates) {
+        // Own cache instance — a separate scan (own candidate list/order) from claimOnePostedVoucher
+        // above, so not worth sharing across the two; see AccountingPeriodCache's own Javadoc.
+        AccountingPeriodCache periodCache = new AccountingPeriodCache();
+        for (FinVchMain header : candidates) {
+            long vchcode = header.getVchcode();
             if (claimedThisRun.contains(vchcode)) continue;
-
-            FinVchMain header = headerDao.findByVoucherCode(vchcode).orElse(null);
-            if (header == null) continue;
             // Inverse of the positive guard: we WANT a closed year/month here.
-            if (AccountingPeriodResolver.isEditable(jdbi, header, PeriodDomain.FINANCE)) continue;
+            if (periodCache.isEditable(jdbi, header, PeriodDomain.FINANCE)) continue;
 
             if (!DocumentReservationRegistry.tryReserve(String.valueOf(vchcode))) continue;
 
             claimedThisRun.add(vchcode);
-            return Optional.of(vchcode);
+            return Optional.of(header);
         }
         return Optional.empty();
     }

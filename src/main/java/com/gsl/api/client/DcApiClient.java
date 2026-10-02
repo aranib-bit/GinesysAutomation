@@ -18,6 +18,7 @@ import java.time.LocalDate;
  */
 public class DcApiClient extends ApiClient {
 
+    /** Wraps an already-authenticated session {@code spec} — see {@link ApiClient}'s class Javadoc. */
     public DcApiClient(RequestSpecification spec) {
         super(spec);
     }

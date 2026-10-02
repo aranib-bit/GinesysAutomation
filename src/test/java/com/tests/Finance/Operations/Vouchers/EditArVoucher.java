@@ -7,11 +7,20 @@ import com.gsl.network.pattern.FinanceApiPattern;
 import com.gsl.enums.AppOperation;
 import com.gsl.enums.TestAuthor;
 import com.gsl.enums.VoucherDomain;
+import com.gsl.database.DatabaseManager;
+import com.gsl.database.dao.finance.FinVchDetDao;
+import com.gsl.database.dao.finance.FinVchMainDao;
+import com.gsl.flow.Finance.Operations.Common.DocumentAdjustmentFlow;
+import com.gsl.model.finance.FinVchDet;
+import com.gsl.model.finance.FinVchMain;
 import com.gsl.pages.enums.topmenucomponent.MainModuleType;
 import com.gsl.pages.Finance.Operations.ArVoucherAdd;
 import com.gsl.pages.Finance.Operations.ArVoucherListPage;
 import com.gsl.pages.Finance.Operations.Common.DocumentPopup;
 import com.gsl.flow.Finance.Operations.Common.PostSaveDialogHandler;
+import com.gsl.flow.Finance.Operations.Common.VoucherEditFlowSteps;
+import com.gsl.flow.Finance.Operations.Common.VoucherSaveCtx;
+import com.gsl.flow.Finance.Operations.Common.VoucherSaveFlowSteps;
 import com.gsl.pages.HomePage;
 import com.gsl.pages.enums.Finance.MainMenuType;
 import com.gsl.pages.enums.Finance.Operations.OperationsMenuType;
@@ -24,6 +33,8 @@ import com.gsl.testdata.dto.MergedFinanceArVoucherData;
 import com.gsl.utils.Log;
 import com.gsl.utils.NavigationUtils;
 import com.gsl.utils.dataprovider.MergedFinArVoucherDataSupplier;
+import com.gsl.utils.dataprovider.fixture.finance.DocumentSearchStrategy;
+import com.gsl.utils.dataprovider.source.finance.common.AccountingPeriodResolver;
 import com.gsl.validation.snapshot.DocumentContext;
 import com.gsl.validation.snapshot.ExpectedChangeSet;
 import com.gsl.validation.snapshot.SnapshotService;
@@ -33,8 +44,12 @@ import com.gsl.validation.snapshot.finance.ARVoucherEditChangeSets;
 import com.gsl.validation.snapshot.finance.Aud2SnapshotDao;
 import com.gsl.validation.snapshot.finance.VoucherDocumentContextResolver;
 import com.tests.WebTest;
+import org.jdbi.v3.core.Jdbi;
 import org.testng.annotations.Test;
 import org.testng.asserts.SoftAssert;
+
+import java.math.BigDecimal;
+import java.util.List;
 
 /**
  * Edits an existing AR Voucher from the Finance → Operations → AR Voucher list page.
@@ -81,6 +96,7 @@ public class EditArVoucher extends WebTest {
         final VoucherSnapshot[]   afterRef   = new VoucherSnapshot[1];
 
         SnapshotService snapshotService = new SnapshotService(new Aud2SnapshotDao());
+        final VoucherSaveCtx ctx = new VoucherSaveCtx();
 
         // ── Step 1: Login ─────────────────────────────────────────────────────────
         StepExecutor.step("Login to Application", () -> {
@@ -90,33 +106,47 @@ public class EditArVoucher extends WebTest {
         });
 
         // ── Step 2: Navigate ──────────────────────────────────────────────────────
-        StepExecutor.step("Open Finance → AR Voucher List", () -> {
-            listRef[0] = NavigationUtils.navigateToFinanceSideMenu(
-                    homeRef[0],
-                    MainMenuType.OPERATIONS,
-                    OperationsMenuType.ARVOUCHER,
-                    ArVoucherListPage.class);
-            ReportLogger.business("AR Voucher list page opened");
+        // Business log + "Navigated: ..." summary are now recorded inside
+        // NavigationUtils.navigateToFinanceSideMenu itself.
+        StepExecutor.step("Open Finance → AR Voucher List", () -> listRef[0] =
+                NavigationUtils.navigateToFinanceSideMenu(
+                        homeRef[0],
+                        MainMenuType.OPERATIONS,
+                        OperationsMenuType.ARVOUCHER,
+                        ArVoucherListPage.class));
+
+        // ── Step 3: Clear Filter + Select Document — was searchByVoucherNo(...), which is
+        // exact-match-only with no clear-filter step and no pagination fallback (same exposure
+        // Round 9/10 confirmed live and fixed for DeleteApVoucher — see that class's own
+        // equivalent step for the evidence). Now uses the shared common function
+        // (VoucherListPageBase.selectDocumentForAction) every other Revert/Delete/Edit test class
+        // uses. Its own follow-on action-click step (clickEditForVoucher()/clickUnpost(), both
+        // still no-arg/no-retry) is unchanged — a separate, already-flagged, already-deferred gap.
+        StepExecutor.step("Select AR Voucher in List Page", () -> {
+            listRef[0].selectDocumentForAction(testData.getExistingVoucherNo(), DocumentSearchStrategy.EXACT_MATCH);
+            ReportLogger.business("Filter cleared, list refreshed, selected voucher: "
+                    + testData.getExistingVoucherNo());
         });
 
-        // ── Step 3: Search ────────────────────────────────────────────────────────
-        StepExecutor.step("Search AR Voucher by Document Number", () -> {
-            listRef[0].searchByVoucherNo(testData.getExistingVoucherNo());
-            ReportLogger.business("Searched for voucher: " + testData.getExistingVoucherNo());
-        });
-
-        // ── Step 4: Unpost if posted ──────────────────────────────────────────────
-        StepExecutor.step("Unpost if Posted (release_status='P')", () -> {
+        // ── Step 4: Untag, then unpost if posted ─────────────────────────────────
+        // Untag BEFORE unpost — a Posted+tagged document cannot be un-posted until its fintag rows
+        // are cleared (the previous order here unposted first). Unpost is the Actions → Revert UI
+        // action (AR has no standalone Unpost button; the old //TODO-unpost-button placeholder
+        // never existed), using the dialogs AR shares with AP (ArApVoucherDialogs).
+        VoucherEditFlowSteps.untagIfTagged(
+                testData.getExistingVoucherNo(), testData.getReleaseStatus(), new java.util.ArrayList<>());
+        StepExecutor.step("Unpost if Posted (release_status='P') — Actions → Revert", () -> {
             if ("P".equals(testData.getReleaseStatus())) {
-                listRef[0].clickUnpost();
-                // TODO: query fintag for this voucher — if rows exist,
-                //   navigate to Document Adjustment and remove the tagging before editing.
-                //   Until Document Adjustment page object is available, this step will
-                //   fail at runtime if the voucher is tagged.
-                ReportLogger.business("Voucher unposted (was release_status='P')");
+                listRef[0].selectDocumentForAction(testData.getExistingVoucherNo(), DocumentSearchStrategy.EXACT_MATCH);
+                com.gsl.pages.enums.Finance.Operations.ARVoucher.ARVoucherRevertOutcome outcome =
+                        listRef[0].revertSelectedDocument();
+                org.testng.Assert.assertEquals(outcome,
+                        com.gsl.pages.enums.Finance.Operations.ARVoucher.ARVoucherRevertOutcome.UNPOSTED,
+                        "[Unpost] Expected the Posted AR voucher to be un-posted by Revert");
+                ReportLogger.business("Voucher unposted via Revert (was release_status='P') for: "
+                        + testData.getExistingVoucherNo());
             } else {
-                ReportLogger.business("Voucher status='" + testData.getReleaseStatus()
-                        + "' — unpost not required");
+                ReportLogger.business("Voucher status=" + testData.getReleaseStatus() + " — unpost not required");
             }
         });
 
@@ -130,7 +160,7 @@ public class EditArVoucher extends WebTest {
 
         // ── Step 5: Open for Edit ─────────────────────────────────────────────────
         StepExecutor.step("Open Voucher for Edit", () -> {
-            editRef[0] = listRef[0].clickEditForVoucher();
+            editRef[0] = listRef[0].clickEditFromActions(testData.getExistingVoucherNo(), DocumentSearchStrategy.EXACT_MATCH);
             ReportLogger.business("Voucher opened for edit: " + testData.getExistingVoucherNo());
         });
 
@@ -140,43 +170,14 @@ public class EditArVoucher extends WebTest {
             ReportLogger.business("Updated date/reference/remarks via fillDocumentHeader");
         });
 
-        // ── Step 7b: Click Save (edit: no DB capture → no 5a/5e snapshot) ─────────
-        StepExecutor.step("Click Save", () ->
-                popupRef[0] = editRef[0].clickSave());
-
-        // ── Step 7c: Handle Post-Save Dialogs (type-aware) ────────────────────────
-        StepExecutor.step("Handle Post-Save Dialogs", () ->
-                msgBoxRef[0] = PostSaveDialogHandler.forDomain(VoucherDomain.AR)
-                        .handle(popupRef[0], testData));
-
-        // ── Step 7d: Verify Save Result ───────────────────────────────────────────
-        // Plan §15b: previously used the unchecked extractDocumentNo() pair — the exact same
-        // gap Part 14 fixed for GV Edit (no assertion on a null document number, no header/
-        // success check), which let a genuinely rejected/no-op'd Save silently report Pass.
-        // Now adopts the same verifyDocumentSave(SoftAssert) pattern already proven there and
-        // already used by every Create flow. No clickOk() here — "Close Voucher Page" below
-        // already calls it.
-        StepExecutor.step("Verify Save Result", () -> {
-            SoftAssert saveSoftAssert = new SoftAssert();
-            docNoRef[0] = msgBoxRef[0].verifyDocumentSave(saveSoftAssert).getDocumentNo();
-            saveSoftAssert.assertAll();
-            Log.info("Extracted Document No: {}", docNoRef[0]);
-            ReportLogger.pass("Voucher saved. Document No: " + docNoRef[0]);
-        });
-
-        // ── Step 8: Close Voucher Page (per entry; lands back on the list) ────────
-        StepExecutor.step("Close Voucher Page", () -> {
-            if (msgBoxRef[0] != null) {
-                msgBoxRef[0].clickOk();
-            }
-            listRef[0] = editRef[0].close().clickYes(ArVoucherListPage::new);   // keep the handle
-            ReportLogger.business("Voucher page closed, returned to list");
-        });
-
-        // ── Step 9: Logout (deferred — session may be reused by a later test on this thread;
-        // real logout+driver-quit happens via RecoveryManager or end-of-block cleanup only) ────
-        StepExecutor.step("Logout (deferred)", () ->
-                ReportLogger.session("Logout deferred — session may be reused by a later test on this thread."));
+        // ── Steps 7b-9: Save → dialogs → verify → close → logout (shared tail) ──────
+        VoucherSaveFlowSteps.clickSave(ctx, null, () -> editRef[0].clickSave());
+        VoucherSaveFlowSteps.handlePostSaveDialogs(ctx, VoucherDomain.AR, testData);
+        VoucherSaveFlowSteps.verifySaveResult(ctx);
+        StepExecutor.step("Assert save header", ctx.softAssert::assertAll);
+        VoucherSaveFlowSteps.closeVoucherPage(ctx,
+                () -> editRef[0].close().clickYes(ArVoucherListPage::new), ArVoucherListPage::new);
+        VoucherSaveFlowSteps.deferLogout();
 
         // ── Step 10: Capture AFTER Snapshot ───────────────────────────────────────
         StepExecutor.step("Capture AFTER Snapshot", () -> afterRef[0] = snapshotService.capture(contextRef[0]));
@@ -193,10 +194,10 @@ public class EditArVoucher extends WebTest {
                     testData.getDocumentInformation().getDocumentdate());
 
             VoucherSnapshotValidator validator = new VoucherSnapshotValidator();
-            validator.validate("AR Voucher Edit — Snapshot Validation — [" + docNoRef[0] + "]",
+            validator.validate("AR Voucher Edit — Snapshot Validation — [" + ctx.docNo + "]",
                     contextRef[0], beforeRef[0], afterRef[0], changeSet);
             validator.assertAll();
-            ReportLogger.pass("Snapshot validation complete. Document No: " + docNoRef[0]);
+            ReportLogger.pass("Snapshot validation complete. Document No: " + ctx.docNo);
         });
     }
 }

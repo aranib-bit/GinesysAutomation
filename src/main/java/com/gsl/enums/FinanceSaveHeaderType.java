@@ -18,10 +18,12 @@ public enum FinanceSaveHeaderType {
         this.label = label;
     }
 
+    /** The literal popup header text this constant represents (e.g. {@code "Success"}). */
     public String label() {
         return label;
     }
 
+    /** Returns {@code true} if {@code header} (trimmed, case-insensitive) matches any known acceptable variant. */
     public static boolean isAcceptable(String header) {
         if (header == null) return false;
         String trimmed = header.trim();

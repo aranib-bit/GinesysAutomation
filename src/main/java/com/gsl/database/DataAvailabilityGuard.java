@@ -31,6 +31,17 @@ public final class DataAvailabilityGuard {
 
     private DataAvailabilityGuard() {}
 
+    /**
+     * Runs {@code selectionAttempt}; on a data-availability {@link SkipException}, backfills via
+     * {@link DataSourceRouter#decide(int)}'s chosen platform (k6 bulk provisioning, or
+     * {@code strategy}'s WEBAPI/PUBLICAPI path) and retries {@code selectionAttempt} exactly once.
+     * If the retry still throws, that (real, post-backfill) shortfall propagates to the caller.
+     *
+     * @param selectionAttempt the shortfall-throwing lookup/selection to (re)try
+     * @param neededQuantity   how many records the caller needs; drives k6-vs-WEBAPI/PUBLICAPI routing
+     * @param strategy         creates the missing data for this document/master-data type when not using k6
+     * @return the result of {@code selectionAttempt}, from the first attempt or the post-backfill retry
+     */
     public static <T> T selectOrBackfill(
             Supplier<T> selectionAttempt,
             int neededQuantity,

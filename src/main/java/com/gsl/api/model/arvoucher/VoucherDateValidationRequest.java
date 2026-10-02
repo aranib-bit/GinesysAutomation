@@ -16,6 +16,8 @@ import lombok.NoArgsConstructor;
 @NoArgsConstructor
 @AllArgsConstructor
 public class VoucherDateValidationRequest {
+    /** The accounting year code being replaced/checked against — {@code 0} (kept at the
+     *  HAR-observed default) for a brand-new voucher, since there is no prior year to compare. */
     @JsonProperty("OldYCODE")
     @Builder.Default
     private int oldYcode = 0;
@@ -23,9 +25,12 @@ public class VoucherDateValidationRequest {
     private String voucherDate;
     @JsonProperty("EmpCode")
     private long empCode;
+    /** {@code 0} for a new voucher; would carry the existing voucher's code when validating an edit. */
     @JsonProperty("VoucherCode")
     @Builder.Default
     private int voucherCode = 0;
+    /** {@code true} for a new voucher (this client's only use case) — {@code false} would signal
+     *  validating a date change on an existing one. */
     @JsonProperty("IsNewEntity")
     @Builder.Default
     private boolean isNewEntity = true;

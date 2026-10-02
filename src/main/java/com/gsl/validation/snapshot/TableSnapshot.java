@@ -17,11 +17,13 @@ public class TableSnapshot {
     private final String tableName;
     private final List<Map<String, Object>> rows;
 
+    /** {@code rows} is defensively copied into an immutable list; {@code null} becomes empty. */
     public TableSnapshot(String tableName, List<Map<String, Object>> rows) {
         this.tableName = tableName;
         this.rows = rows == null ? Collections.emptyList() : List.copyOf(rows);
     }
 
+    /** Number of rows captured for this table. */
     public int rowCount() {
         return rows.size();
     }

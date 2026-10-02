@@ -291,6 +291,13 @@ public final class SelectDocumentCombinations {
         );
     }
 
+    /**
+     * Builds one {@link SelectDocumentVariant} for a single classification-type row, deriving its
+     * {@code testCaseName} label (GL type, classification label, SL/doc counts, amount/payment/date
+     * mode) from the given parameters — shared by {@link #forSystemClassificationType(AdmCls)} and
+     * {@link #forUserDefinedClassificationType(AdmCls)} so both build their variant lists without
+     * duplicating this label-formatting logic.
+     */
     private static SelectDocumentVariant clsVariant(
             String variantId, String clsLabel, AdmCls cls, CashBankType glType,
             int slCount, int docsPerSl,

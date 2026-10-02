@@ -13,6 +13,7 @@ public final class MasterDriverFactory {
 
     private MasterDriverFactory() {}
 
+    /** Creates a WebDriver for {@code mode}/{@code browser} via the registered {@link ExecutionProviderRegistry} provider for that {@link RunMode}. */
     public static WebDriver create(RunMode mode, Browser browser) {
         return ExecutionProviderRegistry.get(mode).createDriver(browser);
     }

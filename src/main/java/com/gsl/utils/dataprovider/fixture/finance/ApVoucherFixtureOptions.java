@@ -135,6 +135,16 @@ public class ApVoucherFixtureOptions {
     @Builder.Default
     private final SelectDocumentVariant.PaymentMode selectDocPaymentMode = SelectDocumentVariant.PaymentMode.NONE;
 
+    /**
+     * Round 20 — carries the known/unknown-cheque decision {@code ApVoucherFixtureFactory
+     * .assignKnownChequeFlags} already made on the originating {@link SelectDocumentVariant},
+     * across the placeholder/live-resolution boundary — mirrors {@code
+     * GeneralVoucherFixtureOptions#isKnownCheque()}'s identical reason for existing. Meaningless
+     * unless {@link #selectDocPaymentMode} is {@code CHEQUE}.
+     */
+    @Builder.Default
+    private final boolean knownCheque = false;
+
     // ─── Factory methods ──────────────────────────────────────────────────────
 
     /**
@@ -295,6 +305,7 @@ public class ApVoucherFixtureOptions {
                 .slClsCode(v.getSlClsCode())
                 .docTypeFilter(docTypeFilter)
                 .selectDocPaymentMode(v.getPaymentMode())
+                .knownCheque(v.isKnownCheque())
                 .build();
     }
 

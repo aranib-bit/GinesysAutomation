@@ -31,6 +31,15 @@ public class LoginPage {
         static final By BTN_LOGIN            = By.xpath("//span[text()='Login']");
         static final By SPLASHSCREEN         = By.id("splashScreen");
         static final By AUTHENTICATOR_LOADER = By.xpath("//*[@class='x-window vport x-layer x-window-default x-border-box x-window-maximized']");
+
+        /**
+         * Best-effort, unconfirmed locator for a reported (not yet captured in any run artifact)
+         * post-login popup carrying a "Skip" button — see {@link #handleUnexpectedSkipPopup()}.
+         * Kept local rather than promoted to {@link CommonButton} until its real DOM markup is
+         * confirmed live (that registry's own Javadoc warns against adding page/context-specific
+         * buttons speculatively).
+         */
+        static final By BTN_SKIP = By.xpath("//span[normalize-space()='Skip']");
     }
 
     // OK_BUTTON  → CommonButton.OK.locator()
@@ -116,6 +125,45 @@ public class LoginPage {
         return this;
     }
 
+    /**
+     * Defensive handling for a reported, not-yet-captured post-login popup carrying a "Skip"
+     * button — seen live when a NEW user's first login lands on a freshly-launched browser
+     * (see {@code SessionPool.createSession()}/{@code isReusable()}: a REUSED session never
+     * reaches {@code loginToApplication()} at all, since {@code SessionManager.ensureLoggedIn()}
+     * returns the cached {@code HomePage} directly — so this can only ever fire on that one
+     * first-login path, making it safe to poll for unconditionally on every login).
+     *
+     * <p>Modeled directly on {@link #handleConcurrentSessionPopup()}'s self-polling, MAYBE-
+     * classified pattern: a short bounded wait for the Skip button; click it and log if present,
+     * no-op immediately if absent. No screenshot/DOM of this popup exists in any run artifact yet
+     * — {@link Loc#BTN_SKIP} is a best-effort generic guess; refine it once a live occurrence is
+     * captured.
+     */
+    private LoginPage handleUnexpectedSkipPopup() {
+        WebDriver driver = DriverManager.getDriver();
+        try {
+            new FluentWait<>(driver)
+                    .withTimeout(Duration.ofSeconds(5))
+                    .pollingEvery(Duration.ofMillis(300))
+                    .ignoring(NoSuchElementException.class)
+                    .until(d -> isVisibleQuiet(d, Loc.BTN_SKIP) || !isVisibleQuiet(d, Loc.TXTBOX_USERNAME));
+        } catch (org.openqa.selenium.TimeoutException ignored) {
+            // Neither the Skip button nor the login form's disappearance showed up within the
+            // bounded wait — fall through and let checkAuthenticationLoader() handle whatever
+            // state the page is actually in; this method must never itself fail a login.
+        }
+
+        if (isVisibleQuiet(driver, Loc.BTN_SKIP)) {
+            click(Loc.BTN_SKIP, WaitType.CLICKABLE, "Unexpected Skip Popup Button");
+            // MAYBE, not EXPECTED/UNEXPECTED — same rationale as handleConcurrentSessionPopup:
+            // this popup only conditionally appears (apparently on a new user's first login),
+            // it's neither a routine part of every login nor a hard anomaly.
+            ReportLogger.popup(PopupOutcome.MAYBE, "Unrecognized post-login popup detected "
+                    + "(carrying a 'Skip' button) — clicked 'Skip' to dismiss and continue.");
+        }
+        return this;
+    }
+
     /** Non-blocking visibility check — returns false instead of waiting/throwing when absent or stale. */
     private static boolean isVisibleQuiet(WebDriver driver, By by) {
         try {
@@ -135,7 +183,20 @@ public class LoginPage {
     }
 
     private HomePage checkAuthenticationLoader(){
-        elementDisappear(Loc.AUTHENTICATOR_LOADER, "Authentication Loader");
+        try {
+            elementDisappear(Loc.AUTHENTICATOR_LOADER, "Authentication Loader");
+        } catch (RuntimeException e) {
+            // The login window did not go away. If the application is showing an error on it (e.g.
+            // "Error: The user name or password is incorrect."), THAT is the cause — say so, naming the
+            // user, instead of the generic "element still visible" (no wait is lengthened).
+            String applicationError = com.gsl.utils.Selenium.PageStateDiagnostics.visibleErrorText();
+            if (applicationError != null) {
+                com.gsl.testdata.UserCredential user = com.gsl.driver.DriverManager.getCurrentUser();
+                throw new IllegalStateException("Login rejected by the application for user '"
+                        + (user == null ? "?" : user.username()) + "': " + applicationError, e);
+            }
+            throw e;
+        }
         return new HomePage();
     }
 
@@ -161,6 +222,7 @@ public class LoginPage {
         StepExecutor.step("Submit & Authenticate", () -> {
             setLogin();
             handleConcurrentSessionPopup();
+            handleUnexpectedSkipPopup();
             result[0] = checkAuthenticationLoader();
         });
 

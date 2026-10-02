@@ -24,10 +24,12 @@ public class ScenarioOutcome {
     boolean passed;
     String detail;
 
+    /** Builds a passing outcome carrying {@code detail} — what was actually observed, for the report. */
     public static ScenarioOutcome pass(String detail) {
         return ScenarioOutcome.builder().passed(true).detail(detail).build();
     }
 
+    /** Builds a failing outcome carrying {@code detail} — what was actually observed, for the report. */
     public static ScenarioOutcome fail(String detail) {
         return ScenarioOutcome.builder().passed(false).detail(detail).build();
     }

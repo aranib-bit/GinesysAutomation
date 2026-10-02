@@ -12,6 +12,7 @@ import java.lang.reflect.Method;
  */
 public final class StringToBrowserConverter implements Converter<Browser> {
 
+    /** Converts {@code input} (case-insensitive) to a {@link Browser}, defaulting to {@link Browser#CHROME} when blank/null. */
     @Override
     public Browser convert(Method method, String input) {
         if (input == null || input.isBlank()) return Browser.CHROME;

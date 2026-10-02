@@ -38,6 +38,12 @@ public class AuditLoggingAspect {
     private static final Logger DB_VALIDATION_LOG = LogManager.getLogger("DBValidation");
     private static final DateTimeFormatter TS_FMT = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss.SSS");
 
+    /**
+     * Wraps any {@link AuditTrace}-annotated method: proceeds unconditionally, then logs one line to
+     * {@code DBValidation} tagged via {@link #tagFor(String, Object)} with the method's args, its
+     * result (or the thrown exception), and elapsed time. Rethrows any exception from the wrapped
+     * method after logging it as {@code AUDIT-ERROR}.
+     */
     @Around("@annotation(auditTrace)")
     public Object logAuditDecision(ProceedingJoinPoint pjp, AuditTrace auditTrace) throws Throwable {
         String decision = auditTrace.value();
@@ -80,6 +86,7 @@ public class AuditLoggingAspect {
         };
     }
 
+    /** Writes one greppable {@code DBValidation} log line for an audited decision; failures here are swallowed, never propagated. */
     private void logLine(String tag, String decision, String className, Object[] args, Object result, long durationMs) {
         try {
             DB_VALIDATION_LOG.info("[{}] [{}] {}.{}(...) params={} -> result={} [{}ms]",
@@ -90,6 +97,7 @@ public class AuditLoggingAspect {
         }
     }
 
+    /** Renders a method's argument array as a bracketed, {@link #summarize(Object)}-per-element string. */
     private String summarizeArgs(Object[] args) {
         if (args == null || args.length == 0) return "[]";
         StringBuilder sb = new StringBuilder("[");

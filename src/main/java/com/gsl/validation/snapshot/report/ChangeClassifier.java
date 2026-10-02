@@ -26,9 +26,14 @@ public final class ChangeClassifier {
         if (excluded) return ChangeClassification.AUDIT_CHANGE;
         if (check.knownIssueNote() != null) return ChangeClassification.KNOWN_ISSUE;
         if (label.startsWith("IGNORE")) return ChangeClassification.IGNORED;
-        if (label.startsWith("EXPECTED")) return ChangeClassification.CASCADE_CHANGE; // row-level INSERT/DELETE
+        if (label.startsWith("EXPECTED")) return ChangeClassification.CASCADE_CHANGE; // expected INSERT/DELETE (row- or column-level)
         if (label.startsWith("SYSTEM_CHANGE")) return ChangeClassification.SYSTEM_CHANGE;
         if (label.startsWith("MUST_CHANGE") && check.passed()) return ChangeClassification.USER_CHANGE;
+        // Item G-continued: a passing MANDATORY (not-null) column on an inserted/deleted row is a
+        // system-populated value, not a cascade — a failing one still falls through to the
+        // !check.passed() branch below (UNEXPECTED_CHANGE), which is correct: a null mandatory
+        // column IS an unexpected/bad outcome.
+        if (label.startsWith("MANDATORY") && check.passed()) return ChangeClassification.SYSTEM_CHANGE;
         if (!check.passed()) return ChangeClassification.UNEXPECTED_CHANGE;
         return ChangeClassification.USER_CHANGE;
     }

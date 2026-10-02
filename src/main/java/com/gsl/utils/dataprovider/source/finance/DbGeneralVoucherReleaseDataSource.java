@@ -2,12 +2,11 @@ package com.gsl.utils.dataprovider.source.finance;
 
 import com.gsl.database.DatabaseManager;
 import com.gsl.database.DocumentReservationRegistry;
-import com.gsl.database.dao.finance.FinVchMainDao;
 import com.gsl.enums.PeriodDomain;
 import com.gsl.model.finance.FinVchMain;
 import com.gsl.testdata.dto.MergedFinanceGeneralVoucherData;
 import com.gsl.utils.Log;
-import com.gsl.utils.dataprovider.source.finance.common.AccountingPeriodResolver;
+import com.gsl.utils.dataprovider.source.finance.common.AccountingPeriodCache;
 import org.jdbi.v3.core.Jdbi;
 
 import java.util.List;
@@ -63,20 +62,22 @@ public final class DbGeneralVoucherReleaseDataSource {
      */
     public static Optional<MergedFinanceGeneralVoucherData> claimOneUnpostedCandidate(Set<Long> claimedThisRun) {
         Jdbi jdbi = DatabaseManager.getJdbi();
+        // Finding A (Round 12): SELECT * (not just vchcode) + .mapToBean — removes the scan loop's
+        // own per-candidate SELECT * FROM finvchmain WHERE vchcode = ? round trip.
         String sql =
-            "SELECT vchcode FROM finvchmain " +
+            "SELECT * FROM finvchmain " +
             "WHERE vchtype = 'G' AND release_status = 'U' " +
             "ORDER BY vchcode";
 
-        List<Long> candidates = jdbi.withHandle(handle -> handle.createQuery(sql).mapTo(Long.class).list());
-        FinVchMainDao headerDao = jdbi.onDemand(FinVchMainDao.class);
+        List<FinVchMain> candidates = jdbi.withHandle(handle -> handle.createQuery(sql).mapToBean(FinVchMain.class).list());
+        // Memoizes the OU/year/month lookups isEditable below would otherwise re-query per
+        // rejected candidate — see AccountingPeriodCache's own Javadoc.
+        AccountingPeriodCache periodCache = new AccountingPeriodCache();
 
-        for (Long vchcode : candidates) {
+        for (FinVchMain header : candidates) {
+            long vchcode = header.getVchcode();
             if (claimedThisRun.contains(vchcode)) continue;
-
-            FinVchMain header = headerDao.findByVoucherCode(vchcode).orElse(null);
-            if (header == null) continue;
-            if (!AccountingPeriodResolver.isEditable(jdbi, header, PeriodDomain.FINANCE)) continue;
+            if (!periodCache.isEditable(jdbi, header, PeriodDomain.FINANCE)) continue;
             if (!DocumentReservationRegistry.tryReserve(String.valueOf(vchcode))) continue;
 
             claimedThisRun.add(vchcode);

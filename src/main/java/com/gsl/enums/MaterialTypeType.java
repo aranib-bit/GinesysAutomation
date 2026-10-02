@@ -3,6 +3,12 @@ package com.gsl.enums;
 import java.util.Arrays;
 import java.util.stream.Collectors;
 
+/**
+ * Manufacturing classification of an item's material. Populated from the "Material Type" column
+ * of the "Others" sheet in the inventory-item Excel test data (see
+ * {@code ItemOthers.materialType}) via {@link com.gsl.converter.MaterialTypeConverter} /
+ * {@link #fromExcel}.
+ */
 public enum MaterialTypeType {
 
     FINISHED_GOODS("Finished Goods"),
@@ -15,6 +21,7 @@ public enum MaterialTypeType {
         this.label = label;
     }
 
+    /** Excel parse key / display label — same string for this enum (see {@link #toString}). */
     public String label() {
         return label;
     }
@@ -25,6 +32,12 @@ public enum MaterialTypeType {
     }
 
 
+    /**
+     * Resolves {@code excelValue} to its matching {@link MaterialTypeType} constant by
+     * case-insensitive match against each constant's {@link #label}; throws
+     * {@link IllegalArgumentException} naming {@code fileName}/{@code sheetName}/
+     * {@code columnName} for a blank or unrecognized value.
+     */
     public static MaterialTypeType fromExcel(
             String excelValue,
             String fileName,

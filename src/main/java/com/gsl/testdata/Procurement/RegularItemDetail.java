@@ -1,5 +1,11 @@
 package com.gsl.testdata.Procurement;
 
+/**
+ * {@link ItemDetail} variant for a "Regular" line-item row (plain item code/description/quantity/
+ * UOM, no batch/serial tracking) — built by {@link ItemDetailFactory#create} from an {@code
+ * "ItemType"="Regular"} row. See {@link ItemDetail}'s Javadoc for this whole chain's
+ * orphaned/unconfirmed-live-caller status.
+ */
 public class RegularItemDetail implements ItemDetail {
     private String testCaseId;
     private String itemCode;
@@ -10,6 +16,7 @@ public class RegularItemDetail implements ItemDetail {
     private String itemSelectionMajorMethod;
     private String itemSetSelectionSelectionWays;
 
+    /** Always {@code "Regular"} — this variant's {@link ItemDetail#getItemType()} discriminator. */
     @Override
     public String getItemType() {
         return "Regular";

@@ -25,6 +25,12 @@ public final class LocalExecutionProvider implements ExecutionProvider {
         FACTORIES.put(Browser.EDGE,    EdgeManager::getDriver);
     }
 
+    /**
+     * Looks up {@code browser}'s factory in {@link #FACTORIES} and invokes it to create a local
+     * WebDriver.
+     *
+     * @throws IllegalArgumentException if {@code browser} has no registered local factory
+     */
     @Override
     public WebDriver createDriver(Browser browser) {
         Supplier<WebDriver> supplier = FACTORIES.get(browser);

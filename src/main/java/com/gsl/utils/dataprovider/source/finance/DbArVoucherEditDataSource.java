@@ -21,13 +21,16 @@ import com.gsl.utils.Faker.FakerUtils;
 import com.gsl.utils.Log;
 import com.gsl.utils.dataprovider.fixture.finance.VoucherEditDateVariant;
 import com.gsl.utils.dataprovider.source.TestDataSource;
+import com.gsl.utils.dataprovider.source.finance.common.AccountingPeriodCache;
 import com.gsl.utils.dataprovider.source.finance.common.AccountingPeriodResolver;
 import org.jdbi.v3.core.Jdbi;
 import org.testng.SkipException;
 
 import java.time.LocalDate;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 
 /**
  * Loads AR Voucher test data for <b>Edit</b> operations by querying an existing
@@ -59,6 +62,11 @@ import java.util.List;
  */
 public class DbArVoucherEditDataSource implements TestDataSource<MergedFinanceArVoucherData> {
 
+    /**
+     * Claims one open-period voucher via {@link #claimOpenPeriodCandidate}, resolves its site/GL/
+     * detail rows, and builds the single-row {@link MergedFinanceArVoucherData}
+     * {@code EditArVoucher} needs — see the class Javadoc's "Data flow" for the full shape.
+     */
     @Override
     public List<MergedFinanceArVoucherData> load(String testMethodName) {
         Jdbi jdbi = DatabaseManager.getJdbi();
@@ -162,6 +170,10 @@ public class DbArVoucherEditDataSource implements TestDataSource<MergedFinanceAr
      * can see whether it happened to be current-year or not.
      */
     private static FinVchMain claimOpenPeriodCandidate(Jdbi jdbi) {
+        // Memoizes the OU/year/month lookups isEditable below would otherwise re-query per
+        // rejected id popped from the queue — see AccountingPeriodCache's own Javadoc. Scoped to
+        // this one method call, not shared across separate claimOpenPeriodCandidate invocations.
+        AccountingPeriodCache periodCache = new AccountingPeriodCache();
         while (true) {
             Long vchcode = DbIdQueue.getNextId(MenuOperationKey.build("FinanceARVoucher", "Modify"));
             if (vchcode == null) {
@@ -176,8 +188,8 @@ public class DbArVoucherEditDataSource implements TestDataSource<MergedFinanceAr
                     .orElseThrow(() -> new IllegalStateException(
                             "[DbArVoucherEditDataSource] finvchmain row not found for vchcode=" + vchcode));
 
-            if (AccountingPeriodResolver.isEditable(jdbi, header, PeriodDomain.FINANCE)) {
-                logCurrentYearComparison(jdbi, header);
+            if (periodCache.isEditable(jdbi, header, PeriodDomain.FINANCE)) {
+                logCurrentYearComparison(jdbi, header, periodCache);
                 return header;
             }
             Log.info("[DB-Edit] Skipping vchcode={} — its own accounting year/financial month is closed.", vchcode);
@@ -186,9 +198,11 @@ public class DbArVoucherEditDataSource implements TestDataSource<MergedFinanceAr
 
     /** Informational only (see {@link #claimOpenPeriodCandidate}'s Javadoc for why this doesn't
      *  change acceptance) — logs whether the accepted candidate happens to be in today's
-     *  resolved current accounting year. */
-    private static void logCurrentYearComparison(Jdbi jdbi, FinVchMain header) {
-        long ouCode = AccountingPeriodResolver.resolveOuCode(jdbi, header.getAdmsiteCodeOwner());
+     *  resolved current accounting year. {@code periodCache} is the same instance
+     *  {@link #claimOpenPeriodCandidate} already resolved this header's OU code with, reused here
+     *  instead of re-querying {@code admsite_ou} for the same {@code admsiteCodeOwner}. */
+    private static void logCurrentYearComparison(Jdbi jdbi, FinVchMain header, AccountingPeriodCache periodCache) {
+        long ouCode = periodCache.resolveOuCode(jdbi, header.getAdmsiteCodeOwner());
         AccountingPeriodResolver.findCurrentYear(jdbi, LocalDate.now(), ouCode).ifPresentOrElse(
                 currentYear -> Log.info("[DB-Edit] Claimed vchcode={} (ycode={}) — {} today's current admyear "
                         + "ycode={} '{}' for admou_code={}.",
@@ -207,12 +221,18 @@ public class DbArVoucherEditDataSource implements TestDataSource<MergedFinanceAr
         FinSlDao slDao = jdbi.onDemand(FinSlDao.class);
         FinGlDao glDao = jdbi.onDemand(FinGlDao.class);
         List<SubLedgerInformation> rows = new ArrayList<>();
+        // Finding D (Round 12 continued): local per-call cache — a multi-line voucher with several
+        // finvchdet rows sharing the same glcode/slcode used to re-issue the identical fingl/finsl
+        // lookup once per line with zero memoization; see DbGeneralVoucherEditDataSource
+        // #resolveExpenseIncomeRows for the identical pattern and its live evidence.
+        Map<Long, FinSl> slCache = new HashMap<>();
+        Map<Long, FinGl> glCache = new HashMap<>();
 
         for (int i = 0; i < details.size(); i++) {
             FinVchDet det = details.get(i);
 
-            FinSl sl = slDao.findBySlcode(det.getSlcode());
-            FinGl gl = glDao.findByGlCode(det.getGlcode());
+            FinSl sl = slCache.computeIfAbsent(det.getSlcode(), slDao::findBySlcode);
+            FinGl gl = glCache.computeIfAbsent(det.getGlcode(), glDao::findByGlCode);
 
             String slName = (sl != null) ? sl.getSlname() : "SL-" + det.getSlcode();
             String slId   = (sl != null) ? sl.getSlid()   : null;

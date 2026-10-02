@@ -22,10 +22,12 @@ public enum AccountClassActionsMenu {
         this.label = label;
     }
 
+    /** This item's visible dropdown text, e.g. {@code "Edit"}. */
     public String label() {
         return label;
     }
 
+    /** Locator for this item — valid only while the "Actions" dropdown is open. */
     public By locator() {
         return By.xpath("//div[contains(@class,'x-menu')]//span[text()='" + label + "']");
     }

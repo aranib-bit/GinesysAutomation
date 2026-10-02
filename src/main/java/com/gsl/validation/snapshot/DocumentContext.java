@@ -44,4 +44,26 @@ public class DocumentContext {
      *  {@link TableRule} participation condition. Resolved live from the DB by
      *  {@code DocumentContextResolver}, independent of any test-data assumption. */
     private final boolean costTagApplicable;
+
+    /** {@code true} when this document's payment info uses a KNOWN/registered cheque — i.e. a
+     *  {@code finvchdet} row with Cheque payment mode whose {@code (chqno, glcode)} resolves to
+     *  an existing {@code finchqdet} row. Drives {@code finchqdet}/{@code finchqmain}'s
+     *  {@link TableRule} participation condition — {@code false} for every AR document (AR never
+     *  touches the company's own issued-cheque register) and for a GV/AP document using a
+     *  synthetic/unregistered cheque number (the common test-data case). Resolved live from the
+     *  DB, via the same lookup {@code ChequeBookValidator} uses. */
+    @Builder.Default
+    private final boolean chequeBookApplicable = false;
+
+    /** The resolved known {@code chqno}, when {@link #chequeBookApplicable}; {@code null} otherwise. */
+    private final String knownChqno;
+
+    /** The resolved known cheque's {@code glcode}, when {@link #chequeBookApplicable}; {@code null} otherwise. */
+    private final Long knownChequeGlcode;
+
+    /** The resolved known cheque's {@code finchqdet.bookcode}, when {@link #chequeBookApplicable};
+     *  {@code null} otherwise — lets {@code finchqmain}'s {@link TableRule} use the existing
+     *  single-column {@code fkColumn}/{@code fkValueResolver} mechanism unchanged, since this
+     *  value is already resolved by the time it's needed. */
+    private final Long knownChequeBookcode;
 }

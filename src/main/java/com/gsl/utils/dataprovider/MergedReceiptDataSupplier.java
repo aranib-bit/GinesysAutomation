@@ -23,10 +23,26 @@ import java.util.stream.Collectors;
 
 import static io.github.sskorol.data.TestDataReader.use;
 
+/**
+ * DataSupplier for Procurement Receipt creation tests — filters the shared {@code MasterTestData}
+ * sheet to rows whose {@code testcasename} matches the invoking test method's name, then for each
+ * matched {@code TestCaseId} joins in its {@link ReceiptHeader} (mandatory — throws if absent) and
+ * its item-selection rows: {@link ScanItemRow} or {@link SelectItemRow} when the item's own {@code
+ * itemSelectionMajorMethod} is {@code "Item"} and its {@code itemSetSelectionWay} names an {@link
+ * ItemSelectionType} constant ({@code "Scan Item"}/{@code "Select Item"} respectively), or {@link
+ * SelectSetRow} when the method is {@code "Set"} and the selection way names a {@link
+ * SetSelectionType} constant ({@code "Select Set"}). All rows are read from the single
+ * {@code ConfigFactory.getExcelDataConfig().receiptsPath()} workbook.
+ *
+ * <p>{@code flatMap=true} on {@link #dataSupplier} — a {@code TestCaseId} whose {@code
+ * MasterTestData.getInvocationcount()} is greater than 1 is expanded into that many separate
+ * invocations (1-based {@code invocationIndex}), each otherwise carrying identical joined data.
+ */
 public class MergedReceiptDataSupplier {
 
     /* ---------- Utility ---------- */
 
+    /** {@code true} iff {@code value} (case/space-insensitive, spaces mapped to underscores) names a constant of {@code enumClass}. */
     private <E extends Enum<E>> boolean isInEnum(String value, Class<E> enumClass) {
         if (value == null || value.trim().isEmpty()) {
             return false;
@@ -42,6 +58,7 @@ public class MergedReceiptDataSupplier {
 
     /* ---------- DataSupplier ---------- */
 
+    /** Raw {@code MasterTestData} rows whose {@code testcasename} matches {@code method}'s name — no item-detail joining, unlike {@link #dataSupplier}. */
     @DataSupplier(name = "getData")
     public StreamEx<MasterTestData> getData(Method method) {
         String methodName = method.getName();
@@ -54,6 +71,16 @@ public class MergedReceiptDataSupplier {
                 .filter(tc -> methodName.equalsIgnoreCase(tc.getTestcasename()));
     }
 
+    /**
+     * Filters {@code MasterTestData} to {@code method}'s name, joins each matched row's header
+     * and item-selection sheets, and expands per-row by {@code invocationcount} — see the class
+     * Javadoc.
+     *
+     * @param method the TestNG-injected test method; only its name is used to match {@code
+     *               testcasename} in the {@code MasterTestData} sheet
+     * @throws IllegalStateException if a matched {@code TestCaseId} has no corresponding row in
+     *                                the mandatory {@link ReceiptHeader} sheet
+     */
     @DataSupplier(name = "receiptData", flatMap = true)
     public StreamEx<MergedReceiptData> dataSupplier(Method method) {
 

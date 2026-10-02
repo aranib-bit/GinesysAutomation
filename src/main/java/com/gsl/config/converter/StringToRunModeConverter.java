@@ -12,6 +12,7 @@ import java.lang.reflect.Method;
  */
 public final class StringToRunModeConverter implements Converter<RunMode> {
 
+    /** Converts {@code input} (case-insensitive) to a {@link RunMode}, defaulting to {@link RunMode#LOCAL} when blank/null. */
     @Override
     public RunMode convert(Method method, String input) {
         if (input == null || input.isBlank()) return RunMode.LOCAL;

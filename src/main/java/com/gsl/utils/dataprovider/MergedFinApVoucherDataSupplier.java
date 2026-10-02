@@ -5,7 +5,13 @@ import com.gsl.testdata.dto.MergedFinanceApVoucherData;
 import com.gsl.utils.Log;
 import com.gsl.utils.dataprovider.source.TestDataSource;
 import com.gsl.utils.dataprovider.source.finance.DbApVoucherDataSource;
+import com.gsl.utils.dataprovider.source.finance.DbApVoucherDeleteDataSource;
+import com.gsl.utils.dataprovider.source.finance.DbApVoucherEditDataSource;
+import com.gsl.utils.dataprovider.source.finance.DbApVoucherRevertDataSource;
 import com.gsl.utils.dataprovider.source.finance.ExcelApVoucherDataSource;
+import com.gsl.utils.dataprovider.source.finance.ExcelApVoucherDeleteDataSource;
+import com.gsl.utils.dataprovider.source.finance.ExcelApVoucherEditDataSource;
+import com.gsl.utils.dataprovider.source.finance.ExcelApVoucherRevertDataSource;
 import io.github.sskorol.core.DataSupplier;
 import one.util.streamex.StreamEx;
 import org.testng.ITestContext;
@@ -50,6 +56,17 @@ public class MergedFinApVoucherDataSupplier {
     // (jstack-confirmed incident, run 20260708_113201). Sessions now live in the pool — each row
     // borrows one in WebTest.setUp and returns it in tearDown — so ephemeral row-threads hold
     // nothing between rows, and rows from ALL methods interleave across all pooled sessions.
+    /**
+     * Resolves the configured {@link TestDataSource} (EXCEL or DB, gated further by {@code
+     * apv.group}/{@code apv.tag} in DB mode), loads that source's scenario rows for {@code
+     * method}'s name, and emits one {@code Object[]} (null credential + row) per scenario. A
+     * data-load failure (DB unreachable, bad config, etc.) is logged with diagnosis and converted
+     * to a {@link org.testng.SkipException} rather than propagated, so the test is skipped
+     * cleanly instead of erroring with an opaque provider-level stack trace.
+     *
+     * @param method  the TestNG-injected test method — its name selects/filters the data source
+     * @param context supplies the TestNG XML {@code apv.group}/{@code apv.tag} parameters
+     */
     @DataSupplier(name = "FinanceApVoucherData", flatMap = true, runInParallel = true)
     public StreamEx<Object[]> dataSupplier(Method method, ITestContext context) {
         String source = ConfigFactory.getConfig().testDataSource();
@@ -62,8 +79,18 @@ public class MergedFinApVoucherDataSupplier {
 
         TestDataSource<MergedFinanceApVoucherData> loader =
                 "DB".equalsIgnoreCase(source)
-                        ? new DbApVoucherDataSource(xmlGroupParam, xmlTagParam)
-                        : new ExcelApVoucherDataSource();
+                        ? switch (method.getName()) {
+                            case "revertApVoucher" -> new DbApVoucherRevertDataSource(xmlGroupParam, xmlTagParam);
+                            case "deleteApVoucher" -> new DbApVoucherDeleteDataSource(xmlGroupParam);
+                            case "editApVoucherHeader" -> new DbApVoucherEditDataSource(xmlGroupParam);
+                            default -> new DbApVoucherDataSource(xmlGroupParam, xmlTagParam);
+                          }
+                        : switch (method.getName()) {
+                            case "revertApVoucher" -> new ExcelApVoucherRevertDataSource();
+                            case "deleteApVoucher" -> new ExcelApVoucherDeleteDataSource();
+                            case "editApVoucherHeader" -> new ExcelApVoucherEditDataSource();
+                            default -> new ExcelApVoucherDataSource();
+                          };
 
         try {
             List<MergedFinanceApVoucherData> scenarios = loader.load(method.getName());

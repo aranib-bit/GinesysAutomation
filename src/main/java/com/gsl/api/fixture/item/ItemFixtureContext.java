@@ -11,6 +11,7 @@ import lombok.Value;
 public class ItemFixtureContext {
     int inventoryGroupCode;
 
+    /** Builds the context from {@code fixture.item.inventoryGroupCode} in {@code api.properties}. */
     public static ItemFixtureContext fromConfig() {
         ApiConfig config = ConfigFactory.getApiConfig();
         return ItemFixtureContext.builder()

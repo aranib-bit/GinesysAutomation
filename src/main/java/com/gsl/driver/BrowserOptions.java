@@ -5,7 +5,9 @@ import com.gsl.config.ConfigFactory;
 import org.openqa.selenium.chrome.ChromeOptions;
 import org.openqa.selenium.edge.EdgeOptions;
 import org.openqa.selenium.firefox.FirefoxOptions;
+import org.openqa.selenium.remote.http.ClientConfig;
 
+import java.time.Duration;
 import java.util.HashMap;
 import java.util.Map;
 
@@ -31,6 +33,7 @@ public final class BrowserOptions {
         return prefs;
     }
 
+    /** Chrome options with framework-standard stability flags, the configured window size, and (when enabled) headless/incognito/insecure-certs flags plus per-session download prefs. */
     public static ChromeOptions chrome() {
         BrowserConfig cfg = ConfigFactory.getBrowserConfig();
         ChromeOptions opts = new ChromeOptions();
@@ -48,6 +51,7 @@ public final class BrowserOptions {
         return opts;
     }
 
+    /** Firefox options mirroring {@link #chrome()}'s flags/download behavior, but set via individual preferences since Firefox has no Chromium-style "prefs" map. */
     public static FirefoxOptions firefox() {
         BrowserConfig cfg = ConfigFactory.getBrowserConfig();
         FirefoxOptions opts = new FirefoxOptions();
@@ -72,6 +76,19 @@ public final class BrowserOptions {
         return opts;
     }
 
+    /**
+     * Round 19 — shared WebDriver command read-timeout, applied to every LOCAL driver
+     * (Chrome/Edge/Firefox). Back to Selenium's own built-in 180s default as of 2026-09-28 (see
+     * {@code ExecutionConfig#webdriverCommandReadTimeoutSeconds()} for why a shorter 60s value was
+     * tried and reverted). Value is fully config-driven via that method (`execution.properties`)
+     * — no literal timeout value here.
+     */
+    public static ClientConfig clientConfig() {
+        int seconds = ConfigFactory.getExecutionConfig().webdriverCommandReadTimeoutSeconds();
+        return ClientConfig.defaultConfig().readTimeout(Duration.ofSeconds(seconds));
+    }
+
+    /** Edge options mirroring {@link #chrome()}'s flags, window size, and per-session download prefs (Edge is Chromium-based, so it shares the same "prefs" map shape). */
     public static EdgeOptions edge() {
         BrowserConfig cfg = ConfigFactory.getBrowserConfig();
         EdgeOptions opts = new EdgeOptions();

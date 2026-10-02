@@ -3,11 +3,18 @@ package com.gsl.api.validator;
 import com.gsl.api.core.ApiException;
 import com.gsl.api.model.dc.DcCreateResponse;
 
-/** Validates a DC/Save response: success + non-blank DC code, and no silent negative-stock allowance. */
+/**
+ * Validates a DC (Dispatch/Delivery Challan) {@code DC/Save} response. Combines the shared
+ * {@link ApiResponseValidator} success/non-blank-code checks with a DC-specific guard against
+ * silently allowing a negative-stock dispatch.
+ */
 public final class DcApiValidator {
 
     private DcApiValidator() {}
 
+    /**
+     * @throws ApiException if {@code response} reports {@code success=false} or has a blank DC code
+     */
     public static void validate(DcCreateResponse response) {
         ApiResponseValidator.requireSuccess(response.isSuccess(), response.getError(), "DC/Save");
         ApiResponseValidator.requireNonBlank(response.getDcCode(), "code", "DC/Save");

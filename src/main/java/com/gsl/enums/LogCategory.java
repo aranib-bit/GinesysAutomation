@@ -16,6 +16,14 @@ package com.gsl.enums;
 public enum LogCategory {
     BUSINESS(false),        // Business flow steps (voucher creation, form submission, navigation)
     UI_ACTION(true),        // Selenium interactions (click, sendKeys, wait)
+    FIELD_ENTRY(true),      // Field value ENTRY/write (sendKeys/clear). Item AB (Round 5) reverses
+                            // Round 3's original "always-visible" design, per explicit instruction —
+                            // now debug-gated like UI_ACTION, hidden by default.
+    FIELD_VALIDATION(true), // Field value read-back/VALIDATION after entry (getAttribute) — kept
+                            // visually distinct from FIELD_ENTRY (Item P): a reader needs to tell
+                            // "I just typed this" apart from "I just confirmed this is what the UI
+                            // now shows" at a glance, not decode identical badges by message text.
+                            // Item AB (Round 5): also debug-gated now, like UI_ACTION.
     VALIDATION(false),      // Assertions and checks (soft/hard assert, DB comparison)
     DB(false),              // Database queries and validation
     NETWORK(true),          // HTTP/API traffic

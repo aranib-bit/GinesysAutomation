@@ -26,6 +26,22 @@ public class DocumentMessageBox {
         static final By HEADER_TEXT  = By.id("messagebox-1001_header-title-textEl");
         static final By CLOSE_BUTTON = By.xpath("//*[@class='mdi mdi-24px mdi-close']");
         static final By LOADER       = By.xpath("//div[contains(@class,'x-mask-msg-text') and normalize-space()='Loading...']");
+        // AR/AP Voucher's post-Revert confirmation is NOT the plain Yes/No Ext.Msg.confirm GV uses
+        // — confirmed via a live DOM capture (RevertApVoucher, run 20260927_173428): a custom
+        // window titled "Revert AP Voucher" whose confirm button reads "Revert" (an "OK" button
+        // also exists in the same DOM but stays display:none until the second/result stage — same
+        // reused-window id "messagebox-1001" both stages share). Scoped to the message box's own
+        // toolbar (not a bare //span[...]) since "Revert" is also the Actions-dropdown menu item's
+        // own label, which can still be present (closed but not removed) in the DOM at this point.
+        static final By REVERT_BUTTON = By.xpath("//*[@id='messagebox-1001-toolbar']//span[normalize-space()='Revert']");
+        // AR/AP Voucher's Delete confirmation is likewise NOT General Voucher's plain Yes/No —
+        // confirmed via a live DOM capture (DeleteApVoucher, run 20260929_171715): the message text
+        // itself matches DocumentMessageBoxMessage.DELETE_CONFIRMATION, but the visible confirm
+        // button reads "Delete Anyway" (siblings in the same toolbar: a hidden "OK" for the
+        // second/result stage, a visible "Close", and a hidden "Cancel") — same "custom Fin.js
+        // dialog, different button labels than GV's Ext.Msg.confirm" pattern REVERT_BUTTON already
+        // documents. Scoped to the message box's own toolbar for the same reason.
+        static final By DELETE_ANYWAY_BUTTON = By.xpath("//*[@id='messagebox-1001-toolbar']//span[normalize-space()='Delete Anyway']");
     }
 
     // Button locators → CommonButton enum (OK, No, Yes, Proceed, Continue)
@@ -153,6 +169,24 @@ public class DocumentMessageBox {
         SeleniumUtils.elementDisappear(Loc.LOADER, "LOADER");
     }
 
+    /**
+     * Clicks "Revert" on the AR/AP Voucher post-Revert confirmation window — see {@link
+     * Loc#REVERT_BUTTON}'s Javadoc for why this isn't {@code CommonButton.YES} (General Voucher's
+     * own dialog shape, which does NOT apply here).
+     */
+    public void clickRevert() {
+        SeleniumUtils.click(Loc.REVERT_BUTTON, WaitType.CLICKABLE, "REVERT_BUTTON_CONFIRM");
+    }
+
+    /**
+     * Clicks "Delete Anyway" on the AR/AP Voucher Delete confirmation window — see
+     * {@link Loc#DELETE_ANYWAY_BUTTON}'s Javadoc for why this isn't {@code CommonButton.YES}
+     * (General Voucher's own dialog shape, which does NOT apply here).
+     */
+    public void clickDeleteAnyway() {
+        SeleniumUtils.click(Loc.DELETE_ANYWAY_BUTTON, WaitType.CLICKABLE, "DELETE_ANYWAY_BUTTON_CONFIRM");
+    }
+
     // --- Non-Consignment Flow ---
     public ReceiptsListPage rejectPIAndClose(String vendorType) throws InterruptedException {
         if (vendorType.equalsIgnoreCase("Non-Consignment")) {
@@ -205,6 +239,50 @@ public class DocumentMessageBox {
         String actual = getMessageText(); // delegates to Loc.MESSAGE_TEXT via getMessageText()
         Assert.assertTrue(actual.contains(expected.getText()),
                 "Expected message box to contain: [" + expected.getText() + "] but got: [" + actual + "]");
+    }
+
+    /**
+     * Waits until the (reused) message box text contains {@code expected}'s literal text, then
+     * returns. {@code messagebox-1001} is a single reused ExtJS window — after clicking a confirm
+     * button its old text stays on screen until the server responds, so reading it immediately
+     * (the pre-fix {@code waitForExtJS()} + {@link #verifyMessage}) races the swap; a slower
+     * server response (e.g. deleting/reverting a previously-tagged document) loses that race.
+     * Waiting on the text itself — not on a larger blanket timeout — removes the race outright.
+     * On timeout the caller's own {@link #verifyMessage} still produces the descriptive failure.
+     */
+    public void waitForMessageToContain(DocumentMessageBoxMessage expected) {
+        try {
+            com.gsl.utils.Selenium.WaitUtils.fluentWaitBuilder()
+                    .withMessage("message box to show: [" + expected.getText() + "]")
+                    .until(d -> {
+                        java.util.List<org.openqa.selenium.WebElement> els = d.findElements(Loc.MESSAGE_TEXT);
+                        if (els.isEmpty() || !els.get(0).isDisplayed()) return false;
+                        String now = els.get(0).getText();
+                        return now != null && now.contains(expected.getText());
+                    });
+        } catch (org.openqa.selenium.TimeoutException e) {
+            // Fall through — verifyMessage() reports the actual on-screen text.
+        }
+    }
+
+    /**
+     * Waits until the (reused) message box text no longer contains {@code previous}'s literal text
+     * — used when the next dialog's exact wording isn't known up front (e.g. Revert's Result vs.
+     * month-closed vs. BRS-done outcomes). Same race rationale as {@link #waitForMessageToContain}.
+     */
+    public void waitForMessageToChangeFrom(DocumentMessageBoxMessage previous) {
+        try {
+            com.gsl.utils.Selenium.WaitUtils.fluentWaitBuilder()
+                    .withMessage("message box to change away from: [" + previous.getText() + "]")
+                    .until(d -> {
+                        java.util.List<org.openqa.selenium.WebElement> els = d.findElements(Loc.MESSAGE_TEXT);
+                        if (els.isEmpty() || !els.get(0).isDisplayed()) return false;
+                        String now = els.get(0).getText();
+                        return now != null && !now.isBlank() && !now.contains(previous.getText());
+                    });
+        } catch (org.openqa.selenium.TimeoutException e) {
+            // Fall through — the caller's own text check reports what is actually on screen.
+        }
     }
 
     public void closeGRC() {

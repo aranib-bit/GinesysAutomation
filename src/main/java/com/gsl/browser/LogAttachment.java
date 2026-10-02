@@ -19,6 +19,12 @@ public final class LogAttachment {
 
     private LogAttachment() {}
 
+    /**
+     * Fetches this test's browser logs and attaches them to the Extent report: on failure, attaches
+     * everything (gated by {@code browser.logs.capture.on.failure}) and logs a fail/warn entry per
+     * {@link DecisionEngine}'s verdict; on success, attaches only entries at or above
+     * {@code browser.logs.level}. No-op when browser-log capture is disabled or there's nothing to attach.
+     */
     public static void attach(ITestResult result) {
         if (!ConfigFactory.getNetworkConfig().browserLogsEnabled()) return;
 
@@ -48,6 +54,7 @@ public final class LogAttachment {
         }
     }
 
+    /** @return {@code logs} filtered to CRITICAL only ("SEVERE"/"CRITICAL"), CRITICAL+WARNING ("WARNING"), or unfiltered (any other value, e.g. "INFO"). */
     private static List<BrowserLogRecord> filterByLevel(List<BrowserLogRecord> logs, String level) {
         return switch (level.toUpperCase()) {
             case "SEVERE", "CRITICAL" -> logs.stream()

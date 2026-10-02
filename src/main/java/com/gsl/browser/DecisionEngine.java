@@ -18,6 +18,12 @@ public final class DecisionEngine {
 
     private DecisionEngine() {}
 
+    /**
+     * @param testPassed the test's outcome so far (excluding this decision) — used by the SMART policy
+     * @return {@link Decision#FAIL} under STRICT/SMART policy conditions (see class Javadoc),
+     * {@link Decision#WARN} when only warning-level impact is present, else {@link Decision#PASS}
+     * (including whenever browser-log capture is disabled or capture-only)
+     */
     public static Decision evaluate(List<BrowserLogRecord> logs, boolean testPassed) {
         NetworkConfig cfg = ConfigFactory.getNetworkConfig();
 

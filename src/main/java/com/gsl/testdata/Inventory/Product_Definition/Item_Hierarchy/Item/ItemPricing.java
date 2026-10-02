@@ -5,6 +5,14 @@ import io.github.sskorol.data.Column;
 import io.github.sskorol.data.Sheet;
 import lombok.Getter;
 
+/**
+ * Fixture-data counterpart of the "Pricing" sheet of the Inventory Item workbook ({@code
+ * ConfigFactory.getExcelDataConfig().inventoryitemPath()}) — the item's default standard/
+ * wholesale/retail/MRP rates (store-independent; contrast with the per-store overrides in {@link
+ * ItemStoreWiseMultiplePrice}). Optional sheet: {@code MergedInvItemDataSupplier} joins a row in
+ * only when one exists for the {@code TestCaseID} (unlike the mandatory {@link ItemGeneral}).
+ * Feeds {@code MergedInventoryItemData.itemPricing}.
+ */
 @Getter
 @Sheet(name = "Pricing")
 public class ItemPricing {

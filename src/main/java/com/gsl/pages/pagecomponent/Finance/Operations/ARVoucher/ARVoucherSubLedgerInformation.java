@@ -297,7 +297,7 @@ public class ARVoucherSubLedgerInformation extends VoucherSubLedgerInformationBa
         By option = subLedgerPickerRow(subledgerName, id);
         SeleniumUtils.clickBoundlistOptionAcrossPages(
                 "//div[contains(@class,'x-boundlist-floating')]", option, "SL_OPTION_" + subledgerName);
-        ExtentLogger.info("SL_OPTION_" + subledgerName + " is clicked successfully");
+        ReportLogger.fieldEntry(subledgerName + " selected from dropdown");
         JavascriptExecutorUtils.waitForExtJS();
         JavascriptExecutorUtils.waitForPageLoad();
         JavascriptExecutorUtils.waitForComponentReady();
@@ -359,7 +359,7 @@ public class ARVoucherSubLedgerInformation extends VoucherSubLedgerInformationBa
             driver.findElement(option).click();
             return true;
         });
-        ExtentLogger.info("SL_REFSITE_OPTION_" + referenceSite + " is clicked successfully");
+        ReportLogger.fieldEntry(referenceSite + " selected from dropdown");
         JavascriptExecutorUtils.waitForExtJS();
         JavascriptExecutorUtils.waitForPageLoad();
         ExtentLogger.info("[AR SL RefSite] Row " + (rowIndex + 1) + ": selected '" + referenceSite + "' via native");

@@ -44,6 +44,16 @@ public class DiffEngine {
     private final AuditComparator auditComparator = new AuditComparator();
     private final ExcludedAuditColumnsResolver excludedColumnsResolver = new ExcludedAuditColumnsResolver();
 
+    /**
+     * Runs the full two-pass diff described in this class's Javadoc: data tables first
+     * ({@link #diffDataTable}), then audit tables ({@link #diffAuditTable}) using Pass 1's
+     * per-table results to derive each audit table's real expectation for this document.
+     *
+     * @param changeSet scenario-specific column/row overrides layered on top of {@code context}'s
+     *                  persistence-map defaults ({@code null} if the scenario has none)
+     * @return every column check, audit-table check, audit field check, and the flattened
+     *         {@link ValidationFailure} list for {@link VoucherSnapshotValidator} to assert
+     */
     public DiffResult diff(DocumentContext context, VoucherSnapshot before, VoucherSnapshot after,
             ExpectedChangeSet changeSet) {
 
@@ -82,6 +92,9 @@ public class DiffEngine {
         return new DiffResult(columnChecks, auditChecks, auditFieldChecks, failures);
     }
 
+    /** Pass 2 worker for one {@code aud2_*} table — see this class's Javadoc for the derivation
+     *  rule. Adds exactly one {@link AuditTableCheckResult} (plus any {@link AuditFieldCheckResult}s
+     *  and {@link ValidationFailure}s from {@link AuditComparator}) to the shared out-lists. */
     private void diffAuditTable(DocumentContext context, TableRule auditTableRule,
             VoucherSnapshot before, VoucherSnapshot after,
             Map<String, TableRule> dataTableRulesByName, Map<String, List<ColumnCheckResult>> columnChecksByTable,
@@ -138,6 +151,8 @@ public class DiffEngine {
         if (!passed) failures.add(rowCountFailure(auditTableName, rowsBefore, rowsAfter));
     }
 
+    /** Builds the ERROR-severity {@link ValidationFailure} for an audit table that should have
+     *  grown a row (its paired data table showed a real change) but didn't. */
     private static ValidationFailure rowCountFailure(String auditTableName, int rowsBefore, int rowsAfter) {
         String actual = "rowsBefore=" + rowsBefore + ", rowsAfter=" + rowsAfter;
         return new ValidationFailure(auditTableName, "-", null, "INSERT (>=1 new row)", actual,
@@ -155,6 +170,10 @@ public class DiffEngine {
                 : auditTableName;
     }
 
+    /** Pass 1 worker for one non-audit table: pairs up BEFORE/AFTER rows by business key
+     *  ({@link #indexByKey}), evaluates row-level INSERT/DELETE acceptance for any key present on
+     *  only one side, and column-diffs every key present on both sides — appending results to the
+     *  shared {@code columnChecks}/{@code failures} out-lists. */
     private void diffDataTable(DocumentContext context, TableRule tableRule, ExpectedChangeSet changeSet,
             TableSnapshot beforeTable, TableSnapshot afterTable,
             List<ColumnCheckResult> columnChecks, List<ValidationFailure> failures) {
@@ -179,8 +198,53 @@ public class DiffEngine {
                 String afterDisplay = afterRow == null ? "(absent)" : "(present)";
 
                 if (changeSet != null && changeSet.isRowChangeExpected(tableName, expectedDirection, presentRow)) {
+                    // The "<row>" check is kept exactly as before — AuditComparator.deriveExpected
+                    // specifically keys off column()=="<row>" to derive the expected aud2_* audit
+                    // INSERT/DELETE (which in turn drives DiffEngine.diffAuditTable's own
+                    // expectedAnyChange() decision) — removing it would silently stop asserting
+                    // that Create/Delete-style rows actually leave an audit trail.
                     columnChecks.add(ColumnCheckResult.pass(tableName, key, "<row>",
                             "EXPECTED " + expectedDirection, beforeDisplay, afterDisplay));
+
+                    // Point 11: ADDITIONALLY explode the same accepted INSERT/DELETE into one
+                    // check per column of the present row — for most columns this is still
+                    // display-only enrichment (the row-level acceptance decision above already
+                    // stands), but Item G/Z: a column with an explicit resolved override (MANDATORY
+                    // not-null, or Item Z's MUST_CHANGE for genuinely user-supplied columns) is
+                    // actually EVALUATED here, not just displayed, so a genuinely null
+                    // system-mandatory column on Create/Delete becomes a real failure instead of
+                    // silently passing as "EXPECTED INSERT, After: —", AND the column reports its
+                    // own real expectation label (MANDATORY/MUST_CHANGE) instead of the generic
+                    // "EXPECTED INSERT" fallback — which is what lets ChangeClassifier put it in
+                    // USER_CHANGE/SYSTEM_CHANGE instead of everything collapsing into CASCADE_CHANGE.
+                    // Only a column with NO override at all keeps the generic fallback below.
+                    if (presentRow != null && !presentRow.isEmpty()) {
+                        String expectationLabel = "EXPECTED " + expectedDirection;
+                        for (String column : presentRow.keySet()) {
+                            ColumnRule override = changeSet != null
+                                    ? changeSet.findOverride(tableName, key, column) : null;
+                            if (override == null) override = tableRule.findColumnRule(column);
+
+                            if (override != null) {
+                                // Checked against the row's own real value regardless of which
+                                // snapshot side captured it (an insert's AFTER, a delete's
+                                // BEFORE) — there is genuinely no before-state for either
+                                // direction, so "before" is always passed as null/absent.
+                                Object value = presentRow.get(column);
+                                ColumnCheckResult result = columnRuleEngine.evaluate(tableName, key, column,
+                                        override, null, value, context.getCurrentUser(), false);
+                                columnChecks.add(result);
+                                if (!result.passed()) failures.add(result.failure());
+                                continue;
+                            }
+
+                            String valueDisplay = DbValueNormalizer.displayString(presentRow.get(column));
+                            String colBeforeDisplay = isInsert ? "(absent)" : valueDisplay;
+                            String colAfterDisplay = isInsert ? valueDisplay : "(absent)";
+                            columnChecks.add(ColumnCheckResult.pass(tableName, key, column,
+                                    expectationLabel, colBeforeDisplay, colAfterDisplay));
+                        }
+                    }
                     continue;
                 }
 
@@ -208,6 +272,9 @@ public class DiffEngine {
         }
     }
 
+    /** Resolves the effective {@link ColumnRule} for one (table, business key, column) triple,
+     *  applying this class's documented precedence: {@code changeSet}'s row/table-scoped override
+     *  &gt; the {@link TableRule}'s own baked-in override &gt; {@link #defaultColumnRule}. */
     private ColumnRule resolveColumnRule(ExpectedChangeSet changeSet, TableRule tableRule, String tableName,
             String businessKey, String column) {
         if (changeSet != null) {
@@ -219,6 +286,9 @@ public class DiffEngine {
         return defaultColumnRule(tableRule, column);
     }
 
+    /** Maps a {@link TableRule#getDefaultRule()} to its generic column-level {@link ColumnRule} —
+     *  the fallback used when neither {@code changeSet} nor the table declares an explicit
+     *  per-column override. */
     private ColumnRule defaultColumnRule(TableRule tableRule, String column) {
         return switch (tableRule.getDefaultRule()) {
             case MUST_CHANGE -> ColumnRule.mustChange(column);
@@ -240,6 +310,8 @@ public class DiffEngine {
         return byKey;
     }
 
+    /** Builds this row's {@code "col1=val1, col2=val2"} business-key display string from
+     *  {@code tableRule}'s {@link TableRule#getBusinessKeyColumns()}, in declared order. */
     static String businessKeyOf(TableRule tableRule, Map<String, Object> row) {
         List<String> keyColumns = tableRule.getBusinessKeyColumns();
         if (keyColumns == null || keyColumns.isEmpty()) return "(no key)";

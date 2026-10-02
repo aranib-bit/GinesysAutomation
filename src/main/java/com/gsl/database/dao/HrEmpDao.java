@@ -17,4 +17,13 @@ public interface HrEmpDao {
      */
     @SqlQuery("SELECT ecode FROM hrdemp WHERE abbre = :abbre")
     Optional<Long> findEcodeByAbbre(@Bind("abbre") String abbre);
+
+    /**
+     * Reverse lookup — resolves a known {@code ecode} back to its login {@code abbre}, for report
+     * display (e.g. {@code SnapshotValidationReporter} showing "50997 (aranibarman)" instead of a
+     * bare employee code). {@code abbre}, not a full name, per explicit instruction — no employee
+     * "display name" column/model exists in this codebase. Empty if no employee row matches.
+     */
+    @SqlQuery("SELECT abbre FROM hrdemp WHERE ecode = :ecode")
+    Optional<String> findAbbreByEcode(@Bind("ecode") long ecode);
 }

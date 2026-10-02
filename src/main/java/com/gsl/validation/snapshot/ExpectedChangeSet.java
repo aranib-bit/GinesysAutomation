@@ -49,6 +49,7 @@ public class ExpectedChangeSet {
         this.rowExpectationsByTable = rowExpectationsByTable;
     }
 
+    /** This change set's name (e.g. a scenario/edit-mode label), for report/diagnostic display. */
     public String getName() {
         return name;
     }
@@ -109,6 +110,7 @@ public class ExpectedChangeSet {
         return expectations.stream().anyMatch(e -> e.expectation() == expectation && e.matcher().test(row));
     }
 
+    /** Starts a new {@link Builder} for a change set named {@code name}. */
     public static Builder builder(String name) {
         return new Builder(name);
     }
@@ -137,6 +139,7 @@ public class ExpectedChangeSet {
             return this;
         }
 
+        /** Adds several table-wide overrides at once — see {@link #rule(String, ColumnRule)}. */
         public Builder rules(String tableName, List<ColumnRule> rules) {
             for (ColumnRule r : rules) rule(tableName, r);
             return this;
@@ -170,6 +173,7 @@ public class ExpectedChangeSet {
             return this;
         }
 
+        /** Builds the immutable {@link ExpectedChangeSet} from every override/expectation added so far. */
         public ExpectedChangeSet build() {
             return new ExpectedChangeSet(name, overrides, rowExpectations);
         }

@@ -13,6 +13,11 @@ public final class TenantUtils {
 
     private TenantUtils() {}
 
+    /**
+     * Returns whether {@code tenant} (case-insensitive) is listed in
+     * {@link ApiConfig#multiTenantNames()} — i.e. requires multi-tenant login/API handling
+     * rather than the single-tenant defaults.
+     */
     public static boolean isMultiTenant(ApiConfig config, String tenant) {
         for (String t : config.multiTenantNames()) {
             if (t.equalsIgnoreCase(tenant)) return true;

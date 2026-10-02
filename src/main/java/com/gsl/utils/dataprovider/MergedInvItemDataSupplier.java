@@ -24,8 +24,33 @@ import java.util.stream.IntStream;
 
 import static io.github.sskorol.data.TestDataReader.use;
 
+/**
+ * DataSupplier for Inventory Item creation tests (e.g. {@code CreateItem}) — filters the shared
+ * {@code MasterTestData} sheet to rows whose {@code testcasename} matches the invoking test
+ * method's name, then for each matched {@code TestCaseId} joins in that item's General/Category
+ * Description/Others/Pricing/Inventory Tracking/POS Behaviour rows (each optional except {@link
+ * com.gsl.testdata.Inventory.Product_Definition.Item_Hierarchy.Item.ItemGeneral}, which is
+ * mandatory) and its Store-Wise Multiple Price rows (0..N), all read from the single
+ * {@code ConfigFactory.getExcelDataConfig().inventoryitemPath()} workbook (each a different
+ * sheet). Every joined non-null sheet is passed through {@link MandatoryFieldValidator#validate}
+ * before being emitted.
+ *
+ * <p>{@code flatMap=true} — a {@code TestCaseId} whose {@code MasterTestData.getInvocationcount()}
+ * is greater than 1 is expanded into that many separate invocations (1-based {@code
+ * invocationIndex}/{@code totalInvocations}), each otherwise carrying identical joined data —
+ * mirrors {@link MergedReceiptDataSupplier}'s invocation-count expansion.
+ */
 public class MergedInvItemDataSupplier {
 
+    /**
+     * Filters {@code MasterTestData} to {@code method}'s name, joins each matched row's item-detail
+     * sheets, and expands per-row by {@code invocationcount} — see the class Javadoc.
+     *
+     * @param method the TestNG-injected test method; only its name is used to match {@code
+     *               testcasename} in the {@code MasterTestData} sheet
+     * @throws IllegalStateException if a matched {@code TestCaseId} has no corresponding row in
+     *                                the mandatory {@code ItemGeneral} sheet
+     */
     @DataSupplier(name = "dataSupplier", flatMap = true)
     public StreamEx<MergedInventoryItemData> dataSupplier(Method method) {
 
@@ -179,6 +204,7 @@ public class MergedInvItemDataSupplier {
     }
 
     /* ---------- debug runner (no TestNG required) ---------- */
+    /** Ad hoc manual runner — invokes {@link #dataSupplier} via {@link #dummyMethod} and prints each resulting row's invocation index, without needing a TestNG run. */
     public static void main(String[] args) throws Exception {
 
         MergedInvItemDataSupplier supplier = new MergedInvItemDataSupplier();
@@ -195,5 +221,6 @@ public class MergedInvItemDataSupplier {
     }
 
     // dummy method required only to satisfy Method parameter
+    /** Placeholder {@link Method} target for {@link #main}'s manual invocation — never actually run by TestNG. */
     public void dummyMethod() {}
 }

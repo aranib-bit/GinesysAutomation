@@ -5,8 +5,23 @@ import com.gsl.testdata.annotations.AtLeastOneMandatory;
 
 import java.lang.reflect.Field;
 
+/**
+ * Reflection-driven enforcement of {@link Mandatory}/{@link AtLeastOneMandatory} on a test-data
+ * DTO: field-level {@code @Mandatory} requires that field to be non-null/non-blank, and
+ * type-level {@code @AtLeastOneMandatory} requires at least one field from its named group to be
+ * populated. Call this once, after a DTO is fully assembled (Excel-merged or builder-constructed),
+ * to fail fast with a clear message instead of letting a missing field surface as a confusing
+ * downstream NPE or UI/DB mismatch.
+ */
 public class MandatoryFieldValidator {
 
+    /**
+     * Validates every {@code @Mandatory}-annotated field and, if present, the class-level
+     * {@code @AtLeastOneMandatory} group on {@code data}. No-op when {@code data} is null.
+     *
+     * @throws IllegalStateException if a {@code @Mandatory} field is null/blank, or no field in
+     *                                an {@code @AtLeastOneMandatory} group is populated
+     */
     public static void validate(Object data) {
 
         if (data == null) {
@@ -45,6 +60,7 @@ public class MandatoryFieldValidator {
     }
 
     /* ---------- GROUP VALIDATION ---------- */
+    /** Fails if none of {@code @AtLeastOneMandatory}'s named fields on {@code data} is populated. */
     private static void validateAtLeastOneMandatory(Object data, Class<?> clazz) {
 
         AtLeastOneMandatory rule =

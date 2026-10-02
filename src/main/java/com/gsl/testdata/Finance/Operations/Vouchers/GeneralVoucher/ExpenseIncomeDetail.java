@@ -87,6 +87,7 @@ public class ExpenseIncomeDetail extends ExpenseIncomeDetailBase {
         this.incomeCr        = incomeCr;
     }
 
+    /** {@code true} when the "Is Reversal" column reads "Yes" (case-insensitive). */
     public boolean isReversalYes() {
         return "Yes".equalsIgnoreCase(isReversal);
     }

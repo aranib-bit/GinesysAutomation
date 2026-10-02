@@ -44,6 +44,7 @@ import java.util.stream.Collectors;
  */
 public class ServiceInvoiceAdhocApiClient extends ApiClient {
 
+    /** Wraps an already-authenticated session {@code spec} — see {@link ApiClient}'s class Javadoc. */
     public ServiceInvoiceAdhocApiClient(RequestSpecification spec) {
         super(spec);
     }
@@ -441,6 +442,7 @@ public class ServiceInvoiceAdhocApiClient extends ApiClient {
         return StepExecutor.call("Create Service Invoice Adhoc via API", () -> createServiceInvoiceAdhoc(request));
     }
 
+    /** Maps a calculated line charge into the line-level shape {@code Save} expects. */
     private static SimpleServiceCharge toSimpleCharge(ServiceChargeDetail c) {
         return SimpleServiceCharge.builder()
                 .appAmount(c.getAppAmount())
@@ -464,6 +466,7 @@ public class ServiceInvoiceAdhocApiClient extends ApiClient {
                 .build();
     }
 
+    /** Maps a calculated header charge into the header-level shape {@code Save} expects (distinct field casing from {@link #toSimpleCharge}). */
     private static SaveHeaderCharge toSaveHeaderCharge(ServiceChargeDetail c) {
         return SaveHeaderCharge.builder()
                 .source(c.getSource())
@@ -486,6 +489,7 @@ public class ServiceInvoiceAdhocApiClient extends ApiClient {
                 .build();
     }
 
+    /** Generates a short (≤16 char), effectively-unique {@code documentNo} candidate — base-36 timestamp + random suffix, not server-validated for collisions. */
     private static String generateReferenceNo() {
         String candidate = "P" + Long.toString(System.currentTimeMillis(), 36)
                 + Integer.toString((int) (Math.random() * 1_000_000), 36);

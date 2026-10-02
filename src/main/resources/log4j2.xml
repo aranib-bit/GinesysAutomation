@@ -190,6 +190,21 @@
             <AppenderRef ref="AsyncRollingFile"/>
         </Logger>
 
+        <!--
+            TEMPORARY diagnostic override — root's INFO level normally suppresses HikariCP's own
+            connection-lifecycle logging entirely, which is exactly why the "total=0, active=0,
+            idle=0" pool-exhaustion failure on FIN-GV-EDIT-DETAIL-01 (reports/runs/20260913_141449)
+            has no evidence to confirm whether it was a mass maxLifetime eviction, a DB
+            connectivity blip, or something else — the report's own root-cause box says
+            UNKNOWN/LOW confidence. Leave this enabled until the next such occurrence is captured
+            and its cause is confirmed via these DEBUG lines (connection created/evicted/
+            retired-by-maxLifetime), then remove — this is a one-time diagnostic capture, not a
+            permanent verbosity change.
+        -->
+        <Logger name="com.zaxxer.hikari" level="DEBUG" additivity="false">
+            <AppenderRef ref="AsyncRollingFile"/>
+        </Logger>
+
         <!-- Root at INFO to suppress third-party noise (Selenium, HikariCP, etc.) -->
         <Root level="INFO">
             <AppenderRef ref="ConsoleAppender"/>

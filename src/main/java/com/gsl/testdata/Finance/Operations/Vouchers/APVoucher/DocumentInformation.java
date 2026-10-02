@@ -12,6 +12,10 @@ import lombok.NoArgsConstructor;
 import java.time.LocalDate;
 
 /**
+ * Test-data model for the AP Voucher "DocumentInformation" sheet — the voucher header fields
+ * (owner site, voucher no., cash/bank, remarks, date, reference) plus the AP-specific "On
+ * Account" flag the other voucher types don't have.
+ *
  * <p><b>Optional field note:</b> {@code onAccountConfirm} lives in
  * {@link DocumentInformationBase}. XlsxReader calls {@code getDeclaredFields()} on
  * this class only — inherited fields are invisible to it, so the field is never
@@ -50,6 +54,7 @@ public class DocumentInformation extends DocumentInformationBase implements Vouc
     @Column(name = "On Account")
     private String onAccount;
 
+    /** {@code true} when the "On Account" column reads "Yes" (case-insensitive). */
     public boolean isOnAccount() {
         return "Yes".equalsIgnoreCase(onAccount);
     }

@@ -10,6 +10,18 @@ import java.time.LocalDate;
 import java.time.format.DateTimeFormatter;
 import java.util.Date;
 
+/**
+ * JavaScript-executor helpers for ExtJS form controls that don't expose reliable DOM-level
+ * signals to plain Selenium locators/waits: radio-group selection and readback (see the note
+ * above {@link #selectExtJsRadio(String)} on why ExtJS radios need this), setting a combobox's
+ * value directly via its {@code Ext.ComponentQuery} component (bypassing the picker UI),
+ * writing a grid cell's underlying store record, and appending a row to the Price Information
+ * grid.
+ *
+ * <p>Prefer the {@link RadioFieldLabel}-typed overloads of {@link #selectExtJsRadio} /
+ * {@link #getSelectedExtJsRadioLabel} from page-object code — they keep field-heading strings
+ * out of page objects and in one typed enum location.
+ */
 public class ExtJsUtils {
 
     private ExtJsUtils() {}
@@ -39,10 +51,12 @@ public class ExtJsUtils {
 
     // ── Enum-typed overloads (preferred — eliminates magic strings) ───────────
 
+    /** {@link RadioFieldLabel}-typed overload of {@link #selectExtJsRadio(String, String)}. */
     public static void selectExtJsRadio(RadioFieldLabel field, String optionLabel) {
         selectExtJsRadio(field.getFieldLabel(), optionLabel);
     }
 
+    /** {@link RadioFieldLabel}-typed overload of {@link #getSelectedExtJsRadioLabel(String)}. */
     public static String getSelectedExtJsRadioLabel(RadioFieldLabel field) {
         return getSelectedExtJsRadioLabel(field.getFieldLabel());
     }
@@ -116,6 +130,14 @@ public class ExtJsUtils {
 
     // ────────────────────────────────────────────────────────────────────────
 
+    /**
+     * Sets an ExtJS combobox's value directly via {@code Ext.ComponentQuery}, looked up by its
+     * {@code fieldLabel} config — expands the combo, loads its store, finds the record whose
+     * display field matches {@code displayValue}, and selects it, bypassing the picker UI/typing.
+     *
+     * @throws org.openqa.selenium.JavascriptException if no combo has the given field label, or
+     *         {@code displayValue} isn't present in the store
+     */
     public static void setExtJsComboByLabel(String fieldLabel, String displayValue) {
 
         String script =
@@ -147,6 +169,11 @@ public class ExtJsUtils {
         ((JavascriptExecutor) DriverManager.getDriver()).executeScript(script);
     }
 
+    /**
+     * Writes {@code value} directly into a grid's underlying store record (selected by
+     * {@code gridIndex}/{@code rowIndex} and written to {@code dataIndex}) and refreshes the
+     * view — bypasses cell-editing UI entirely.
+     */
     public static void setGridCellValue(
             WebDriver driver,
             int gridIndex,
@@ -173,6 +200,10 @@ public class ExtJsUtils {
         System.out.println("JS Result: " + result);
     }
 
+    /**
+     * Same as {@link #setExtJsComboByLabel(String, String)}, but looks the combo up by its
+     * {@code name} config instead of {@code fieldLabel}.
+     */
     public static void setExtJsComboByName(String name, String displayValue) {
 
         String script =
@@ -204,6 +235,11 @@ public class ExtJsUtils {
     }
 
 
+    /**
+     * Adds a row to the Price Information grid ({@code itemId=grd_PriceInfo}) via its underlying
+     * store — converts {@code effectiveDate} to a JS {@code Date} on a DD/MM/YYYY-safe path —
+     * and, best-effort, opens the cell editor on the new row's RSP column to trigger a UI refresh.
+     */
     public static void addPriceInfo(LocalDate effectiveDate, double mrp, double rsp) {
 
         // Format date as DD/MM/YYYY

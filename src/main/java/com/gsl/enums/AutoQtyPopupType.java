@@ -3,6 +3,12 @@ package com.gsl.enums;
 import java.util.Arrays;
 import java.util.stream.Collectors;
 
+/**
+ * Whether the POS UI should pop up a quantity-entry dialog automatically for an item. Populated
+ * from the "Auto Qty Popup" column of the "POS Behaviour" sheet in the inventory-item Excel test
+ * data (see {@code ItemPOSBehaviour.autoQtyPopup}) via
+ * {@link com.gsl.converter.AutoQtyPopupConverter} / {@link #fromExcel}.
+ */
 public enum AutoQtyPopupType {
 
     YES("Yes"),
@@ -13,6 +19,7 @@ public enum AutoQtyPopupType {
         this.label = label;
     }
 
+    /** Excel parse key / display label — same string for this enum (see {@link #toString}). */
     public String label() {
         return label;
     }
@@ -23,6 +30,12 @@ public enum AutoQtyPopupType {
     }
 
 
+    /**
+     * Resolves {@code excelValue} to its matching {@link AutoQtyPopupType} constant by
+     * case-insensitive match against each constant's {@link #label}; throws
+     * {@link IllegalArgumentException} naming {@code fileName}/{@code sheetName}/
+     * {@code columnName} for a blank or unrecognized value.
+     */
     public static AutoQtyPopupType fromExcel(
             String excelValue,
             String fileName,

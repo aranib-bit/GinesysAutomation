@@ -31,6 +31,11 @@ public final class NetworkExtentLogger {
 
     private static final ObjectMapper MAPPER = new ObjectMapper();
 
+    /**
+     * Renders {@code logs} as a collapsible "Network Traffic [protocol]" table on the current
+     * Extent test, with a red failed-request count in the summary line when any request failed
+     * or returned 4xx/5xx. No-op when {@code logs} is null/empty or there is no active test.
+     */
     public static void logNetworkLogs(List<NetworkLogRecord> logs, String protocol) {
         if (logs == null || logs.isEmpty()) return;
         ExtentTest test = ExtentManager.getExtentTest();
@@ -169,6 +174,9 @@ public final class NetworkExtentLogger {
         return "#006600";
     }
 
+    /** Wraps {@code content} in a {@code <details>/<summary>} block titled {@code label} —
+     *  shared by this class's own headers/body sub-rows and by {@link ApiCallReportLogger}'s
+     *  Payload/Response collapsibles. */
     static String collapsible(String label, String content, String labelColor) {
         return "<details style='margin:2px 0;'><summary style='cursor:pointer;font-size:10px;color:"
                 + labelColor + ";'>" + label + "</summary>" + content + "</details>";
@@ -181,6 +189,9 @@ public final class NetworkExtentLogger {
         return sb.append("</pre>").toString();
     }
 
+    /** Pretty-prints {@code content} as a JSON code block; falls back to {@link #preBlock} when it
+     *  isn't valid JSON (e.g. a plain-text or HTML response body). Shared with
+     *  {@link ApiCallReportLogger}'s Payload/Response rendering. */
     static String jsonBlock(String content) {
         try {
             Object parsed = MAPPER.readValue(content, Object.class);
@@ -191,6 +202,8 @@ public final class NetworkExtentLogger {
         }
     }
 
+    /** Renders {@code content} as a scrollable monospace {@code <pre>} block — the non-JSON
+     *  fallback used by {@link #jsonBlock}. */
     static String preBlock(String content) {
         return "<pre style='font-size:10px;margin:2px 0;padding:4px;background:#f8f8f8;"
                 + "border-left:2px solid #ddd;white-space:pre-wrap;"

@@ -29,11 +29,15 @@ import com.gsl.utils.NavigationUtils;
 import com.gsl.utils.dataprovider.MergedFinGeneralVoucherDataSupplier;
 import com.gsl.utils.dataprovider.fixture.finance.DocumentSearchStrategy;
 import com.gsl.validation.snapshot.DocumentContext;
+import com.gsl.validation.snapshot.ExpectedChangeSet;
 import com.gsl.validation.snapshot.TableRule;
 import com.gsl.validation.snapshot.TableSnapshot;
 import com.gsl.validation.snapshot.SnapshotService;
+import com.gsl.validation.snapshot.VoucherSnapshot;
+import com.gsl.validation.snapshot.VoucherSnapshotValidator;
 import com.gsl.validation.snapshot.audit.AuditAssertion;
 import com.gsl.validation.snapshot.finance.Aud2SnapshotDao;
+import com.gsl.validation.snapshot.finance.GeneralVoucherDeleteChangeSets;
 import com.gsl.validation.snapshot.finance.VoucherDocumentContextResolver;
 import com.tests.WebTest;
 import org.testng.Assert;
@@ -90,6 +94,8 @@ public class DeleteGeneralVoucher extends WebTest {
         final GeneralVoucherListPage[] listRef    = new GeneralVoucherListPage[1];
         final DocumentContext[]        contextRef = new DocumentContext[1];
         final Map<String, Object>[]    beforeFinvchmainRowRef = new Map[1];
+        final VoucherSnapshot[]        beforeSnapshotRef = new VoucherSnapshot[1];
+        final VoucherSnapshot[]        afterSnapshotRef = new VoucherSnapshot[1];
         final GeneralVoucherRevertOutcome[] unpostOutcomeRef = new GeneralVoucherRevertOutcome[1];
         final String[]                 beforeReleaseStatusRef = new String[1];
         final String[]                 immediateBeforeReleaseStatusRef = new String[1];
@@ -135,25 +141,22 @@ public class DeleteGeneralVoucher extends WebTest {
         });
 
         // ── Step 3: Navigate ──────────────────────────────────────────────────────
-        StepExecutor.step("Open Finance → General Voucher List", () -> {
-            listRef[0] = NavigationUtils.navigateToFinanceSideMenu(
-                    homeRef[0],
-                    MainMenuType.OPERATIONS,
-                    OperationsMenuType.CATEGORY,
-                    GeneralVoucherListPage.class);
-            ReportLogger.business("General Voucher list page opened");
-        });
+        // Business log + "Navigated: ..." summary are now recorded inside
+        // NavigationUtils.navigateToFinanceSideMenu itself.
+        StepExecutor.step("Open Finance → General Voucher List", () -> listRef[0] =
+                NavigationUtils.navigateToFinanceSideMenu(
+                        homeRef[0],
+                        MainMenuType.OPERATIONS,
+                        OperationsMenuType.CATEGORY,
+                        GeneralVoucherListPage.class));
 
-        // ── Step 4: Clear Filter + Refresh ────────────────────────────────────────
-        StepExecutor.step("Clear Filter and Refresh List", () -> {
-            listRef[0].clearFilterAndRefreshList().resetToFirstPageIfEnabled();
-            ReportLogger.business("Filter cleared, list refreshed, reset to first page (if not already there)");
-        });
-
-        // ── Step 5: Select document ───────────────────────────────────────────────
+        // ── Step 4: Clear Filter + Select Document — consolidated via
+        // VoucherListPageBase.selectDocumentForAction (see RevertGeneralVoucher's own equivalent
+        // step for the rationale) ─────────────────────────────────────────────────
         StepExecutor.step("Select General Voucher in List Page", () -> {
-            listRef[0].selectDocumentFast(testData.getExistingVoucherNo(), DocumentSearchStrategy.EXACT_MATCH);
-            ReportLogger.business("Selected voucher: " + testData.getExistingVoucherNo());
+            listRef[0].selectDocumentForAction(testData.getExistingVoucherNo(), DocumentSearchStrategy.EXACT_MATCH);
+            ReportLogger.business("Filter cleared, list refreshed, selected voucher: "
+                    + testData.getExistingVoucherNo());
         });
 
         // ── Step 5b: DB Check — Release Status Immediately Before Unpost ──────────────
@@ -266,7 +269,13 @@ public class DeleteGeneralVoucher extends WebTest {
         // used to sit between confirming selection and opening Actions.
         StepExecutor.step("Resolve Document Context + Capture Pre-Delete State", () -> {
             contextRef[0] = new VoucherDocumentContextResolver().resolve(testData.getExistingVoucherNo(), VoucherDomain.GV);
-            TableSnapshot finvchmainSnapshot = new SnapshotService(auditDao).capture(contextRef[0]).getTable("finvchmain");
+            // Round 3 Item K: captures the FULL persistence-map snapshot (finvchmain/finvchdet/
+            // finpost/fincosttag), not just finvchmain — needed so the new "Database Validation —
+            // Full Table Deletion" step (after Delete) can confirm the related tables' rows are
+            // ALSO actually gone, not just finvchmain's. finvchmain's own row is still pulled out
+            // below for the existing Step 10 audit-trail comparison, unchanged.
+            beforeSnapshotRef[0] = new SnapshotService(auditDao).capture(contextRef[0]);
+            TableSnapshot finvchmainSnapshot = beforeSnapshotRef[0].getTable("finvchmain");
             if (finvchmainSnapshot == null || finvchmainSnapshot.getRows().isEmpty()) {
                 throw new IllegalStateException("[DeleteGeneralVoucher] finvchmain row not found for scheme_docno="
                         + testData.getExistingVoucherNo() + " immediately before delete.");
@@ -275,6 +284,12 @@ public class DeleteGeneralVoucher extends WebTest {
             ReportLogger.business("Captured pre-delete finvchmain state for audit comparison: "
                     + testData.getExistingVoucherNo());
             recordPreDeleteStateSummary(beforeFinvchmainRowRef[0]);
+            // Item U: Delete previously had NO audit-state visibility at all — both sets are
+            // already resolved on contextRef[0], rendered in the same dedicated shape used
+            // elsewhere for this check, ahead of the state-changing Delete click.
+            new com.gsl.validation.snapshot.finance.AuditStateSummary(
+                    contextRef[0].getAuditActiveTables(), contextRef[0].getAuditTriggerDisabledTables())
+                    .logTable("BEFORE Delete — Audit State");
         });
 
         // ── Step 8: Re-select Voucher + Click Actions + Delete + Confirm ──────────────────────
@@ -344,6 +359,37 @@ public class DeleteGeneralVoucher extends WebTest {
             // longer-term follow-up, not done here).
             recordAuditTrailSummary(finvchmainRule, beforeFinvchmainRowRef[0]);
         });
+
+        // ── Step 11: Capture AFTER Snapshot ────────────────────────────────────────
+        // Round 3 Item K. Step 9b already confirmed finvchmain itself is gone via a direct DAO
+        // read; this captures the SAME full persistence-map shape Step 7 captured before Delete,
+        // so Step 12 below can confirm finvchdet/finpost/fincosttag are ALSO actually gone — the
+        // gap recordAuditTrailSummary's own Javadoc explicitly flagged as "option (b) ... a
+        // longer-term follow-up, not done here," never implemented until now.
+        StepExecutor.step("Capture AFTER Snapshot", () -> {
+            afterSnapshotRef[0] = new SnapshotService(auditDao).capture(contextRef[0]);
+            ReportLogger.business("AFTER snapshot captured for voucher: " + testData.getExistingVoucherNo());
+            recordAfterSnapshotSummary(afterSnapshotRef[0]);
+        });
+
+        // ── Step 12: Database Validation — Full Table Deletion ────────────────────
+        // Runs ALONGSIDE Step 9b/10 (not replacing them) — same "complementary coverage"
+        // relationship GeneralVoucherCreateChangeSets' own Javadoc documents for Create's Level
+        // 1-4 checks vs. its snapshot validation. Confirms finvchdet/finpost/fincosttag (using
+        // "the same relation" every other GV changeset already scopes a document's own rows by —
+        // vchcode/entcode/entcode, all resolved via VoucherDocumentContextResolver/SnapshotService's
+        // fk-scoped capture) were ALSO actually removed, not just finvchmain.
+        StepExecutor.step("Database Validation — Full Table Deletion (finvchdet/finpost/fincosttag)", () -> {
+            ExpectedChangeSet changeSet = GeneralVoucherDeleteChangeSets.delete(contextRef[0]);
+
+            VoucherSnapshotValidator validator = new VoucherSnapshotValidator();
+            validator.validate("General Voucher Delete — Snapshot Validation — [" + testData.getExistingVoucherNo() + "]",
+                    contextRef[0], beforeSnapshotRef[0], afterSnapshotRef[0], changeSet);
+            validator.assertAll();
+
+            ReportLogger.pass("DB validated — finvchdet/finpost/fincosttag rows confirmed removed for voucher: "
+                    + testData.getExistingVoucherNo());
+        });
     }
 
     /**
@@ -389,5 +435,21 @@ public class DeleteGeneralVoucher extends WebTest {
         com.gsl.reports.StepSummaryBuffer.record("Business Key: " + businessKey);
         com.gsl.reports.StepSummaryBuffer.record("Operation: DELETE");
         com.gsl.reports.StepSummaryBuffer.record("Result: Confirmed — aud2 DELETE row matches pre-delete state");
+    }
+
+    /**
+     * Round 3 Item K summary helper — mirrors {@code RevertGeneralVoucher.recordSnapshotTableSummary}'s
+     * shape: one line per table naming its post-delete row count, so a reader can see at a glance
+     * that finvchdet/finpost/fincosttag all dropped to 0 rows (not just finvchmain).
+     */
+    private static void recordAfterSnapshotSummary(VoucherSnapshot snapshot) {
+        if (snapshot == null || snapshot.getTables() == null || snapshot.getTables().isEmpty()) {
+            com.gsl.reports.StepSummaryBuffer.record("AFTER Snapshot: no tables captured");
+            return;
+        }
+        for (var entry : snapshot.getTables().entrySet()) {
+            com.gsl.reports.StepSummaryBuffer.record(
+                    "AFTER Snapshot — " + entry.getKey() + ": " + entry.getValue().rowCount() + " row(s)");
+        }
     }
 }

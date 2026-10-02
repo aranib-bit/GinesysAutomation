@@ -35,6 +35,14 @@ public final class FailureClassifier {
 
     private FailureClassifier() {}
 
+    /**
+     * Classifies {@code t} into a {@link FailureCategory}, checked in priority order: assertion
+     * failures always win (never touch the session); then affirmative browser/session-death
+     * signals; then message-text environment hints; then known Selenium interaction exception
+     * types (including ones buried a few levels down the cause chain); everything else defaults
+     * to {@link FailureCategory#TEST_FAILURE}. A {@code null} throwable also classifies as
+     * {@code TEST_FAILURE}.
+     */
     public static FailureCategory classify(Throwable t) {
         if (t == null) return FailureCategory.TEST_FAILURE;
 
@@ -87,6 +95,7 @@ public final class FailureClassifier {
         return FailureCategory.TEST_FAILURE;
     }
 
+    /** True if {@code t} itself (not its cause chain) is a recognized Selenium UI-interaction exception, by type or by message text. */
     private static boolean isUiInteractionFailure(Throwable t) {
         if (t instanceof NoSuchElementException || t instanceof TimeoutException
                 || t instanceof StaleElementReferenceException

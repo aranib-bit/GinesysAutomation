@@ -172,6 +172,7 @@ public final class AdvancedExtentLogger {
                 .format(TS_FMT);
     }
 
+    /** Text color for one log row — red for JS errors/CRITICAL, orange for WARNING, gray otherwise. */
     private static String colorFor(BrowserLogRecord record) {
         if ("JS_ERROR".equalsIgnoreCase(record.source())) return "#ff4444";
         return switch (record.level()) {
@@ -182,10 +183,12 @@ public final class AdvancedExtentLogger {
         };
     }
 
+    /** {@code true} unless {@code s} is null/blank or one of the placeholder strings {@code "N/A"}/{@code "null"}. */
     private static boolean hasValue(String s) {
         return s != null && !s.isBlank() && !"N/A".equalsIgnoreCase(s) && !"null".equalsIgnoreCase(s);
     }
 
+    /** HTML-escapes {@code input} (amp/lt/gt/quote/apostrophe) so log content can't break or inject into the report markup. */
     private static String escapeHtml(String input) {
         if (input == null) return "";
         return input.replace("&",  "&amp;")

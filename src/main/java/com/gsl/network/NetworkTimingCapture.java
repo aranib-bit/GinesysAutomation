@@ -11,9 +11,9 @@ import com.gsl.reports.ReportLogger;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 import org.openqa.selenium.devtools.DevTools;
-import org.openqa.selenium.devtools.v150.network.Network;
-import org.openqa.selenium.devtools.v150.network.model.Cookie;
-import org.openqa.selenium.devtools.v150.network.model.Headers;
+import org.openqa.selenium.devtools.v153.network.Network;
+import org.openqa.selenium.devtools.v153.network.model.Cookie;
+import org.openqa.selenium.devtools.v153.network.model.Headers;
 
 import java.time.Instant;
 import java.time.ZoneId;
@@ -58,6 +58,7 @@ public final class NetworkTimingCapture {
 
     // ── Mutable accumulator (one per in-flight request) ──────────────────────
 
+    /** In-flight request accumulator, keyed by CDP requestId, filled in across the requestWillBeSent/responseReceived/loadingFinished listeners. */
     static final class RequestContext {
         String requestId;
         String url;
@@ -104,6 +105,12 @@ public final class NetworkTimingCapture {
         }
     }
 
+    /**
+     * Flushes any still-pending requests whose response arrived but whose {@code loadingFinished}
+     * event never fired, then returns and clears all snapshots collected on the current thread.
+     *
+     * @return all timing snapshots captured since the last {@link #attachListeners(DevTools)} call
+     */
     public static List<NetworkTimingSnapshot> stopAndCollect() {
         // Flush pending contexts whose responseReceived fired but loadingFinished did not
         pending.get().values().stream()
@@ -119,6 +126,7 @@ public final class NetworkTimingCapture {
 
     // ── Listener registration ─────────────────────────────────────────────────
 
+    /** Registers the requestWillBeSent/responseReceived/loadingFinished listener trio that builds up each {@link RequestContext} into a {@link NetworkTimingSnapshot}. */
     private static void registerListeners(DevTools devTools, NetworkConfig config) {
         String urlFilter = config.networkCaptureUrlFilter();
 
@@ -202,6 +210,7 @@ public final class NetworkTimingCapture {
 
     // ── Snapshot builder ──────────────────────────────────────────────────────
 
+    /** Computes queueing/stalled/content-download durations from {@code ctx}'s raw CDP timings and assembles the immutable {@link NetworkTimingSnapshot}. */
     private static NetworkTimingSnapshot buildSnapshot(RequestContext ctx,
                                                         double loadedMono, long bytes) {
         double contentDl = (ctx.responseMonoTimeSec > 0 && loadedMono > 0)
@@ -234,8 +243,9 @@ public final class NetworkTimingCapture {
 
     // ── Private helpers ───────────────────────────────────────────────────────
 
+    /** Finds the request's {@code Cookie} header (if any) and delegates to {@link #parseCookieHeader}. */
     private static void extractCookieHeader(
-            org.openqa.selenium.devtools.v150.network.model.Request request,
+            org.openqa.selenium.devtools.v153.network.model.Request request,
             List<RequestCookieEntry> out, Map<String, Cookie> cache) {
         if (request == null) return;
         request.getHeaders().toJson().entrySet().stream()
@@ -245,6 +255,7 @@ public final class NetworkTimingCapture {
                 .ifPresent(header -> parseCookieHeader(header, out, cache));
     }
 
+    /** Splits a raw {@code Cookie:} header into name/value pairs, enriching each with metadata (domain, expiry, flags) from {@code cache} when a matching cookie was fetched via {@code getAllCookies()}. */
     private static void parseCookieHeader(String header, List<RequestCookieEntry> out,
                                            Map<String, Cookie> cache) {
         for (String pair : header.split(";")) {
@@ -270,6 +281,7 @@ public final class NetworkTimingCapture {
         }
     }
 
+    /** Formats a cookie's expiry as {@code EXPIRY_FMT}, or {@code "Session"} when it is a session cookie or has no expiry. */
     private static String formatExpiry(Cookie c) {
         if (Boolean.TRUE.equals(c.getSession())) return "Session";
         double epochSec = c.getExpires().doubleValue();
@@ -281,6 +293,7 @@ public final class NetworkTimingCapture {
         }
     }
 
+    /** Finds the response's {@code Server-Timing} header (if any) and delegates to {@link #parseServerTiming}. */
     private static void extractServerTiming(Headers headers, List<ServerTimingEntry> out) {
         headers.toJson().entrySet().stream()
                 .filter(e -> e.getKey().equalsIgnoreCase("server-timing"))
@@ -289,6 +302,13 @@ public final class NetworkTimingCapture {
                 .ifPresent(value -> out.addAll(parseServerTiming(value)));
     }
 
+    /**
+     * Parses a raw {@code Server-Timing} header value (comma-separated metrics, each with
+     * optional {@code ;dur=} / {@code ;desc=} parameters per the Server-Timing spec) into entries.
+     * Package-private so it is directly unit-testable.
+     *
+     * @return one entry per comma-separated metric; empty list for a null/blank header
+     */
     static List<ServerTimingEntry> parseServerTiming(String headerValue) {
         List<ServerTimingEntry> entries = new ArrayList<>();
         if (headerValue == null || headerValue.isBlank()) return entries;
@@ -314,6 +334,7 @@ public final class NetworkTimingCapture {
         return entries;
     }
 
+    /** Extracts the trailing filename (no query string) from a script URL, for compact call-stack display. */
     private static String filenameOf(String url) {
         if (url == null || url.isBlank()) return "(unknown)";
         int colon = url.lastIndexOf(':');

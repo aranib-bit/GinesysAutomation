@@ -21,6 +21,7 @@ public abstract class DocumentInformationBase {
     @Setter
     private String onAccountConfirm;
 
+    /** Resolves the raw {@link #onAccountConfirm} string into an {@link OnAccountClearConfirmAction}. */
     public OnAccountClearConfirmAction getOnAccountConfirmAction() {
         return OnAccountClearConfirmAction.fromString(onAccountConfirm);
     }

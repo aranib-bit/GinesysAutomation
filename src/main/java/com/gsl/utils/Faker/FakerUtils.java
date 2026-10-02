@@ -7,6 +7,16 @@ import java.math.RoundingMode;
 import java.util.List;
 import java.util.concurrent.ThreadLocalRandom;
 
+/**
+ * Generic random test-data generator — wraps {@code javafaker} (name/email/phone/catch-phrase
+ * generation) alongside plain {@link ThreadLocalRandom} number/collection helpers, behind one
+ * shared static facade. Purely mechanical: every method produces a random value of a given shape
+ * with no knowledge of which field it will populate or what business rule applies to it — callers
+ * decide that. The Finance/Voucher-named generators ({@link #randomReference()},
+ * {@link #randomRemarks()}, {@link #randomAmountLessThan(BigDecimal)}) are still domain-agnostic
+ * in this sense: they know a reference/remarks/amount's generic *shape*, not any specific
+ * voucher's business rule.
+ */
 public final class FakerUtils {
 
     private static final Faker faker = new Faker();
@@ -35,7 +45,7 @@ public final class FakerUtils {
         return ThreadLocalRandom.current().nextDouble();
     }
 
-    /** Random double between range with scale */
+    /** Random double in {@code [min, max)}, rounded (half-up) to {@code scale} decimal places. */
     public static double randomDouble(double min, double max, int scale) {
         double value = ThreadLocalRandom.current().nextDouble(min, max);
 
@@ -81,14 +91,17 @@ public final class FakerUtils {
 
     // -------------------- Helpers using jFaker --------------------
 
+    /** Random full name, e.g. {@code "Jane Doe"}. */
     public static String randomName() {
         return faker.name().fullName();
     }
 
+    /** Random email address. */
     public static String randomEmail() {
         return faker.internet().emailAddress();
     }
 
+    /** Random cell-phone-formatted number. */
     public static String randomPhone() {
         return faker.phoneNumber().cellPhone();
     }

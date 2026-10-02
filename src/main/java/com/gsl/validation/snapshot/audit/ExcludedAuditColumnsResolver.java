@@ -42,6 +42,8 @@ public final class ExcludedAuditColumnsResolver {
         return CACHE.computeIfAbsent(tableName.toUpperCase(), this::queryLive);
     }
 
+    /** Live {@code aud2_active_tab_col} lookup behind {@link #resolveExcludedColumns}'s cache —
+     *  never called directly; degrades to an empty set (logged) rather than throwing. */
     @AuditTrace("resolveExcludedColumns")
     private Set<String> queryLive(String upperTableName) {
         try {

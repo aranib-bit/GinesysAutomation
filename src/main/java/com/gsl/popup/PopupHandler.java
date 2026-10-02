@@ -17,10 +17,12 @@ import java.time.Duration;
 import java.time.LocalDateTime;
 
 /**
- * Low-level popup detection engine.
- * Checks whether the application's ExtJS messagebox is currently visible,
- * captures its content, and returns a typed PopupResult.
- * Does NOT contain any business logic — classification is delegated to PopupType.
+ * Low-level popup detection engine for the framework's unexpected-popup subsystem
+ * ({@code com.gsl.popup}). Checks whether the application's ExtJS messagebox
+ * ({@link AppPopupLocators}) is currently visible, captures its content, and returns a typed
+ * {@link PopupResult}. Does NOT contain any business logic — classification is delegated to
+ * {@link PopupType}, and reporting/failure decisions belong to {@link PopupMonitor}, the
+ * package's actual entry point.
  */
 public final class PopupHandler {
 
@@ -29,9 +31,17 @@ public final class PopupHandler {
     private PopupHandler() {}
 
     /**
-     * Probes for a visible ExtJS messagebox.
+     * Probes for a visible ExtJS messagebox within the configured
+     * {@code popupDetectionTimeoutMs()} window. If one appears, captures its header/message/URL/
+     * page title/screenshot, classifies it via {@link PopupType#fromHeader(String)} — upgraded to
+     * {@link PopupType#CONFIRM} whenever 2+ action buttons are present, since a page flow must
+     * choose between them regardless of header text — and dismisses it unless it is a CONFIRM
+     * dialog (left for the page object to handle).
      *
-     * @return PopupResult if a messagebox is visible; null if no popup within the configured timeout.
+     * <p>Never throws — a timeout (no popup visible) or any other detection error is swallowed and
+     * reported as {@code null}, so callers can treat "no popup" and "detection failed" the same way.
+     *
+     * @return a {@link PopupResult} snapshot if a messagebox was visible; {@code null} otherwise
      */
     public static PopupResult detectPopup() {
         try {
@@ -85,6 +95,7 @@ public final class PopupHandler {
 
     // ── Helpers ───────────────────────────────────────────────────────────────
 
+    /** Clicks the messagebox's OK/Close button to dismiss it; failures are swallowed since dismissal is best-effort. */
     private static void dismissPopup() {
         try {
             WebElement btn = DriverManager.getDriver()
@@ -93,6 +104,7 @@ public final class PopupHandler {
         } catch (Exception ignored) {}
     }
 
+    /** Returns {@code locator}'s visible text, or empty string if not found. */
     private static String safeText(org.openqa.selenium.By locator) {
         try {
             return DriverManager.getDriver().findElement(locator).getText();
@@ -101,12 +113,14 @@ public final class PopupHandler {
         }
     }
 
+    /** True when the messagebox shows 2+ action buttons (Yes/No, Ignore/Close, etc.) — signals a CONFIRM-style dialog regardless of header text. */
     private static boolean hasMultipleActionButtons() {
         return DriverManager.getDriver()
                 .findElements(AppPopupLocators.MESSAGEBOX_ACTION_BTNS)
                 .size() >= 2;
     }
 
+    /** Returns {@code locator}'s inner HTML (not plain text) so embedded line breaks/formatting survive into the report, or empty string if not found. */
     private static String safeFullText(org.openqa.selenium.By locator) {
         try {
             WebElement el = DriverManager.getDriver().findElement(locator);
@@ -118,6 +132,7 @@ public final class PopupHandler {
         }
     }
 
+    /** Returns the current browser URL, or empty string if unavailable. */
     private static String safeUrl() {
         try {
             return DriverManager.getDriver().getCurrentUrl();
@@ -126,6 +141,7 @@ public final class PopupHandler {
         }
     }
 
+    /** Returns the current browser page title, or empty string if unavailable. */
     // P7: Capture the browser page title for richer popup diagnostics
     private static String safeTitle() {
         try {
@@ -135,6 +151,7 @@ public final class PopupHandler {
         }
     }
 
+    /** Saves a screenshot tagged "popup" and returns its path, or {@code null} if capture fails. */
     private static String safeScreenshot() {
         try {
             return ScreenshotUtils.saveScreenshot("popup");

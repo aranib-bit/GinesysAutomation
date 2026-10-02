@@ -27,6 +27,10 @@ public class RetryAnalyzer implements IRetryAnalyzer {
     /** Per-thread attempt counter — reset to 0 after the last retry to handle re-use. */
     private final ThreadLocal<Integer> attempt = ThreadLocal.withInitial(() -> 0);
 
+    /**
+     * @return {@code true} if {@code result}'s method should be re-invoked (attempt count is still
+     * below {@code retry.max.count}), recording the attempt to {@link RetryHistoryBuffer} first
+     */
     @Override
     public boolean retry(ITestResult result) {
         int current = attempt.get();

@@ -3,16 +3,24 @@ package com.gsl.pages.Finance.Operations.Common;
 import com.gsl.config.ConfigFactory;
 import com.gsl.enums.WaitType;
 import com.gsl.reports.ExtentLogger;
+import com.gsl.pages.enums.Finance.Operations.Common.FormSection;
+import com.gsl.testdata.Finance.Operations.Vouchers.GeneralVoucher.SiteAllocation;
 import com.gsl.utils.BigDecimalUtils;
 import com.gsl.utils.Selenium.JavascriptExecutorUtils;
 import com.gsl.utils.Selenium.SeleniumUtils;
 import com.gsl.utils.Selenium.WaitUtils;
+import com.gsl.utils.ui.FieldStyleSpec;
+import com.gsl.validation.ui.UiComponentValidator;
+import com.gsl.validation.ui.UiValidationFailure;
+import com.gsl.validation.ui.UiValidationLevel;
+import com.gsl.validation.ui.UiValidationReporter;
 import org.openqa.selenium.By;
 import org.openqa.selenium.TimeoutException;
 import org.openqa.selenium.WebElement;
 import org.openqa.selenium.support.ui.ExpectedConditions;
 
 import java.math.BigDecimal;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.function.BooleanSupplier;
 
@@ -44,7 +52,8 @@ import java.util.function.BooleanSupplier;
  */
 public class AllocateSitesPopup {
 
-    /** TODO: confirm against the live UI — the screenshot doesn't show this dialog's actual title text. */
+    /** Confirmed live via user screenshot (2026-10-01) — the rendered title bar reads
+     *  "Allocate Sites" exactly. */
     private static final String WIN_TITLE = "Allocate Sites";
 
     private static final String WIN_SCOPE =
@@ -94,6 +103,14 @@ public class AllocateSitesPopup {
     private static final By PICKER_OK_BUTTON = By.xpath(
             "//span[contains(@id,'button') and contains(@id,'btnInnerEl') and text()='K']");
 
+    // Round 16 — same truncated-text idiom as PICKER_OK_BUTTON, for the picker's OWN Cancel
+    // button (no picker-scoped Cancel locator existed before this — only the outer window's
+    // CANCEL_BUTTON below, which closes the whole Allocate Sites dialog, not just this sub-picker).
+    // Needed so a negative "confirm site not found" check can close the picker without selecting
+    // anything.
+    private static final By PICKER_CANCEL_BUTTON = By.xpath(
+            "//span[contains(@id,'button') and contains(@id,'btnInnerEl') and text()='ancel']");
+
     // ── Allocated Site(s) grid ─────────────────────────────────────────────────
     private static final String ALLOCATED_ROW_BY_SITE_XPATH =
             WIN_SCOPE + "//tr[contains(@class,'x-grid-row')][.//div[normalize-space()='%s']]";
@@ -108,9 +125,175 @@ public class AllocateSitesPopup {
     private static final By OK_BUTTON     = By.xpath(WIN_SCOPE + "//span[normalize-space()='OK']/ancestor::a");
     private static final By CANCEL_BUTTON = By.xpath(WIN_SCOPE + "//span[normalize-space()='Cancel']/ancestor::a");
 
+    // ── UI-contract validation ────────────────────────────────────────────────
+    // Quick Site Allocate field labels — UNVERIFIED label-element locators (the existing
+    // SITE_SEARCH_INPUT/AMOUNT_INPUT locators above anchor off the SAME "Site:"/"Amount:" span
+    // text via byLabelSuffix, already proven live by the real business flow; the <label> ancestor
+    // itself, used here for text+style checks, has not been independently confirmed).
+    // Measured on the caption SPAN (like the main form's labels): the surrounding <label> is 11px,
+    // the visible caption span is the 12px the spec expects.
+    private static final By SITE_LABEL   = By.xpath(WIN_SCOPE + "//span[normalize-space()='Site:']");
+    private static final By AMOUNT_LABEL = By.xpath(WIN_SCOPE + "//span[normalize-space()='Amount:']");
+
+    // Allocated Site(s) grid column headers — UNVERIFIED, same ExtJS x-column-header idiom used
+    // elsewhere in this codebase (e.g. AdjustmentEntry's own column-position xpaths), not yet
+    // independently confirmed for this specific grid.
+    // Located on the header TEXT span (span.x-column-header-text-inner: 12px, #333, transparent) — the
+    // same element the main grid's headers are checked on; the outer header div is 11px / #000 /
+    // #fafafa and is not what the spec describes.
+    private static final By SITE_NAME_COLUMN_HEADER = By.xpath(
+            WIN_SCOPE + "//div[contains(@class,'x-column-header')]//span[contains(@class,'x-column-header-text-inner')"
+                    + " and normalize-space()='Site Name']");
+    private static final By AMOUNT_COLUMN_HEADER = By.xpath(
+            WIN_SCOPE + "//div[contains(@class,'x-column-header')]//span[contains(@class,'x-column-header-text-inner')"
+                    + " and normalize-space()='Amount']");
+
+    /** Full UI-contract sweep for this popup — Quick Site Allocate fields, the Allocated Site(s)
+     *  grid's column headers, Tagging Summary's three readonly amount fields, and the OK/Cancel
+     *  footer buttons. Composed into one call, same shape as {@code GeneralVoucherAdd
+     *  #validateUiContract} — collects every {@link UiValidationFailure} and renders+asserts via
+     *  {@link UiValidationReporter}, same "UI Validation" step-tree/Actual-Results-merge every
+     *  other page in this framework already gets. */
+    public void validateUiContract(UiValidationLevel level) {
+        UiValidationReporter.renderAndAssert(collectUiContract(level));
+    }
+
+    // Popup title / section headers / footer values — UNVERIFIED placeholders (no live DOM yet);
+    // a wrong locator reports one clean "NOT FOUND" row via UiComponentValidator's guard.
+    private static final By WINDOW_TITLE_LOCATOR = By.xpath(
+            WIN_SCOPE + "//div[contains(@class,'winTitleType2') and normalize-space()='" + WIN_TITLE + "']");
+    // Grid footer is a summary ROW (not a toolbar): "Record Count: <b>N</b>" in the first text cell, the
+    // total in the row's last cell. Record Count confirmed from live DOM; the total cell's inner
+    // markup was cut off in the capture, so its text is read from the cell itself.
+    private static final By GRID_FOOTER_RECORD_COUNT_VALUE = By.xpath(
+            WIN_SCOPE + "//tr[contains(@class,'x-grid-row-summary')]"
+                    + "//div[contains(@class,'x-grid-cell-inner')][contains(.,'Record Count')]//b");
+    private static final By GRID_FOOTER_TOTAL_VALUE = By.xpath(
+            WIN_SCOPE + "//tr[contains(@class,'x-grid-row-summary')]//td[contains(@class,'x-grid-cell-last')]");
+
+    /** The popup's own chrome (labels, buttons, headers, section state, tagging field styles) —
+     *  the original {@link #validateUiContract} body, returned instead of rendered so callers can
+     *  nest it under a report node (see {@code GeneralVoucherAdd#validateRowUi}). */
+    public List<UiValidationFailure> collectUiContract(UiValidationLevel level) {
+        List<UiValidationFailure> failures = new ArrayList<>();
+
+        failures.addAll(UiComponentValidator.validateValue(WINDOW_TITLE_LOCATOR, "ALLOCATE_SITES_WINDOW_TITLE", WIN_TITLE));
+        for (FormSection section : new FormSection[]{FormSection.ALLOCATE_SITES_QUICK_SITE_ALLOCATE,
+                FormSection.ALLOCATE_SITES_ALLOCATED_SITES, FormSection.ALLOCATE_SITES_TAGGING_SUMMARY}) {
+            failures.addAll(UiComponentValidator.validateSectionState(section, WIN_SCOPE, true));
+        }
+
+        failures.addAll(UiComponentValidator.validateLabel(SITE_LABEL, "ALLOCATE_SITES_SITE_LABEL",
+                "Site:", FieldStyleSpec.FIELD_LABEL, level));
+        failures.addAll(UiComponentValidator.validateLabel(AMOUNT_LABEL, "ALLOCATE_SITES_AMOUNT_LABEL",
+                "Amount:", FieldStyleSpec.FIELD_LABEL, level));
+        // The Add button's colours change on hover: park the mouse on the popup title so the RESTING
+        // state is what gets measured.
+        try {
+            org.openqa.selenium.WebDriver driver = com.gsl.driver.DriverManager.getDriver();
+            new org.openqa.selenium.interactions.Actions(driver)
+                    .moveToElement(driver.findElement(WINDOW_TITLE_LOCATOR)).perform();
+        } catch (RuntimeException ignored) {
+            // best effort — worst case the hover colours are measured and reported as such
+        }
+        failures.addAll(UiComponentValidator.validateButton(ADD_BUTTON, "ALLOCATE_SITES_ADD_BUTTON",
+                "Add", true, FieldStyleSpec.POPUP_ADD_BUTTON, level));
+
+        failures.addAll(UiComponentValidator.validateGridHeader(SITE_NAME_COLUMN_HEADER,
+                "ALLOCATE_SITES_GRID_HEADER_SITE_NAME", "Site Name", level));
+        failures.addAll(UiComponentValidator.validateGridHeader(AMOUNT_COLUMN_HEADER,
+                "ALLOCATE_SITES_GRID_HEADER_AMOUNT", "Amount", level));
+
+        failures.addAll(UiComponentValidator.validateReadonlyAmount(ACTUAL_AMOUNT_FIELD,
+                "ALLOCATE_SITES_ACTUAL_AMOUNT", level));
+        failures.addAll(UiComponentValidator.validateReadonlyAmount(TAGGED_AMOUNT_FIELD,
+                "ALLOCATE_SITES_TAGGED_AMOUNT", level));
+        failures.addAll(UiComponentValidator.validateReadonlyAmount(PENDING_AMOUNT_FIELD,
+                "ALLOCATE_SITES_PENDING_AMOUNT", level));
+
+        failures.addAll(UiComponentValidator.validateButton(OK_BUTTON, "ALLOCATE_SITES_OK_BUTTON",
+                "OK", true, level));
+        // Cancel is the light/secondary button: live values (bg rgb(248,248,248), border
+        // rgb(226,222,222), black 11px text) are identical to the page footer's Close button, so it
+        // shares that spec; OK keeps the default (dark primary) spec, which it matches live.
+        failures.addAll(UiComponentValidator.validateButton(CANCEL_BUTTON, "ALLOCATE_SITES_CANCEL_BUTTON",
+                "Cancel", true, FieldStyleSpec.FOOTER_LIGHT_BUTTON, level));
+
+        return failures;
+    }
+
+    /**
+     * Value checks for one fill state of this popup, computed from the expected data (never read
+     * back to derive expectations): every expected allocation appears in the grid with its amount,
+     * the grid footer Record Count/total, and the three read-only Tagging Summary amounts.
+     * {@code allocations} empty = the "before fill" state (Tagged 0.00, Pending = Actual).
+     *
+     * @param actualAmount the row amount being allocated (Tagging Summary "Actual Amount")
+     */
+    public List<UiValidationFailure> collectValuesUi(List<SiteAllocation> allocations, BigDecimal actualAmount,
+            UiValidationLevel level) {
+        List<UiValidationFailure> failures = new ArrayList<>();
+        BigDecimal tagged = BigDecimal.ZERO;
+        int i = 1;
+        for (SiteAllocation a : allocations) {
+            tagged = tagged.add(a.getAmount());
+            By row = By.xpath(String.format(ALLOCATED_ROW_BY_SITE_XPATH, a.getSiteName()));
+            String component = "ALLOCATE_SITES_ALLOCATED_SITE_" + i;
+            String actualText = SeleniumUtils.isElementPresent(row, 3)
+                    ? SeleniumUtils.getAttribute(row, "textContent", component) : null;
+            boolean nameOk = actualText != null;
+            failures.add(new UiValidationFailure(component + "_NAME", "value", a.getSiteName(),
+                    nameOk ? a.getSiteName() : "NOT FOUND in Allocated Site(s) grid",
+                    nameOk ? UiValidationFailure.Status.PASS : UiValidationFailure.Status.FAIL));
+            String expectedAmount = a.getAmount().setScale(2, java.math.RoundingMode.HALF_UP).toPlainString();
+            boolean amountOk = nameOk && actualText.replace(",", "").contains(expectedAmount);
+            failures.add(new UiValidationFailure(component + "_AMOUNT", "value", expectedAmount,
+                    nameOk ? (amountOk ? expectedAmount : actualText.trim()) : "—",
+                    amountOk ? UiValidationFailure.Status.PASS : UiValidationFailure.Status.FAIL));
+            i++;
+        }
+        failures.addAll(UiComponentValidator.validateAmountValue(GRID_FOOTER_RECORD_COUNT_VALUE,
+                "ALLOCATE_SITES_GRID_FOOTER_RECORD_COUNT", String.valueOf(allocations.size()), null, null, level));
+        failures.addAll(UiComponentValidator.validateAmountValue(GRID_FOOTER_TOTAL_VALUE,
+                "ALLOCATE_SITES_GRID_FOOTER_TOTAL", tagged.toPlainString(), null, null, level));
+
+        BigDecimal pending = actualAmount.subtract(tagged);
+        failures.addAll(UiComponentValidator.validateAmountValue(ACTUAL_AMOUNT_FIELD, "ALLOCATE_SITES_ACTUAL_AMOUNT",
+                actualAmount.toPlainString(), FieldStyleSpec.READONLY_AMOUNT, null, level));
+        failures.addAll(UiComponentValidator.validateAmountValue(TAGGED_AMOUNT_FIELD, "ALLOCATE_SITES_TAGGED_AMOUNT",
+                tagged.toPlainString(), FieldStyleSpec.READONLY_AMOUNT, null, level));
+        failures.addAll(UiComponentValidator.validateAmountValue(PENDING_AMOUNT_FIELD, "ALLOCATE_SITES_PENDING_AMOUNT",
+                pending.toPlainString(), FieldStyleSpec.READONLY_AMOUNT, null, level));
+        for (By field : new By[]{ACTUAL_AMOUNT_FIELD, TAGGED_AMOUNT_FIELD, PENDING_AMOUNT_FIELD}) {
+            String name = field == ACTUAL_AMOUNT_FIELD ? "ACTUAL" : field == TAGGED_AMOUNT_FIELD ? "TAGGED" : "PENDING";
+            failures.addAll(UiComponentValidator.validateFieldState(field,
+                    "ALLOCATE_SITES_" + name + "_AMOUNT", com.gsl.utils.ui.UiFieldState.DISABLED));
+        }
+        return failures;
+    }
+
     private static String byLabelSuffix(String label) {
         return "//span[normalize-space()='" + label + "']/ancestor::label" +
                "/following-sibling::div//input[contains(@id,'inputEl')]";
+    }
+
+    /**
+     * Returns the longest leading run of letters/digits/spaces in {@code siteName}, trimmed — the
+     * text actually typed into the picker's Search field (see {@link #searchSite}'s Round 14
+     * note). Falls back to the full name when that leading run is under 2 characters (e.g. a name
+     * starting with a special character), since searching on an empty/near-empty term risks
+     * matching everything (or, depending on the app's own minimum-length rule, nothing) — better
+     * to risk the original failure mode there than trade it for a different one.
+     */
+    private static String searchSafeTerm(String siteName) {
+        if (siteName == null) return "";
+        int cut = 0;
+        while (cut < siteName.length()
+                && (Character.isLetterOrDigit(siteName.charAt(cut)) || siteName.charAt(cut) == ' ')) {
+            cut++;
+        }
+        String safe = siteName.substring(0, cut).trim();
+        return safe.length() >= 2 ? safe : siteName;
     }
 
     // =========================================================================
@@ -174,7 +357,21 @@ public class AllocateSitesPopup {
             SeleniumUtils.clickWithStaleRetry(SITE_PICKER_TRIGGER, WaitType.CLICKABLE, "AllocateSites_SiteSearchTrigger");
             JavascriptExecutorUtils.waitForExtJS();
 
-            SeleniumUtils.sendKeysWithStaleRetry(PICKER_SEARCH_INPUT, WaitType.VISIBLE, siteName, "AllocateSites_SitePickerSearch");
+            // Round 14 — bug fix: typing a site name containing '&' (e.g. "S&CM") into this Search
+            // field returns ZERO results — confirmed live via screenshot (report run
+            // 20260913_025254, FIN-GV-ADD-COMBO-08): the popup's own grid showed "No data to
+            // display"/"Page 0 of 0" for the literal search term "S&CM". This is NOT an XPath
+            // escaping problem — '&' has no special meaning inside an XPath string literal, and
+            // the eventual failure was a clean "no such element" after the full wait, not a
+            // selector-syntax error — the row never existed in the DOM because the APP's own
+            // search request never returned it (almost certainly '&' being misread as a
+            // query-string separator client-side, upstream of anything Selenium controls). Typing
+            // only the longest safe leading run of letters/digits/spaces (stopping at the first
+            // special character) sidesteps the broken search path entirely; the row-match xpath
+            // below still uses the FULL, EXACT `siteName` — that part was always correct, since
+            // it's matched against whatever the grid actually renders once the row exists at all.
+            SeleniumUtils.sendKeysWithStaleRetry(PICKER_SEARCH_INPUT, WaitType.VISIBLE,
+                    searchSafeTerm(siteName), "AllocateSites_SitePickerSearch");
             JavascriptExecutorUtils.waitForExtJS();
 
             // popupWaitSeconds, not shortWait: the grid reloads from the server after each search.
@@ -220,6 +417,53 @@ public class AllocateSitesPopup {
                     + "blocks this popup's OK button — so the failure would surface two steps away "
                     + "from its cause.");
         }
+        return this;
+    }
+
+    /**
+     * Round 16 — negative-scenario counterpart to {@link #searchSite(String)}: opens the Site
+     * picker, searches for {@code siteName}, and asserts NO matching row appears. Used by
+     * {@code NEG_SITE_ALLOCATION_CROSS_OU} to confirm the app's Allocate Sites picker genuinely
+     * returns zero results for a site belonging to a DIFFERENT Organizational Unit than the
+     * voucher's own Owner Site (see {@code DbGeneralVoucherDataSource}'s Round 15/16 site
+     * resolution) — i.e. that the app's own OU-scoping stays enforced, not just that our test
+     * data avoids relying on it.
+     *
+     * <p>Uses a SHORT wait ({@link ConfigFactory#getWaitConfig()}'s {@code shortWaitSeconds()},
+     * default 3s) rather than {@code popupWaitSeconds()} (30s, used by {@link #searchSite}'s own
+     * "wait until the row appears" check) — a row that is never going to appear shouldn't block
+     * the test for the full popup timeout.
+     *
+     * <p>Fails via {@code Assert.assertFalse} if a matching row unexpectedly DOES appear — "if
+     * coming then it fails," per the scenario's own requirement — since that would mean either
+     * the app's cross-OU scoping regressed, or this site is no longer genuinely cross-OU in the
+     * current environment.
+     *
+     * <p>Closes the picker afterward via {@link #PICKER_CANCEL_BUTTON} (mirrors
+     * {@link #PICKER_OK_BUTTON}'s truncated-text idiom) — leaves nothing selected, so the caller's
+     * Expense/Income Detail row still has no Site allocated, matching the "leave the form
+     * incomplete" convention {@code NEG_SUBLEDGER_REQUIRED_BEHAVIOR} already establishes for its
+     * own negative scenario.
+     */
+    public AllocateSitesPopup assertSiteNotFound(String siteName) {
+        SeleniumUtils.clickWithStaleRetry(SITE_PICKER_TRIGGER, WaitType.CLICKABLE, "AllocateSites_SiteSearchTrigger");
+        JavascriptExecutorUtils.waitForExtJS();
+
+        SeleniumUtils.sendKeysWithStaleRetry(PICKER_SEARCH_INPUT, WaitType.VISIBLE, siteName,
+                "AllocateSites_SitePickerSearch_Negative");
+        JavascriptExecutorUtils.waitForExtJS();
+
+        By row = By.xpath(String.format(PICKER_ROW_XPATH, siteName));
+        boolean rowAppeared = SeleniumUtils.isElementPresent(row,
+                (int) ConfigFactory.getWaitConfig().shortWaitSeconds());
+        org.testng.Assert.assertFalse(rowAppeared,
+                "Allocate Sites: expected NO row for site '" + siteName + "' (belongs to a different "
+                        + "Organizational Unit than the voucher's Owner Site), but the picker's grid "
+                        + "returned a matching row — either the app's cross-OU site scoping has changed, "
+                        + "or this site is no longer cross-OU in this environment.");
+
+        SeleniumUtils.clickWithStaleRetry(PICKER_CANCEL_BUTTON, WaitType.CLICKABLE, "AllocateSites_SitePickerCancel");
+        JavascriptExecutorUtils.waitForExtJS();
         return this;
     }
 

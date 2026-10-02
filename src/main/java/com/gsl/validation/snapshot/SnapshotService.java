@@ -23,19 +23,26 @@ public class SnapshotService {
     private final Jdbi jdbi;
     private final AuditSnapshotDao auditSnapshotDao;
 
+    /** Uses the shared {@link DatabaseManager#getJdbi()} handle and captures no audit tables
+     *  (any {@code aud2_*} table active for a document is skipped — see {@link #captureOneTable}). */
     public SnapshotService() {
         this(DatabaseManager.getJdbi(), null);
     }
 
+    /** Uses the shared {@link DatabaseManager#getJdbi()} handle with the given audit dao. */
     public SnapshotService(AuditSnapshotDao auditSnapshotDao) {
         this(DatabaseManager.getJdbi(), auditSnapshotDao);
     }
 
+    /** Full constructor — explicit {@link Jdbi} handle (e.g. for tests) plus an optional
+     *  {@link AuditSnapshotDao} ({@code null} to skip every audit-table capture). */
     public SnapshotService(Jdbi jdbi, AuditSnapshotDao auditSnapshotDao) {
         this.jdbi = jdbi;
         this.auditSnapshotDao = auditSnapshotDao;
     }
 
+    /** Captures a full {@link VoucherSnapshot} — one {@link TableSnapshot} per table active for
+     *  {@code context} (per {@link VoucherPersistenceMap#activeTables}), in declared order. */
     public VoucherSnapshot capture(DocumentContext context) {
         Map<String, TableSnapshot> tables = new LinkedHashMap<>();
         for (TableRule rule : context.getPersistenceMap().activeTables(context)) {
@@ -45,6 +52,9 @@ public class SnapshotService {
         return new VoucherSnapshot(tables);
     }
 
+    /** Captures one table's rows: routes {@code aud2_*} tables to {@link #auditSnapshotDao}
+     *  (degrading to an empty list, with a warning, if it's absent or throws), and every other
+     *  table to the single-column ({@link #captureByCompositeKey} otherwise) generic FK query. */
     private List<Map<String, Object>> captureOneTable(TableRule rule, DocumentContext context) {
         if (rule.isAuditTable()) {
             if (auditSnapshotDao == null) {
@@ -61,6 +71,11 @@ public class SnapshotService {
             }
         }
 
+        List<String> fkColumns = rule.getFkColumns();
+        if (fkColumns != null && !fkColumns.isEmpty()) {
+            return captureByCompositeKey(rule, context, fkColumns);
+        }
+
         String fkColumn = rule.getFkColumn();
         Object fkValue = rule.getFkValueResolver() != null ? rule.getFkValueResolver().apply(context) : null;
         if (fkColumn == null || fkValue == null) {
@@ -75,5 +90,33 @@ public class SnapshotService {
                         .bind("fkValue", fkValue)
                         .mapToMap()
                         .list());
+    }
+
+    /** Composite-key counterpart of the single-column path above — see {@link TableRule#getFkColumns()}.
+     *  Same "skip capture with a warning, don't fail the run" fallback when the resolved values
+     *  are missing/incomplete. */
+    private List<Map<String, Object>> captureByCompositeKey(TableRule rule, DocumentContext context,
+            List<String> fkColumns) {
+        List<Object> fkValues = rule.getFkValuesResolver() != null
+                ? rule.getFkValuesResolver().apply(context) : null;
+        if (fkValues == null || fkValues.size() != fkColumns.size() || fkValues.stream().anyMatch(java.util.Objects::isNull)) {
+            Log.warn("[SnapshotService] Table '{}' has no usable fkColumns/fkValuesResolver — skipping capture.",
+                    rule.getTableName());
+            return List.of();
+        }
+
+        StringBuilder sql = new StringBuilder("SELECT * FROM ").append(rule.getTableName()).append(" WHERE ");
+        for (int i = 0; i < fkColumns.size(); i++) {
+            if (i > 0) sql.append(" AND ");
+            sql.append(fkColumns.get(i)).append(" = :fkValue").append(i);
+        }
+
+        return jdbi.withHandle(handle -> {
+            var query = handle.createQuery(sql.toString());
+            for (int i = 0; i < fkValues.size(); i++) {
+                query.bind("fkValue" + i, fkValues.get(i));
+            }
+            return query.mapToMap().list();
+        });
     }
 }

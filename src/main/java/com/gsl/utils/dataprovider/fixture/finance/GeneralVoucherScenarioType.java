@@ -49,22 +49,28 @@ public enum GeneralVoucherScenarioType implements
     ),
 
     // ─── Negative scenarios (expect a validation-error popup) — see plan §4's 3-data/2-behavior note ──
+    //
+    // Each templateLoader here IS live-DB-driven (unlike the placeholder comment this replaced
+    // suggested) — GeneralVoucherFixtureFactory.buildNegativeBoundaryPlaceholder wraps a real
+    // GeneralVoucherFixtureOptions per scenario, and DbGeneralVoucherDataSource.loadFreshForScenario
+    // resolves a real LiveGvDbRefs from it (see CreateGeneralVoucherNegativeBoundary's
+    // @DataProvider) before calling loadData(refs) below — exactly like POSITIVE_COMBINATION.
 
     /** Type2 row where Allocate Sites Tagging Summary's Pending Amount != 0 (under-allocation). */
     NEG_SITE_ALLOCATION_PENDING(
-            refs -> GeneralVoucherPredicateFactory.siteAllocationPending(),
+            GeneralVoucherTemplateLoader::negSiteAllocationPendingTemplate,
             GeneralVoucherPredicateFactory.NEGATIVE_FORM_VALIDATION_BEHAVIOR
     ),
 
     /** Type3 row with Sub Ledger deliberately left blank — validation fires on the Site-button click. */
     NEG_SUBLEDGER_REQUIRED(
-            refs -> GeneralVoucherPredicateFactory.subLedgerRequired(),
+            GeneralVoucherTemplateLoader::negSubledgerRequiredTemplate,
             GeneralVoucherPredicateFactory.NEG_SUBLEDGER_REQUIRED_BEHAVIOR
     ),
 
     /** Type2 row whose Site button is clicked but nothing is added in the popup (empty allocation). */
     NEG_SITE_NOT_ALLOCATED(
-            refs -> GeneralVoucherPredicateFactory.siteNotAllocated(),
+            GeneralVoucherTemplateLoader::negSiteNotAllocatedTemplate,
             GeneralVoucherPredicateFactory.NEGATIVE_FORM_VALIDATION_BEHAVIOR
     ),
 
@@ -72,8 +78,16 @@ public enum GeneralVoucherScenarioType implements
      *  rejects the Save. Moved out of {@link #POSITIVE_COMBINATION}'s Mandatory sweep (plan
      *  §Round 13/21) into its own dedicated negative scenario. */
     NEG_CASH_POST_DATED(
-            refs -> GeneralVoucherPredicateFactory.cashPostDated(),
+            GeneralVoucherTemplateLoader::negCashPostDatedTemplate,
             GeneralVoucherPredicateFactory.NEG_CASH_POST_DATED_BEHAVIOR
+    ),
+
+    /** Round 16 — a GL-linked, user-assigned site belonging to a DIFFERENT Organizational Unit
+     *  than the resolved Owner Site must not appear in the Allocate Sites picker's search
+     *  results (confirmed live, Round 15: "S&CM"/OU=3 vs. "Hena Embroidery"/OU=1). */
+    NEG_SITE_ALLOCATION_CROSS_OU(
+            GeneralVoucherTemplateLoader::negSiteAllocationCrossOuTemplate,
+            GeneralVoucherPredicateFactory.NEG_SITE_ALLOCATION_CROSS_OU_BEHAVIOR
     );
 
     private final Function<LiveGvDbRefs, MergedFinanceGeneralVoucherData> templateLoader;

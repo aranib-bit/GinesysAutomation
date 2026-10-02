@@ -123,11 +123,17 @@ public final class DriverManager {
 
     // ── Credential management ─────────────────────────────────────────────────
 
+    /** Returns the UI {@link UserCredential} bound to the current thread, or {@code null} if none is bound. */
     public static UserCredential getCurrentUser()            { return currentUser.get(); }
+    /** Binds the UI user credential for the current thread — read by {@link HeartbeatListener} and DB-validation lookups. */
     public static void setCurrentUser(UserCredential cred)   { currentUser.set(cred); }
+    /** Clears the current thread's UI user credential. */
     public static void unloadCurrentUser()                   { currentUser.remove(); }
 
+    /** Returns the API {@link UserCredential} bound to the current thread, or {@code null} if none is bound. */
     public static UserCredential getApiUser()                { return apiUser.get(); }
+    /** Binds the API user credential for the current thread. */
     public static void setApiUser(UserCredential cred)       { apiUser.set(cred); }
+    /** Clears the current thread's API user credential. */
     public static void unloadApiUser()                       { apiUser.remove(); }
 }

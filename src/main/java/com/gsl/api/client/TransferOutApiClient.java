@@ -19,6 +19,7 @@ import java.util.Map;
  */
 public class TransferOutApiClient extends ApiClient {
 
+    /** Wraps an already-authenticated session {@code spec} — see {@link ApiClient}'s class Javadoc. */
     public TransferOutApiClient(RequestSpecification spec) {
         super(spec);
     }

@@ -10,6 +10,10 @@ import java.time.LocalDateTime;
  * ({@link AdmYear#getYcode()}). {@code admyearStatus} is {@code "O"} (open) or {@code "C"}
  * (closed) — a document belonging to a closed year cannot be edited, regardless of whether
  * the edited date itself would otherwise be in range.
+ *
+ * <p>Fetched via {@link com.gsl.database.dao.adm.AdmOuYearDao#findByYcodeAndOu(long, long)};
+ * {@code AccountingPeriodResolver#isYearOpen} checks this row first, before the finer-grained
+ * month status ({@link AdmOuMonth}).
  */
 @Data
 public class AdmOuYear {

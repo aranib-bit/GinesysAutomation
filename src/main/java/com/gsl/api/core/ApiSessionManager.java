@@ -31,10 +31,12 @@ public final class ApiSessionManager {
         return map;
     }
 
+    /** Returns this thread's session for the currently active {@link ApiPlatform} — null if none has been set yet. */
     public static ApiSessionBundle getSession() {
         return CONTEXT_SESSIONS.get(activeApiContext.get()).get();
     }
 
+    /** Stores {@code bundle} as this thread's session for the currently active {@link ApiPlatform}. */
     public static void setSession(ApiSessionBundle bundle) {
         CONTEXT_SESSIONS.get(activeApiContext.get()).set(bundle);
         ReportLogger.framework("API session initialized — context={}", activeApiContext.get());
@@ -61,10 +63,12 @@ public final class ApiSessionManager {
         activeApiContext.remove();
     }
 
+    /** Switches this thread's active {@link ApiPlatform} — subsequent {@link #getSession()}/{@link #setSession} calls target it. */
     public static void switchContext(ApiPlatform platform) {
         activeApiContext.set(platform);
     }
 
+    /** The {@link ApiPlatform} this thread is currently pointed at (defaults to {@code WEBAPI}). */
     public static ApiPlatform getActiveContext() {
         return activeApiContext.get();
     }

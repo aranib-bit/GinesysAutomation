@@ -10,6 +10,12 @@ import org.openqa.selenium.WebElement;
 import org.openqa.selenium.interactions.Actions;
 import org.openqa.selenium.interactions.WheelInput;
 
+/**
+ * Actions-API interaction helpers with built-in {@link ReportLogger} step logging and
+ * {@link PopupMonitor} post-action popup checks — the wait/retry-free counterpart to
+ * {@code SeleniumUtils}'s click/sendKeys methods, for interactions (hover, right-click,
+ * double-click, drag-and-drop, wheel-scroll, modifier-key clicks) it doesn't cover.
+ */
 public class ActionUtils {
 
     private static Actions getActions() {
@@ -29,6 +35,7 @@ public class ActionUtils {
                 .perform();
     }
 
+    /** Moves the mouse to {@code locator}'s element without clicking. */
     public static void moveToElement(By locator) {
         ReportLogger.uiAction("moveToElement {}", locator);
         WebElement element = DriverManager.getDriver().findElement(locator);
@@ -47,6 +54,7 @@ public class ActionUtils {
         getActions().scrollToElement(element).perform();
     }
 
+    /** Right-clicks (context-clicks) {@code locator}'s element. */
     public static void rightClick(By locator) {
         ReportLogger.uiAction("rightClick {}", locator);
         WebElement element = DriverManager.getDriver().findElement(locator);
@@ -54,6 +62,7 @@ public class ActionUtils {
         PopupMonitor.checkAfterAction("rightClick " + locator);
     }
 
+    /** Double-clicks {@code locator}'s element. */
     public static void doubleClick(By locator) {
         ReportLogger.uiAction("doubleClick {}", locator);
         WebElement element = DriverManager.getDriver().findElement(locator);
@@ -70,6 +79,7 @@ public class ActionUtils {
     }
 
 
+    /** Presses and holds the mouse button down on {@code locator}'s element (no release). */
     public static void clickAndHold(By locator) {
         ReportLogger.uiAction("clickAndHold {}", locator);
         WebElement element = DriverManager.getDriver().findElement(locator);
@@ -77,6 +87,7 @@ public class ActionUtils {
         PopupMonitor.checkAfterAction("clickAndHold " + locator);
     }
 
+    /** Clears {@code locator}'s element then sends {@code keys} to it. */
     public static void sendKeys(By locator, CharSequence keys) {
         ReportLogger.uiAction("sendKeys {} = \"{}\"", locator, keys);
         WebElement element = DriverManager.getDriver().findElement(locator);
@@ -102,6 +113,7 @@ public class ActionUtils {
         PopupMonitor.checkAfterAction("shiftClick " + locator);
     }
 
+    /** Drags {@code sourceLocator}'s element and drops it onto {@code targetLocator}'s element. */
     public static void dragAndDrop(By sourceLocator, By targetLocator) {
         ReportLogger.uiAction("dragAndDrop {} → {}", sourceLocator, targetLocator);
         WebElement source = DriverManager.getDriver().findElement(sourceLocator);

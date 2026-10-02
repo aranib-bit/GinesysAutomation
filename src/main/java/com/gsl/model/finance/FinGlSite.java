@@ -14,10 +14,13 @@ import org.jdbi.v3.core.mapper.reflect.ColumnName;
 @Data
 public class FinGlSite {
 
+    /** FK → {@code fingl.glcode} — the GL this row's allow-list entry belongs to. */
     private long glcode;
 
+    /** FK → {@code admsite.code} — a Site allowed to be picked for {@link #glcode}. */
     @ColumnName("admsite_code")
     private long admsiteCode;
 
+    /** Surrogate row id. */
     private long code;
 }

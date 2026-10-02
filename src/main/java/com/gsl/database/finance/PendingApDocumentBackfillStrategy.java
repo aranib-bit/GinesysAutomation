@@ -40,11 +40,16 @@ public final class PendingApDocumentBackfillStrategy implements BackfillStrategy
     private final String vendorSlCode;
     private final int ownerSiteCode;
 
+    /**
+     * @param vendorSlCode  the vendor sub-ledger the Service Invoice Adhoc is raised against
+     * @param ownerSiteCode owner site for the created Service Invoice Adhoc
+     */
     public PendingApDocumentBackfillStrategy(String vendorSlCode, int ownerSiteCode) {
         this.vendorSlCode = vendorSlCode;
         this.ownerSiteCode = ownerSiteCode;
     }
 
+    /** Creates {@code neededQuantity} Service Invoice Adhoc documents against {@link #vendorSlCode} via {@code platform}; see the class Javadoc for the data shape this produces. */
     @Override
     public void backfill(ApiPlatform platform, int neededQuantity) {
         ApiSessionBundle session = ApiSessionFactory.create(platform);
@@ -103,6 +108,7 @@ public final class PendingApDocumentBackfillStrategy implements BackfillStrategy
         }
     }
 
+    /** {@inheritDoc} Always {@code "serviceInvoiceAdhoc"} — the k6 script backing this document type's bulk path. */
     @Override
     public String k6ScriptKey() {
         return "serviceInvoiceAdhoc";

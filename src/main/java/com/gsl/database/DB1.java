@@ -7,6 +7,18 @@ import org.jdbi.v3.core.Jdbi;
 
 import static com.gsl.config.ConfigFactory.getDataBaseConfig;
 
+/**
+ * PostgreSQL-only {@link Jdbi}/{@link HikariDataSource} provider, built the same way as
+ * {@link DatabaseManager} (Hikari-backed pool, config values from
+ * {@link ConfigFactory#getDataBaseConfig()}) but without {@link DatabaseManager}'s
+ * multi-database-type dispatch (postgres/oracle/sqlserver) or its {@code JdbiSqlLogger}
+ * registration.
+ *
+ * <p>TODO-confirm: a repo-wide search found no callers of this class — it appears to predate
+ * or duplicate {@link DatabaseManager}, which is the provider actually wired into DAOs/queries
+ * across {@code com.gsl.database}. Left as-is; not touched further since removing/consolidating
+ * it is outside the scope of this pass.
+ */
 public class DB1{
 
     private static Jdbi jdbi;
@@ -53,10 +65,12 @@ public class DB1{
         }
     }
     //--Step 4:Public accessor
+    /** Returns this class's own {@link Jdbi} instance (separate from {@link DatabaseManager#getJdbi()}). */
     public static Jdbi getJdbi(){
         return jdbi;
     }
 
+    /** Closes this class's own connection pool if open. */
     public static void close(){
         if (dataSource!=null &&  !dataSource.isClosed()){
             dataSource.close();

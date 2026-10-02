@@ -32,10 +32,17 @@ public final class GeneralVoucherApiBackfillStrategy implements BackfillStrategy
 
     private final GlAccountType accountType;
 
+    /** @param accountType the required {@link GlAccountType} for the Posted General Voucher to create */
     public GeneralVoucherApiBackfillStrategy(GlAccountType accountType) {
         this.accountType = accountType;
     }
 
+    /**
+     * Creates {@code neededQuantity} Posted General Vouchers of {@link #accountType} via {@code platform}.
+     *
+     * @throws UnsupportedOperationException always — see the class Javadoc; {@link GeneralVoucherApiClient
+     *         #createGeneralVoucherWithDefaults} is a structural stub pending a real HAR capture.
+     */
     @Override
     public void backfill(ApiPlatform platform, int neededQuantity) {
         ApiSessionBundle session = ApiSessionFactory.create(platform);
@@ -88,6 +95,7 @@ public final class GeneralVoucherApiBackfillStrategy implements BackfillStrategy
                 vchcode, created.getSchemeDocno());
     }
 
+    /** {@inheritDoc} Always {@code "generalVoucherRevertBackfill"} — see the inline comment below for why {@code K6BULK} never actually reaches this path. */
     @Override
     public String k6ScriptKey() {
         // No k6 script exists for this path — quantities here are always 1 (one voucher per missing

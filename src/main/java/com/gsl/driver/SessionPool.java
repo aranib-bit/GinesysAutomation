@@ -19,6 +19,7 @@ import org.openqa.selenium.interactions.Actions;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.LinkedBlockingQueue;
+import java.util.concurrent.Semaphore;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
 
@@ -35,9 +36,12 @@ import java.util.concurrent.atomic.AtomicInteger;
  * happens-before edge — see {@link PooledSession}). {@code capacity == UserPool UI-user count},
  * so UserPool waits only ever happen during initial pool growth, never steady-state.
  *
- * <p>CONSTRAINT: one static pool per JVM, drained at each {@code <test>}-block boundary
- * ({@link #drainAll}) — assumes suites run their blocks sequentially ({@code parallel="none"}),
- * which all current suites do.
+ * <p>CONSTRAINT: one static pool per JVM, shared by every concurrently-running {@code <test>} block
+ * under {@code parallel="tests"} (deliberately — this is what makes cross-class session work-stealing
+ * possible). {@link #drainAll} therefore runs exactly ONCE, at suite end (after every block has
+ * finished), not per-block — draining at any one block's own finish while a sibling block is still
+ * running would destroy sessions genuinely still borrowed elsewhere (see Round 22 of the project's
+ * plan for the live evidence: an {@code UnreachableBrowserException} traced back to exactly this).
  */
 public final class SessionPool {
 
@@ -46,6 +50,7 @@ public final class SessionPool {
     private static final AtomicInteger TOTAL = new AtomicInteger();
     private static final AtomicInteger SESSION_SEQ = new AtomicInteger();
     private static volatile int cachedCapacity = -1;
+    private static volatile Semaphore coldStartGate;
 
     private SessionPool() {}
 
@@ -95,7 +100,24 @@ public final class SessionPool {
             int cur = TOTAL.get();
             if (cur < capacity() && TOTAL.compareAndSet(cur, cur + 1)) {
                 try {
-                    PooledSession created = createSession(qualifiedLabel);
+                    // Round 14: throttles concurrent NEW-browser launches (not reused-session
+                    // borrows, which never reach this branch) — see coldStartGate()'s own comment.
+                    // Acquired inside the capacity-reserved branch (after the CAS above) so a
+                    // thread blocked here still correctly holds its own reserved TOTAL slot.
+                    try {
+                        coldStartGate().acquire();
+                    } catch (InterruptedException ie) {
+                        Thread.currentThread().interrupt();
+                        throw new UserPoolAcquisitionTimeoutException(
+                                "[SessionPool] Interrupted while waiting for a cold-start slot for '"
+                                        + qualifiedLabel + "'.");
+                    }
+                    PooledSession created;
+                    try {
+                        created = createSession(qualifiedLabel);
+                    } finally {
+                        coldStartGate().release();
+                    }
                     bindToCurrentThread(created, qualifiedLabel);
                     ReportLogger.session("[{}] Created by [T-{}] for '{}' — user='{}' ({}/{} sessions, "
                             + "previous test on this session='{}').",
@@ -168,6 +190,31 @@ public final class SessionPool {
         }
     }
 
+    /**
+     * Snapshot of every username currently BORROWED (i.e. actively running a test right now, on
+     * any thread) mapped to the live label of whichever test is using it — sourced from each
+     * {@link PooledSession#lastBorrowerLabel()}, which is refreshed on every borrow AND upgraded
+     * by {@link #updateCurrentLabel} once the real per-row title is known. Unlike {@code
+     * UserPool.ACTIVE_USERS} (only refreshed at session *creation*), this stays accurate when a
+     * session is *reused* across test cases — e.g. test case 1 finishes on user1, the session
+     * goes idle, test case 6 later borrows it and calls {@code updateCurrentLabel}: this map then
+     * reports user1 → test case 6, not test case 1. Used by {@code TestListener.onTestStart} to
+     * build the Extent report's "User Pool Status" table. Covers both the UI and (when present)
+     * API user of each borrowed session.
+     */
+    public static Map<String, String> currentTestCaseIdsByUsername() {
+        Map<String, String> result = new java.util.LinkedHashMap<>();
+        for (PooledSession s : BORROWED.values()) {
+            if (s.uiUser() != null) {
+                result.put(s.uiUser().username(), s.lastBorrowerLabel());
+            }
+            if (s.apiUser() != null) {
+                result.put(s.apiUser().username(), s.lastBorrowerLabel());
+            }
+        }
+        return result;
+    }
+
     // ── give back ─────────────────────────────────────────────────────────────
 
     /**
@@ -212,11 +259,13 @@ public final class SessionPool {
                 + "capacity slot freed ({}/{} sessions).", s.label(), TOTAL.get(), capacity());
     }
 
-    // ── block-end drain ───────────────────────────────────────────────────────
+    // ── suite-end drain ───────────────────────────────────────────────────────
 
     /**
-     * END-OF-BLOCK teardown: logs out and closes EVERY session. Each idle session is bound to the
-     * draining thread one at a time (the block has quiesced and the drain is single-threaded, so
+     * END-OF-SUITE teardown (called once, from {@code TestListener.onFinish(ISuite)} — see Round 22
+     * of the project's plan for why this must NOT run per-{@code <test>}-block under
+     * {@code parallel="tests"}): logs out and closes EVERY session. Each idle session is bound to the
+     * draining thread one at a time (the suite has quiesced and the drain is single-threaded, so
      * page objects resolve the right driver), given a REAL application logout when healthy, then
      * destroyed. Guarantees no orphaned server-side sessions and no leaked users/browsers.
      */
@@ -241,7 +290,7 @@ public final class SessionPool {
             destroy(s, reason);
         }
 
-        // Should be empty — every row's tearDown gives back before the block can finish. A
+        // Should be empty — every row's tearDown gives back before the suite can finish. A
         // leftover here means a worker thread died mid-row; destroy so nothing leaks anyway.
         for (Map.Entry<Long, PooledSession> stale : BORROWED.entrySet()) {
             PooledSession orphan = BORROWED.remove(stale.getKey());
@@ -260,6 +309,7 @@ public final class SessionPool {
 
     // ── internals ─────────────────────────────────────────────────────────────
 
+    /** Cached pool size — the number of SET1 UI users available, minus any backfill headroom reserved for {@code DataAvailabilityGuard}'s transient WEBAPI logins. Computed once and reused. */
     private static int capacity() {
         int cap = cachedCapacity;
         if (cap <= 0) {
@@ -279,6 +329,35 @@ public final class SessionPool {
                     cap, totalUiUsers, backfillHeadroom);
         }
         return cap;
+    }
+
+    /**
+     * Caps how many brand-new browser sessions {@link #createSession} may launch AT THE SAME
+     * MOMENT. Confirmed live (run {@code 20260925_175304}, right after {@code parallel="tests"}
+     * first went live): with this suite running HEADED ({@code headless=false}), several Chrome
+     * windows launching within the same instant get clipped/mis-sized by the OS window manager —
+     * {@code ViewportEnforcer} reported a mismatch (1350x673 vs. requested 1366x768) on multiple
+     * cold starts, plus one outright "remote browser died" crash, all clustered at the exact
+     * moment several threads' cold starts overlapped. A HEADLESS run has no real window for the OS
+     * to clip — CDP's device-metrics override is authoritative regardless of screen space — so this
+     * gate only throttles when headed; headless keeps full pool-capacity concurrency (Docker/CI is
+     * unaffected). Headed permit count is configurable
+     * ({@code session.headed.coldstart.maxconcurrent}, see
+     * {@link com.gsl.config.ExecutionConfig#headedColdStartMaxConcurrent()}), defaulting to this
+     * suite's own pre-{@code parallel="tests"} maximum concurrency — not a hardcoded guess.
+     */
+    private static Semaphore coldStartGate() {
+        Semaphore gate = coldStartGate;
+        if (gate == null) {
+            int permits = ConfigFactory.getBrowserConfig().headless()
+                    ? capacity()
+                    : ConfigFactory.getExecutionConfig().headedColdStartMaxConcurrent();
+            gate = new Semaphore(permits);
+            coldStartGate = gate;
+            Log.info("[SessionPool] Cold-start concurrency gate: {} permit(s) (headless={})",
+                    permits, ConfigFactory.getBrowserConfig().headless());
+        }
+        return gate;
     }
 
     /** Validation runs AFTER bind — HealthChecker reads the calling thread's driver binding. */
@@ -338,6 +417,13 @@ public final class SessionPool {
         }
     }
 
+    /**
+     * Validation runs AFTER bind — {@link HealthChecker} reads the calling thread's driver
+     * binding, so this must be called only once {@code s} is already bound to the current thread.
+     * A session not yet logged in is reusable as long as the browser itself is alive; a
+     * logged-in session must additionally be free of a stuck modal, not flagged for recovery, and
+     * not lease-expired.
+     */
     private static boolean isReusable(PooledSession s) {
         if (s.isClosed()) {
             return false;
@@ -449,6 +535,7 @@ public final class SessionPool {
         s.stampBorrower(tid, qualifiedLabel);
     }
 
+    /** Reverses {@link #bindToCurrentThread} — detaches the execution context and clears all thread-local driver/user/capture/download-dir bindings for the calling thread. */
     private static void unbindFromCurrentThread() {
         ExecutionContext.detach();
         DriverManager.unloadDriver();
@@ -461,7 +548,7 @@ public final class SessionPool {
     /**
      * Quits and fully releases a session. No app-level logout here — mid-run destroys happen on
      * broken/expired sessions where quit is the only safe action; {@link #drainAll} does the real
-     * logout for healthy sessions at block end.
+     * logout for healthy sessions at suite end.
      */
     private static void destroy(PooledSession s, String reason) {
         if (s.isClosed()) {

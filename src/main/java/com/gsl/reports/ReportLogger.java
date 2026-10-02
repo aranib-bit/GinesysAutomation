@@ -7,6 +7,20 @@ import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 import org.apache.logging.log4j.ThreadContext;
 
+/**
+ * Single front door for all test-authored logging — every call fans out to both the Extent
+ * Report (visible to a human reviewer) and the matching Log4j2 audience file (see
+ * {@link #loggerFor(LogCategory)}), so callers never have to remember to write to both places
+ * themselves.
+ *
+ * <p>Use the plain {@link #info(String)}/{@link #pass(String)}/{@link #fail(String)}/
+ * {@link #warn(String)} overloads for simple narration. Use a {@link LogCategory} shorthand
+ * (e.g. {@link #db(String)}, {@link #uiAction(String)}, {@link #validation(String)}) when the
+ * line should carry a colored category badge and route to that category's own audience file —
+ * see the category shorthand section below for the full list. {@link #infoTable(String[][])}/
+ * {@link #infoLabeledTable(String, String[][])} render a 2-D array as a styled table in both
+ * Extent and the log file.
+ */
 public final class ReportLogger {
 
     private static final Logger TRACE_LOG = LogManager.getLogger("MethodTrace");
@@ -20,10 +34,11 @@ public final class ReportLogger {
     private static final Logger DB_VALIDATION_LOG = LogManager.getLogger("DBValidation");
     private static final Logger DIAGNOSTICS_LOG   = LogManager.getLogger("Diagnostics");
 
+    /** Maps a {@link LogCategory} to the audience-specific Log4j2 logger its lines are routed to. */
     private static Logger loggerFor(LogCategory category) {
         return switch (category) {
             case BUSINESS -> BUSINESS_LOG;
-            case UI_ACTION, VALIDATION, MODULE, SUB_MODULE, MENU, SUB_MENU -> UI_ACTIONS_LOG;
+            case UI_ACTION, FIELD_ENTRY, FIELD_VALIDATION, VALIDATION, MODULE, SUB_MODULE, MENU, SUB_MENU -> UI_ACTIONS_LOG;
             case DB -> DB_VALIDATION_LOG;
             case JS, PERF, RCA, FRAMEWORK, NETWORK, SESSION, NAVIGATION, RECOVERY, TEST_STEP_STATUS,
                  CONTEXT_SWITCH, DATA_BACKFILL, VERIFICATION, LOADER_WAIT, POPUP -> DIAGNOSTICS_LOG;
@@ -161,6 +176,18 @@ public final class ReportLogger {
     public static void uiAction(String msg)              { info(LogCategory.UI_ACTION, msg); }
     public static void uiAction(String fmt, Object... a) { info(LogCategory.UI_ACTION, fmt(fmt, a)); }
 
+    /** Field value entry/write (sendKeys/clear) — see {@link LogCategory#FIELD_ENTRY}. Always
+     *  visible in the Extent report, unlike {@link #uiAction}'s debug-gated click noise. */
+    public static void fieldEntry(String msg)              { info(LogCategory.FIELD_ENTRY, msg); }
+    public static void fieldEntry(String fmt, Object... a) { info(LogCategory.FIELD_ENTRY, fmt(fmt, a)); }
+
+    /** Field value read-back/validation after entry (getAttribute) — see
+     *  {@link LogCategory#FIELD_VALIDATION}. Item P: kept visually distinct from
+     *  {@link #fieldEntry} so a reader can tell "wrote this" apart from "confirmed this" at a
+     *  glance. */
+    public static void fieldValidation(String msg)              { info(LogCategory.FIELD_VALIDATION, msg); }
+    public static void fieldValidation(String fmt, Object... a) { info(LogCategory.FIELD_VALIDATION, fmt(fmt, a)); }
+
     public static void validation(String msg)               { info(LogCategory.VALIDATION, msg); }
     public static void validation(String fmt, Object... a)  { info(LogCategory.VALIDATION, fmt(fmt, a)); }
     public static void validationWarn(String msg)           { high(LogCategory.VALIDATION, msg); }
@@ -285,7 +312,8 @@ public final class ReportLogger {
         return org.slf4j.helpers.MessageFormatter.arrayFormat(template, args).getMessage();
     }
 
-    /** Logs raw HTML inline on the current Extent test. Log4j2 is skipped (HTML not readable in file). */
+    /** Logs raw HTML inline on the current Extent test — Log4j2 is skipped entirely (HTML isn't
+     *  readable in a plain-text log file). Delegates straight to {@link ExtentLogger#infoHtml}. */
     public static void infoHtml(String html) {
         ExtentLogger.infoHtml(html);
     }

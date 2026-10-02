@@ -8,5 +8,6 @@ import java.util.List;
  *                  {@link com.gsl.utils.dataprovider.source.finance.DbArVoucherDataSource}
  */
 public interface TestDataSource<T> {
+    /** Loads and returns the test-data rows applicable to {@code testMethodName}. */
     List<T> load(String testMethodName);
 }

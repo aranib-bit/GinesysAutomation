@@ -20,6 +20,11 @@ public final class PaymentModeResolver {
 
     private PaymentModeResolver() {}
 
+    /**
+     * @param cashBankSrctype the header's Cash/Bank GL {@code srctype} ('C' or 'B'), used only when {@code paymentInfo} is absent
+     * @param paymentInfo     the line's own explicit payment info, or {@code null} to fall back to {@code cashBankSrctype}
+     * @return the expected {@code finvchdet.payment_mode} DB code ('R', 'C', or 'H')
+     */
     public static String resolve(String cashBankSrctype, VoucherPaymentInfo paymentInfo) {
         if (paymentInfo != null && paymentInfo.getPaymentMode() != null)
             return paymentInfo.getPaymentMode().dbCode();

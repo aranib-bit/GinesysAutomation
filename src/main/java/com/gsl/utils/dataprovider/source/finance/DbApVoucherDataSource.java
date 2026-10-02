@@ -87,16 +87,24 @@ public class DbApVoucherDataSource implements TestDataSource<MergedFinanceApVouc
     // Captured from TestNG <parameter name="apv.tag"> at construction time.
     private final String xmlTagParam;
 
+    /** No execution-group/tag filter — every scenario/variant is emitted (full-suite run). */
     public DbApVoucherDataSource() {
         this.xmlGroupParam = null;
         this.xmlTagParam   = null;
     }
 
+    /** @param xmlGroupParam fallback {@code apv.group} value from TestNG {@code <parameter>}, used
+     *                       when the {@code apv.group} system property is absent (IntelliJ direct-run path) */
     public DbApVoucherDataSource(String xmlGroupParam) {
         this.xmlGroupParam = xmlGroupParam;
         this.xmlTagParam   = null;
     }
 
+    /**
+     * @param xmlGroupParam see {@link #DbApVoucherDataSource(String)}
+     * @param xmlTagParam   fallback {@code apv.tag} value from TestNG {@code <parameter>}, used
+     *                      when the {@code apv.tag} system property is absent
+     */
     public DbApVoucherDataSource(String xmlGroupParam, String xmlTagParam) {
         this.xmlGroupParam = xmlGroupParam;
         this.xmlTagParam   = xmlTagParam;
@@ -104,6 +112,12 @@ public class DbApVoucherDataSource implements TestDataSource<MergedFinanceApVouc
 
     // ─── Point 1: Placeholder generation — called at DataSupplier time ────────
 
+    /**
+     * Emits one lightweight placeholder per applicable {@link ApVoucherScenarioType}/variant
+     * surviving the active {@code apv.group}/{@code apv.tag} filter — see the class Javadoc's
+     * "Lazy placeholder pattern". No DB documents are actually selected/reserved here; that only
+     * happens later, per placeholder, in {@link #loadFreshForScenario}.
+     */
     @Override
     public List<MergedFinanceApVoucherData> load(String testMethodName) {
         String loginName = ConfigFactory.getConfig().username();
@@ -292,6 +306,18 @@ public class DbApVoucherDataSource implements TestDataSource<MergedFinanceApVouc
                                 baseId + "_CASH_MULTI_SL", scenLbl + " | [Cash GL] | 3SL-1Doc"));
                     }
 
+                } else if (isMismatchScenario(scenario)) {
+                    // Adjustment amount-mismatch Confirmation scenarios. Cash GL (no payment-info
+                    // dialogs); documentCount = how many pending documents the script needs.
+                    ApVoucherExecutionGroup tier = mismatchTier(scenario);
+                    if (matchesGroup(activeGroup, tier)) {
+                        batch.add(buildPlaceholder(testMethodName, loginName, scenario,
+                                ApVoucherFixtureOptions.builder()
+                                        .subLedgerCount(1).documentCount(mismatchDocumentCount(scenario))
+                                        .glType(CashBankType.CASH).build(),
+                                "DB_" + scenario.name(), scenario.name()));
+                    }
+
                 } else if (scenario == ApVoucherScenarioType.DOC_AMOUNT_NOT_ADJUSTED_INVALID
                         || scenario == ApVoucherScenarioType.DOC_AMOUNT_READ_ONLY) {
                     // NEG scenarios on the document path — gated to REGRESSION_PHASE1
@@ -393,7 +419,11 @@ public class DbApVoucherDataSource implements TestDataSource<MergedFinanceApVouc
         // 4. Pick a GL matching the target CashBankType for this variant
         CashBankType targetCashBankType = opts.getGlType() != null ? opts.getGlType() : CashBankType.BANK;
         String cashBankName = pickGlByType(jdbi, d, ownerSiteCodes, targetCashBankType);
-        Log.info("[DB] AP Picked GL: {} ({})", cashBankName, targetCashBankType.label());
+        // Round 20: resolved once here (reusing the existing FinGlDao.findByGlName lookup) so a
+        // "known" cheque number can later be looked up against THIS voucher's own counter-leg bank.
+        long cashBankGlcode = jdbi.onDemand(com.gsl.database.dao.finance.FinGlDao.class)
+                .findByGlName(cashBankName).getGlcode();
+        Log.info("[DB] AP Picked GL: {} (glcode={}, {})", cashBankName, cashBankGlcode, targetCashBankType.label());
 
         // 5. SL + document resolution — branches on onAccount flag
         List<SlNameWithId> pendingSlNames;
@@ -557,6 +587,8 @@ public class DbApVoucherDataSource implements TestDataSource<MergedFinanceApVouc
         //    slToRefSiteName, slToCmpCode, slToClstype are resolved for all scenarios (step 5d).
         ApVoucherLiveDbRefs refs = ApVoucherLiveDbRefs.builder()
                 .cashBankName(cashBankName)
+                .cashBankGlcode(cashBankGlcode)
+                .selectDocKnownCheque(opts.isKnownCheque())
                 .ownerSiteName(ownerSiteName)
                 .docSchemeName(docSchemeName)
                 .pendingSlNames(pendingSlNames)
@@ -680,6 +712,11 @@ public class DbApVoucherDataSource implements TestDataSource<MergedFinanceApVouc
             });
         }
 
+        // Round 20: the Fixture Factory itself decides known-vs-unknown for every CHEQUE row here,
+        // at an exact ratio (com.gsl.utils.WeightedSequenceBuilder), over the final filtered list —
+        // once per run, not per row.
+        variants = ApVoucherFixtureFactory.assignKnownChequeFlags(variants);
+
         // Build AP placeholders from the filtered variant list
         List<MergedFinanceApVoucherData> result = new ArrayList<>(variants.size());
         for (SelectDocumentVariant v : variants) {
@@ -757,6 +794,54 @@ public class DbApVoucherDataSource implements TestDataSource<MergedFinanceApVouc
      * Called at placeholder-build time; the result is stored in
      * {@link MergedFinanceApVoucherData#getTags()} and used to gate the tag filter.
      */
+    /** True for the Adjustment amount-mismatch Confirmation scenarios. */
+    private static boolean isMismatchScenario(ApVoucherScenarioType s) {
+        switch (s) {
+            case DOC_PARTIAL_UPDATE_PAYMENT_SELECT_DOC:
+            case DOC_PARTIAL_ADJUST_MORE_SELECT_DOC:
+            case DOC_PARTIAL_ADJUST_MORE_FIFO:
+            case DOC_PARTIAL_ADJUST_MORE_REFSITE_FIFO:
+            case DOC_PARTIAL_MULTI_DOC_UPDATE_PAYMENT:
+            case DOC_PARTIAL_PER_DOC_AMOUNT_LESS_THAN_PENDING:
+            case DOC_PARTIAL_ADJUST_MORE_THEN_UPDATE:
+            case DOC_AMOUNT_OVER_PENDING_NEGATIVE:
+                return true;
+            default:
+                return false;
+        }
+    }
+
+    /** Regression tier per mismatch scenario — a first-pass judgment call: simplest proving case in
+     *  MANDATORY, the named dimensions in PHASE1, combined/higher-risk in PHASE2, exploratory in PHASE3. */
+    private static ApVoucherExecutionGroup mismatchTier(ApVoucherScenarioType s) {
+        switch (s) {
+            case DOC_PARTIAL_UPDATE_PAYMENT_SELECT_DOC:
+                return ApVoucherExecutionGroup.MANDATORY;
+            case DOC_PARTIAL_ADJUST_MORE_SELECT_DOC:
+            case DOC_PARTIAL_MULTI_DOC_UPDATE_PAYMENT:
+            case DOC_PARTIAL_PER_DOC_AMOUNT_LESS_THAN_PENDING:
+                return ApVoucherExecutionGroup.REGRESSION_PHASE1;
+            case DOC_PARTIAL_ADJUST_MORE_FIFO:
+            case DOC_PARTIAL_ADJUST_MORE_REFSITE_FIFO:
+            case DOC_PARTIAL_ADJUST_MORE_THEN_UPDATE:
+                return ApVoucherExecutionGroup.REGRESSION_PHASE2;
+            default:
+                return ApVoucherExecutionGroup.REGRESSION_PHASE3;
+        }
+    }
+
+    /** Pending documents on the single sub-ledger the script needs. */
+    private static int mismatchDocumentCount(ApVoucherScenarioType s) {
+        switch (s) {
+            case DOC_PARTIAL_UPDATE_PAYMENT_SELECT_DOC:
+            case DOC_PARTIAL_PER_DOC_AMOUNT_LESS_THAN_PENDING:
+            case DOC_AMOUNT_OVER_PENDING_NEGATIVE:
+                return 1;
+            default:
+                return 2;
+        }
+    }
+
     private static Set<ApVoucherTag> tagsFor(ApVoucherScenarioType scenario,
                                               ApVoucherFixtureOptions opts) {
         EnumSet<ApVoucherTag> tags = EnumSet.noneOf(ApVoucherTag.class);
@@ -780,6 +865,11 @@ public class DbApVoucherDataSource implements TestDataSource<MergedFinanceApVouc
                 break;
             case DOC_REFERENCE_SITEWISE_FIFO:
                 tags.addAll(EnumSet.of(ApVoucherTag.DOCUMENT, ApVoucherTag.DOC_REF_SITEWISE_FIFO));
+                break;
+            default:
+                if (isMismatchScenario(scenario)) {
+                    tags.addAll(EnumSet.of(ApVoucherTag.DOCUMENT, ApVoucherTag.DOC_MISMATCH));
+                }
                 break;
         }
 

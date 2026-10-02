@@ -1,5 +1,12 @@
 package com.gsl.browser;
 
+/**
+ * One classified browser-side log entry — either a {@code console.*} call or a {@code window.onerror}
+ * JS error — captured by {@link AdvancedJsLogger}'s injected shim and fetched/classified by
+ * {@link AdvancedLogFetcher} via {@link SeverityClassifier}. Consumed by {@link DecisionEngine},
+ * {@link FunctionalImpactAnalyzer}, {@link JsErrorClassificationEngine}, and the Extent report
+ * attachment path ({@link LogAttachment}).
+ */
 public record BrowserLogRecord(
         String      message,
         LogSeverity level,

@@ -4,6 +4,8 @@ package com.gsl.enums;
 public enum ItemManagementMode {
     INDIVIDUAL("I", "I"),
     BATCH("B", "B"),
+    /** Serial-tracked items price-manage as Batch ("B") — there is no separate "S" price-management
+     *  code; only {@code itemManagementCode} is "S" here. */
     SERIAL("S", "B");
 
     private final String itemManagementCode;
@@ -14,6 +16,8 @@ public enum ItemManagementMode {
         this.priceManagementCode = priceManagementCode;
     }
 
+    /** Value sent as {@code itemManagementMode} in {@code ItemCreateRequest}. */
     public String itemManagementCode() { return itemManagementCode; }
+    /** Value sent as {@code priceManagement} in {@code ItemCreateRequest}. */
     public String priceManagementCode() { return priceManagementCode; }
 }

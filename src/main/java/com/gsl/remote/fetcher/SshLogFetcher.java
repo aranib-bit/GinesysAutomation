@@ -43,14 +43,17 @@ public final class SshLogFetcher implements LogFetcher {
     private final RetryPolicy       retryPolicy;
     private final SshConnectionPool pool; // null = create/close per fetch
 
+    /** Unpooled fetcher (new SSH connection per fetch) with a default 3-attempt retry policy. */
     public SshLogFetcher(LogParser parser, LogFilter filter) {
         this(parser, filter, new RetryPolicy(3, 1_000L), null);
     }
 
+    /** Unpooled fetcher (new SSH connection per fetch) with a caller-supplied retry policy. */
     public SshLogFetcher(LogParser parser, LogFilter filter, RetryPolicy retryPolicy) {
         this(parser, filter, retryPolicy, null);
     }
 
+    /** Fetcher backed by {@code pool}; when {@code pool} is null, a connection is opened and closed per fetch instead. */
     public SshLogFetcher(LogParser parser, LogFilter filter,
                          RetryPolicy retryPolicy, SshConnectionPool pool) {
         this.parser      = parser;
@@ -64,6 +67,13 @@ public final class SshLogFetcher implements LogFetcher {
         return osType == OSType.LINUX;
     }
 
+    /**
+     * Runs the grep/tail command strategy over SSH (pooled or unpooled per the constructor used),
+     * retrying transient failures per {@link RetryPolicy}.
+     *
+     * @throws RemoteCommandException on validation failure, a non-zero/non-1 exit, a command
+     *                                 timeout, or once retries are exhausted
+     */
     @Override
     public LogFetchResponse fetch(LogFetchRequest request) throws RemoteCommandException {
         LogFetchRequestValidator.validate(request);
@@ -107,6 +117,7 @@ public final class SshLogFetcher implements LogFetcher {
 
     // ── private ───────────────────────────────────────────────────────────────
 
+    /** Dispatches to the pooled or unpooled connection path, one attempt (retries are the caller's job). */
     private LogFetchResponse doFetch(LogFetchRequest request) throws IOException {
         if (pool != null) {
             return doFetchPooled(request);
@@ -120,6 +131,7 @@ public final class SshLogFetcher implements LogFetcher {
         }
     }
 
+    /** Borrows a client from {@link #pool}, runs the command, and returns/invalidates the client afterward. */
     private LogFetchResponse doFetchPooled(LogFetchRequest request) throws IOException {
         SSHClient client = null;
         try {
@@ -141,6 +153,7 @@ public final class SshLogFetcher implements LogFetcher {
         }
     }
 
+    /** Runs the built shell command over {@code ssh}, checks exit status, and parses stdout into entries. */
     private LogFetchResponse executeCommand(SSHClient ssh, LogFetchRequest request) throws IOException {
         String command = buildCommand(request);
         Log.debug("[SshLogFetcher] Executing: {}", command);
@@ -183,6 +196,7 @@ public final class SshLogFetcher implements LogFetcher {
         }
     }
 
+    /** Builds an unconnected {@link SSHClient} configured with the request's timeouts and the configured host-key verification mode. */
     private SSHClient buildClient(LogFetchRequest request) {
         SSHClient ssh = new SSHClient();
         SshConnectionPool.applyHostKeyVerification(
@@ -192,6 +206,16 @@ public final class SshLogFetcher implements LogFetcher {
         return ssh;
     }
 
+    /**
+     * Builds the bash command that walks every configured log path/glob and streams matching lines
+     * back to Java, emitting {@code ###FILE:path###} / {@code ###FILE_ERROR:path:::msg###} sentinels
+     * so {@link #parseAndFilter} can group output by source file and report per-file errors without
+     * aborting the whole fetch.
+     *
+     * <p>Picks one of four strategies depending on whether a time window and/or keywords are set:
+     * timestamp-windowed streaming (with or without keyword flushing), a plain {@code tail}
+     * fallback, or a plain {@code grep} fallback — see the inline branches below.
+     */
     private String buildCommand(LogFetchRequest request) {
         long max = request.getMaxResultLines();
 
@@ -276,8 +300,14 @@ public final class SshLogFetcher implements LogFetcher {
         return sb.toString();
     }
 
+    /** Holds one {@link #parseAndFilter} pass's grouped output: parsed entries, files read, and per-file errors. */
     private record ParseResult(List<LogEntry> entries, List<String> filesRead, Map<String, String> fileErrors) {}
 
+    /**
+     * Splits raw stdout on the {@code ###FILE:###}/{@code ###FILE_ERROR:###} sentinels emitted by
+     * {@link #buildCommand}, groups the lines in between by source file, and hands each group to
+     * {@link #flushBlock} for parsing once a new sentinel or a new entry start is seen.
+     */
     private ParseResult parseAndFilter(String stdout, LogFetchRequest request) {
         if (stdout == null || stdout.isBlank())
             return new ParseResult(List.of(), List.of(), Map.of());
@@ -323,6 +353,12 @@ public final class SshLogFetcher implements LogFetcher {
         return new ParseResult(entries, filesRead, fileErrors);
     }
 
+    /**
+     * Parses one accumulated multi-line block (a timestamped entry plus any continuation lines,
+     * e.g. a stack trace or multi-line SQL body) into a single {@link LogEntry} and adds it to
+     * {@code entries} when {@code filter} accepts it. Blocks whose first line doesn't parse are
+     * treated as orphaned continuation lines and each parsed individually instead, so no line is lost.
+     */
     private void flushBlock(List<String> block, String file,
                              List<LogEntry> entries, LogFilter filter) {
         if (block.isEmpty()) return;

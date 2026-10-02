@@ -54,6 +54,12 @@ public class FinVchDetValidator {
         this.slDao = DatabaseManager.getJdbi().onDemand(FinSlDao.class);
     }
 
+    /**
+     * Blocking: asserts at least one {@code finvchdet} row exists for {@code header}'s vchcode,
+     * then soft-asserts row cardinality, the {@code SUM(finvchdet.camount) == finvchmain.damount}
+     * balance, each line's amount/narration via {@link #validateSubLedgerLine}, and payment-mode
+     * plus instrument details via {@link #validatePaymentDetails}.
+     */
     public void validate(VoucherDbContext context, FinVchMain header) {
         long vchcode = header.getVchcode();
         MergedFinanceArVoucherData data = context.getTestData();
@@ -301,6 +307,7 @@ public class FinVchDetValidator {
         return matches.size() == 1 ? matches.get(0) : null;
     }
 
+    /** Finds the {@code finvchdet} row matching {@code line}'s credit amount and, when supplied, checks its narration. */
     private void validateSubLedgerLine(SoftAssertions soft, SubLedgerInformation line,
                                         List<FinVchDet> rows, long vchcode) {
         BigDecimal cr = line.getAmountCr();
@@ -345,9 +352,11 @@ public class FinVchDetValidator {
         return table;
     }
 
+    /** Builds the Level 2 green-checklist HTML box (line count, balance, TDS flag). */
     private static String buildLevel2Summary(int rowCount, BigDecimal sumCredit,
                                               BigDecimal damount, boolean tdsProvided) {
-        return "<div style='font-family:monospace;font-size:12px;line-height:1.8;padding:8px 12px;"
+        // Item Q: 13px to match DocumentMessageBox's "VERIFY SAVE RESULT" box.
+        return "<div style='font-family:monospace;font-size:13px;line-height:1.8;padding:8px 12px;"
             + "background:#f0fff4;border-left:4px solid #38a169;border-radius:2px;margin:4px 0;'>"
             + "<b>Level 2 &mdash; finvchdet line checks</b><br/>"
             + "&#10003;&nbsp; Line count: <b>" + rowCount + "</b> row(s)<br/>"
@@ -367,6 +376,11 @@ public class FinVchDetValidator {
             DateTimeFormatter.ofPattern("MM/dd/yyyy")
     );
 
+    /**
+     * Parses {@code raw} against each of {@link #INSTR_DATE_FORMATS} in turn.
+     *
+     * @throws IllegalArgumentException if {@code raw} matches none of the accepted formats
+     */
     private static LocalDate parseInstrDate(String raw) {
         String s = raw.trim();
         for (DateTimeFormatter fmt : INSTR_DATE_FORMATS) {

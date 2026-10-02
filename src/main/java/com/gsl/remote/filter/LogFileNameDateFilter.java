@@ -106,6 +106,7 @@ public final class LogFileNameDateFilter {
                 .format(instant);
     }
 
+    /** Reads the configured server timezone offset, defaulting to UTC when unset or on config error. */
     private static ZoneOffset serverZoneOffset() {
         try {
             String raw = ConfigFactory.getRemoteLogConfig().remoteLogsServerTimezoneOffset();

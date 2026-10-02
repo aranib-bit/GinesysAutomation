@@ -21,8 +21,11 @@ import java.util.List;
 @NoArgsConstructor
 @AllArgsConstructor
 public class ArVoucherCreateRequest {
+    /** {@code 0} to create a new voucher; would carry the existing voucher's code when editing one. */
     @Builder.Default
     private int code = 0;
+    /** Populated only when the resolved {@code docSchemeCode}'s scheme is manual-numbered (see
+     *  {@code DocNumberSchemeEntry#getManual()}); left null otherwise so the server auto-generates it. */
     private String docNumber;
     private String voucherDate;
     private long docSchemeCode;

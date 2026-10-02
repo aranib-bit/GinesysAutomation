@@ -18,6 +18,16 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.Map;
 
+/**
+ * Renders a {@link RuntimeExecutionProfile} into the Extent report — both the compact
+ * dashboard system-info panel ({@link #renderDashboard}) and the full, section-by-section
+ * config tables ({@link #renderAllSections}) — and can also serialize the whole profile to a
+ * {@code runtime-snapshot.json} file for offline inspection ({@link #generateJsonSnapshot}).
+ *
+ * <p>All credentials/secrets are expected to already be masked on the {@link RuntimeExecutionProfile}
+ * itself (see {@code RuntimeProfileBuilder}) — this class only formats what it is given, it does
+ * not decide what is safe to show.
+ */
 public final class ReportConfigRenderer {
 
     private static final ObjectMapper MAPPER = new ObjectMapper();
@@ -66,6 +76,7 @@ public final class ReportConfigRenderer {
         return snapshotPath;
     }
 
+    /** The absolute path last written by {@link #generateJsonSnapshot}, or {@code null} if it hasn't run yet. */
     public static String getSnapshotPath() {
         return snapshotPath;
     }
@@ -87,6 +98,7 @@ public final class ReportConfigRenderer {
         renderAppLogSourcesSection(profile.getAppLogSources());
     }
 
+    /** Renders the Environment &amp; Execution Configuration table on the current test node. */
     private static void renderEnvironmentSection(ExecutionConfig e) {
         String[][] table = {
                 {"Field", "Value"},
@@ -105,6 +117,7 @@ public final class ReportConfigRenderer {
         ExtentManager.getExtentTest().info(MarkupHelper.createTable(table));
     }
 
+    /** Renders the Browser Configuration table on the current test node. */
     private static void renderBrowserSection(BrowserConfig b) {
         String[][] table = {
                 {"Field", "Value"},
@@ -125,6 +138,7 @@ public final class ReportConfigRenderer {
         ExtentManager.getExtentTest().info(MarkupHelper.createTable(table));
     }
 
+    /** Renders the Database Configuration table on the current test node. */
     private static void renderDatabaseSection(DatabaseConfig db) {
         String[][] table = {
                 {"Field", "Value"},
@@ -146,6 +160,7 @@ public final class ReportConfigRenderer {
         ExtentManager.getExtentTest().info(MarkupHelper.createTable(table));
     }
 
+    /** Renders the Network &amp; Browser Logging Configuration table on the current test node. */
     private static void renderNetworkSection(NetworkConfig n) {
         String[][] table = {
                 {"Field", "Value"},
@@ -170,6 +185,7 @@ public final class ReportConfigRenderer {
         ExtentManager.getExtentTest().info(MarkupHelper.createTable(table));
     }
 
+    /** Renders the Diagnostics Configuration table on the current test node. */
     private static void renderDiagnosticsSection(DiagnosticsConfig d) {
         String[][] table = {
                 {"Field", "Value"},
@@ -193,6 +209,7 @@ public final class ReportConfigRenderer {
         ExtentManager.getExtentTest().info(MarkupHelper.createTable(table));
     }
 
+    /** Renders the Remote Log Collection Configuration table on the current test node. */
     private static void renderRemoteLogSection(RemoteLogConfig rl) {
         String[][] table = {
                 {"Field", "Value"},
@@ -209,6 +226,7 @@ public final class ReportConfigRenderer {
         ExtentManager.getExtentTest().info(MarkupHelper.createTable(table));
     }
 
+    /** Renders the Remote Server Configuration table (SSH/WinRM hosts, ports, masked credentials) on the current test node. */
     private static void renderRemoteServerSection(RemoteServerConfig rs) {
         String[][] table = {
                 {"Field", "Value"},
@@ -233,6 +251,7 @@ public final class ReportConfigRenderer {
         ExtentManager.getExtentTest().info(MarkupHelper.createTable(table));
     }
 
+    /** Renders the Test Data Configuration table (data source and file paths) on the current test node. */
     private static void renderTestDataSection(TestDataConfig td) {
         String[][] table = {
                 {"Field", "Value"},
@@ -248,6 +267,7 @@ public final class ReportConfigRenderer {
         ExtentManager.getExtentTest().info(MarkupHelper.createTable(table));
     }
 
+    /** Renders the Performance Configuration table on the current test node. */
     private static void renderPerformanceSection(PerformanceConfig p) {
         String[][] table = {
                 {"Field", "Value"},
@@ -264,6 +284,7 @@ public final class ReportConfigRenderer {
         ExtentManager.getExtentTest().info(MarkupHelper.createTable(table));
     }
 
+    /** Renders the Application Log Sources table (one row per configured log path) on the current test node; no-op if {@code sources} is empty. */
     private static void renderAppLogSourcesSection(Map<String, String> sources) {
         if (sources == null || sources.isEmpty()) return;
         String[][] table = new String[sources.size() + 1][2];
@@ -278,10 +299,12 @@ public final class ReportConfigRenderer {
         ExtentManager.getExtentTest().info(MarkupHelper.createTable(table));
     }
 
+    /** Renders a config value for display, substituting {@code "Not Configured"} for null/blank. */
     private static String nullSafe(String value) {
         return (value == null || value.isBlank()) ? "Not Configured" : value;
     }
 
+    /** Renders a boolean config flag as {@code "enabled"}/{@code "disabled"}. */
     private static String b2s(boolean value) {
         return value ? "enabled" : "disabled";
     }

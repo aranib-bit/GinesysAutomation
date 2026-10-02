@@ -1,37 +1,26 @@
 package com.gsl.pages.Finance.Operations.Common;
 
-import com.gsl.enums.WaitType;
-import com.gsl.pages.enums.Finance.Operations.ARVoucher.ArPaymentInfoLabel;
-import com.gsl.utils.Selenium.JavascriptExecutorUtils;
-import com.gsl.utils.Selenium.SeleniumUtils;
-import org.openqa.selenium.By;
+import com.gsl.enums.VoucherDomain;
 
 /**
  * AR Voucher-specific Payment Information popup.
  *
- * Instrument No: sendKeys then Tab — the app auto-populates Instrument Date directly.
- * Drawn on field label: "Drawn on:" (AR Voucher UI label).
+ * Instrument No: plain sendKeys+Tab — see {@link PaymentInformationPopup#setInstrumentNoPlain},
+ * shared with {@link GvReceiptPaymentInformationPopup} — the app auto-populates Instrument Date
+ * directly, no cheque-register known/unknown lookup at all.
+ *
+ * <p>"Drawn On" field handling (label + locator) now lives in the shared {@link
+ * PaymentInformationPopup#setDrawnOn(String)}, driven by {@link VoucherDomain#getPaymentDrawnOnLabel()}
+ * — AR no longer needs its own override (its label, "Drawn on:", is centralized there now).
  */
 public class ArPaymentInformationPopup extends PaymentInformationPopup {
 
-    private static final By DRAWN_ON = By.xpath(
-            "//span[normalize-space()='" + ArPaymentInfoLabel.DRAWN_ON.label() + "']/ancestor::label"
-            + "/following-sibling::div[contains(@class,'x-form-item-body')]//input[@data-ref='inputEl']");
-
-    @Override
-    public ArPaymentInformationPopup setInstrumentNo(String instrumentNo) {
-        if (instrumentNo == null || instrumentNo.isBlank()) return this;
-        SeleniumUtils.sendKeys(INSTRUMENT_NO, WaitType.CLICKABLE, instrumentNo, "INSTRUMENT_NO");
-        SeleniumUtils.pressTab(INSTRUMENT_NO, "INSTRUMENT_NO");
-        JavascriptExecutorUtils.waitForExtJS();
-        return this;
+    public ArPaymentInformationPopup() {
+        super(VoucherDomain.AR);
     }
 
     @Override
-    public ArPaymentInformationPopup setDrawnOn(String drawnOn) {
-        if (drawnOn == null || drawnOn.isBlank()) return this;
-        SeleniumUtils.sendKeys(DRAWN_ON, WaitType.CLICKABLE, drawnOn, "DRAWN_ON");
-        JavascriptExecutorUtils.waitForExtJS();
-        return this;
+    public ArPaymentInformationPopup setInstrumentNo(String instrumentNo) {
+        return (ArPaymentInformationPopup) setInstrumentNoPlain(instrumentNo);
     }
 }

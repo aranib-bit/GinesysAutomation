@@ -41,6 +41,18 @@ public class MergedFinArVoucherDataSupplier {
     // MergedFinApVoucherDataSupplier: rows borrow a pooled logged-in session per row
     // (WebTest.setUp) and return it (tearDown), so TestNG's short-lived per-method row threads
     // hold nothing between rows and can never leak users/browsers by dying.
+    /**
+     * Resolves the configured {@link TestDataSource} (EXCEL, or one of the three DB-mode sources
+     * switched on {@code method}'s name — Edit/Delete/default-Create), loads that source's
+     * scenario rows, and emits one {@code Object[]} (null credential + row) per scenario. A
+     * data-load failure (DB unreachable, bad config, etc.) is logged with diagnosis and converted
+     * to a {@link org.testng.SkipException} rather than propagated, so the test is skipped
+     * cleanly instead of erroring with an opaque provider-level stack trace.
+     *
+     * @param method  the TestNG-injected test method — its name selects the DB-mode data source
+     *                and is passed through to {@link TestDataSource#load}
+     * @param context supplies the TestNG XML {@code arv.group} parameter (DB-mode Create fallback)
+     */
     @DataSupplier(name = "FinanceArVoucherData", flatMap = true, runInParallel = true)
     public StreamEx<Object[]> dataSupplier(Method method, ITestContext context) {
         String source = ConfigFactory.getConfig().testDataSource();

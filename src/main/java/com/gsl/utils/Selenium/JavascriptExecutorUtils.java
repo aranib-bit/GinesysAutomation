@@ -15,29 +15,115 @@ import java.util.Collections;
 import java.util.List;
 import java.util.Map;
 
+/**
+ * The framework's JavaScript-executor escape hatch — everything Selenium's native API cannot
+ * do reliably (or at all) against this application's ExtJS front end goes through here instead:
+ * reaching into {@code Ext.ComponentQuery}/{@code Ext.WindowManager} to find the live component
+ * behind a DOM node, forcing scroll/click/focus on elements native Selenium actions fight with,
+ * and polling ExtJS's own readiness signals (mask state, store loading, layout) instead of
+ * guessing with a fixed sleep. Other utils, page objects, and page components call into this
+ * class whenever a plain {@code WebElement} interaction isn't enough.
+ *
+ * <p>This is also the single largest and oldest utility in the framework, and it shows: alongside
+ * the actively-used production helpers below sit many numbered, near-duplicate experiments
+ * (e.g. {@code setSubLedger2}…{@code setSubLedger10}) from iterative live debugging of the
+ * Sub-Ledger combo flow. Those are called out individually as superseded/unused below rather than
+ * removed, since deleting working (if dead) code is out of scope for a documentation pass — see
+ * each method's Javadoc for whether it is still on a live call path.</p>
+ *
+ * <p>Method groups, in the order they appear in the file:</p>
+ * <ul>
+ *   <li><b>SelectDocument popup grid scroll strategies</b> — {@link #resetGridScrollToTop()},
+ *       {@link #jumpGridToDocument(String)}, {@link #scrollSelectDocumentGridDown()},
+ *       {@link #getActiveGridViewElement()}, {@link #getGridScrollProgress()},
+ *       {@link #focusGridRowByDocument(String)}, {@link #getGridDiagnostics()} — four cooperating
+ *       strategies (direct jump, proportional scroll, ExtJS {@code focusRow}, plus a scroll-state
+ *       snapshot and a diagnostics dump) used together by {@code SelectDocumentPopup} to locate a
+ *       document row in a virtualized/buffered ExtJS grid that may hold tens of thousands of rows.</li>
+ *   <li><b>Generic JS action primitives</b> — {@link #scrollToElement(WebElement)},
+ *       {@link #scrollToElement(By)}, {@link #scrollIntoViewForced(WebElement)},
+ *       {@link #click(WebElement)}, {@link #click(By)}, {@link #highlight(WebElement)},
+ *       {@link #highlight(By)}, {@link #unhighlight(WebElement)}, {@link #unhighlight(By)},
+ *       {@link #executeScript(String, Object...)}, {@link #focus(By)} — thin, general-purpose
+ *       wrappers around {@code executeScript} for scrolling, clicking, and visually
+ *       highlighting/un-highlighting an element during debugging.</li>
+ *   <li><b>ExtJS readiness waits</b> — {@link #waitForExtJS()}, {@link #waitForExtLayout()},
+ *       {@link #waitForStoreLoad(String)}, {@link #waitForPageLoad()},
+ *       {@link #waitForComponentReady()}, {@link #logLoadingComponents()} — poll ExtJS's own
+ *       {@code Ext.isReady}/{@code Ajax.isLoading}/masked-component/store-loading state instead of
+ *       a blind sleep; {@link #waitForExtJS()} alone is called from ~196 sites across the framework.</li>
+ *   <li><b>TreePanel utilities</b> — {@link #getTreePanelTexts()}, {@link #updateTreeNodeText(String, String)},
+ *       {@link #doesTreeContainText(GroupHierarchyType, String)},
+ *       {@link #countTreeOccurrences(GroupHierarchyType)},
+ *       {@link #countTreeOccurrences(GroupHierarchyType, String)},
+ *       {@link #updateChildText(String, String, int, String)}, plus several unused/experimental
+ *       siblings ({@code updateTreeNodeText1/2}, {@code updateTreeNodeName},
+ *       {@code updateTreeNodeGroupName}, {@code updateTreeNodeTextUI}, {@code getTreeNodeData},
+ *       {@code refreshAndExpandTreeNode}, {@code expandNodeAndRefresh}, {@code refreshAndExpandNode},
+ *       {@code expandAndReloadNode}, {@code logTreePanelNodes}) — read/mutate the ExtJS
+ *       {@code treepanel} used by Inventory's Group Hierarchy (Division/Section/Department) screens.</li>
+ *   <li><b>Grid column / combo debug dumps</b> — {@code printExtJsGridColumns} (two overloads),
+ *       {@code getExtJsGridColumns()}, {@code printAllExtJsComboDetails()}, {@code printGridColumns},
+ *       {@code printEditableColumns}, {@code detectColumnAndCombo()} — one-shot
+ *       {@code System.out}/console.log dumps of a grid's column metadata or a page's combo
+ *       inventory, written for interactive debugging; none are called outside this file.</li>
+ *   <li><b>Sub-Ledger combo experiments (largely superseded)</b> — {@code setSubLedgerValue1/2},
+ *       {@code setSubLedgerName}, {@code setSubLedger2}…{@code setSubLedger10},
+ *       {@code setSubLedgerold}, {@code setSubLedgeroldrefsitenotadded}, and their matching
+ *       {@code diagnose*}/{@code verify*}/{@code capture*} debug helpers — a long sequence of
+ *       iterative attempts (visible in the numbering itself) at injecting a Sub-Ledger selection
+ *       into an AR/AP voucher's child grid via direct {@code record.set()} calls. Confirmed via
+ *       grep to have no callers outside this file; superseded by the native-interaction flow below.
+ *       {@code setSubLedgerVerify(String)} is the one survivor from this era still wired into
+ *       {@code ArVoucherAdd}/{@code ApVoucherAdd} as a pre-save diagnostic log.</li>
+ *   <li><b>Sub-Ledger combo — production flow</b> — {@link #setSubLedger(WebDriver, String, String, String, String)},
+ *       {@link #setSubLedgerForRow(WebDriver, int, String, String, String, String)},
+ *       {@link #addSubLedgerRow(WebDriver, String)}, {@link #setSubLedgerReferenceSite(WebDriver, int, String, String)},
+ *       {@link #getSubLedgerReferenceSiteName(WebDriver, int, String)},
+ *       {@link #setDeductTdsForRow(WebDriver, int, String, String)},
+ *       {@link #restoreAllGlFieldsFromCapture(WebDriver, String)} — the current, live
+ *       injection-based flow: page-walks the server-paged Sub-Ledger combo store to find a match
+ *       by name (and optional id), fires the combo's own {@code select} event, then polls until the
+ *       app's own GL/TDS-applicability lookups settle before writing the row. Values written here
+ *       are cached in {@code window.__capturedGlRows} so a later app-triggered reload can be
+ *       restored from capture instead of re-queried.</li>
+ *   <li><b>Sub-Ledger combo — native-interaction flow</b> — {@link #openSubLedgerComboEditor(WebDriver, int, String)},
+ *       {@link #openAmountCellEditor(WebDriver, int, String)},
+ *       {@link #openReferenceSiteCellEditor(WebDriver, int, String)} (all built on the shared
+ *       private {@code openCellEditorViaClick}) — the newer alternative that only opens the inline
+ *       cell editor via JS and hands back the real input element's DOM id, so the caller then types
+ *       and clicks through genuine Selenium interaction (firing the application's own combo
+ *       {@code select} handler, including GL/TDS side effects that direct injection bypasses).</li>
+ * </ul>
+ */
 public final class JavascriptExecutorUtils {
 
     private JavascriptExecutorUtils() {
     }
 
+    /** Casts the current {@link DriverManager#getDriver()} to {@link JavascriptExecutor}. */
     private static JavascriptExecutor getJsExecutor() {
         return (JavascriptExecutor) DriverManager.getDriver();
     }
 
+    /** Shorthand for {@code DriverManager.getDriver().findElement(by)}, used by the {@code By}-based overloads below. */
     private static WebElement findElement(By by) {
         return DriverManager.getDriver().findElement(by);
     }
 
+    /** Smooth-scrolls {@code element} to the vertical center of the viewport via {@code scrollIntoView}. */
     public static void scrollToElement(WebElement element) {
         ReportLogger.uiAction("jsScrollToElement element={}", element);
         getJsExecutor().executeScript("arguments[0].scrollIntoView({behavior: 'smooth', block: 'center'});", element);
     }
 
+    /** {@link #scrollToElement(WebElement)} for a locator instead of an already-resolved element. */
     public static void scrollToElement(By by) {
         ReportLogger.uiAction("jsScrollToElement {}", by);
         scrollToElement(findElement(by));
     }
 
+    /** Instant (non-smooth) {@code scrollIntoView(true)} — aligns {@code element} to the top of the viewport. */
     public static void scrollIntoViewForced(WebElement element) {
         ReportLogger.uiAction("jsScrollIntoViewForced element={}", element);
         getJsExecutor().executeScript("arguments[0].scrollIntoView(true);", element);
@@ -343,32 +429,39 @@ public final class JavascriptExecutorUtils {
         return result != null ? result.toString() : "null";
     }
 
+    /** Fires a JS {@code element.click()} — bypasses Selenium's own visibility/interactability checks. */
     public static void click(WebElement element) {
         ReportLogger.uiAction("jsClick element={}", element);
         getJsExecutor().executeScript("arguments[0].click();", element);
     }
 
+    /** {@link #click(WebElement)} for a locator instead of an already-resolved element. */
     public static void click(By by) {
         ReportLogger.uiAction("jsClick {}", by);
         click(findElement(by));
     }
 
+    /** Debug aid: outlines {@code element} in a 3px red border so it's visible in screenshots. */
     public static void highlight(WebElement element) {
         getJsExecutor().executeScript("arguments[0].style.border='3px solid red'", element);
     }
 
+    /** {@link #highlight(WebElement)} for a locator instead of an already-resolved element. */
     public static void highlight(By by) {
         highlight(findElement(by));
     }
 
+    /** Removes the border applied by {@link #highlight(WebElement)}. */
     public static void unhighlight(WebElement element) {
         getJsExecutor().executeScript("arguments[0].style.border='0px'", element);
     }
 
+    /** {@link #unhighlight(WebElement)} for a locator instead of an already-resolved element. */
     public static void unhighlight(By by) {
         unhighlight(findElement(by));
     }
 
+    /** Runs an arbitrary {@code script} via {@link JavascriptExecutor#executeScript}, logging a truncated preview. */
     public static Object executeScript(String script, Object... args) {
         ReportLogger.uiAction("jsExec: {}", script.length() > 120 ? script.substring(0, 120) + "…" : script);
         return getJsExecutor().executeScript(script, args);
@@ -465,6 +558,7 @@ public final class JavascriptExecutorUtils {
                 "waitForExtLayout", WaitUtils.extJsTimeoutSeconds(), elapsedMs, attempts);
     }
 
+    /** Single genuinely-ready check for {@link #waitForExtLayout()}, capped at {@code seconds}; never throws. */
     private static boolean waitForExtLayoutOnce(long seconds) {
         try {
             WaitUtils.webDriverWait(seconds).until(
@@ -478,6 +572,7 @@ public final class JavascriptExecutorUtils {
         }
     }
 
+    /** Waits until the named {@code Ext.data.Store} (via {@code Ext.getStore(storeId)}) reports {@code !isLoading()}. */
     public static void waitForStoreLoad(String storeId) {
         try {
             WaitUtils.webDriverWait(WaitUtils.extJsTimeoutSeconds()).until(
@@ -491,6 +586,7 @@ public final class JavascriptExecutorUtils {
         }
     }
 
+    /** Waits until {@code document.readyState === "complete"}, at {@code pageLoadTimeoutSeconds()}. */
     public static void waitForPageLoad() {
         // Round 14 (§27b): previously had NO try/catch at all — unlike every other wait in this
         // file, a timeout here escaped as a bare Selenium TimeoutException with no popup
@@ -535,6 +631,10 @@ public final class JavascriptExecutorUtils {
     }
 
 
+    /**
+     * Waits until {@code Ext.ComponentQuery.query('[isMasked=true]')} is empty, logging each still-loading
+     * component (xtype/itemId/id) on every poll — a more verbose sibling of {@link #waitForExtJS()}.
+     */
     public static void waitForComponentReady() {
         try {
             WaitUtils.webDriverWait(ConfigFactory.getWaitConfig().componentReadyTimeoutSeconds())
@@ -579,6 +679,11 @@ public final class JavascriptExecutorUtils {
     }
 
 
+    /**
+     * Returns every node across all {@code treepanel} components on the page as
+     * {@code "Tree <index>: Depth <depth> → <text>"} lines, for the Inventory Group Hierarchy
+     * (Division/Section/Department) tree tests to search/count against.
+     */
     @SuppressWarnings("unchecked")
     public static List<String> getTreePanelTexts() {
 
@@ -644,6 +749,7 @@ public final class JavascriptExecutorUtils {
     }
 
 
+    /** Debug: prints every root-level child node's raw data map from all {@code treepanel}s to {@code System.out}. */
     public static void logTreePanelNodes() {
         String script =
                 "var result = [];" +
@@ -670,12 +776,19 @@ public final class JavascriptExecutorUtils {
     }
 
 
+    /** {@link #countTreeOccurrences(GroupHierarchyType)} against an explicit node text rather than the type's display name. */
     public static long countTreeOccurrences(GroupHierarchyType type, String nodeText) {
         return getTreePanelTexts().stream()
                 .filter(line -> line.contains("Depth " + type.getDepth() + " → " + nodeText))
                 .count();
     }
 
+    /**
+     * Unused outside this file. An early, {@code findChild}-based alternative to
+     * {@link #updateTreeNodeText(String, String)} (double-quote escaping, second tree panel,
+     * deep child search, then a view refresh). TODO-confirm: superseded by
+     * {@code updateTreeNodeText}/{@code updateChildText} or simply an abandoned experiment.
+     */
     public static void updateTreeNodeText1(String oldText, String newText) {
         // Escape quotes for safe injection into JS
         String safeOld = oldText.replace("\"", "\\\"");
@@ -700,6 +813,11 @@ public final class JavascriptExecutorUtils {
         getJsExecutor().executeScript(script);
     }
 
+    /**
+     * Unused outside this file. Same {@code findChild} approach as {@link #updateTreeNodeText1},
+     * with a try/catch and a JS-side "Updated: …"/"ERROR: …" result string logged to
+     * {@code System.out} instead of returning a value.
+     */
     public static void updateTreeNodeText2(String oldText, String newText) {
         String safeOld = oldText.replace("\"", "\\\"");
         String safeNew = newText.replace("\"", "\\\"");
@@ -721,6 +839,11 @@ public final class JavascriptExecutorUtils {
         System.out.println("JS Result: " + result);
     }
 
+    /**
+     * Unused outside this file. Returns the raw data map of the first tree node (second
+     * {@code treepanel} on the page) whose given {@code field} equals {@code value}, or an
+     * {@code {error: ...}} map when not found.
+     */
     public static Map<String, Object> getTreeNodeData(String field, String value) {
         String safeField = field.replace("\"", "\\\"");
         String safeValue = value.replace("\"", "\\\"");
@@ -747,6 +870,10 @@ public final class JavascriptExecutorUtils {
         return nodeData;
     }
 
+    /**
+     * Unused outside this file (only a commented-out call site remains in {@code CreateGroup}).
+     * Updates both the {@code grpName} and {@code text} fields of a node found by {@code grpName}.
+     */
     public static void updateTreeNodeName(String oldName, String newName) {
         String safeOld = oldName.replace("'", "\\'");
         String safeNew = newName.replace("'", "\\'");
@@ -771,6 +898,11 @@ public final class JavascriptExecutorUtils {
     }
 
 
+    /**
+     * Unused outside this file. Like {@link #updateTreeNodeText(String, String)} but recursive
+     * ({@code findChild(..., true)}) across every {@code treepanel} instead of a fixed index, and
+     * returns whether any node was updated.
+     */
     public static boolean updateTreeNodeTextUI(String oldText, String newText) {
         String safeOld = oldText.replace("'", "\\'");
         String safeNew = newText.replace("'", "\\'");
@@ -797,6 +929,10 @@ public final class JavascriptExecutorUtils {
         return Boolean.TRUE.equals(result);
     }
 
+    /**
+     * Unused outside this file (only a commented-out call site remains in {@code CreateGroup}).
+     * Commits, expands (if collapsed), and refreshes the tree node matching {@code nodeText}.
+     */
     public static void refreshAndExpandTreeNode(String nodeText) {
         String script =
                 "Ext.ComponentQuery.query('treepanel').forEach(function(tree) {" +
@@ -812,6 +948,10 @@ public final class JavascriptExecutorUtils {
         ((JavascriptExecutor) DriverManager.getDriver()).executeScript(script);
     }
 
+    /**
+     * Unused outside this file. Recursively finds the node matching {@code parentText} and expands
+     * it with an async completion callback that refreshes the tree view.
+     */
     public static void expandNodeAndRefresh(String parentText) {
         String script =
                 "Ext.ComponentQuery.query('treepanel').forEach(function(tree) {" +
@@ -830,6 +970,10 @@ public final class JavascriptExecutorUtils {
         ((JavascriptExecutor) DriverManager.getDriver()).executeScript(script);
     }
 
+    /**
+     * Unused outside this file. Finds the node matching {@code parentText} by direct store lookup
+     * (not recursive) and, if collapsed, expands then reloads it from the server.
+     */
     public static void refreshAndExpandNode(String parentText) {
         String script =
                 "Ext.ComponentQuery.query('treepanel').forEach(function(tree) {" +
@@ -842,6 +986,10 @@ public final class JavascriptExecutorUtils {
         ((JavascriptExecutor) DriverManager.getDriver()).executeScript(script);
     }
 
+    /**
+     * Unused outside this file (only a commented-out call site remains in {@code CreateGroup}).
+     * Expands the node matching {@code nodeText} if collapsed, then refreshes the tree view either way.
+     */
     public static void expandAndReloadNode(String nodeText) {
         String script =
                 "Ext.ComponentQuery.query('treepanel').forEach(function(tree) {" +
@@ -858,6 +1006,11 @@ public final class JavascriptExecutorUtils {
     }
 
 
+    /**
+     * Unused outside this file (only a commented-out call site remains in {@code CreateGroup}).
+     * Like {@link #updateTreeNodeName(String, String)} but keyed by {@code text} instead of
+     * {@code grpName}, and returns whether the update succeeded.
+     */
     public static boolean updateTreeNodeGroupName(String oldText, String newText) {
         String safeOld = oldText.replace("'", "\\'");
         String safeNew = newText.replace("'", "\\'");
@@ -882,6 +1035,13 @@ public final class JavascriptExecutorUtils {
         return Boolean.TRUE.equals(result);
     }
 
+    /**
+     * Renames a tree node identified by its parent's text, its own current text, and its depth
+     * (disambiguates same-named siblings under different parents); if no matching node exists,
+     * appends a new child with {@code newText} under the parent instead.
+     *
+     * @return the node's previous text on a rename, {@code null} on append or error (logged to stderr)
+     */
     public static String updateChildText(String parentGroupName, String childCurrentText, int depth, String newText) {
         String script =
                 "try {" +
@@ -933,6 +1093,7 @@ public final class JavascriptExecutorUtils {
         }
     }
 
+    /** Unused outside this file. JS {@code element.focus()} on the element found by {@code locator}. */
     public static void focus(By locator) {
         WebElement el = DriverManager.getDriver().findElement(locator);
         ((JavascriptExecutor) DriverManager.getDriver())
@@ -940,6 +1101,10 @@ public final class JavascriptExecutorUtils {
     }
 
 
+    /**
+     * Debug dump, unused outside this file: prints {@code gridIndex}'s column metadata
+     * (text/dataIndex/hidden/hasEditor) to {@code System.out}.
+     */
     public static void printExtJsGridColumns(WebDriver driver, int gridIndex) {
 
         String script =
@@ -988,6 +1153,7 @@ public final class JavascriptExecutorUtils {
     // the race (SeleniumUtils.isElementPresent polls, rather than a single blind query). Confirmed
     // via grep these were GridColumnMenu's only callers before deleting outright.
 
+    /** Debug dump, unused outside this file: prints every {@code combobox} on the page (name/fieldLabel/itemId/id). */
     public static void printAllExtJsComboDetails() {
         JavascriptExecutor js = (JavascriptExecutor) DriverManager.getDriver();
 
@@ -1007,6 +1173,11 @@ public final class JavascriptExecutorUtils {
     }
 
 
+    /**
+     * Unused outside this file. Earliest Sub-Ledger-combo experiment: clicks the first grid's
+     * "SL Name" cell, opens its cell editor, and selects a value from the combo store — superseded
+     * by the production {@link #setSubLedger(WebDriver, String, String, String, String)} flow below.
+     */
     public static void setSubLedgerValue1(String subledgerName) {
         JavascriptExecutor js = (JavascriptExecutor) DriverManager.getDriver();
 
@@ -1050,6 +1221,7 @@ public final class JavascriptExecutorUtils {
 
     }
 
+    /** Debug dump, unused outside this file: prints the first {@code gridpanel}'s column header texts. */
     public static void printExtJsGridColumns() {
         JavascriptExecutor js = (JavascriptExecutor) DriverManager.getDriver();
 
@@ -1074,6 +1246,10 @@ public final class JavascriptExecutorUtils {
      */
     /**
      * Returns a list of ExtJS grid column metadata (text, dataIndex, id).
+     */
+    /**
+     * Unused outside this file. Returns the first {@code gridpanel}'s column metadata
+     * (text/dataIndex/id) as a list of maps, or an empty list if no grid is found.
      */
     public static List<Map<String, Object>> getExtJsGridColumns() {
         JavascriptExecutor js = (JavascriptExecutor) DriverManager.getDriver();
@@ -1102,6 +1278,11 @@ public final class JavascriptExecutorUtils {
         return Collections.emptyList();
     }
 
+    /**
+     * Unused outside this file. Second Sub-Ledger-combo experiment: resolves the exact column
+     * position via {@code getColumnManager()} (instead of a hardcoded row/column) before opening
+     * the editor. See {@link #setSubLedgerValue1(String)}.
+     */
     public static void setSubLedgerValue2(String slName) {
         JavascriptExecutor js = (JavascriptExecutor) DriverManager.getDriver();
 
@@ -1156,6 +1337,12 @@ public final class JavascriptExecutorUtils {
         js.executeScript(js1);
     }
 
+    /**
+     * Unused outside this file. Not a live DOM/JS query at all — checks a hardcoded combo listing
+     * and a hardcoded grid-column string (captured from an earlier debug run) for a target column
+     * name, logging FOUND/NOT FOUND. TODO-confirm: appears to be a scratch experiment left over
+     * from investigating grid-column detection, not something meant to run against a live page.
+     */
     public static void detectColumnAndCombo() {
 
         // -------- STEP 1: READ AVAILABLE EXTJS COMBOS ----------
@@ -1210,6 +1397,11 @@ public final class JavascriptExecutorUtils {
         }
     }
 
+    /**
+     * Unused outside this file. Another Sub-Ledger-combo experiment, notable for a hardcoded
+     * target value ({@code 'ABUL KASHEM MOLLHA'}) instead of using the {@code subLedgerName}
+     * parameter — left mid-debugging. See {@link #setSubLedgerValue1(String)}.
+     */
     public static void setSubLedgerName(WebDriver driver, int rowIndex, String subLedgerName) {
         System.out.println("=== STEP 1 : START Sub Ledger Setter ===");
 
@@ -1269,6 +1461,7 @@ public final class JavascriptExecutorUtils {
     }
 
 
+    /** Debug dump, unused outside this file: console-logs the first grid's per-column text/dataIndex/editor info. */
     public static void printGridColumns(WebDriver driver) {
 
         System.out.println("=== STEP 1 : START Column Debugging ===");
@@ -1305,6 +1498,7 @@ public final class JavascriptExecutorUtils {
         System.out.println("=== STEP 2 : Column Debug Script Executed ===");
     }
 
+    /** Debug dump, unused outside this file: console-logs only the first grid's columns that have a cell editor. */
     public static void printEditableColumns(WebDriver driver) {
 
         System.out.println("=== STEP 1 : START Editable Column Debug ===");
@@ -1336,6 +1530,11 @@ public final class JavascriptExecutorUtils {
         System.out.println("=== STEP 2 : Editable Column Debug Completed ===");
     }
 
+    /**
+     * Unused outside this file. Sub-Ledger-combo experiment named for what it deliberately left
+     * out (reference-site is not set here) — clicks the row's SL cell, then selects from the
+     * {@code combo[name=slCode]} store by name. See {@link #setSubLedgerValue1(String)}.
+     */
     public static void setSubLedgeroldrefsitenotadded(WebDriver driver, int rowIndex, String slName) {
 
         System.out.println("=== STEP 1 : START Set Sub Ledger for Row " + rowIndex + " ===");
@@ -1389,6 +1588,11 @@ public final class JavascriptExecutorUtils {
         System.out.println("=== STEP 2 : SL '" + slName + "' SET SUCCESSFULLY ===");
     }
 
+    /**
+     * Unused outside this file. Sub-Ledger-combo experiment that additionally fires the combo's
+     * {@code change} event and reloads dependent SL-id/site combos after selection. See
+     * {@link #setSubLedgerValue1(String)}.
+     */
     public static void setSubLedger3(WebDriver driver, int rowIndex, String slName) {
         System.out.println("=== STEP 1 : START Set Sub Ledger for Row " + rowIndex + " ===");
 
@@ -1456,6 +1660,11 @@ public final class JavascriptExecutorUtils {
         System.out.println("=== STEP 2 : SL '" + slName + "' SET SUCCESSFULLY ===");
     }
 
+    /**
+     * Debug dump, unused outside this file: clicks a row's second cell to open its row editor,
+     * then logs every {@code combo}/{@code field}/{@code roweditor} component found on the page
+     * afterward (name/fieldLabel/xtype/value) to {@code System.out}.
+     */
     public static void diagnoseRowEditorFields(WebDriver driver, int rowIndex) {
         System.out.println("=== DIAGNOSING ROW EDITOR FIELDS FOR ROW INDEX: " + rowIndex + " ===");
 
@@ -1549,6 +1758,11 @@ public final class JavascriptExecutorUtils {
         System.out.println("=== DIAGNOSIS COMPLETE FOR ROW INDEX: " + rowIndex + " ===");
     }
 
+    /**
+     * Unused outside this file. Sub-Ledger-combo experiment that also tries to manually populate
+     * the grid row's SLID/class/reference-site fields from the selected combo record, then calls
+     * {@link #verifyRowData(WebDriver, int)}. See {@link #setSubLedgerValue1(String)}.
+     */
     public static void setSubLedger4(WebDriver driver, int rowIndex, String slName) {
         System.out.println("=== STEP 1 : START Set Sub Ledger for Row " + rowIndex + " ===");
 
@@ -1671,6 +1885,11 @@ public final class JavascriptExecutorUtils {
         System.out.println("=== VERIFICATION COMPLETE ===");
     }
 
+    /**
+     * Debug aid, unused outside this file: monkey-patches {@code XMLHttpRequest} to record every
+     * request/response, clicks the row's SL cell and selects a hardcoded value, then dumps the
+     * captured XHR traffic — used to inspect what the app itself sends when picking a Sub-Ledger.
+     */
     public static void captureSlApiCall(WebDriver driver, int rowIndex) {
         System.out.println("=== CAPTURING SL API CALL ===");
 
@@ -1759,6 +1978,11 @@ public final class JavascriptExecutorUtils {
         System.out.println("=== CAPTURE COMPLETE ===");
     }
 
+    /**
+     * Unused outside this file. Sub-Ledger-combo experiment that filters the combo store load by
+     * {@code queryFieldValue} before searching, then calls {@link #verifyAndPrintSlRecord(WebDriver, int)}.
+     * See {@link #setSubLedgerValue1(String)}.
+     */
     public static void setSubLedger5(WebDriver driver, int rowIndex, String slName) {
         System.out.println("=== STEP 1 : START Set Sub Ledger for Row " + rowIndex + " ===");
 
@@ -1864,6 +2088,11 @@ public final class JavascriptExecutorUtils {
         verifyAndPrintSlRecord(driver, rowIndex);
     }
 
+    /**
+     * Debug dump, unused outside this file. Twin of {@link #verifyAndPrintSlRecord(WebDriver, int)}
+     * that additionally cross-references the {@code combo[name=slCode]} store's own record for the
+     * grid row's {@code slid}.
+     */
     public static void verifyAndPrintSlRecord1(WebDriver driver, int rowIndex) {
         System.out.println("=== VERIFYING SL RECORD FOR ROW: " + rowIndex + " ===");
 
@@ -1899,6 +2128,11 @@ public final class JavascriptExecutorUtils {
     }
 
 
+    /**
+     * Unused outside this file. Sub-Ledger-combo experiment that completes the edit via the
+     * grid's {@code cellediting} plugin (instead of just blurring the combo) so the row re-renders,
+     * then calls {@link #verifyAndPrintSlRecord(WebDriver, int)}. See {@link #setSubLedgerValue1(String)}.
+     */
     public static void setSubLedger6(WebDriver driver, int rowIndex, String slName) {
         System.out.println("=== STEP 1 : START Set Sub Ledger for Row " + rowIndex + " ===");
 
@@ -1986,6 +2220,11 @@ public final class JavascriptExecutorUtils {
         verifyAndPrintSlRecord(driver, rowIndex);
     }
 
+    /**
+     * Debug dump. Only called by the dead {@code setSubLedger4/5/6(WebDriver, int, String)}
+     * experiments (unused outside this file). Prints the grid row's Sub-Ledger fields, the grid's
+     * plugin list, and the rendered cell text for {@code rowIndex} to {@code System.out}.
+     */
     public static void verifyAndPrintSlRecord(WebDriver driver, int rowIndex) {
         System.out.println("=== VERIFYING SL RECORD FOR ROW: " + rowIndex + " ===");
 
@@ -2028,6 +2267,11 @@ public final class JavascriptExecutorUtils {
     }
 
 
+    /**
+     * Debug dump, unused outside this file: for every {@code gridpanel} on the page, prints its
+     * id/title/visibility/record-count, each column's dataIndex/text, and the first two store
+     * records' raw data — null-safe against columns whose {@code text} contains HTML.
+     */
     public static void diagnoseAllGrids(WebDriver driver) {
         System.out.println("=== DIAGNOSING ALL GRIDS ===");
 
@@ -2092,6 +2336,12 @@ public final class JavascriptExecutorUtils {
     }
 
 
+    /**
+     * Unused outside this file. Sub-Ledger-combo experiment targeting the {@code arvch_grid}
+     * child grid specifically (by {@code itemId}) rather than "the first gridpanel", also copying
+     * GL fields onto the child record after selection. Calls
+     * {@link #verifyChildGridRecord(WebDriver, int)}. See {@link #setSubLedgerValue1(String)}.
+     */
     public static void setSubLedger7(WebDriver driver, int rowIndex, String slName) {
         System.out.println("=== STEP 1 : START Set Sub Ledger for Row " + rowIndex + " ===");
 
@@ -2190,6 +2440,11 @@ public final class JavascriptExecutorUtils {
         verifyChildGridRecord(driver, rowIndex);
     }
 
+    /**
+     * Debug dump. Only called by the dead {@link #setSubLedger7(WebDriver, int, String)}
+     * experiment (unused outside this file). Prints the {@code arvch_grid} row's Sub-Ledger/GL
+     * fields plus the rendered cell text for {@code rowIndex}.
+     */
     public static void verifyChildGridRecord(WebDriver driver, int rowIndex) {
         System.out.println("=== VERIFYING CHILD GRID RECORD FOR ROW: " + rowIndex + " ===");
 
@@ -2231,6 +2486,12 @@ public final class JavascriptExecutorUtils {
         System.out.println("=== CHILD GRID VERIFICATION COMPLETE ===");
     }
 
+    /**
+     * Debug dump, unused outside this file: prints the {@code combo[name=slCode]} store's first
+     * record, the {@code arvch_grid}'s first record and model field names, the main grid's owner-site
+     * fields, and the owner-site picklist's value — investigation notes for where a Sub-Ledger's
+     * reference site actually comes from.
+     */
     public static void diagnoseReferenceSite(WebDriver driver) {
         String script =
                 "var result = [];"
@@ -2294,6 +2555,11 @@ public final class JavascriptExecutorUtils {
     }
 
 
+    /**
+     * Unused outside this file. Sub-Ledger-combo experiment (row 0 of {@code arvch_grid} only)
+     * that derives the Reference Site from the SL record, falling back to the main grid's or the
+     * Owner Site picklist's value when absent. See {@link #setSubLedgerValue1(String)}.
+     */
     public static void setSubLedger8(WebDriver driver, String slName) {
         System.out.println("=== START: setSubLedger '" + slName + "' ===");
 
@@ -2411,6 +2677,11 @@ public final class JavascriptExecutorUtils {
         System.out.println("=== END: setSubLedger ===");
     }
 
+    /**
+     * Unused outside this file. Sub-Ledger-combo experiment that resolves the target cell via
+     * {@code view.getCell(record, column)} instead of DOM lookup, and queries the combo store
+     * server-side by name (falling back to the first record). See {@link #setSubLedgerValue1(String)}.
+     */
     public static void setSubLedger9(WebDriver driver, String slName) {
         System.out.println("=== START: setSubLedger '" + slName + "' ===");
 
@@ -2521,6 +2792,11 @@ public final class JavascriptExecutorUtils {
     }
 
 
+    /**
+     * Unused outside this file. Sub-Ledger-combo experiment that skips the cell-click step
+     * entirely and drives the {@code combo[name=slCode]} directly by server-side query. See
+     * {@link #setSubLedgerValue1(String)}.
+     */
     public static void setSubLedger10(WebDriver driver, String slName) {
         System.out.println("=== START: setSubLedger '" + slName + "' ===");
 
@@ -2604,6 +2880,11 @@ public final class JavascriptExecutorUtils {
         System.out.println("=== END: setSubLedger ===");
     }
 
+    /**
+     * Unused outside this file. Sub-Ledger-combo experiment that clicks the cell via a
+     * DOM {@code querySelectorAll('td.x-grid-cell')} + column-index lookup rather than the
+     * column-manager cell APIs used by later variants. See {@link #setSubLedgerValue1(String)}.
+     */
     public static void setSubLedgerold(WebDriver driver, String slName) {
         System.out.println("=== START: setSubLedger '" + slName + "' ===");
 
@@ -2709,6 +2990,11 @@ public final class JavascriptExecutorUtils {
     }
 
 
+    /**
+     * Unused outside this file. Same DOM cell-click approach as {@link #setSubLedgerold}, extended
+     * to also set {@code referenceSiteType}/{@code referenceSiteOUName} on the grid record. See
+     * {@link #setSubLedgerValue1(String)}.
+     */
     public static void setSubLedger2(WebDriver driver, String slName) {
         System.out.println("=== START: setSubLedger '" + slName + "' ===");
 
@@ -2820,6 +3106,11 @@ public final class JavascriptExecutorUtils {
 
 
 
+    /**
+     * Logs the {@code gridItemId} grid's first row's full record data to the ExtentReport, as a
+     * pre-save sanity check. Called from {@code ArVoucherAdd}/{@code ApVoucherAdd} just before save —
+     * the one survivor of the Sub-Ledger debugging era still wired into production test flow.
+     */
     public static void setSubLedgerVerify(String gridItemId) {
         JavascriptExecutor js = (JavascriptExecutor) DriverManager.getDriver();
         String payload = (String) js.executeScript(
@@ -2835,6 +3126,10 @@ public final class JavascriptExecutorUtils {
         ExtentLogger.info("=== DETAIL RECORD BEFORE SAVE [" + gridItemId + "] === " + payload + " === END ===");
     }
 
+    /**
+     * Debug dump, unused outside this file: prints the {@code combo[name=slCode]}'s first store
+     * record and {@code arvch_grid}'s first row record side by side.
+     */
     public static void debugSubLedgerRecords(WebDriver driver) {
         JavascriptExecutor js = (JavascriptExecutor) driver;
 
@@ -2874,6 +3169,12 @@ public final class JavascriptExecutorUtils {
 
 
 
+    /**
+     * Unused outside this file. Sub-Ledger-combo experiment (row 0 only) that logs a running debug
+     * trail while trying several fallbacks for {@code referenceSiteCode}/{@code Type}/{@code OUName}
+     * (combo record → Owner Site picklist → {@code Ext.data.StoreManager} lookup). See
+     * {@link #setSubLedgerValue1(String)}.
+     */
     public static void setSubLedger5(WebDriver driver, String slName) {
         System.out.println("=== START: setSubLedger '" + slName + "' ===");
 
@@ -3037,6 +3338,12 @@ public final class JavascriptExecutorUtils {
         System.out.println("=== END: setSubLedger ===");
     }
 
+    /**
+     * Unused outside this file. Same shape as {@link #setSubLedger5(WebDriver, String)} but only
+     * writes the SL fields manually when the app's own combo-select handler didn't already set
+     * them, logging everything to {@code window.__slDebugLog} for later readback. See
+     * {@link #setSubLedgerValue1(String)}.
+     */
     public static void setSubLedger6(WebDriver driver, String slName) {
         System.out.println("=== START: setSubLedger '" + slName + "' ===");
 
@@ -3202,6 +3509,14 @@ public final class JavascriptExecutorUtils {
         System.out.println("=== END: setSubLedger ===");
     }
 
+    /**
+     * Unused outside this file. Reverts to unconditionally setting all SL fields (like
+     * {@link #setSubLedger5(WebDriver, String)}) plus the {@code referenceSiteType}/
+     * {@code referenceSiteOUName} fields added in {@link #setSubLedger6(WebDriver, String)}. The
+     * last of the row-0-only, no-{@code rowIndex} experiments — superseded by
+     * {@link #setSubLedger(WebDriver, String, String, String, String)}. See
+     * {@link #setSubLedgerValue1(String)}.
+     */
     public static void setSubLedger7(WebDriver driver, String slName) {
         System.out.println("=== START: setSubLedger '" + slName + "' ===");
 
@@ -3314,6 +3629,7 @@ public final class JavascriptExecutorUtils {
     }
 
 
+    /** {@link #setSubLedger(WebDriver, String, String, String, String)} against the AR child grid ({@code arvch_grid}). */
     public static void setSubLedger(WebDriver driver, String slName, String slId, String referenceSite) {
         setSubLedger(driver, slName, slId, referenceSite, "arvch_grid");
     }
@@ -3473,6 +3789,29 @@ public final class JavascriptExecutorUtils {
         }
     }
 
+    /**
+     * Production Sub-Ledger selection for row 0 of {@code gridItemId} — the current, live
+     * successor to the numbered experiments above ({@code setSubLedger2}…{@code setSubLedger10}).
+     *
+     * <p>Opens the row's {@code slCode} cell editor, then page-walks the server-paged combo store
+     * (25 records per page) searching each page for a record matching {@code slName} (and
+     * {@code slId} when provided) until found or the store is exhausted. Once matched, fires the
+     * combo's {@code select} event and polls (up to 30 × 400ms) until the app's own GL/TDS lookups
+     * have populated the row's ledger fields, before writing the SL identity fields and caching the
+     * resolved GL/TDS values in {@code window.__capturedGlRows[0]} for later restore (see
+     * {@link #restoreAllGlFieldsFromCapture(WebDriver, String)}).</p>
+     *
+     * <p>Throws {@link IllegalArgumentException} if {@code slName} is blank, and
+     * {@link com.gsl.exceptions.SubLedgerNotFoundException} if the page-walk never finds a match or
+     * the post-selection grid record doesn't verify against the expected name.</p>
+     *
+     * @param slName        Sub-Ledger display name to search for (required)
+     * @param slId          optional Sub-Ledger id to disambiguate same-named records; matched
+     *                      alongside {@code slName} when non-blank, otherwise name-only matching is used
+     * @param referenceSite optional Reference Site name; when non-blank, delegates to
+     *                      {@link #setSubLedgerReferenceSite(WebDriver, int, String, String)} after selection
+     * @param gridItemId    ExtJS {@code itemId} of the sub-ledger grid panel (e.g. {@code arvch_grid}/{@code apvch_grid})
+     */
     public static void setSubLedger(WebDriver driver, String slName, String slId, String referenceSite, String gridItemId) {
         slName = (slName != null) ? slName.trim() : "";
         slId   = (slId   != null) ? slId.trim()   : "";
@@ -3682,6 +4021,11 @@ public final class JavascriptExecutorUtils {
         ExtentLogger.info("[GL_POLL_DIAG] "             + diagStr);
     }
 
+    /**
+     * Re-applies the GL/SL fields previously cached in {@code window.__capturedGlRows[rowIndex]}
+     * (by {@link #setSubLedger} / {@link #setSubLedgerForRow}) back onto that grid row — used to
+     * undo the app clobbering those fields on a subsequent reload. No-op if nothing was captured.
+     */
     public static void restoreGlFieldsFromCapture(WebDriver driver, int rowIndex, String gridItemId) {
         String script =
                 "try {" +
@@ -3710,6 +4054,11 @@ public final class JavascriptExecutorUtils {
         System.out.println("=== [GL_RESTORE] row=" + rowIndex + " => " + result + " ===");
     }
 
+    /**
+     * {@link #restoreGlFieldsFromCapture(WebDriver, int, String)} applied across every row captured
+     * in {@code window.__capturedGlRows} — called just before save (see {@code ApVoucherAdd}) so a
+     * pre-save reload doesn't lose the GL/TDS values the Sub-Ledger flow already resolved.
+     */
     public static void restoreAllGlFieldsFromCapture(WebDriver driver, String gridItemId) {
         String script =
                 "try {" +
@@ -3806,10 +4155,16 @@ public final class JavascriptExecutorUtils {
         }
     }
 
+    /** {@link #verifySelectedSubLedgerRecord(WebDriver, int, String)} against the AR child grid ({@code arvch_grid}). */
     private static String verifySelectedSubLedgerRecord(WebDriver driver, int rowIndex) {
         return verifySelectedSubLedgerRecord(driver, rowIndex, "arvch_grid");
     }
 
+    /**
+     * Reads back {@code slName|slid|slCode|className|ledgerName} for the given row after
+     * {@link #setSubLedger}/{@link #setSubLedgerForRow} has run, for {@link #assertSubLedgerSelected}
+     * to validate. Returns an {@code "ERROR: ..."}-prefixed string on failure.
+     */
     private static String verifySelectedSubLedgerRecord(WebDriver driver, int rowIndex, String gridItemId) {
         String script =
                 "try {" +
@@ -3823,6 +4178,12 @@ public final class JavascriptExecutorUtils {
         return (String) ((JavascriptExecutor) driver).executeScript(script);
     }
 
+    /**
+     * Validates the outcome of a {@link #setSubLedger}/{@link #setSubLedgerForRow} page-walk:
+     * throws {@link SubLedgerNotFoundException} when the walk never found a match, the JS
+     * verification itself failed, or the grid's actual SL name doesn't match {@code expectedSlName};
+     * otherwise logs the resolved SL/GL identity (noting whether the id also matched, when provided).
+     */
     private static void assertSubLedgerSelected(String mode, String expectedSlName, String slId,
                                                 String verifyResult, int rowIndex, boolean pageWalkFound) {
         if (!pageWalkFound) {
@@ -3875,6 +4236,7 @@ public final class JavascriptExecutorUtils {
         addSubLedgerRow(driver, "arvch_grid");
     }
 
+    /** {@link #addSubLedgerRow(WebDriver)} against an explicit grid {@code itemId} instead of the AR default. */
     public static void addSubLedgerRow(WebDriver driver, String gridItemId) {
         String script =
                 "try {"
@@ -3898,6 +4260,11 @@ public final class JavascriptExecutorUtils {
         setSubLedgerForRow(driver, rowIndex, slName, slId, referenceSite, "arvch_grid");
     }
 
+    /**
+     * {@link #setSubLedger(WebDriver, String, String, String, String)} generalized to an arbitrary
+     * {@code rowIndex} instead of always row 0 — the same page-walk/poll/capture/verify flow, used
+     * for rows added via {@link #addSubLedgerRow(WebDriver, String)}.
+     */
     public static void setSubLedgerForRow(WebDriver driver, int rowIndex, String slName, String slId, String referenceSite, String gridItemId) {
         slName = (slName != null) ? slName.trim() : "";
         slId   = (slId   != null) ? slId.trim()   : "";
@@ -4070,10 +4437,21 @@ public final class JavascriptExecutorUtils {
         System.out.println("=== END: setSubLedgerForRow ===");
     }
 
+    /** {@link #setSubLedgerReferenceSite(WebDriver, int, String, String)} against the AR child grid ({@code arvch_grid}). */
     public static void setSubLedgerReferenceSite(WebDriver driver, int rowIndex, String referenceSiteName) {
         setSubLedgerReferenceSite(driver, rowIndex, referenceSiteName, "arvch_grid");
     }
 
+    /**
+     * Sets the Reference Site combo on a Sub-Ledger grid row, scoped to only the sites the app's
+     * own {@code beforeedit}-configured store considers valid for that row's SL (opening the real
+     * cell editor first so those store {@code extraParams} get applied, rather than loading every
+     * site globally and risking a "ReferenceSiteCode doesn't exist" server error). A blank
+     * {@code referenceSiteName} picks the first available site; a named target is matched by
+     * primary fields first, then secondary fields, falling back to the first record if neither
+     * matches. See the inline strategy comment on this method for the full ordering rationale
+     * (edit-open → load → cancel → apply, to avoid the app's own cleanup clobbering the write).
+     */
     public static void setSubLedgerReferenceSite(WebDriver driver, int rowIndex, String referenceSiteName, String gridItemId) {
         System.out.println("=== START: setSubLedgerReferenceSite row=" + rowIndex + " site='" + referenceSiteName + "' ===");
 
@@ -4244,10 +4622,12 @@ public final class JavascriptExecutorUtils {
         System.out.println("=== END: setSubLedgerReferenceSite ===");
     }
 
+    /** {@link #verifySelectedReferenceSite(WebDriver, int, String)} against the AR child grid ({@code arvch_grid}). */
     private static String verifySelectedReferenceSite(WebDriver driver, int rowIndex) {
         return verifySelectedReferenceSite(driver, rowIndex, "arvch_grid");
     }
 
+    /** Reads back {@code referenceSiteName|referenceSiteCode} for the row, for {@link #logReferenceSiteSelection} to check. */
     private static String verifySelectedReferenceSite(WebDriver driver, int rowIndex, String gridItemId) {
         String script =
                 "try {" +
@@ -4269,6 +4649,7 @@ public final class JavascriptExecutorUtils {
         return getSubLedgerReferenceSiteName(driver, rowIndex, "arvch_grid");
     }
 
+    /** {@link #getSubLedgerReferenceSiteName(WebDriver, int)} against an explicit grid {@code itemId}. */
     public static String getSubLedgerReferenceSiteName(WebDriver driver, int rowIndex, String gridItemId) {
         String script =
                 "try {" +
@@ -4283,6 +4664,7 @@ public final class JavascriptExecutorUtils {
     }
 
 
+    /** Logs whether {@link #verifySelectedReferenceSite} confirmed the requested Reference Site was actually applied. */
     private static void logReferenceSiteSelection(String excelValue, String verifyResult, int rowIndex) {
         if (verifyResult == null || verifyResult.startsWith("ERROR")) {
             ExtentLogger.info("[REF_SITE SET] WARNING=Could not verify selected record | Row=" + rowIndex

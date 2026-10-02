@@ -2,6 +2,15 @@ package com.gsl.testdata;
 
 import io.github.sskorol.data.Column;
 
+/**
+ * Excel-row DTO (via {@code io.github.sskorol}'s {@link Column @Column} mapping) shaped for a
+ * generic login-style test case: test case id/name, username/password, an expected page title,
+ * plus loose {@code age}/{@code date} fields.
+ * TODO-confirm: no call site in this codebase currently constructs, injects, or reads this class
+ * (a repo-wide search found only this declaration) — it looks like an early/legacy DTO, possibly
+ * predating {@link MasterTestData}/{@link UserCredentialData}'s more specific shapes. Do not
+ * assume it is dead code without checking for newer callers first.
+ */
 public class TestExecutor {
     @Column(name = "TestCaseID")
     private String testCaseId;

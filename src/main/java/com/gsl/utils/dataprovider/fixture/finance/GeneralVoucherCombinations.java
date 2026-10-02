@@ -84,7 +84,61 @@ public final class GeneralVoucherCombinations {
             }
         }
         out.addAll(multiCountVariants());
+        out.add(mandatorySplitSiteVariant());
+        out.addAll(multiRowPaymentVariants());
         return out;
+    }
+
+    /** Rows per voucher for the multi-row-payment variants (every row gets its own payment draw). */
+    private static final int MULTI_ROW_PAYMENT_GL_COUNT = 3;
+
+    /**
+     * Round 6 — one Bank-header, {@value #MULTI_ROW_PAYMENT_GL_COUNT}-row voucher per Site-applicable
+     * (accountType, glLineType) pair where EACH grid row carries its own payment (Cheque / NEFT-RTGS /
+     * none) drawn from the {@code gv.row.payment.*.weight} config by
+     * {@code GeneralVoucherFixtureFactory.assignKnownChequeFlags} — nothing is hardcoded per row.
+     * Expense/Type2 (the baseline shape) runs in MANDATORY; the rest are REGRESSION_PHASE2.
+     */
+    private static List<GeneralVoucherVariant> multiRowPaymentVariants() {
+        List<GeneralVoucherVariant> out = new ArrayList<>();
+        for (GlAccountType type : GlAccountType.values()) {
+            for (GlLineType shape : shapesFor(type)) {
+                if (!shape.isSiteApplicable()) continue;
+                boolean debitSide = sidesFor(type)[0];
+                GeneralVoucherVariant base = buildVariant(type, shape, debitSide, false,
+                        GeneralVoucherPaymentVariant.CHEQUE, MULTI_ROW_PAYMENT_GL_COUNT, 1);
+                boolean mandatory = type == GlAccountType.EXPENSE && isBaselineShape(type, shape);
+                out.add(base.toBuilder()
+                        .variantId(base.getVariantId() + "_ROWPAY")
+                        .testCaseName(base.getTestCaseName() + " | RowPayments:Mixed")
+                        .multiRowPayment(true)
+                        .executionGroup(mandatory ? GeneralVoucherExecutionGroup.MANDATORY
+                                : GeneralVoucherExecutionGroup.REGRESSION_PHASE2)
+                        .build());
+            }
+        }
+        return out;
+    }
+
+    /**
+     * Item 3 (Round 12) — a new MANDATORY-tier case: same baseline dimensions
+     * (Expense/Type2/Debit/Reversal=No/Cheque) as the existing Mandatory smoke row, but the
+     * line's amount is split across 2 site allocations instead of 1 — exercises the
+     * amount-splitting/multi-{@code fincosttag}-row path at the tier that runs on every build.
+     * Built via {@link #buildVariant} directly (NOT {@link #buildMultiCountVariant}, which
+     * unconditionally forces {@code REGRESSION_PHASE2}) — {@link #resolveExecutionGroup} has no
+     * dependency on {@code glCount}/{@code siteCount} at all, so it already assigns MANDATORY
+     * correctly for this {@code (type, shape, reversal, payment)} tuple regardless of site count;
+     * no override is needed. Site availability for the chosen GL (via {@code FinGlSiteDao}) and
+     * for the current test user (via {@code HrEmpOuDao.findSiteCodesByEcode}) is already
+     * guaranteed by {@code DbGeneralVoucherDataSource.resolveType2Sites} — no new resolver logic.
+     * {@code labelCore}'s own {@code "_1GL_2SITE_..."} suffix already makes this row's
+     * {@code variantId} distinct from the plain baseline row ({@code "_1GL_1SITE_..."}) and from
+     * the REGRESSION_PHASE2 {@code N_SITES} row ({@code "_1GL_3SITE_..."}) — no collision.
+     */
+    private static GeneralVoucherVariant mandatorySplitSiteVariant() {
+        return buildVariant(GlAccountType.EXPENSE, GlLineType.TYPE2_SITE_ONLY, true, false,
+                GeneralVoucherPaymentVariant.CHEQUE, 1, 2);
     }
 
     /**
@@ -175,10 +229,12 @@ public final class GeneralVoucherCombinations {
 
     /**
      * Builds the shared label core, e.g. {@code "L_site_applicable_only_1GL_1SITE_DR_REV_N_NEFT_RTGS"}
-     * — used verbatim as both {@code variantId} (GV analogue of AR's compact token id) and
-     * {@code testCaseName} (shown as-is in the Description/TestCase ID/TestCase Name report fields,
-     * since GV — unlike AR/AP — has no separate rich-English-vs-compact-token split at this layer;
-     * the English sentence is built separately by {@code GeneralVoucherDescriptionBuilder}).
+     * — used verbatim as {@code variantId} (GV analogue of AR's compact token id, see
+     * {@code SelectDocumentCombinations}). Point 1 (Round 5): previously this same string was ALSO
+     * used verbatim as {@code testCaseName}, so the report's "Test Data — Header" table rendered
+     * identical Scenario/TestCase ID/TestCase Name rows — a confirmed bug, not a deliberate design
+     * (AR/AP's own combination builders always keep {@code variantId} and {@code testCaseName}
+     * distinct; see {@link #humanReadableName} for GV's own version of that split).
      */
     private static String labelCore(GlAccountType type, GlLineType shape, boolean debitSide,
             boolean reversal, GeneralVoucherPaymentVariant payment, int glCount, int siteCount) {
@@ -189,6 +245,28 @@ public final class GeneralVoucherCombinations {
                 + "_" + payment.name();
     }
 
+    /**
+     * Point 1 (Round 5): the {@code testCaseName} counterpart to {@link #labelCore}'s compact
+     * {@code variantId} — genuinely human-readable pipe-style text (mirrors
+     * {@code SelectDocumentCombinations}'s own {@code "SEL_DOC | [Bank GL] | ..."} convention),
+     * reusing the same {@link GlAccountType#label()}/{@link GlLineType#label()} phrase vocabulary
+     * {@code GeneralVoucherDescriptionBuilder}'s own report sentence already uses, so the two never
+     * drift apart.
+     */
+    private static String humanReadableName(GlAccountType type, GlLineType shape, boolean debitSide,
+            boolean reversal, GeneralVoucherPaymentVariant payment, int glCount, int siteCount) {
+        return "GV | " + type.label() + " GL | " + shape.label()
+                + " | " + glCount + " GL(s) x " + siteCount + " Site(s)"
+                + " | " + (debitSide ? "Debit" : "Credit")
+                + " | Reversal:" + (reversal ? "Yes" : "No")
+                + " | Payment:" + payment.name();
+    }
+
+    /**
+     * Assembles one {@link GeneralVoucherVariant} row: resolves its execution tier via
+     * {@link #resolveExecutionGroup}, builds both label strings ({@link #labelCore}/
+     * {@link #humanReadableName}), and stamps every combination dimension onto the builder.
+     */
     private static GeneralVoucherVariant buildVariant(GlAccountType type, GlLineType shape,
             boolean debitSide, boolean reversal, GeneralVoucherPaymentVariant payment,
             int glCount, int siteCount) {
@@ -196,7 +274,7 @@ public final class GeneralVoucherCombinations {
         String label = labelCore(type, shape, debitSide, reversal, payment, glCount, siteCount);
         return GeneralVoucherVariant.builder()
                 .variantId(label)
-                .testCaseName(label)
+                .testCaseName(humanReadableName(type, shape, debitSide, reversal, payment, glCount, siteCount))
                 .accountType(type)
                 .glLineType(shape)
                 .debitSide(debitSide)

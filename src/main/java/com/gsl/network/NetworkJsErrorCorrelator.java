@@ -22,6 +22,10 @@ public final class NetworkJsErrorCorrelator {
     private NetworkJsErrorCorrelator() {}
 
     /**
+     * Cross-references failed network requests against CRITICAL browser JS errors by timestamp.
+     *
+     * @param networkLogs captured network log records for the session
+     * @param jsLogs      captured browser console/JS log records for the same session
      * @return set of URLs of network requests that failed within ±2 s of a CRITICAL JS error.
      *         Empty set when no CRITICAL errors or no network failures are present.
      */
@@ -48,10 +52,12 @@ public final class NetworkJsErrorCorrelator {
                 .collect(Collectors.toUnmodifiableSet());
     }
 
+    /** True when the record is an explicit {@link NetworkLogType#FAILED} or carries an HTTP error status. */
     private static boolean isFailed(NetworkLogRecord r) {
         return r.type() == NetworkLogType.FAILED || r.status() >= 400;
     }
 
+    /** True when {@code networkTs} falls within {@link #WINDOW_MS} of any timestamp in {@code criticalTs}. */
     private static boolean isNearAnyError(long networkTs, List<Long> criticalTs) {
         return criticalTs.stream().anyMatch(ts -> Math.abs(networkTs - ts) <= WINDOW_MS);
     }

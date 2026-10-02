@@ -71,10 +71,19 @@ public class DbArVoucherDataSource implements TestDataSource<MergedFinanceArVouc
     // Used as fallback when the system property is absent (IntelliJ direct run).
     private final String xmlGroupParam;
 
+    /** No execution-group filter — every scenario/variant is emitted (full-suite run). */
     public DbArVoucherDataSource() { this.xmlGroupParam = null; }
 
+    /** @param xmlGroupParam fallback {@code arv.group} value from TestNG {@code <parameter>}, used
+     *                       when the {@code arv.group} system property is absent (IntelliJ direct-run path) */
     public DbArVoucherDataSource(String xmlGroupParam) { this.xmlGroupParam = xmlGroupParam; }
 
+    /**
+     * Emits one lightweight placeholder per applicable {@link ArVoucherScenarioType}/variant
+     * surviving the active {@code arv.group} filter — see the class Javadoc's "Point 1" note. No
+     * DB documents are selected/reserved here; that happens later, per placeholder, in
+     * {@link #loadFreshForScenario}.
+     */
     @Override
     public List<MergedFinanceArVoucherData> load(String testMethodName) {
         String loginName = ConfigFactory.getConfig().username();
@@ -116,6 +125,12 @@ public class DbArVoucherDataSource implements TestDataSource<MergedFinanceArVouc
             if (scenario == ArVoucherScenarioType.SELECT_DOCUMENT) {
                 // ── One placeholder per variant, filtered by active execution group
                 List<SelectDocumentVariant> variants = buildVariantList(classificationTypes, activeGroup);
+                // Round 20: the Fixture Factory itself decides known-vs-unknown (AR: rare, 1% by
+                // default) and, within the known subset, same-bank vs. different-bank match, for
+                // every CHEQUE row here, at an exact ratio — mirrors GV's/AP's own
+                // assignKnownChequeFlags call, plus AR's own second-pass bank-match split.
+                variants = ArVoucherFixtureFactory.assignKnownChequeFlags(variants);
+                variants = ArVoucherFixtureFactory.assignChequeBankMatchFlags(variants);
                 for (SelectDocumentVariant variant : variants) {
                     ArVoucherFixtureOptions opts = ArVoucherFixtureOptions.builder()
                             .subLedgerCount(variant.getSlCount())
@@ -363,6 +378,8 @@ public class DbArVoucherDataSource implements TestDataSource<MergedFinanceArVouc
         }
     }
 
+    /** Does the actual DB resolution work for {@link #loadFreshForScenario} — see that method's
+     *  Javadoc for the {@link org.testng.SkipException}-conversion wrapper around this. */
     private static MergedFinanceArVoucherData loadFreshForScenarioInternal(
             MergedFinanceArVoucherData placeholder, String methodName) {
 
@@ -797,6 +814,7 @@ public class DbArVoucherDataSource implements TestDataSource<MergedFinanceArVouc
         log.forEach(line -> Log.info("[DB] {}", line));
     }
 
+    /** Logs the resolved live-DB reference values ({@code refs}) and each SL's open documents. */
     private static void printRefs(String loginName, long ecode,
                                   ArVoucherLiveDbRefs refs,
                                   Map<String, List<PendingSlDocument>> pendingDocsBySlName) {
@@ -818,6 +836,7 @@ public class DbArVoucherDataSource implements TestDataSource<MergedFinanceArVouc
         Log.info("[DB] ============================================================");
     }
 
+    /** Logs the fully-built {@code row}'s header/sub-ledger/select-document fields. */
     private static void printGeneratedData(MergedFinanceArVoucherData row) {
         Log.info("[DB] ------------------------------------------------------------");
         Log.info("[DB]   Scenario   = {}", row.getScenarioType());

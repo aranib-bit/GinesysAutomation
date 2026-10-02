@@ -1,5 +1,10 @@
 package com.gsl.testdata.Procurement;
 
+/**
+ * {@link ItemDetail} variant for a "Batch" line-item row (batch code + expiry date) — built by
+ * {@link ItemDetailFactory#create} from an {@code "ItemType"="Batch"} row. See {@link ItemDetail}'s
+ * Javadoc for this whole chain's orphaned/unconfirmed-live-caller status.
+ */
 public class BatchItemDetail implements ItemDetail {
     private String testCaseId;
     private String batchCode;
@@ -7,6 +12,7 @@ public class BatchItemDetail implements ItemDetail {
     private String itemSelectionMajorMethod;
     private String itemSetSelectionSelectionWays;
 
+    /** Always {@code "Batch"} — this variant's {@link ItemDetail#getItemType()} discriminator. */
     @Override
     public String getItemType() {
         return "Batch";
@@ -31,6 +37,7 @@ public class BatchItemDetail implements ItemDetail {
         this.testCaseId = testCaseId;
     }
 
+    /** The batch code identifying which batch this line-item was received/scanned against. */
     public String getBatchCode() {
         return batchCode;
     }
@@ -39,6 +46,7 @@ public class BatchItemDetail implements ItemDetail {
         this.batchCode = batchCode;
     }
 
+    /** The batch's expiry date, as read from the source row (unparsed string). */
     public String getExpiryDate() {
         return expiryDate;
     }

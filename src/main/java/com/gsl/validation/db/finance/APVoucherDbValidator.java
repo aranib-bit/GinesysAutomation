@@ -38,6 +38,11 @@ public class APVoucherDbValidator {
         this.finTagApValidator     = new FinTagApValidator();
     }
 
+    /**
+     * Runs Levels 1–4a in order against {@code context}'s voucher, deferring Level 1's own field
+     * assertions until after Level 4a completes (so a header field mismatch never blocks the
+     * later levels from running) and re-surfacing them at the end via {@code assertAll()}.
+     */
     public void validate(ApVoucherDbContext context) {
         Assert.assertNotNull(context, "ApVoucherDbContext must not be null");
         Assert.assertNotNull(context.getVoucherNo(),

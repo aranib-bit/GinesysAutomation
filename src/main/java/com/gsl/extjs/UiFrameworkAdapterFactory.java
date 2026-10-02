@@ -3,21 +3,29 @@ package com.gsl.extjs;
 import com.gsl.config.ConfigFactory;
 
 /**
- * Returns the correct UiFrameworkAdapter based on application.type in config.properties.
+ * Factory selecting the correct {@link UiFrameworkAdapter} implementation based on
+ * {@code application.type} in config.properties — the single switch point behind
+ * {@link UiFrameworkAdapter}'s "no code change required" migration story.
  *
- * Supported values (case-insensitive):
- *   extjs   → ExtJsUiAdapter   (default)
- *   react   → ReactUiAdapter
- *   angular → AngularUiAdapter
+ * <p>Supported values (case-insensitive):
+ * <ul>
+ *   <li>{@code extjs} → {@link ExtJsUiAdapter} (default)</li>
+ *   <li>{@code react} → {@link ReactUiAdapter}</li>
+ *   <li>{@code angular} → {@link AngularUiAdapter}</li>
+ * </ul>
  *
- * To migrate the application to a new framework:
- *   1. Change application.type in config.properties — zero code changes elsewhere.
- *   2. To add a new framework: implement UiFrameworkAdapter + add a case here.
+ * <p>To migrate the application to a new framework: change {@code application.type} in
+ * config.properties — zero code changes elsewhere. To add support for a new framework:
+ * implement {@link UiFrameworkAdapter} and add a case here.
  */
 public final class UiFrameworkAdapterFactory {
 
     private UiFrameworkAdapterFactory() {}
 
+    /**
+     * Returns the {@link UiFrameworkAdapter} for the configured {@code application.type} (see
+     * class Javadoc), defaulting to {@link ExtJsUiAdapter} for an unrecognized value.
+     */
     public static UiFrameworkAdapter get() {
         String type = ConfigFactory.getBrowserConfig().applicationType().toLowerCase().trim();
         return switch (type) {

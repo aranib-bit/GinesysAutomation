@@ -17,23 +17,38 @@ import com.gsl.pages.enums.topmenucomponent.MainModuleType;
 import com.gsl.reports.ActualResultsHolder;
 import com.gsl.reports.ReportLogger;
 import com.gsl.reports.StepExecutor;
+import com.gsl.enums.Finance.Operations.GeneralVoucher.GlLineType;
+import com.gsl.enums.GlAccountType;
 import com.gsl.testdata.UserCredential;
 import com.gsl.testdata.dto.MergedFinanceGeneralVoucherData;
 import com.gsl.utils.Log;
 import com.gsl.utils.NavigationUtils;
 import com.gsl.utils.dataprovider.fixture.GeneralVoucherFixtureFactory;
+import com.gsl.utils.dataprovider.fixture.finance.GeneralVoucherFixtureOptions;
+import com.gsl.utils.dataprovider.fixture.finance.GeneralVoucherPaymentVariant;
+import com.gsl.utils.dataprovider.fixture.finance.GeneralVoucherScenarioType;
+import com.gsl.utils.dataprovider.source.finance.DbGeneralVoucherDataSource;
 import com.tests.WebTest;
 import org.testng.Assert;
 import org.testng.annotations.DataProvider;
 import org.testng.annotations.Test;
 
+import java.util.LinkedHashMap;
+import java.util.Map;
+
 /**
  * General Voucher — Negative &amp; Boundary scenarios.
  *
- * <p>Scoped to the 3 candidate scenarios the plan calls out (§4):
- * site-allocation Pending Amount != 0, Type3 row missing Sub Ledger, and a
- * Type2 row whose Site is never allocated. See
- * {@code GeneralVoucherPredicateFactory} for the data + shared behavior.
+ * <p>Scoped to the 5 scenarios the plan calls out (§4, plus Round 21's Cash-post-dated and
+ * Round 16's cross-OU-site additions): site-allocation Pending Amount != 0, Type3 row missing
+ * Sub Ledger, a Type2 row whose Site is never allocated, a Cash-type ledger with a post-dated
+ * Document Date, and a GL-linked/user-assigned site belonging to a different Organizational Unit
+ * than the Owner Site (must not be selectable in Allocate Sites). Each scenario's data is
+ * resolved live via {@code DbGeneralVoucherDataSource.loadFreshForScenario}
+ * (see {@link #negativeBoundaryData} below) and built by
+ * {@link com.gsl.utils.dataprovider.fixture.finance.GeneralVoucherTemplateLoader}'s
+ * {@code negXxxTemplate} methods; {@code GeneralVoucherPredicateFactory} supplies only the
+ * shared UI-interaction/assertion behavior.
  *
  * <p>Dispatches via {@link com.gsl.utils.dataprovider.fixture.finance.GeneralVoucherScenarioType#execute}
  * like every other domain's negative-boundary test — no more raw-tuple {@code @DataProvider}
@@ -43,24 +58,52 @@ import org.testng.annotations.Test;
  * <p>Unlike {@code CreateApVoucher.createApVoucherNegativeBoundary}, this keeps its own
  * dedicated {@code @DataProvider} rather than routing through
  * {@code MergedFinGeneralVoucherDataSupplier} — that supplier exists to toggle Excel/DB sourcing
- * and apply {@code gv.group}/{@code gv.tag} filters, none of which apply to these 3 hand-built
- * Java fixtures. It also passes no explicit {@code UserCredential} parameter — {@code
- * WebTest.setUp()} falls back to its default SessionPool-borrow branch when none appears in the
- * test's actual parameters (confirmed via {@code WebTest.setUp}'s {@code extractCredential}
- * logic), so this still gets a pooled, logged-in session exactly like the DataSupplier-driven
- * positive test does.
+ * and apply {@code gv.group}/{@code gv.tag} filters, and to resolve one shared {@link
+ * com.gsl.utils.dataprovider.fixture.LiveGvDbRefs} per combination, neither of which fits these
+ * 5 scenarios (each needs its own differently-shaped refs — Type2 vs Type3, Bank vs Cash — see
+ * {@link #negativeBoundaryData}). It also passes no explicit {@code UserCredential} parameter —
+ * {@code WebTest.setUp()} falls back to its default SessionPool-borrow branch when none appears
+ * in the test's actual parameters (confirmed via {@code WebTest.setUp}'s {@code
+ * extractCredential} logic), so this still gets a pooled, logged-in session exactly like the
+ * DataSupplier-driven positive test does.
  */
 @ApiFlow(FinanceApiPattern.GENERAL_VOUCHER)
 public class CreateGeneralVoucherNegativeBoundary extends WebTest {
 
     @DataProvider(name = "GeneralVoucherNegativeBoundaryData")
     public Object[][] negativeBoundaryData() {
-        // refs=null is safe — every NEG_* scenario's templateLoader ignores its refs parameter
-        // (its data is hand-built in Java, not resolved from live DB refs). See
-        // GeneralVoucherFixtureFactory#generate's javadoc.
-        return new GeneralVoucherFixtureFactory()
-                .generate("createGeneralVoucherNegativeBoundary", null)
-                .stream()
+        // Each NEG_* scenario resolves its GL/Site/Sub-Ledger/Cash-Bank ledger live via the same
+        // DbGeneralVoucherDataSource pipeline the positive combination matrix uses — no more
+        // hardcoded literal GL/Site names. All 4 use a live EXPENSE GL (matching the positive
+        // matrix's own Mandatory-tier Expense/Type2/Debit baseline) since the negative assertion
+        // is about Site/Sub-Ledger/Cash-payment validation, not accounting-type correctness.
+        Map<GeneralVoucherScenarioType, GeneralVoucherFixtureOptions> scenarios = new LinkedHashMap<>();
+        scenarios.put(GeneralVoucherScenarioType.NEG_SITE_ALLOCATION_PENDING,
+                GeneralVoucherFixtureOptions.of(GlAccountType.EXPENSE, GlLineType.TYPE2_SITE_ONLY,
+                        true, false, GeneralVoucherPaymentVariant.NONE));
+        scenarios.put(GeneralVoucherScenarioType.NEG_SITE_NOT_ALLOCATED,
+                GeneralVoucherFixtureOptions.of(GlAccountType.EXPENSE, GlLineType.TYPE2_SITE_ONLY,
+                        true, false, GeneralVoucherPaymentVariant.NONE));
+        // requireAmbiguousSubLedger=true — this scenario needs a Type3 GL with MORE THAN ONE
+        // eligible Sub Ledger (see GeneralVoucherTemplateLoader.negSubledgerRequiredTemplate's Javadoc).
+        scenarios.put(GeneralVoucherScenarioType.NEG_SUBLEDGER_REQUIRED,
+                GeneralVoucherFixtureOptions.of(GlAccountType.EXPENSE, GlLineType.TYPE3_SITE_AND_SUBLEDGER,
+                        true, false, GeneralVoucherPaymentVariant.NONE, true));
+        // CASH (not NONE/Bank) — this scenario needs a live Cash-type Cash/Bank ledger.
+        scenarios.put(GeneralVoucherScenarioType.NEG_CASH_POST_DATED,
+                GeneralVoucherFixtureOptions.of(GlAccountType.EXPENSE, GlLineType.TYPE2_SITE_ONLY,
+                        true, false, GeneralVoucherPaymentVariant.CASH));
+        // Round 16 — needs a GL with at least one fingl_site-linked, user-assigned site whose OWN
+        // admou_code differs from the resolved Owner Site's (see ofCrossOuSite's Javadoc and
+        // DbGeneralVoucherDataSource#resolveCrossOuSiteForNegativeTest).
+        scenarios.put(GeneralVoucherScenarioType.NEG_SITE_ALLOCATION_CROSS_OU,
+                GeneralVoucherFixtureOptions.ofCrossOuSite(GlAccountType.EXPENSE, GlLineType.TYPE2_SITE_ONLY,
+                        true, false, GeneralVoucherPaymentVariant.NONE));
+
+        return scenarios.entrySet().stream()
+                .map(e -> DbGeneralVoucherDataSource.loadFreshForScenario(
+                        GeneralVoucherFixtureFactory.buildNegativeBoundaryPlaceholder(e.getKey(), e.getValue()),
+                        "createGeneralVoucherNegativeBoundary"))
                 .map(data -> new Object[]{data})
                 .toArray(Object[][]::new);
     }
@@ -89,14 +132,14 @@ public class CreateGeneralVoucherNegativeBoundary extends WebTest {
         });
 
         // ── Step 2: Navigate ──────────────────────────────────────────────────────
-        StepExecutor.step("Open Finance → General Voucher List", () -> {
-            listRef[0] = NavigationUtils.navigateToFinanceSideMenu(
-                    homeRef[0],
-                    MainMenuType.OPERATIONS,
-                    OperationsMenuType.CATEGORY,
-                    GeneralVoucherListPage.class);
-            ReportLogger.business("General Voucher list page opened");
-        });
+        // Business log + "Navigated: ..." summary are now recorded inside
+        // NavigationUtils.navigateToFinanceSideMenu itself.
+        StepExecutor.step("Open Finance → General Voucher List", () -> listRef[0] =
+                NavigationUtils.navigateToFinanceSideMenu(
+                        homeRef[0],
+                        MainMenuType.OPERATIONS,
+                        OperationsMenuType.CATEGORY,
+                        GeneralVoucherListPage.class));
 
         // ── Step 3: Open Add form ─────────────────────────────────────────────────
         StepExecutor.step("Open Add Form", () -> {

@@ -24,6 +24,8 @@ import com.gsl.utils.Log;
 import com.gsl.utils.NavigationUtils;
 import com.gsl.utils.dataprovider.MergedFinArVoucherDataSupplier;
 import com.gsl.utils.dataprovider.source.finance.DbArVoucherDataSource;
+import com.gsl.utils.ui.UiFieldState;
+import com.gsl.validation.ui.UiValidationLevel;
 import com.tests.WebTest;
 import org.testng.annotations.Test;
 
@@ -82,17 +84,20 @@ public class CreateArVoucher extends WebTest {
         });
 
         // ── Step 2: Navigate ──────────────────────────────────────────────────────
-        StepExecutor.step("Open Finance → AR Voucher List", () -> {
-            listRef[0] = NavigationUtils.navigateToFinanceSideMenu(
-                    homeRef[0],
-                    MainMenuType.OPERATIONS,
-                    OperationsMenuType.ARVOUCHER,
-                    ArVoucherListPage.class);
-            ReportLogger.business("AR Voucher list page opened");
-        });
+        // Business log + "Navigated: ..." summary are now recorded inside
+        // NavigationUtils.navigateToFinanceSideMenu itself.
+        StepExecutor.step("Open Finance → AR Voucher List", () -> listRef[0] =
+                NavigationUtils.navigateToFinanceSideMenu(
+                        homeRef[0],
+                        MainMenuType.OPERATIONS,
+                        OperationsMenuType.ARVOUCHER,
+                        ArVoucherListPage.class));
 
         // ── Step 3: Open Add form ─────────────────────────────────────────────────
         StepExecutor.step("Open Add Form", () -> addRef[0] = listRef[0].clickAdd());
+
+        StepExecutor.step("UI Validation", () ->
+                addRef[0].validateUiContract(UiValidationLevel.CONTRACT, UiFieldState.EDITABLE, false));
 
         // ── Delegate fill/save/verify/logout to the scenario behaviour ────────────
         // (ArVoucherScenarioType.POSITIVE_CREATE_BEHAVIOR — see VoucherScenarioType unification)
@@ -152,14 +157,14 @@ public class CreateArVoucher extends WebTest {
         });
 
         // ── Step 2: Navigate ──────────────────────────────────────────────────────
-        StepExecutor.step("Open Finance → AR Voucher List", () -> {
-            listRef[0] = NavigationUtils.navigateToFinanceSideMenu(
-                    homeRef[0],
-                    MainMenuType.OPERATIONS,
-                    OperationsMenuType.ARVOUCHER,
-                    ArVoucherListPage.class);
-            ReportLogger.business("AR Voucher list page opened");
-        });
+        // Business log + "Navigated: ..." summary are now recorded inside
+        // NavigationUtils.navigateToFinanceSideMenu itself.
+        StepExecutor.step("Open Finance → AR Voucher List", () -> listRef[0] =
+                NavigationUtils.navigateToFinanceSideMenu(
+                        homeRef[0],
+                        MainMenuType.OPERATIONS,
+                        OperationsMenuType.ARVOUCHER,
+                        ArVoucherListPage.class));
 
         // ── Step 3: Open Add form ─────────────────────────────────────────────────
         StepExecutor.step("Open Add Form", () -> {
@@ -169,6 +174,9 @@ public class CreateArVoucher extends WebTest {
                         ? " | expect error: " + testData.getExpectedValidation().expectedMessage()
                         : " | expect: successful save"));
         });
+
+        StepExecutor.step("UI Validation", () ->
+                addRef[0].validateUiContract(UiValidationLevel.CONTRACT, UiFieldState.EDITABLE, false));
 
         // ── Delegate fill/save/verify/logout to the scenario behaviour ────────────
         boolean ok = testData.getScenarioType().execute(testData, addRef[0]);

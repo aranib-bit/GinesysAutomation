@@ -19,8 +19,12 @@ import org.assertj.core.api.SoftAssertions;
 public class FinVchMainApValidator extends FinVchMainBaseValidator {
 
     /**
+     * Fetches the {@code finvchmain} header (blocking), runs the shared field checks, and adds
+     * the AP-specific {@code camount != null} check.
+     *
      * @param deferredSoft shared SoftAssertions from the orchestrator;
      *                     assertAll() is called there after all levels complete
+     * @return the fetched {@code finvchmain} row, for use by later validation levels
      */
     public FinVchMain validate(ApVoucherDbContext context, SoftAssertions deferredSoft) {
         String schemeDocno = context.getVoucherNo();

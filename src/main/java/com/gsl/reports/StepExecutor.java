@@ -14,6 +14,21 @@ import com.gsl.utils.Selenium.ScreenshotUtils;
 import org.openqa.selenium.JavascriptExecutor;
 import com.gsl.reports.StepDurationBuffer;
 
+/**
+ * Wraps a unit of test logic in its own collapsible Extent Report node, giving it independent
+ * pass/fail status, a duration suffix on its title, and (on failure) an attached screenshot —
+ * the framework's standard way to break a test body into named, individually-reportable steps.
+ *
+ * <p>Use {@link #step(String, StepAction)} for a void action and {@link #call(String, StepSupplier)}
+ * for one that returns a value (e.g. a single API call). Use {@link #group(String)} to create a
+ * grouping node up front (e.g. one per data row) that later steps attach under via
+ * {@link #stepUnder(ExtentTest, String, StepAction)} — needed when those later steps run in a
+ * separate pass after the group's own code has already returned. Steps that want a synthesized
+ * "what happened" recap at the end of their node should record fragments via
+ * {@link StepSummaryBuffer#record(String)} during their own logic; {@code step(...)} renders them
+ * automatically, or call {@link #renderSummaryAsChildNode(String)} explicitly when the summary
+ * must appear after the step's own child nodes rather than before them.
+ */
 public final class StepExecutor {
 
     private StepExecutor() {
@@ -110,7 +125,7 @@ public final class StepExecutor {
             action.run();
             durationMs = System.currentTimeMillis() - startMs;
             node.getModel().setName(stepName + " (" + formatDuration(durationMs) + ")");
-            renderStepSummary(node);
+            renderStepSummary(node, stepName);
             ExtentLogger.passCategorized(LogCategory.TEST_STEP_STATUS, "Step passed");
             Log.info("[STEP PASS] {} ({}ms)", stepName, durationMs);
             StepDurationBuffer.record(stepName, durationMs, true);
@@ -141,6 +156,23 @@ public final class StepExecutor {
     }
 
     /**
+     * Same node/pass/fail/duration/screenshot behavior as {@link #step(String, StepAction)}, but a
+     * failure does NOT propagate: the step's node is marked failed exactly as usual, and the
+     * {@link Throwable} is RETURNED (null when the step passed) so the caller can record it and let
+     * later independent steps still run. The caller MUST surface the returned failure at its flow's
+     * final assertion point, otherwise the failure would be silently swallowed — see
+     * {@code VoucherSaveFlowSteps#softStep}/{@code finalizeAsserts}.
+     */
+    public static Throwable stepSoft(String stepName, StepAction action) {
+        try {
+            step(stepName, action);
+            return null;
+        } catch (Throwable t) {
+            return t;
+        }
+    }
+
+    /**
      * Drains {@link StepSummaryBuffer} and, if anything was recorded during this step, renders one
      * consolidated "Summary" box as the last thing in the node — the TL;DR a reader sees right
      * before the green "Step passed" marker, instead of piecing the outcome together from the
@@ -155,9 +187,18 @@ public final class StepExecutor {
      * "&#10003;&nbsp;" checkmark bullet that style uses; a fragment that is already its own HTML
      * block (e.g. a table built by one of the Point 9 call sites) renders as-is, unprefixed.
      */
-    private static void renderStepSummary(ExtentTest node) {
+    private static void renderStepSummary(ExtentTest node, String stepName) {
         java.util.List<StepSummaryBuffer.Fragment> fragments = StepSummaryBuffer.flush();
         if (fragments.isEmpty()) return;
+        String html = buildSummaryHtml(stepName, fragments);
+        node.info((Markup) () -> html);
+    }
+
+    /** Shared box-builder behind {@link #renderStepSummary}/{@link #renderSummaryAsChildNode} —
+     *  Item Q's 13px font (matches DocumentMessageBox's "VERIFY SAVE RESULT" box) and Item AF's
+     *  step-named heading (e.g. "Fill Expense/Income Detail — Summary" instead of a bare, repeated
+     *  "Summary"). */
+    private static String buildSummaryHtml(String heading, java.util.List<StepSummaryBuffer.Fragment> fragments) {
         StringBuilder body = new StringBuilder();
         for (StepSummaryBuffer.Fragment fragment : fragments) {
             String text = fragment.text();
@@ -168,11 +209,35 @@ public final class StepExecutor {
             }
             body.append(text).append("</div>");
         }
-        String html = "<div style='font-family:monospace;font-size:12px;line-height:1.8;"
+        return "<div style='font-family:monospace;font-size:13px;line-height:1.8;"
                 + "padding:8px 12px;background:#f0fff4;border-left:4px solid #38a169;"
                 + "border-radius:2px;margin:4px 0;'>"
-                + "<b>Summary</b><br/>" + body + "</div>";
-        node.info((Markup) () -> html);
+                + "<b>" + heading + " &#8212; Summary</b><br/>" + body + "</div>";
+    }
+
+    /**
+     * Renders whatever is currently buffered in {@link StepSummaryBuffer} as a NEW, explicit
+     * child node under the current step — instead of the step's own final log entry, which the
+     * ExtentReports Spark template always renders ABOVE every child node regardless of the real
+     * chronological call order (confirmed against the rendered HTML: a node's own {@code <table>}
+     * of log rows always precedes its nested {@code accordion}/child-node cards). Call this
+     * explicitly, as the LAST thing in a step's body, when the step also creates its own child
+     * nodes (e.g. one {@link #group}/{@link #stepUnder} per row) and the summary needs to appear
+     * visually AFTER them rather than above — e.g. "Fill Expense/Income Detail"'s per-line "Line
+     * N" nodes, where the consolidated Summary must read as the final word, not the first.
+     *
+     * <p>Safe to combine with the ordinary end-of-step auto-render: this drains the buffer
+     * immediately, so by the time the enclosing {@link #step} finishes and calls
+     * {@link #renderStepSummary}, the buffer is already empty and that call is a no-op — no
+     * duplicate box. No-op (creates nothing) when nothing was recorded.
+     */
+    public static void renderSummaryAsChildNode(String heading) {
+        java.util.List<StepSummaryBuffer.Fragment> fragments = StepSummaryBuffer.flush();
+        if (fragments.isEmpty()) return;
+        ExtentTest parent = ExtentManager.getExtentTest();
+        ExtentTest child = parent.createNode(heading);
+        String html = buildSummaryHtml(heading, fragments);
+        child.info((Markup) () -> html);
     }
 
     /**
@@ -204,6 +269,8 @@ public final class StepExecutor {
         return result;
     }
 
+    /** Formats a millisecond duration for a step's title suffix — {@code "Nms"} under a second,
+     *  {@code "Ns Nms"} under a minute, else {@code "Nm Ns"}. */
     static String formatDuration(long ms) {
         if (ms < 1_000) return ms + "ms";
         long s = ms / 1_000, rem = ms % 1_000;
@@ -221,17 +288,17 @@ public final class StepExecutor {
         Log.error("[STEP FAIL] {} — {}", stepName, e.getMessage());
         node.fail("Exception  : " + e.getClass().getSimpleName());
         node.fail("Message    : " + e.getMessage());
+        // What is actually on screen right now (masks, dialogs, open lists, editors, login error, Ajax)
+        // — explains an intermittent failure without lengthening any wait.
+        com.gsl.utils.Selenium.PageStateDiagnostics.captureOnce(e, "Step '" + stepName + "' failed", node);
         if (DriverManager.getDriver() != null) {
             try {
                 // Capture screenshot + page-context metadata in a single pass.
                 // Metadata (URL, scroll, viewport) aids reproduction without needing a re-run.
+                // Captured now (the page state exists only now) but attached at test end by
+                // ScreenshotPolicy: report.screenshots.mode=LAST keeps just the final one.
                 ScreenshotMetadata meta = ScreenshotUtils.saveScreenshotWithMetadata(stepName);
-                node.fail("Screenshot at failure",
-                        MediaEntityBuilder.createScreenCaptureFromPath(meta.filePath()).build());
-                String annotation = meta.toAnnotation();
-                if (!annotation.isBlank()) {
-                    node.info("Page context: " + annotation);
-                }
+                ScreenshotPolicy.defer(java.util.List.of(node), stepName, meta.filePath(), meta.toAnnotation());
             } catch (Exception screenshotEx) {
                 node.fail("Screenshot unavailable: " + screenshotEx.getMessage());
             }

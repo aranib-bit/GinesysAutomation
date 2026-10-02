@@ -24,12 +24,18 @@ public class ItemCreateResponse {
     private String error;
     private Result result;
 
+    /** {@code result.code} (the created item's code), or null if the response has no result. */
     public String getItemCode()   { return result != null ? result.itemCode : null; }
+    /** {@code result.cname1} (the item name actually saved), or null if the response has no result. */
     public String getCname1()     { return result != null ? result.cname1 : null; }
+    /** {@code result.costrate}, or null if the response has no result. */
     public Integer getCostrate()  { return result != null ? result.costrate : null; }
+    /** {@code result.wsp}, or null if the response has no result. */
     public Integer getWsp()       { return result != null ? result.wsp : null; }
+    /** {@code result.mrp}, or null if the response has no result. */
     public Integer getMrp()       { return result != null ? result.mrp : null; }
 
+    /** Raw shape of ItemMaster/Create's {@code result} object — only the fields this client consumes. */
     @Data
     @Builder
     @NoArgsConstructor

@@ -33,6 +33,15 @@ import java.security.cert.X509Certificate;
 import java.util.LinkedHashMap;
 import java.util.Map;
 
+/**
+ * Runs a battery of infrastructure checks before the suite's first test starts — application URL
+ * reachability, viewport sizing, database connectivity, and (in Excel mode) required test-data
+ * files — and records every result on the {@link ExtentReports}' Environment panel so a bad
+ * environment is diagnosed from the report header instead of from the first few tests' cryptic
+ * failures.
+ *
+ * <p>Call {@link #run(ExtentReports)} once, from suite start-up, before any test runs.
+ */
 public final class PreSuiteHealthCheck {
 
     private PreSuiteHealthCheck() {}
@@ -65,6 +74,9 @@ public final class PreSuiteHealthCheck {
         return healthy;
     }
 
+    /** Confirms the configured app URL returns HTTP 2xx (ignoring the fragment and any
+     *  certificate errors); on failure, additionally attaches a headless-browser screenshot of
+     *  the failing page as its own Extent test node. */
     private static boolean checkUrl(ExtentReports extent) {
         String rawUrl = ConfigFactory.getConfig().url();
         // Strip fragment — HTTP does not send it to the server
@@ -134,6 +146,9 @@ public final class PreSuiteHealthCheck {
         return false;
     }
 
+    /** Launches a throwaway headless Chrome session to screenshot {@code url} for
+     *  {@link #checkUrl}'s failure report; returns {@code null} (logged, not thrown) if the
+     *  capture itself fails. */
     private static String captureUrlScreenshot(String url) {
         WebDriver driver = null;
         try {
@@ -195,6 +210,10 @@ public final class PreSuiteHealthCheck {
         }
     }
 
+    /** Records the configured DB connection details on the Environment panel and confirms
+     *  connectivity with a {@code SELECT 1}. Catches {@link Throwable} (not just
+     *  {@code Exception}) since {@code DatabaseManager}'s static initializer can fail with an
+     *  {@link ExceptionInInitializerError}. */
     private static boolean checkDatabase(ExtentReports extent) {
         DataBaseConfig db = ConfigFactory.getDataBaseConfig();
 
@@ -224,6 +243,8 @@ public final class PreSuiteHealthCheck {
         }
     }
 
+    /** Confirms each Excel-mode test-data file configured in {@link ExcelDataConfig} exists on
+     *  disk, recording a PASSED/FAILED row per file on the Environment panel. */
     private static boolean checkExcelFiles(ExtentReports extent) {
         ExcelDataConfig cfg = ConfigFactory.getExcelDataConfig();
         String base = System.getProperty("user.dir") + "/src/test/resources/";

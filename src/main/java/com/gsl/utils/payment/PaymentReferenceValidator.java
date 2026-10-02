@@ -16,6 +16,7 @@ public final class PaymentReferenceValidator {
 
     private PaymentReferenceValidator() {}
 
+    /** @return whether {@code ref.value} matches its {@code ref.system}'s format rule above; false if the value is null or the system is unrecognized. */
     public static boolean validate(PaymentReference ref) {
         if (ref.value == null) return false;
 

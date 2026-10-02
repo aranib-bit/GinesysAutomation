@@ -22,7 +22,9 @@ import com.gsl.testdata.Finance.Operations.Vouchers.ARVoucher.SelectDocument;
 import com.gsl.testdata.Finance.Operations.Vouchers.ARVoucher.SubLedgerInformation;
 import com.gsl.testdata.MasterTestData;
 import com.gsl.testdata.dto.MergedFinanceArVoucherData;
+import com.gsl.database.DatabaseManager;
 import com.gsl.utils.Log;
+import com.gsl.utils.cheque.ChequeInstrumentResolver;
 import com.gsl.utils.cheque.UniqueChequeGenerator;
 import com.gsl.utils.dataprovider.fixture.ArVoucherLiveDbRefs;
 import org.jdbi.v3.core.Jdbi;
@@ -40,9 +42,23 @@ import java.util.concurrent.atomic.AtomicInteger;
 import java.util.stream.Collectors;
 
 /**
- * Builds {@link MergedFinanceArVoucherData} instances from live DB values.
- * Each static method is one named scenario template.
- * Called by {@link ArVoucherScenarioType#loadData(ArVoucherLiveDbRefs)}.
+ * Builds {@link MergedFinanceArVoucherData} instances from live DB values — the AR analogue of
+ * {@code ApVoucherTemplateLoader}. Each public static method is one named scenario template,
+ * called by {@link ArVoucherScenarioType#loadData(ArVoucherLiveDbRefs)}.
+ *
+ * <h3>Template shapes</h3>
+ * <ul>
+ *   <li><b>Fixed templates</b> ({@link #docNoAdjustmentTemplate}, {@link #fifoTemplate},
+ *       {@link #refSitewiseFifoTemplate}, and the T-03 negative/boundary templates) — one
+ *       hand-authored scenario each, no combination dimension.</li>
+ *   <li><b>SELECT_DOCUMENT</b> — the one template with a genuine combination matrix: the
+ *       no-arg {@link #selectDocumentTemplate(ArVoucherLiveDbRefs)} builds the plain scenario,
+ *       while the 4-arg {@link #selectDocumentTemplate(ArVoucherLiveDbRefs, Jdbi, List,
+ *       SelectDocumentVariant)} builds one {@link SelectDocumentVariant} combination from
+ *       {@code SelectDocumentCombinations} — resolving date/reference/reference-site/payment-mode
+ *       dimensions via this class's own {@code resolveDocumentDate}/{@code generateReference}/
+ *       {@code resolveReferenceSite}/{@code buildPayments} private helpers.</li>
+ * </ul>
  */
 public final class ArVoucherTemplateLoader {
 
@@ -147,7 +163,15 @@ public final class ArVoucherTemplateLoader {
         }
 
         // ── 7. Payment rows (uses resolved mode, not the raw RANDOM enum) ─────
-        List<PaymentInformation> payments = buildPayments(id, subLedgers, effectivePaymentMode);
+        // Round 20: known-vs-unknown (and, for the rare known case, same-bank vs. different-bank)
+        // was already decided by ArVoucherFixtureFactory.assignKnownChequeFlags/
+        // assignChequeBankMatchFlags (an exact-ratio "controlled sequence" over ALL of this run's
+        // CHEQUE rows) — buildPayments' 6-arg overload just resolves the actual chqno for
+        // whichever outcome variant already carries.
+        long cashBankGlcode = jdbi.onDemand(com.gsl.database.dao.finance.FinGlDao.class)
+                .findByGlName(refs.getCashBankName()).getGlcode();
+        List<PaymentInformation> payments = buildPayments(id, subLedgers, effectivePaymentMode,
+                variant.isKnownCheque(), variant.isKnownChequeDifferentBank(), cashBankGlcode);
 
         // ── 8. Document header ────────────────────────────────────────────────
         DocumentInformation docInfo = new DocumentInformation(
@@ -1006,6 +1030,53 @@ public final class ArVoucherTemplateLoader {
                     null,
                     null
             ));
+        }
+        return payments;
+    }
+
+    /**
+     * Round 20 — overload used ONLY by the 4-arg {@link #selectDocumentTemplate}, AR's own
+     * ratio-driven CHEQUE scenario. Every other caller of the 3-arg
+     * {@link #buildPayments(String, List, SelectDocumentVariant.PaymentMode)} always passes a
+     * hardcoded {@code CASH} and is left unchanged.
+     *
+     * @param knownCheque              the decision {@code ArVoucherFixtureFactory
+     *                                 .assignKnownChequeFlags} already made for this run
+     * @param knownChequeDifferentBank within the (rare) known bucket, whether this row should
+     *                                 deliberately resolve a cross-bank cheque (see {@code
+     *                                 ArVoucherFixtureFactory.assignChequeBankMatchFlags})
+     * @param cashBankGlcode           this voucher's own counter-leg Cash/Bank GL
+     */
+    private static List<PaymentInformation> buildPayments(
+            String testCaseId,
+            List<SubLedgerInformation> subLedgers,
+            SelectDocumentVariant.PaymentMode paymentMode,
+            boolean knownCheque,
+            boolean knownChequeDifferentBank,
+            long cashBankGlcode) {
+
+        if (paymentMode == SelectDocumentVariant.PaymentMode.NONE || subLedgers.isEmpty()) {
+            return List.of();
+        }
+        if (paymentMode != SelectDocumentVariant.PaymentMode.CHEQUE) {
+            // Only CHEQUE is ratio-driven — NEFT_RTGS/CASH/MIX behave exactly like the 3-arg overload.
+            return buildPayments(testCaseId, subLedgers, paymentMode);
+        }
+
+        List<PaymentInformation> payments = new ArrayList<>();
+        String today = LocalDate.now().format(DateUtils.UI_DATE_FORMAT);
+        var resolution = !knownCheque
+                ? ChequeInstrumentResolver.resolveUnknown()
+                : knownChequeDifferentBank
+                        ? ChequeInstrumentResolver.resolveKnownDifferentBank(DatabaseManager.getJdbi(), cashBankGlcode)
+                        : ChequeInstrumentResolver.resolveKnownSameBank(DatabaseManager.getJdbi(), cashBankGlcode);
+        Log.info("[ArVoucherTemplateLoader] Cheque instrument resolved: bankMatch={}, chqno={}",
+                resolution.bankMatch(), resolution.chqno());
+        for (int i = 0; i < subLedgers.size(); i++) {
+            SubLedgerInformation sl = subLedgers.get(i);
+            payments.add(new PaymentInformation(
+                    testCaseId, sl.getLineNo(), PaymentSelectionType.CHEQUE,
+                    resolution.chqno(), today, null, null));
         }
         return payments;
     }

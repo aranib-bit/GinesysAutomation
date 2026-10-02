@@ -10,18 +10,18 @@ import org.openqa.selenium.support.ui.WebDriverWait;
 
 import java.time.Duration;
 
+/**
+ * Static Actions-API helpers (right-click, hover, drag, scroll-into-view, hover+click) used
+ * directly by page objects that need a raw {@link Actions} interaction rather than the
+ * wait/retry/report-integrated helpers in {@code SeleniumUtils}/{@code ActionUtils}.
+ */
 public class SeleniumActions {
-
-    /**
-     * Performs a right-click (context click) on the element located by the provided By locator.
-     *
-     * @param by The Selenium By by for the element
-     */
 
     private WebDriver driver;
     private WebDriverWait wait;
     private Actions actions;
 
+    /** Right-clicks (context-clicks) {@code by}'s element. */
     public static void rightClick(By by) {
         WebDriver driver = DriverManager.getDriver();
         WebElement element = driver.findElement(by);
@@ -29,6 +29,7 @@ public class SeleniumActions {
         actions.contextClick(element).perform();
     }
 
+    /** Scrolls {@code by}'s element into view via JS {@code scrollIntoView} (smooth, centered). */
     public static void scrollToElement(By by) {
         WebDriver driver = DriverManager.getDriver();
         WebElement element = driver.findElement(by);
@@ -48,6 +49,7 @@ public class SeleniumActions {
         actions.moveToElement(element).click().build().perform();
     }
 
+    /** Clears {@code by}'s element then sends {@code text} to it. */
     public static void moveToElementAndSendKeys(By by, String text) {
         WebDriver driver = DriverManager.getDriver();
         WebElement element = driver.findElement(by);
@@ -56,12 +58,14 @@ public class SeleniumActions {
         actions.moveToElement(element).sendKeys(text).build().perform();
     }
 
+    /** Sends {@code key} to whichever element currently has focus (no explicit target locator). */
     public static void sendKeysToActiveElement(Keys key) {
         WebDriver driver = DriverManager.getDriver();
         Actions actions = new Actions(driver);
         actions.sendKeys(key).build().perform();
     }
 
+    /** Moves to {@code by}'s element and sends {@code key} to it. */
     public static void sendKeyToElement(By by, Keys key) {
         WebDriver driver = DriverManager.getDriver();
         WebElement element = driver.findElement(by);
@@ -69,6 +73,7 @@ public class SeleniumActions {
         actions.moveToElement(element).sendKeys(key).build().perform();
     }
 
+    /** Returns {@code by}'s element's {@code textContent}, falling back to a JS read if the attribute comes back blank. */
     public static String getText(By by) {
         WebDriver driver = DriverManager.getDriver();
         WebElement element = driver.findElement(by);
@@ -84,6 +89,10 @@ public class SeleniumActions {
 
 
     // 🔹 New method: hover on one element, then click another
+    /**
+     * Hovers over {@code hoverTarget} then clicks {@code clickTarget}, retrying up to 3 times on
+     * {@link StaleElementReferenceException}/{@link TimeoutException}.
+     */
     public static void moveToElementAndClick(By hoverTarget, By clickTarget) {
         WebDriver driver = DriverManager.getDriver();
         WebDriverWait wait = WaitUtils.webDriverWait(ConfigFactory.getWaitConfig().interactionWaitSeconds());
@@ -111,6 +120,12 @@ public class SeleniumActions {
         }
     }
 
+    /**
+     * Clicks and holds {@code sourceLocator}'s element, waits for {@code targetLocator} to become
+     * clickable, then releases onto it — a drag-like press-wait-release interaction.
+     *
+     * @throws RuntimeException if {@code targetLocator} never becomes clickable
+     */
     public static void clickAndHoldThenClick(By sourceLocator, By targetLocator) {
         WebDriver driver = DriverManager.getDriver();
         WebDriverWait wait = WaitUtils.webDriverWait(ConfigFactory.getWaitConfig().interactionWaitSeconds());

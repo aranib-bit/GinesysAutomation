@@ -23,6 +23,7 @@ import com.gsl.enums.CashBankType;
 import com.gsl.enums.Finance.Operations.Common.DocumentMessageBoxMessage;
 import com.gsl.enums.Finance.Operations.GeneralVoucher.GlLineType;
 import com.gsl.enums.GlAccountType;
+import com.gsl.enums.PaymentSelectionType;
 import com.gsl.enums.PeriodDomain;
 import com.gsl.model.adm.AdmSite;
 import com.gsl.model.adm.AdmYear;
@@ -38,20 +39,27 @@ import com.gsl.pages.enums.Finance.Operations.GeneralVoucher.GeneralVoucherRever
 import com.gsl.testdata.Finance.Operations.Vouchers.GeneralVoucher.DetailLineEditTarget;
 import com.gsl.testdata.Finance.Operations.Vouchers.GeneralVoucher.DocumentInformation;
 import com.gsl.testdata.Finance.Operations.Vouchers.GeneralVoucher.ExpenseIncomeDetail;
+import com.gsl.testdata.Finance.Operations.Vouchers.GeneralVoucher.PaymentInfoEditTarget;
+import com.gsl.testdata.Finance.Operations.Vouchers.GeneralVoucher.PaymentInformation;
 import com.gsl.testdata.Finance.Operations.Vouchers.GeneralVoucher.SiteAllocation;
 import com.gsl.testdata.UserCredential;
 import com.gsl.testdata.dto.GeneralVoucherOperationMode;
 import com.gsl.testdata.dto.MergedFinanceGeneralVoucherData;
+import com.gsl.utils.DateUtils;
 import com.gsl.utils.Faker.FakerUtils;
 import com.gsl.utils.Log;
+import com.gsl.utils.cheque.ChequeInstrumentResolver;
 import com.gsl.utils.dataprovider.fixture.GeneralVoucherEditFixtureFactory;
+import com.gsl.utils.payment.PaymentReferenceGenerator;
 import com.gsl.utils.dataprovider.fixture.finance.GeneralVoucherEditCombinationFilter;
 import com.gsl.utils.dataprovider.fixture.finance.GeneralVoucherEditCombinations;
 import com.gsl.utils.dataprovider.fixture.finance.GeneralVoucherEditExecutionGroup;
 import com.gsl.utils.dataprovider.fixture.finance.GeneralVoucherEditVariant;
 import com.gsl.utils.dataprovider.fixture.finance.NegativeValidation;
+import com.gsl.utils.dataprovider.fixture.finance.PaymentInfoDateScenario;
 import com.gsl.utils.dataprovider.fixture.finance.VoucherEditDateVariant;
 import com.gsl.utils.dataprovider.source.TestDataSource;
+import com.gsl.utils.dataprovider.source.finance.common.AccountingPeriodCache;
 import com.gsl.utils.dataprovider.source.finance.common.AccountingPeriodResolver;
 import org.jdbi.v3.core.Jdbi;
 import org.testng.SkipException;
@@ -59,20 +67,23 @@ import org.testng.SkipException;
 import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 import java.util.stream.Collectors;
 
 /**
- * DB-driven test-data source for {@code editGeneralVoucherHeader}/{@code editGeneralVoucherDetailLine}
- * — sweeps the fixed 13-scenario {@link GeneralVoucherEditCombinations#allCombinations()} matrix,
- * filtered by the {@code gv.edit.group} parameter (kept deliberately distinct from Create's
- * {@code gv.group} — see {@link GeneralVoucherEditExecutionGroup}'s Javadoc), and for each
- * surviving variant matching the requested test method's scenario type (HEADER_ONLY vs
- * DETAIL_LINE — a variant whose {@link GeneralVoucherEditVariant#getScenarioType()} doesn't match
- * the running method is skipped, not emitted, since the two test methods share this one matrix):
+ * DB-driven test-data source for {@code editGeneralVoucherHeader}/{@code editGeneralVoucherDetailLine}/
+ * {@code editGeneralVoucherPaymentInfo} — sweeps the fixed 24-scenario {@link
+ * GeneralVoucherEditCombinations#allCombinations()} matrix, filtered by the {@code gv.edit.group}
+ * parameter (kept deliberately distinct from Create's {@code gv.group} — see {@link
+ * GeneralVoucherEditExecutionGroup}'s Javadoc), and for each surviving variant matching the
+ * requested test method's scenario type (HEADER_ONLY vs DETAIL_LINE vs PAYMENT_INFO — a variant
+ * whose {@link GeneralVoucherEditVariant#getScenarioType()} doesn't match the running method is
+ * skipped, not emitted, since all three test methods share this one matrix):
  *
  * <ol>
  *   <li>Claims one existing General Voucher per plan §4's selection rule — see
@@ -108,21 +119,36 @@ public class DbGeneralVoucherEditDataSource implements TestDataSource<MergedFina
 
     private final String xmlEditGroupParam;
 
+    /** No execution-group filter — every combination is emitted (full-suite run). */
     public DbGeneralVoucherEditDataSource() {
         this(null);
     }
 
+    /** @param xmlEditGroupParam fallback {@code gv.edit.group} value from TestNG {@code <parameter>},
+     *                           used when the {@code gv.edit.group} system property is absent
+     *                           (IntelliJ direct-run path) */
     public DbGeneralVoucherEditDataSource(String xmlEditGroupParam) {
         this.xmlEditGroupParam = xmlEditGroupParam;
     }
 
+    /**
+     * Sweeps {@link GeneralVoucherEditCombinations#allCombinations()}, keeping only variants that
+     * survive the active {@code gv.edit.group} filter AND whose
+     * {@link GeneralVoucherEditVariant#getScenarioType()} matches {@code methodName} (the
+     * 24-variant matrix is shared across all three edit test methods — see the class Javadoc),
+     * resolving each surviving variant via {@link #resolveOne}.
+     *
+     * @throws SkipException if {@code methodName} isn't one of the three supported edit methods
+     */
     @Override
     public List<MergedFinanceGeneralVoucherData> load(String methodName) {
         GeneralVoucherEditExecutionGroup activeGroup = GeneralVoucherEditCombinationFilter.resolveActiveGroup(xmlEditGroupParam);
 
-        if (!"editGeneralVoucherHeader".equals(methodName) && !"editGeneralVoucherDetailLine".equals(methodName)) {
+        if (!"editGeneralVoucherHeader".equals(methodName) && !"editGeneralVoucherDetailLine".equals(methodName)
+                && !"editGeneralVoucherPaymentInfo".equals(methodName)) {
             throw new SkipException("[DbGeneralVoucherEditDataSource] Unknown method '" + methodName
-                    + "' — only editGeneralVoucherHeader/editGeneralVoucherDetailLine are supported.");
+                    + "' — only editGeneralVoucherHeader/editGeneralVoucherDetailLine/"
+                    + "editGeneralVoucherPaymentInfo are supported.");
         }
 
         Jdbi jdbi = DatabaseManager.getJdbi();
@@ -153,6 +179,15 @@ public class DbGeneralVoucherEditDataSource implements TestDataSource<MergedFina
         return results;
     }
 
+    /**
+     * Builds one {@link MergedFinanceGeneralVoucherData} for {@code variant}: claims a matching
+     * voucher (via {@link #claimCandidate}), and — unless {@code variant.isRequireClosedPeriod()}
+     * short-circuits to the minimal closed-period-negative shape — resolves its site/GL, every
+     * existing {@code finvchdet} row, and its site allocations, then dispatches to
+     * {@link #buildEditedDetailLine} or {@link #buildPaymentEditTarget} depending on
+     * {@code variant.getScenarioType()} before computing the new header date/reference/remarks
+     * (see the class Javadoc's numbered "Data flow" list).
+     */
     private static MergedFinanceGeneralVoucherData resolveOne(Jdbi jdbi, GeneralVoucherEditVariant variant,
             Set<Long> claimedThisRun) {
 
@@ -253,26 +288,38 @@ public class DbGeneralVoucherEditDataSource implements TestDataSource<MergedFina
             editedDetailLine = buildEditedDetailLine(jdbi, variant, expenseIncomeRows, siteAllocations, gatheringLog);
         }
 
-        // Scope fix: a DETAIL_LINE scenario must edit ONLY the detail line — the header's
-        // date/reference/remarks stay exactly as they were before this Save. Generating a new
-        // date/reference/remarks unconditionally here (the former behavior) silently turned every
-        // "detail-only" scenario into a combined header+detail edit, which is exactly the
-        // scope-ambiguity the report review flagged. That combined-edit shape is real and will be
-        // covered later by its own regression-phase scenarios — not folded invisibly into this one.
-        boolean isDetailLineScenario = variant.getScenarioType() == GeneralVoucherEditVariant.ScenarioType.DETAIL_LINE;
+        PaymentInfoEditTarget paymentEditTarget = null;
+        if (variant.getScenarioType() == GeneralVoucherEditVariant.ScenarioType.PAYMENT_INFO) {
+            paymentEditTarget = buildPaymentEditTarget(jdbi, variant, header, detailRows, gatheringLog);
+        }
+
+        // Scope fix: a DETAIL_LINE/PAYMENT_INFO scenario must edit ONLY its own target — the
+        // header's date/reference/remarks stay exactly as they were before this Save. Generating a
+        // new date/reference/remarks unconditionally here (the former behavior) silently turned
+        // every "detail-only"/"payment-only" scenario into a combined header+other edit, which is
+        // exactly the scope-ambiguity the report review flagged. That combined-edit shape is real
+        // and will be covered later by its own regression-phase scenarios — not folded invisibly
+        // into this one.
+        boolean headerFieldsUnchanged = variant.getScenarioType() == GeneralVoucherEditVariant.ScenarioType.DETAIL_LINE
+                || variant.getScenarioType() == GeneralVoucherEditVariant.ScenarioType.PAYMENT_INFO;
 
         LocalDate newDate;
         String newReference;
         String newRemarks;
         NegativeValidation expectedValidation;
 
-        if (isDetailLineScenario) {
+        if (headerFieldsUnchanged) {
             newDate = header.getVchdt();
             newReference = header.getRefno();
             newRemarks = header.getNartext();
-            expectedValidation = null;
-            gatheringLog.add("  DETAIL_LINE scenario — header date/reference/remarks left unchanged "
-                    + "(date=" + newDate + ", refno='" + newReference + "')");
+            // PaymentInfoDateScenario#expectedRejection() is null for every ordinary Payment-Info
+            // variant (unchanged default) and for the 3 positive date scenarios — only
+            // NEFT_FUTURE_DATE_CR_REJECTED carries a real NegativeValidation. Mirrors exactly how
+            // the HEADER_ONLY branch below derives its own expectedValidation from its own flags.
+            expectedValidation = variant.getDateScenario() != null
+                    ? variant.getDateScenario().expectedRejection() : null;
+            gatheringLog.add("  " + variant.getScenarioType() + " scenario — header date/reference/remarks "
+                    + "left unchanged (date=" + newDate + ", refno='" + newReference + "')");
         } else {
             // Field-isolated header edits (plan §4D): a HEADER_ONLY variant's scope decides which
             // of date/reference/remarks actually change — ALL (the pre-existing, still-default
@@ -372,6 +419,13 @@ public class DbGeneralVoucherEditDataSource implements TestDataSource<MergedFina
                 .expenseIncomeDetailList(expenseIncomeRows)
                 .siteAllocationList(siteAllocations)
                 .editedDetailLine(editedDetailLine)
+                .paymentEditTarget(paymentEditTarget)
+                // Cross-dependency with the shared Extent header (GeneralVoucherExtentDescriptionLogger
+                // #appendExtraHeaderRows): setting these here — not just paymentEditTarget — is what
+                // makes the "Cheque No."/"Cheque Known/Unknown" header rows render the Edit "after"
+                // state automatically, with zero further changes needed in that reporting file.
+                .cashBankPaymentInfo(paymentEditTarget != null ? paymentEditTarget.getNewPayment() : null)
+                .actualChequeBankMatch(paymentEditTarget != null ? paymentEditTarget.getNewBankMatch() : null)
                 .headerFieldScope(variant.getHeaderFieldScope())
                 .entryMethod(variant.getEntryMethod())
                 .expectedValidation(expectedValidation)
@@ -385,12 +439,23 @@ public class DbGeneralVoucherEditDataSource implements TestDataSource<MergedFina
         return data;
     }
 
+    /** Resolves every {@code finvchdet} row on the claimed voucher (not just the one being
+     *  edited) into an {@link ExpenseIncomeDetail} — GL name, sub-ledger name/id, amount/side,
+     *  reversal flag, and (best-effort — see the inline comments below) resolved GL type/account
+     *  class. */
     private static List<ExpenseIncomeDetail> resolveExpenseIncomeRows(
             List<FinVchDet> detailRows, FinGlDao glDao, FinSlDao slDao) {
         List<ExpenseIncomeDetail> rows = new ArrayList<>();
+        // Finding D (Round 12 continued): local per-call cache — a multi-line voucher with several
+        // finvchdet rows sharing the same glcode/slcode (common; confirmed live: a 13-line voucher
+        // sharing one glcode issued 13 identical `fingl WHERE glcode=?` queries with zero
+        // memoization) used to re-issue the identical lookup once per line. Scoped to this one
+        // call only — not shared across separate claimed vouchers.
+        Map<Long, FinGl> glCache = new HashMap<>();
+        Map<Long, FinSl> slCache = new HashMap<>();
         for (int i = 0; i < detailRows.size(); i++) {
             FinVchDet d = detailRows.get(i);
-            FinGl gl = glDao.findByGlCode(d.getGlcode());
+            FinGl gl = glCache.computeIfAbsent(d.getGlcode(), glDao::findByGlCode);
             String glName = gl != null ? gl.getGlname() : ("GL-" + d.getGlcode());
             boolean debit = d.getDamount() != null && d.getDamount().signum() != 0;
 
@@ -403,7 +468,7 @@ public class DbGeneralVoucherEditDataSource implements TestDataSource<MergedFina
             String subLedgerName = null;
             String subLedgerId = null;
             if (d.getSlcode() != 0) {
-                FinSl sl = slDao.findBySlcode(d.getSlcode());
+                FinSl sl = slCache.computeIfAbsent(d.getSlcode(), slDao::findBySlcode);
                 if (sl != null) {
                     subLedgerName = sl.getSlname();
                     subLedgerId = sl.getSlid();
@@ -457,6 +522,9 @@ public class DbGeneralVoucherEditDataSource implements TestDataSource<MergedFina
         return rows;
     }
 
+    /** Resolves {@code fincosttag} rows into {@link SiteAllocation}s for every Site-applicable
+     *  row in {@code expenseIncomeRows} (a row whose {@code resolvedGlType} is null or not
+     *  site-applicable is skipped). */
     private static List<SiteAllocation> resolveSiteAllocations(Jdbi jdbi, long vchcode,
             List<FinVchDet> detailRows, List<ExpenseIncomeDetail> expenseIncomeRows) {
         List<SiteAllocation> allocations = new ArrayList<>();
@@ -484,6 +552,126 @@ public class DbGeneralVoucherEditDataSource implements TestDataSource<MergedFina
     }
 
     /**
+     * Builds the before/after Payment Information pair for a PAYMENT_INFO scenario — reads the
+     * claimed voucher's FIRST finvchdet row (the single counter-leg row every GV Cash/Bank
+     * payment concept lives on — see {@link PaymentInformation}'s own Javadoc) for the "before"
+     * state, then resolves a fresh known-cheque instrument number for the SAME Cash/Bank glcode
+     * via {@link ChequeInstrumentResolver} — mirroring {@code GeneralVoucherTemplateLoader}'s
+     * Create-flow cheque resolution, just applied to an EXISTING voucher instead of a brand-new
+     * one. {@code claimOne}'s own filter guarantees {@code detailRows.get(0)} is already
+     * Cheque-mode with a non-null {@code chqno}, so {@code beforeMode} resolves to {@code CHEQUE}
+     * here in practice — {@link PaymentSelectionType#fromDbCode} is still a genuine read of the
+     * live DB value, not an assumption.
+     */
+    private static PaymentInfoEditTarget buildPaymentEditTarget(Jdbi jdbi, GeneralVoucherEditVariant variant,
+            FinVchMain header, List<FinVchDet> detailRows, List<String> gatheringLog) {
+
+        if (detailRows.isEmpty()) {
+            throw new SkipException("Skipped due to lack of data: claimed voucher has no finvchdet rows "
+                    + "at all, for variant '" + variant.getVariantId() + "'.");
+        }
+        FinVchDet firstRow = detailRows.get(0);
+
+        PaymentSelectionType beforeMode = PaymentSelectionType.fromDbCode(firstRow.getPaymentMode());
+        PaymentInformation beforePayment = new PaymentInformation(
+                variant.getVariantId(), "CASHBANK", beforeMode, firstRow.getChqno(),
+                firstRow.getChqdt() != null ? firstRow.getChqdt().toLocalDate().toString() : null,
+                firstRow.getDrawnOn(), null);
+
+        PaymentInfoEditTarget.PaymentModeShape shape = variant.getPaymentInfoEditShape() != null
+                ? variant.getPaymentInfoEditShape() : PaymentInfoEditTarget.PaymentModeShape.SAME_MODE_NEW_INSTRUMENT;
+
+        // futureInstrumentDate is non-null only for the 4 dedicated PaymentInfoDateScenario
+        // regression variants — resolved once, up front, since both branches below may need it.
+        String futureInstrumentDate = variant.getDateScenario() != null && variant.getDateScenario().futureDate()
+                ? resolveFutureInstrumentDate(jdbi, header).format(DateUtils.UI_DATE_FORMAT)
+                : null;
+
+        PaymentInformation newPayment;
+        ChequeInstrumentResolver.ChequeBankMatch newBankMatch;
+        Long newBookcode;
+
+        if (shape == PaymentInfoEditTarget.PaymentModeShape.CHEQUE_TO_NEFT) {
+            // instrumentNo = a synthetic NEFT reference (the same generic "instrumentNo" slot
+            // Cheque uses — finvchdet has no separate NEFT-reference column), drawnOn/reference =
+            // null. instrumentDate = the voucher's OWN (unchanged) document date by default, NOT
+            // LocalDate.now() — a confirmed live bug (reports/runs/20260917_005651 and
+            // 20260922_225443, FIN-GV-EDIT-PAYMENT-02): PAYMENT_INFO scenarios leave the header
+            // date unchanged (see headerFieldsUnchanged above), so "today" is almost always LATER
+            // than a pre-existing seeded voucher's own document date, and NEFT/RTGS rejects any
+            // instrument date greater than the entry date ("Instrument date cannot be greater
+            // than entry date", confirmed via live screenshot) — this was failing deterministically,
+            // not flakily. Create's equivalent (GeneralVoucherTemplateLoader#combinationTemplate)
+            // never hit this because ITS document date is also LocalDate.now(), so the two always
+            // matched there; Edit's document date is static, so it must be reused directly instead.
+            // futureInstrumentDate (set only for NEFT_FUTURE_DATE_CR_REJECTED) deliberately
+            // overrides this default to genuinely exercise the rejection rule.
+            String instrumentDate = futureInstrumentDate != null
+                    ? futureInstrumentDate : header.getVchdt().format(DateUtils.UI_DATE_FORMAT);
+            newPayment = new PaymentInformation(variant.getVariantId(), "CASHBANK", PaymentSelectionType.NEFT_RTGS,
+                    PaymentReferenceGenerator.generateNEFT(), instrumentDate, null, null);
+            // NEFT has no cheque-book concept at all — no resolver call, no bank-match/bookcode outcome.
+            newBankMatch = null;
+            newBookcode = null;
+        } else {
+            // SAME_MODE_NEW_INSTRUMENT and NEFT_TO_CHEQUE both land here — both move TO Cheque
+            // with a fresh known/same-bank instrument number; the only difference between them is
+            // what the "before" row's payment_mode was, guaranteed by claimOne's shape-specific
+            // filter (payment_mode='C' vs. 'R'). instrumentDate stays null (unset — matches
+            // popup/UI defaults) unless futureInstrumentDate overrides it (CHEQUE_FUTURE_DATE_
+            // CR_ACCEPTED/CHEQUE_FUTURE_DATE_DR_ACCEPTED).
+            ChequeInstrumentResolver.ChequeResolution resolution =
+                    ChequeInstrumentResolver.resolveKnownSameBank(jdbi, header.getGlcode());
+            // Drawn On deliberately carries the SAME value as before — this scenario only swaps
+            // the instrument number/mode, not the bank the cheque is drawn on (see
+            // GeneralVoucherEditChangeSets#paymentInfoEdit's matching "no drawnon rule" note).
+            newPayment = new PaymentInformation(variant.getVariantId(), "CASHBANK", PaymentSelectionType.CHEQUE,
+                    resolution.chqno(), futureInstrumentDate, firstRow.getDrawnOn(), null);
+            newBankMatch = resolution.bankMatch();
+            newBookcode = resolution.bookcode();
+        }
+
+        gatheringLog.add("  Payment-Info edit (" + shape + "): '" + beforePayment.getPaymentMode() + " / "
+                + beforePayment.getInstrumentNo() + "' -> '" + newPayment.getPaymentMode() + " / "
+                + newPayment.getInstrumentNo() + "' (newBankMatch=" + newBankMatch + ", newBookcode=" + newBookcode + ")");
+
+        return PaymentInfoEditTarget.builder()
+                .beforePayment(beforePayment)
+                .newPayment(newPayment)
+                // claimOne's filter guarantees the claimed candidate's first row is already a real
+                // registered Cheque whenever beforeMode==CHEQUE — SAME_BANK is the correct outcome
+                // for "before" by construction in that case, not independently re-resolved
+                // (re-resolving would need the SAME finchqdet row ChequeBookValidator later checks
+                // against, which this data source doesn't read). null for a NEFT "before" row (no
+                // cheque-book concept) — this generalizes correctly to all three shapes unchanged.
+                .beforeBankMatch(beforeMode == PaymentSelectionType.CHEQUE
+                        ? ChequeInstrumentResolver.ChequeBankMatch.SAME_BANK : null)
+                .newBankMatch(newBankMatch)
+                .newBookcode(newBookcode)
+                .shape(shape)
+                .build();
+    }
+
+    /**
+     * Resolves a genuinely future Instrument Date for the {@link PaymentInfoDateScenario}
+     * regression variants — {@code header.getVchdt().plusDays(5)}, capped at the voucher's own
+     * accounting year's last valid day (via {@link AccountingPeriodResolver#lastValidDay}) so this
+     * never accidentally crosses into a different accounting year and trips the unrelated {@code
+     * GV_EDIT_DATE_CROSSES_ACCOUNTING_YEAR} rejection instead of the instrument-date rule these
+     * scenarios exist to isolate. Edge case, not specially guarded: if the voucher's own entry date
+     * already IS that last valid day, the capped candidate equals (not exceeds) the entry date —
+     * rare enough not to warrant extra defensive logic here.
+     */
+    private static LocalDate resolveFutureInstrumentDate(Jdbi jdbi, FinVchMain header) {
+        AdmYear year = jdbi.onDemand(AdmYearDao.class).findByYcode(header.getYcode())
+                .orElseThrow(() -> new IllegalStateException(
+                        "[DbGeneralVoucherEditDataSource] admyear has no row for ycode=" + header.getYcode()));
+        LocalDate candidate = header.getVchdt().plusDays(5);
+        LocalDate cap = AccountingPeriodResolver.lastValidDay(year);
+        return candidate.isAfter(cap) ? cap : candidate;
+    }
+
+    /**
      * Dispatches to one of 4 shape-specific builders (plan §4B) based on
      * {@link GeneralVoucherEditVariant#getDetailLineEditShape()}. {@code IN_PLACE} is the
      * original, still most common shape (amount/reversal/narration only, same GL/Sub Ledger) —
@@ -502,6 +690,10 @@ public class DbGeneralVoucherEditDataSource implements TestDataSource<MergedFina
         };
     }
 
+    /** Builds the default {@code IN_PLACE} detail-line edit shape (plan §4B shape 0): same GL/Sub
+     *  Ledger as the existing row, with a new amount ({@code existing amount + AMOUNT_DELTA}),
+     *  the variant's reversal toggle, and (when {@code narrationEdit} is set) a new Ledger
+     *  Narration. */
     private static DetailLineEditTarget buildInPlaceEdit(GeneralVoucherEditVariant variant,
             List<ExpenseIncomeDetail> expenseIncomeRows, List<String> gatheringLog) {
 
@@ -867,7 +1059,7 @@ public class DbGeneralVoucherEditDataSource implements TestDataSource<MergedFina
                                     + (variant.isRequireClosedPeriod() ? "closed" : "open")
                                     + ", unclaimed this run — need 1.")),
                     1,
-                    new GeneralVoucherEditRevertBackfillStrategy());
+                    new GeneralVoucherEditRevertBackfillStrategy(variant));
         }
 
         return claimOne(jdbi, "P", variant, claimedThisRun, gatheringLog)
@@ -885,8 +1077,29 @@ public class DbGeneralVoucherEditDataSource implements TestDataSource<MergedFina
         return variant.getGlLineType() != null ? " with a finvchdet line of GlLineType=" + variant.getGlLineType() : "";
     }
 
+    /**
+     * Scans candidates for {@code status} matching {@code variant}'s shape requirements (plain,
+     * GL-line-type-joined, or shared-glcode-sibling — see the three branches below), preferring
+     * the current accounting year (pass 1) before falling back to any open-period candidate
+     * (pass 2) — mirrors {@link DbGeneralVoucherRevertDataSource#claimOnePostedVoucher}'s
+     * two-pass shape. {@code requireClosedPeriod} variants invert both the scan order (oldest
+     * first) and the period filter (want CLOSED, not open).
+     */
     private static Optional<Long> claimOne(Jdbi jdbi, String status, GeneralVoucherEditVariant variant,
             Set<Long> claimedThisRun, List<String> gatheringLog) {
+        List<FinVchMain> candidates = fetchCandidates(jdbi, status, variant);
+        return claimFromCandidates(jdbi, variant, candidates, claimedThisRun, gatheringLog);
+    }
+
+    /**
+     * The shape-filtered, ordered candidate list for {@code variant} at {@code status} — the SQL half
+     * of {@link #claimOne}, public so {@code GeneralVoucherEditRevertBackfillStrategy} applies the
+     * IDENTICAL shape filters (first-row Cheque/NEFT mode + chqno, Cash/Bank ledger type, shared-glcode
+     * sibling, GL-line-type join) when choosing which Posted voucher to revert: a voucher this query
+     * would reject once Unposted is useless to revert. Reservation and period filtering are NOT done
+     * here — see {@link #acceptanceFilter}.
+     */
+    public static List<FinVchMain> fetchCandidates(Jdbi jdbi, String status, GeneralVoucherEditVariant variant) {
 
         // ! requireClosedPeriod variants deliberately want an OLD, closed-period document — scanning
         // newest-first (the default, correct for ordinary open-period variants) forces the scan
@@ -899,7 +1112,12 @@ public class DbGeneralVoucherEditDataSource implements TestDataSource<MergedFina
                 ? "ORDER BY m.ycode ASC, m.vchdt ASC"
                 : "ORDER BY m.ycode DESC, m.vchdt DESC";
 
-        List<Long> candidates;
+        // Finding A (Round 12): each branch below now SELECTs m.* (not just m.vchcode) and bulk-maps
+        // to FinVchMain via .mapToBean — scanAndClaim's own scan loop used to re-fetch each
+        // candidate's full row individually (SELECT * FROM finvchmain WHERE vchcode = ? per
+        // candidate), the dominant cost of a deep/exhausted scan. Filters/order/reservation
+        // bookkeeping are all unchanged.
+        List<FinVchMain> candidates;
         if (variant.getScenarioType() == GeneralVoucherEditVariant.ScenarioType.DETAIL_LINE && variant.isRequireSharedGlcodeSibling()) {
             // No fingl join / slapp+costapp filter here, unlike the glLineType branch below —
             // confirmed live in idealdb that the "two finvchdet rows share a glcode with
@@ -919,13 +1137,13 @@ public class DbGeneralVoucherEditDataSource implements TestDataSource<MergedFina
             // DbGeneralVoucherRevertDataSource#claimOnePostedVoucher; this branch carried the
             // identical latent bug, just not yet triggered by a MANDATORY-group run.
             String sql =
-                    "SELECT m.vchcode FROM finvchmain m " +
+                    "SELECT m.* FROM finvchmain m " +
                     "WHERE m.vchtype = 'G' AND m.release_status = :status " +
                     "AND NOT EXISTS (SELECT 1 FROM finvchdet d2 WHERE d2.vchcode = m.vchcode AND d2.brsdt IS NOT NULL) " +
                     "AND EXISTS (SELECT 1 FROM finvchdet d, finvchdet d3 WHERE d.vchcode = m.vchcode " +
                     "AND d3.vchcode = m.vchcode AND d3.glcode = d.glcode AND d3.slcode <> d.slcode) " +
                     orderBy;
-            candidates = jdbi.withHandle(h -> h.createQuery(sql).bind("status", status).mapTo(Long.class).list());
+            candidates = jdbi.withHandle(h -> h.createQuery(sql).bind("status", status).mapToBean(FinVchMain.class).list());
         } else if (variant.getScenarioType() == GeneralVoucherEditVariant.ScenarioType.DETAIL_LINE && variant.getGlLineType() != null) {
             String slapp = variant.getGlLineType().isSubLedgerApplicable() ? "Y" : "N";
             String costapp = variant.getGlLineType().isSiteApplicable() ? "Y" : "N";
@@ -935,7 +1153,7 @@ public class DbGeneralVoucherEditDataSource implements TestDataSource<MergedFina
             // PSQLException "for SELECT DISTINCT, ORDER BY expressions must appear in select
             // list" — this branch carries the identical latent bug.
             String sql =
-                    "SELECT m.vchcode FROM finvchmain m " +
+                    "SELECT m.* FROM finvchmain m " +
                     "WHERE m.vchtype = 'G' AND m.release_status = :status " +
                     "AND EXISTS (SELECT 1 FROM finvchdet d JOIN fingl g ON g.glcode = d.glcode " +
                     "WHERE d.vchcode = m.vchcode AND g.slapp = :slapp AND g.costapp = :costapp) " +
@@ -943,7 +1161,7 @@ public class DbGeneralVoucherEditDataSource implements TestDataSource<MergedFina
                     orderBy;
             candidates = jdbi.withHandle(h -> h.createQuery(sql)
                     .bind("status", status).bind("slapp", slapp).bind("costapp", costapp)
-                    .mapTo(Long.class).list());
+                    .mapToBean(FinVchMain.class).list());
         } else {
             // Optional Cash/Bank-ledger-type constraint (Round 22 GV plan, FIN-GV-EDIT-HEADER-04):
             // only the two FUTURE_DATE variants set requiredCashBankType today, so this join/
@@ -954,9 +1172,35 @@ public class DbGeneralVoucherEditDataSource implements TestDataSource<MergedFina
                     ? "JOIN fingl gcb ON gcb.glcode = m.glcode " : "";
             String cashBankFilter = requiredCashBankType != null
                     ? "AND gcb.srctype = :cashBankSrctype " : "";
+            // PAYMENT_INFO-only: the claimed candidate's FIRST finvchdet row (ORDER BY code —
+            // FinVchDetDao#findByVoucherCode's own "row 1 is the single Cash/Bank counter-leg"
+            // convention, see PaymentInformation's Javadoc) must already be in the SOURCE mode for
+            // this scenario's shape, with a real instrument no. — there has to be an existing
+            // value to change. SAME_MODE_NEW_INSTRUMENT/CHEQUE_TO_NEFT both start from Cheque
+            // ('C'); NEFT_TO_CHEQUE starts from NEFT/RTGS ('R').
+            String firstRowChequeFilter = "";
+            if (variant.getScenarioType() == GeneralVoucherEditVariant.ScenarioType.PAYMENT_INFO) {
+                String requiredSourceMode =
+                        variant.getPaymentInfoEditShape() == PaymentInfoEditTarget.PaymentModeShape.NEFT_TO_CHEQUE
+                                ? "R" : "C";
+                // PaymentInfoDateScenario-only: pin the counter-leg to Dr or Cr — see that enum's
+                // own class Javadoc for why (GvPaymentInformationPopup's known/unknown-cheque
+                // branching on a Dr row skips setInstrumentDate entirely for a synthetic instrument
+                // number, so a future-date override would never actually reach the UI unless the
+                // row is genuinely the required side). No-op (both left blank) for every ordinary
+                // PAYMENT_INFO variant, matching today's existing "whichever row comes first" behavior.
+                PaymentInfoDateScenario dateScenario = variant.getDateScenario();
+                String drCrFilter = dateScenario == null ? ""
+                        : dateScenario.requireCrRow()
+                                ? "AND d1.camount IS NOT NULL AND d1.camount <> 0 "
+                                : "AND d1.damount IS NOT NULL AND d1.damount <> 0 ";
+                firstRowChequeFilter = "AND EXISTS (SELECT 1 FROM (SELECT * FROM finvchdet WHERE vchcode = m.vchcode "
+                        + "ORDER BY code LIMIT 1) d1 WHERE d1.payment_mode = '" + requiredSourceMode
+                        + "' AND d1.chqno IS NOT NULL " + drCrFilter + ") ";
+            }
             String sql =
-                    "SELECT m.vchcode FROM finvchmain m " + cashBankJoin +
-                    "WHERE m.vchtype = 'G' AND m.release_status = :status " + cashBankFilter +
+                    "SELECT m.* FROM finvchmain m " + cashBankJoin +
+                    "WHERE m.vchtype = 'G' AND m.release_status = :status " + cashBankFilter + firstRowChequeFilter +
                     "AND NOT EXISTS (SELECT 1 FROM finvchdet d2 WHERE d2.vchcode = m.vchcode AND d2.brsdt IS NOT NULL) " +
                     orderBy;
             candidates = jdbi.withHandle(h -> {
@@ -964,54 +1208,64 @@ public class DbGeneralVoucherEditDataSource implements TestDataSource<MergedFina
                 if (requiredCashBankType != null) {
                     query = query.bind("cashBankSrctype", requiredCashBankType.srcType());
                 }
-                return query.mapTo(Long.class).list();
+                return query.mapToBean(FinVchMain.class).list();
             });
         }
-        // ORDER BY above uses ycode/vchdt, never vchcode — an insert-order surrogate key with no
-        // guaranteed relationship to accounting period or document date (a backdated/corrective
-        // entry can carry a high vchcode but an old ycode/vchdt); see
-        // AccountingPeriodResolver#findCurrentYear's Javadoc. Direction is ASC for
-        // requireClosedPeriod variants, DESC otherwise (round 5 fix) — see orderBy above.
+        return candidates;
+    }
 
-        FinVchMainDao headerDao = jdbi.onDemand(FinVchMainDao.class);
+    /** The period / future-date-room acceptance test {@link #claimOne} applies to every candidate —
+     *  public for the same reason as {@link #fetchCandidates}. */
+    public static java.util.function.Predicate<FinVchMain> acceptanceFilter(Jdbi jdbi,
+            GeneralVoucherEditVariant variant, AccountingPeriodCache periodCache) {
         boolean requiresFutureDateRoom = variant.getDateVariant() == VoucherEditDateVariant.FUTURE_DATE;
-
-        // requireClosedPeriod variants deliberately want a NON-current (closed) year — current-
-        // year preference only applies to ordinary, open-period-seeking variants.
-        Long currentYcode = variant.isRequireClosedPeriod()
-                ? null
-                : AccountingPeriodResolver.logAndResolveCurrentYcode(jdbi, headerDao, candidates, gatheringLog);
-
-        java.util.function.Predicate<FinVchMain> baseFilter = header -> {
-            boolean periodOpen = AccountingPeriodResolver.isEditable(jdbi, header, PeriodDomain.FINANCE);
-            // Every ordinary variant needs an OPEN period; the one requireClosedPeriod negative
-            // variant (GV_EDIT_HEADER_POSTED_MONTH_CLOSED_NEGATIVE) needs the exact inverse — a
-            // CLOSED period — so it can exercise EditGeneralVoucher's "Unpost if Posted" prep step
-            // hitting the app's own closed-period rejection.
+        return header -> {
+            boolean periodOpen = periodCache.isEditable(jdbi, header, PeriodDomain.FINANCE);
             if (variant.isRequireClosedPeriod() ? !periodOpen : periodOpen) {
                 // continues below
             } else {
                 return false;
             }
-            // FUTURE_DATE additionally needs a fiscal year still "in progress" (room after today)
-            // — a past/fully-elapsed year would make "date > today" indistinguishable from simply
-            // crossing into a different (later) year.
             if (requiresFutureDateRoom) {
                 AdmYear year = jdbi.onDemand(AdmYearDao.class).findByYcode(header.getYcode()).orElse(null);
                 return year != null && AccountingPeriodResolver.supportsFutureDateVariant(year);
             }
             return true;
         };
+    }
+
+    private static Optional<Long> claimFromCandidates(Jdbi jdbi, GeneralVoucherEditVariant variant,
+            List<FinVchMain> candidates, Set<Long> claimedThisRun, List<String> gatheringLog) {
+        // ORDER BY above uses ycode/vchdt, never vchcode — an insert-order surrogate key with no
+        // guaranteed relationship to accounting period or document date (a backdated/corrective
+        // entry can carry a high vchcode but an old ycode/vchdt); see
+        // AccountingPeriodResolver#findCurrentYear's Javadoc. Direction is ASC for
+        // requireClosedPeriod variants, DESC otherwise (round 5 fix) — see orderBy above.
+
+        // Memoizes the OU/year/month lookups the filter below would otherwise re-query per
+        // rejected candidate across both scan passes — see AccountingPeriodCache's own Javadoc.
+        // Created BEFORE logAndResolveCurrentYcode (Finding C, Round 12 continued) so that call's
+        // own first-candidate period lookup is cached too, not re-queried moments later by
+        // the filter's own isEditable check for that same candidate.
+        AccountingPeriodCache periodCache = new AccountingPeriodCache();
+
+        // requireClosedPeriod variants deliberately want a NON-current (closed) year — current-
+        // year preference only applies to ordinary, open-period-seeking variants.
+        Long currentYcode = variant.isRequireClosedPeriod()
+                ? null
+                : AccountingPeriodResolver.logAndResolveCurrentYcode(jdbi, candidates, gatheringLog, periodCache);
+
+        java.util.function.Predicate<FinVchMain> baseFilter = acceptanceFilter(jdbi, variant, periodCache);
 
         // Pass 1: current-year candidates only (skipped entirely for requireClosedPeriod variants
         // — currentYcode is null for those, so this pass is a guaranteed no-op).
         if (currentYcode != null) {
-            Optional<Long> claimed = scanAndClaim(headerDao, candidates, claimedThisRun,
+            Optional<Long> claimed = scanAndClaim(candidates, claimedThisRun,
                     baseFilter.and(header -> header.getYcode() == currentYcode));
             if (claimed.isPresent()) return claimed;
         }
         // Pass 2 (fallback): any candidate matching baseFilter, same order as fetched above.
-        return scanAndClaim(headerDao, candidates, claimedThisRun, baseFilter);
+        return scanAndClaim(candidates, claimedThisRun, baseFilter);
     }
 
     /**
@@ -1031,13 +1285,11 @@ public class DbGeneralVoucherEditDataSource implements TestDataSource<MergedFina
      * which {@code EditGeneralVoucher} already inherits) — is what actually prevents that: if
      * another thread/test method already reserved this vchcode, try the next candidate instead.
      */
-    private static Optional<Long> scanAndClaim(FinVchMainDao headerDao, List<Long> candidates,
+    private static Optional<Long> scanAndClaim(List<FinVchMain> candidates,
             Set<Long> claimedThisRun, java.util.function.Predicate<FinVchMain> filter) {
-        for (Long vchcode : candidates) {
+        for (FinVchMain header : candidates) {
+            long vchcode = header.getVchcode();
             if (claimedThisRun.contains(vchcode)) continue;
-
-            FinVchMain header = headerDao.findByVoucherCode(vchcode).orElse(null);
-            if (header == null) continue;
             if (!filter.test(header)) continue;
 
             if (!DocumentReservationRegistry.tryReserve(String.valueOf(vchcode))) {

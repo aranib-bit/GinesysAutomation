@@ -6,6 +6,20 @@ import com.zaxxer.hikari.HikariDataSource;
 import org.jdbi.v3.core.Jdbi;
 import org.jdbi.v3.sqlobject.SqlObjectPlugin; // ✅ Added import
 
+/**
+ * Central, framework-wide provider of the single {@link Jdbi} instance and its backing
+ * {@link HikariDataSource} connection pool. This is the DB entry point every DAO/query
+ * class in {@code com.gsl.database} goes through — {@link DbIdQueue}, {@link DocumentSelector},
+ * and every {@code *Query}/{@code *Dao} class call {@link #getJdbi()} rather than opening
+ * their own connection.
+ *
+ * <p>Lazily initialized via the holder-class idiom ({@link Holder}) on first access, reading
+ * connection/pool settings from {@code databaseconfig.properties} through
+ * {@link ConfigFactory#getDataBaseConfig()} and dispatching the JDBC URL/driver by
+ * {@code databaseType} ({@code postgres}, {@code oracle}, or {@code sqlserver}). Also installs
+ * {@link SqlObjectPlugin} and registers {@link JdbiSqlLogger} so every statement is
+ * automatically logged without callers doing anything extra.
+ */
 public class DatabaseManager {
 
     private DatabaseManager() {}
@@ -89,6 +103,7 @@ public class DatabaseManager {
         }
     }
 
+    /** Builds the JDBC URL for {@code type} ({@code postgres}/{@code oracle}/{@code sqlserver}); throws {@link IllegalArgumentException} for any other value. */
     private static String buildJdbcUrl(String type, String host, String port, String name) {
         return switch (type.toLowerCase()) {
             case "postgres" -> "jdbc:postgresql://" + host + ":" + port + "/" + name;
@@ -98,14 +113,17 @@ public class DatabaseManager {
         };
     }
 
+    /** Returns the shared {@link Jdbi} instance, initializing the connection pool on first call. */
     public static Jdbi getJdbi() {
         return Holder.JDBI;
     }
 
+    /** Returns the shared {@link HikariDataSource}, initializing the connection pool on first call. */
     public static HikariDataSource getDataSource() {
         return Holder.DATA_SOURCE;
     }
 
+    /** Closes the shared connection pool if open. Intended for suite-level teardown; safe to call more than once. */
     public static void close() {
         if (Holder.DATA_SOURCE != null && !Holder.DATA_SOURCE.isClosed()) {
             Holder.DATA_SOURCE.close();

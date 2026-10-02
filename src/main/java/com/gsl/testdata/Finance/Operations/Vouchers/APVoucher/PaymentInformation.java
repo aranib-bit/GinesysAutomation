@@ -9,6 +9,12 @@ import lombok.AllArgsConstructor;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
 
+/**
+ * Test-data model for one row in the AP Voucher "PaymentInformation" sheet — the payment-mode
+ * details (mode, instrument no./date, drawn-on bank, reference) for a sub-ledger adjustment line.
+ * Implements {@link VoucherPaymentInfo} so shared resolvers (e.g. PaymentModeResolver) can work
+ * against AP and AR rows uniformly.
+ */
 @Getter
 @NoArgsConstructor
 @AllArgsConstructor

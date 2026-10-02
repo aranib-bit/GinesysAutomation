@@ -30,6 +30,11 @@ import static io.github.sskorol.data.TestDataReader.use;
  */
 public class MergedAccountClassLifecycleDataSupplier {
 
+    /**
+     * Reads every row of the Account Class naming-convention Excel sheet (path overridable via
+     * the {@code finAccountClassLifecyclePath} system property) and emits one {@code Object[]}
+     * (null credential + row) per row, each becoming its own parallel TestNG invocation.
+     */
     @DataSupplier(name = "AccountClassLifecycleData", flatMap = true, runInParallel = true)
     public StreamEx<Object[]> dataSupplier() {
         // System property override (set by the accountclass-single Maven profile) lets an ad hoc

@@ -1,6 +1,7 @@
 package com.gsl.testdata.dto;
 
 import com.gsl.flow.Finance.Operations.Common.PostSaveDialogHandler;
+import com.gsl.pages.enums.Finance.Operations.APVoucher.APVoucherRevertOutcome;
 import com.gsl.testdata.Finance.Operations.Vouchers.APVoucher.*;
 import com.gsl.testdata.InvocationData;
 import com.gsl.testdata.MasterTestData;
@@ -8,6 +9,7 @@ import com.gsl.utils.dataprovider.fixture.finance.ApVoucherExecutionGroup;
 import com.gsl.utils.dataprovider.fixture.finance.ApVoucherFixtureOptions;
 import com.gsl.utils.dataprovider.fixture.finance.ApVoucherScenarioType;
 import com.gsl.utils.dataprovider.fixture.finance.ApVoucherTag;
+import com.gsl.utils.dataprovider.fixture.finance.DocumentSearchStrategy;
 import com.gsl.utils.dataprovider.fixture.finance.NegativeValidation;
 import com.gsl.validation.db.finance.VoucherDbContextBuilder;
 import lombok.AllArgsConstructor;
@@ -24,6 +26,17 @@ import java.util.Optional;
 import java.util.Set;
 import java.util.stream.Collectors;
 
+/**
+ * Merged AP Voucher test data — the AP analogue of {@link MergedFinanceArVoucherData}, produced
+ * by {@code MergedFinApVoucherDataSupplier} (Excel mode via {@code ExcelApVoucherDataSource}, DB
+ * mode via {@code DbApVoucherDataSource}). Carries the header, sub-ledger, select-document,
+ * FIFO-setoff, payment-information and TDS/net-payable rows a single AP Voucher test invocation
+ * needs, plus DB-mode-only scenario/fixture metadata, tag filtering, and runtime-captured
+ * TDS/Net-Payable amounts (see the individual field Javadocs below).
+ *
+ * <p>Implements {@link VoucherReportData} directly, so the report layer ({@code
+ * VoucherExtentDescriptionLogger}) can work against it uniformly alongside AR/GV.
+ */
 @Data
 @Builder
 @AllArgsConstructor
@@ -107,16 +120,120 @@ public class MergedFinanceApVoucherData
     @Builder.Default
     private Set<ApVoucherTag> tags = Collections.emptySet();
 
+    // ─── Revert/Delete/Edit fields (mirrors MergedFinanceArVoucherData's own) ─────────
+
+    /**
+     * The {@code scheme_docno} of an existing AP Voucher to operate on — populated by the
+     * Revert/Delete/Edit data sources (Excel {@code ExcelApVoucherRevertDataSource}/
+     * {@code ExcelApVoucherDeleteDataSource}/{@code ExcelApVoucherEditDataSource}, DB
+     * {@code DbApVoucherRevertDataSource}/{@code DbApVoucherDeleteDataSource}/
+     * {@code DbApVoucherEditDataSource}); {@code null} in Create mode. Used by the test classes to
+     * locate the voucher in the list page. Mirrors {@code MergedFinanceArVoucherData
+     * #getExistingVoucherNo()}'s exact semantics.
+     */
+    private String existingVoucherNo;
+
+    /**
+     * {@code release_status} of the voucher as read from {@code finvchmain}.
+     * <ul>
+     *   <li>{@code 'N'} — never posted → directly editable/deletable</li>
+     *   <li>{@code 'U'} — unposted     → directly editable/deletable</li>
+     *   <li>{@code 'P'} — posted       → test class must unpost, then check {@code fintag}; if
+     *       tagged, remove via {@code DocumentAdjustmentFlow.untagIfNeeded} first</li>
+     * </ul>
+     * Null in Create mode (not relevant). Mirrors {@code MergedFinanceArVoucherData
+     * #getReleaseStatus()}'s exact semantics.
+     */
+    private String releaseStatus;
+
+    /**
+     * Non-null only for a Revert row that was deliberately claimed to hit a specific non-success
+     * dialog outcome (e.g. {@code CANNOT_REVERT_MONTH_CLOSED}) — {@code RevertApVoucher} asserts
+     * the live {@code confirmRevert()} outcome matches this exactly, rather than only branching DB
+     * validation on whatever outcome happened to occur. {@code null} for every ordinary positive
+     * Revert row, where any of the live-confirmed outcomes is legal. Mirrors
+     * {@code MergedFinanceGeneralVoucherData#getExpectedRevertOutcome()}'s exact semantics/field
+     * name, renamed to AP's own outcome type.
+     */
+    private APVoucherRevertOutcome expectedRevertOutcome;
+
+    /**
+     * Which tier {@code VoucherListPageBase#selectDocumentFast} starts its cascade at —
+     * {@code null} (the common case) means {@link DocumentSearchStrategy#EXACT_MATCH}. Mirrors
+     * {@code MergedFinanceGeneralVoucherData#getSearchStrategy()}'s exact semantics; used by
+     * {@code RevertApVoucher}'s document-selection step.
+     */
+    private DocumentSearchStrategy searchStrategy;
+
+    /**
+     * Which {@code editApVoucherDetailLine}/{@code editApVoucherPaymentInfo} scenario this row
+     * represents — {@code null} for {@code editApVoucherHeader} rows (which dispatch via a fixed
+     * {@link com.gsl.utils.dataprovider.fixture.finance.ApVoucherEditScenarioType#HEADER_ONLY}
+     * passed directly by the test method, not read from this field, matching how
+     * {@code editApVoucherHeader} predates this field entirely). Set by
+     * {@code DbApVoucherEditDataSource} for detail-line/payment-info rows, where the scenario
+     * (Advance vs Document amount edit, or payment-info) depends on which live candidate was
+     * claimed and can't be fixed per-method the way header edits can.
+     */
+    private com.gsl.utils.dataprovider.fixture.finance.ApVoucherEditScenarioType editScenarioType;
+
+    /** Non-null for {@link com.gsl.utils.dataprovider.fixture.finance.ApVoucherEditScenarioType
+     *  #DETAIL_AMOUNT_ADVANCE}/{@code #DETAIL_AMOUNT_DOCUMENT} rows — the row/amount/target-document
+     *  this detail-line-edit scenario applies. {@code null} for every other scenario type. */
+    private com.gsl.testdata.Finance.Operations.Vouchers.APVoucher.ApVoucherDetailLineEditTarget editedDetailLine;
+
+    /** Non-null for {@link com.gsl.utils.dataprovider.fixture.finance.ApVoucherEditScenarioType
+     *  #DETAIL_PAYMENT_INFO} rows — the before/after payment info this scenario applies.
+     *  {@code null} for every other scenario type. */
+    private com.gsl.testdata.Finance.Operations.Vouchers.APVoucher.ApVoucherPaymentInfoEditTarget paymentEditTarget;
+
+    /**
+     * Edit flows only — every live {@code fintag} row captured BEFORE the untag step (the counter-
+     * document number + tagged amount of each), so the shared "Apply/Restore Sub-Ledger Adjustment"
+     * step can re-tag exactly what the Edit's unpost precondition destroyed. Runtime state written
+     * by {@code EditApVoucher}; empty for Create/Revert/Delete and for untagged Edit candidates.
+     */
+    @Builder.Default
+    private List<com.gsl.testdata.Finance.Operations.Vouchers.Common.CapturedTag> capturedTags = new ArrayList<>();
+
+    // ─── Adjustment amount-mismatch Confirmation (Create scenarios) ─────────────
+
+    /**
+     * How Adjustment Entry's amount-mismatch Confirmation ("Update payment amount" / "I will adjust
+     * more") is answered when a Document-mode scenario deliberately adjusts less than the row's
+     * payment amount ({@code SubLedgerInformation#amountDr}). {@code null} = legacy behavior
+     * (plain OK, no popup expected) — every pre-existing scenario. See
+     * {@code AdjustmentFlowSteps#okAnsweringMismatch}.
+     */
+    private com.gsl.testdata.Finance.Operations.Vouchers.Common.AdjustmentMismatchPlan adjustmentMismatchPlan;
+
+    /**
+     * Payment amount the saved voucher's Sub-Ledger row is expected to carry after the
+     * mismatch plan runs — the adjusted total for {@code UPDATE_PAYMENT_AMOUNT}, the original
+     * payment for {@code ADJUST_MORE}. {@code null} when no mismatch plan applies.
+     */
+    private BigDecimal expectedPaymentAmount;
+
     // ─── Invocation metadata ──────────────────────────────────────────────────
 
     private int invocationIndex;
     private int totalInvocations;
 
+    /**
+     * The TDS amount captured at runtime for sub-ledger {@code lineNo} (see
+     * {@link #capturedTdsAmounts}), or empty if {@code lineNo} is {@code null} or nothing has
+     * been captured for it yet.
+     */
     public Optional<BigDecimal> getTdsAmountForLine(String lineNo) {
         if (lineNo == null || capturedTdsAmounts == null) return Optional.empty();
         return Optional.ofNullable(capturedTdsAmounts.get(lineNo));
     }
 
+    /**
+     * The Net Payable amount captured at runtime for sub-ledger {@code lineNo} (see
+     * {@link #capturedNetPayables}), or empty if {@code lineNo} is {@code null} or nothing has
+     * been captured for it yet.
+     */
     public Optional<BigDecimal> getNetPayableForLine(String lineNo) {
         if (lineNo == null || capturedNetPayables == null) return Optional.empty();
         return Optional.ofNullable(capturedNetPayables.get(lineNo));

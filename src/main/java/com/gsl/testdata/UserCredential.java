@@ -1,9 +1,14 @@
 package com.gsl.testdata;
 
 /**
- * Immutable credential snapshot assigned to one test thread.
- * Stored in DriverManager.currentUser (UI) and DriverManager.apiUser (API) ThreadLocals.
- * groupId is null for SET1; "G1"/"G2" etc. for SET2 concurrent groups.
+ * Immutable credential snapshot assigned to one test thread — the unit {@link UserPool} hands out
+ * and {@link UserCredentialLoader} produces from {@code UsersList.xlsx}.
+ * Stored in {@code DriverManager.currentUser} (UI) and {@code DriverManager.apiUser} (API)
+ * ThreadLocals for the duration of a test/session.
+ *
+ * @param groupId {@code null} for {@link ExecutionSet#SET1}; a shared value (e.g. "G1"/"G2") for
+ *                {@link ExecutionSet#SET2} credentials that must be handed out together as one
+ *                group via {@link UserPool#getSet2Group(String)}.
  */
 public record UserCredential(
         String username,

@@ -93,10 +93,12 @@ public class EditVoucherInfo {
     @Column(name = "Entry Method")
     private String entryMethod;
 
+    /** {@code true} when {@link #editScenario} is {@code DETAIL_LINE}. */
     public boolean isDetailLineScenario() {
         return "DETAIL_LINE".equalsIgnoreCase(editScenario);
     }
 
+    /** {@code true} when {@link #newIsReversal} reads "Yes" (case-insensitive). */
     public boolean newIsReversalYes() {
         return "Yes".equalsIgnoreCase(newIsReversal);
     }

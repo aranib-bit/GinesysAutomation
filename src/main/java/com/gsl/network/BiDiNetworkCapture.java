@@ -12,17 +12,20 @@ import java.util.*;
 import java.util.concurrent.CopyOnWriteArrayList;
 
 /**
- * WebDriver BiDi-based network capture for Firefox (and any other BiDi-capable driver).
- * One instance is created per browser session (via NetworkCaptureManager ThreadLocal).
+ * WebDriver BiDi-based {@link NetworkCapture} implementation for Firefox (and any other
+ * BiDi-capable driver) — one of several {@link NetworkCapture} implementations, selected by
+ * {@code NetworkServiceFactory} based on which protocol the driver supports (BiDi here, CDP for
+ * {@link CdpNetworkCapture}, or neither for {@link NoOpNetworkCapture}).
+ * One instance is created per browser session (via {@link NetworkCaptureManager}'s ThreadLocal).
  *
- * Firefox must have webSocketUrl=true in its options (already set in BrowserOptions.firefox()).
+ * <p>Firefox must have webSocketUrl=true in its options (already set in BrowserOptions.firefox()).
  *
- * Captures: URL, method, status, request headers, response headers.
+ * <p>Captures: URL, method, status, request headers, response headers.
  * Request/response body is NOT available via the Selenium 4.x BiDi Network API —
  * ResponseData.getContent() returns only the byte size, not the body text.
  * Body capture for BiDi requires a future Selenium version that exposes buffer data.
  *
- * URL filtering: if network.capture.url.filter is set, only matching URLs are stored.
+ * <p>URL filtering: if network.capture.url.filter is set, only matching URLs are stored.
  */
 public final class BiDiNetworkCapture implements NetworkCapture {
 
@@ -32,10 +35,12 @@ public final class BiDiNetworkCapture implements NetworkCapture {
     private final List<NetworkLogRecord> logs = new CopyOnWriteArrayList<>();
     private Network                      network;
 
+    /** Wraps the given driver; capture does not begin until {@link #start()} is called. */
     public BiDiNetworkCapture(WebDriver driver) {
         this.driver = driver;
     }
 
+    /** Registers the BiDi {@code Network} module's response/error listeners on {@link #driver}. */
     @Override
     public void start() {
         try {
@@ -85,6 +90,7 @@ public final class BiDiNetworkCapture implements NetworkCapture {
         }
     }
 
+    /** Closes the BiDi {@code Network} module, if it was successfully created by {@link #start()}. */
     @Override
     public void stop() {
         try {
@@ -103,6 +109,7 @@ public final class BiDiNetworkCapture implements NetworkCapture {
 
     // ── Helpers ───────────────────────────────────────────────────────────────
 
+    /** Returns true when no {@code network.capture.url.filter} is configured, or when {@code url} contains at least one configured pattern. */
     private static boolean matchesFilter(String url) {
         String raw = ConfigFactory.getNetworkConfig().networkCaptureUrlFilter();
         if (raw == null || raw.isBlank()) return true;
@@ -112,6 +119,7 @@ public final class BiDiNetworkCapture implements NetworkCapture {
                 .anyMatch(url::contains);
     }
 
+    /** Flattens BiDi {@link Header} entries (name + nested value) into a plain name-to-value map. */
     private static Map<String, String> headersFromBiDi(List<Header> headers) {
         if (headers == null) return Map.of();
         Map<String, String> out = new LinkedHashMap<>();

@@ -6,7 +6,15 @@ import lombok.Builder;
 import lombok.Data;
 import lombok.NoArgsConstructor;
 
-/** Result of POST /SI/SearchChallan — a DC eligible for Transfer Out / Service Invoice against it. */
+/**
+ * One entry of {@code POST /SI/SearchChallan}'s {@code result} array — a DC eligible for
+ * Transfer Out (Service Invoice against a challan). Returned by
+ * {@code TransferOutApiClient.searchChallan(String)}; {@code TransferOutApiScenarioType}'s
+ * {@code SEARCH_CHALLAN_*} scenarios exercise it directly, but the current
+ * {@code TransferOutApiClient.createTransferOut(String, String, int, int)} overload does not call
+ * {@code searchChallan} first — it threads a caller-supplied {@code dcCode} straight into
+ * {@link TransferOutLineItem} instead (see that method's own note).
+ */
 @Data
 @Builder
 @NoArgsConstructor

@@ -17,6 +17,16 @@ import org.openqa.selenium.support.ui.WebDriverWait;
 import java.time.Duration;
 import java.util.concurrent.TimeUnit;
 
+/**
+ * Drives the "TDS Name" search-and-select popup grid (opened from {@code
+ * APVoucherTdsAndNetPayable}). Search text is typed into a filter box, the ExtJS grid reloads
+ * asynchronously, and the matching row is clicked with a bounded stale-element retry before
+ * confirming via the popup's OK button.
+ *
+ * <p>Constructed with the {@link TdsNameParent} page that owns it, so {@link
+ * #selectTdsName(String)}/{@link #cancel()} can hand back a correctly-typed reference to that page
+ * once the popup closes.
+ */
 public class TdsNamePopup {
 
     private static final By SEARCH_BOX = By.xpath(
@@ -36,10 +46,18 @@ public class TdsNamePopup {
 
     private final TdsNameParent parentPage;
 
+    /** @param parentPage the page that opened this popup; returned by {@link #selectTdsName(String)}/{@link #cancel()}. */
     public TdsNamePopup(TdsNameParent parentPage) {
         this.parentPage = parentPage;
     }
 
+    /**
+     * Types {@code tdsName} into the popup's search box, waits for the matching grid row to
+     * appear, clicks it (retrying up to 3 times on {@link StaleElementReferenceException} since
+     * the ExtJS grid can re-render the row between find and click), then clicks OK.
+     *
+     * @return the parent page passed into this popup's constructor
+     */
     public TdsNameParent selectTdsName(String tdsName) {
         SeleniumUtils.sendKeys(SEARCH_BOX, tdsName, "TDS_NAME_SEARCH");
         JavascriptExecutorUtils.waitForExtJS();
@@ -69,6 +87,7 @@ public class TdsNamePopup {
         return parentPage;
     }
 
+    /** Dismisses the popup without selecting anything and returns the parent page. */
     public TdsNameParent cancel() {
         SeleniumUtils.click(CANCEL_BUTTON, WaitType.CLICKABLE, "TDS_NAME_POPUP_CANCEL");
         return parentPage;

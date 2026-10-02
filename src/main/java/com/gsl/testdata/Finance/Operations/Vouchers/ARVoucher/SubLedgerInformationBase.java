@@ -8,6 +8,12 @@ import lombok.Setter;
  * Holds runtime-resolved fields that must not be scanned by XlsxReader's field mapper.
  * XlsxReader calls getDeclaredFields() on the concrete target class only — inherited
  * fields are invisible to it, so these fields never appear as required Excel columns.
+ *
+ * <p><b>Shared across AR and AP, despite the package:</b> although this class lives under
+ * {@code ARVoucher}, {@code APVoucher.SubLedgerInformation} also extends it (importing across
+ * the package boundary) for the common {@code slType}/{@code changeReferenceSite} fields. Only
+ * AP actually populates/reads {@link #getDeductTdsConfirmAction()} — AR has no "Deduct TDS"
+ * column, so that piece is inherited but never used on AR rows.
  */
 public abstract class SubLedgerInformationBase {
 
@@ -38,6 +44,8 @@ public abstract class SubLedgerInformationBase {
     @Setter
     private boolean changeReferenceSite = false;
 
+    /** Resolves the raw {@link #deductTdsConfirm} string into a {@link DeductTdsClearConfirmAction}
+     *  — meaningful for AP rows only (see class Javadoc). */
     public DeductTdsClearConfirmAction getDeductTdsConfirmAction() {
         return DeductTdsClearConfirmAction.fromString(deductTdsConfirm);
     }

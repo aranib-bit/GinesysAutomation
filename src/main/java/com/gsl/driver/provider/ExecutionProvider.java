@@ -10,8 +10,16 @@ import org.openqa.selenium.WebDriver;
  */
 public interface ExecutionProvider {
 
+    /**
+     * Creates and returns a new WebDriver session configured for this provider's execution
+     * environment (local, grid, cloud, or mobile).
+     *
+     * @param browser the browser to launch; mobile providers may ignore this
+     * @return a ready-to-use WebDriver
+     */
     WebDriver createDriver(Browser browser);
 
+    /** Human-readable provider name for logs/reports; defaults to the implementing class's simple name. */
     default String getProviderName() {
         return getClass().getSimpleName();
     }

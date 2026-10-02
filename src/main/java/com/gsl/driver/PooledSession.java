@@ -52,6 +52,7 @@ public final class PooledSession {
     }
 
     public int id()                        { return id; }
+    /** Short display label for logs/reports, e.g. {@code "S-3"}. */
     public String label()                  { return "S-" + id; }
     public WebDriver driver()              { return driver; }
     public UserCredential uiUser()         { return uiUser; }
@@ -73,6 +74,7 @@ public final class PooledSession {
         return previousBorrowerLabel != null ? previousBorrowerLabel : "none (first use)";
     }
 
+    /** Records a new borrow: captures the outgoing {@link #lastBorrowerLabel} as {@link #previousBorrowerLabel} BEFORE overwriting it with the new borrower's identity. */
     void stampBorrower(long threadId, String label) {
         this.previousBorrowerLabel = this.lastBorrowerLabel; // capture BEFORE overwrite
         this.lastBorrowerThreadId = threadId;

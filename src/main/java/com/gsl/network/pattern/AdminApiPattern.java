@@ -2,7 +2,10 @@ package com.gsl.network.pattern;
 
 import java.util.List;
 
-/** API URL patterns for the Admin module. Populate as endpoints are confirmed. */
+/**
+ * {@link ApiPattern} constants for the Admin module. Populate as endpoints are confirmed —
+ * see {@link FinanceApiPattern} for a worked example of confirmed, per-endpoint constants.
+ */
 public enum AdminApiPattern implements ApiPattern {
 
     PLACEHOLDER("Admin (stub)", List.of("/Admin/api/"));

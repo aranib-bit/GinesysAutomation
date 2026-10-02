@@ -51,6 +51,7 @@ public final class RemoteDriverFactory {
         return getDriver(data);
     }
 
+    /** Builds a {@link RemoteWebDriver} against {@code gridUrl}, wrapping a malformed URL in an unchecked exception so the {@code Function} suppliers above can stay unchecked-exception-only. */
     private static WebDriver createRemote(AbstractDriverOptions<?> opts, String gridUrl) {
         try {
             return new RemoteWebDriver(new URL(gridUrl), opts);

@@ -48,10 +48,12 @@ public class ArVoucherApiClient extends ApiClient {
     /** Confirmed via HAR as the scheme actually used to create a real AR Voucher (code=138). */
     private static final String PREFERRED_DOC_SCHEME_NAME = "AR/AP Voucher";
 
+    /** Wraps an already-authenticated session {@code spec} — see {@link ApiClient}'s class Javadoc. */
     public ArVoucherApiClient(RequestSpecification spec) {
         super(spec);
     }
 
+    /** Prefixes {@code path} with {@code financeApiBaseUri} — see class Javadoc for why this client's endpoints need that override. */
     private static String url(String path) {
         return ConfigFactory.getApiConfig().financeApiBaseUri() + path;
     }

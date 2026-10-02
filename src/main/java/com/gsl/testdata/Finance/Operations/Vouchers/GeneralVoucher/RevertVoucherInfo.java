@@ -28,6 +28,7 @@ public class RevertVoucherInfo {
     @Column(name = "Existing Voucher No.")
     private String existingVoucherNo;
 
+    /** All-args constructor covering the two {@code @Column}-annotated fields above. */
     public RevertVoucherInfo(String testCaseId, String existingVoucherNo) {
         this.testCaseId = testCaseId;
         this.existingVoucherNo = existingVoucherNo;

@@ -10,6 +10,19 @@ import com.gsl.pages.pagecomponent.Admin.Utilities.UtilitiesHomePage;
 import com.gsl.utils.Selenium.SeleniumUtils;
 import org.openqa.selenium.By;
 
+/**
+ * Admin module's own sub-menu navigator — drives the Organization/Finance/Security/Utilities
+ * side-menu items, keyed by {@link MainMenuType}. {@link #navigateToSubMenu(MainMenuType)} is the
+ * entry point: like {@link com.gsl.pages.pagecomponent.TopModuleMenuComponent#navigateToModule},
+ * it skips the click when the requested sub-menu is already selected, then returns the matching
+ * sub-area's home page object:
+ * <ul>
+ *   <li>{@link OrganizationHomePage}</li>
+ *   <li>{@link FinanceHomePage}</li>
+ *   <li>{@link SecurityHomePage}</li>
+ *   <li>{@link UtilitiesHomePage}</li>
+ * </ul>
+ */
 public class AdminTopMenuComponent {
     private static final String MENU_ITEM = "//span[text()='%s']/parent::a";
     private static final By LBL_SELECTED_MENU = By.xpath("//span[@class='active']");

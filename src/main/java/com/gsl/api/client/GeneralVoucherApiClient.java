@@ -33,10 +33,12 @@ import io.restassured.specification.RequestSpecification;
  */
 public class GeneralVoucherApiClient extends ApiClient {
 
+    /** Wraps an already-authenticated session {@code spec} — see {@link ApiClient}'s class Javadoc. */
     public GeneralVoucherApiClient(RequestSpecification spec) {
         super(spec);
     }
 
+    /** Prefixes {@code path} with {@code financeApiBaseUri}, matching the other Finance-module voucher clients. */
     private static String url(String path) {
         return ConfigFactory.getApiConfig().financeApiBaseUri() + path;
     }

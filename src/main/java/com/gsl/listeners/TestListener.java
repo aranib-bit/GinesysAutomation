@@ -40,6 +40,7 @@ import com.gsl.remote.parser.RegexLogParser;
 import com.gsl.remote.retry.RetryPolicy;
 import com.gsl.reports.ActionTrailBuffer;
 import com.gsl.reports.FinanceDomainReporter;
+import com.gsl.reports.LogArchiver;
 import com.gsl.reports.SummaryReportBuilder;
 import com.gsl.reports.PopupTrailBuffer;
 import com.gsl.reports.contract.DomainReporter;
@@ -57,7 +58,12 @@ import com.gsl.reports.RuntimeProfileBuilder;
 import com.gsl.reports.RuntimeProfileHolder;
 import com.gsl.reports.profile.RuntimeExecutionProfile;
 import com.gsl.testdata.InvocationData;
+import com.gsl.testdata.UserPool;
+import com.gsl.testdata.UserPoolStatusRow;
+import com.gsl.testdata.UserType;
+import com.gsl.reports.FoldableSectionRenderer;
 import com.gsl.reports.ReportLogger;
+import com.gsl.reports.ScreenshotPolicy;
 import com.gsl.utils.Log;
 import com.gsl.utils.TestContextManager;
 
@@ -74,6 +80,33 @@ import java.util.Arrays;
 import java.util.List;
 import java.util.Optional;
 
+/**
+ * Central TestNG lifecycle listener — the single place where suite/test start-finish/pass/fail/skip
+ * events are translated into ExtentReport nodes, diagnostic-bundle attachments, and framework-wide
+ * bookkeeping (session pool draining, System.out capture, {@link SuiteCircuitBreaker} tallies, etc.).
+ *
+ * <p>Registered once per suite via {@code testng.xml}. Implements both {@link ISuiteListener}
+ * (once-per-{@code <suite>} hooks) and {@link ITestListener} (once-per-{@code <test>} and
+ * once-per-test-method hooks) — the two lifecycles are kept in clearly separated sections below
+ * since they fire at very different granularities and are easy to confuse.
+ *
+ * <p>Because almost every cross-cutting framework concern (reporting, retries, root-cause
+ * classification, browser/network log capture, user-pool status) is wired in from here, this class
+ * is a good starting point for understanding "what happens around every test" — but changes to it
+ * affect literally every test in the suite, so read a method's full body (and its neighbors) before
+ * touching it. Key collaborators:
+ * <ul>
+ *   <li>{@link SuiteCircuitBreaker} — suite-abort tally, consulted in {@link #onTestStart(ITestResult)}</li>
+ *   <li>{@link com.gsl.reports.contract.DomainReporterRegistry} — resolves the right
+ *       {@link com.gsl.reports.contract.DomainReporter} for a test's parameters, used to build
+ *       rich Extent titles/descriptions and to flush per-domain "Actual Results"</li>
+ *   <li>{@link com.gsl.diagnostics.FailureBundleOrchestrator} — attaches the full diagnostic bundle
+ *       (browser logs, network logs, screenshots, remote logs, root-cause classification) on
+ *       success and failure</li>
+ *   <li>{@link com.gsl.driver.SessionPool} — session borrower-label bookkeeping and end-of-{@code
+ *       <test>} teardown ({@link #onFinish(ITestContext)})</li>
+ * </ul>
+ */
 public class TestListener implements ITestListener, ISuiteListener {
 
     /**
@@ -95,9 +128,24 @@ public class TestListener implements ITestListener, ISuiteListener {
 
     // ── Suite-level lifecycle — fires ONCE per <suite>, not once per <test> ──────
 
+    /**
+     * Fires once per {@code <suite>}, before any {@code <test>} block starts. Archives the previous
+     * run's log offsets, registers {@link FinanceDomainReporter}, initializes the Extent report,
+     * freezes the {@link RuntimeExecutionProfile} for the whole suite, renders the "Execution
+     * Configuration Snapshot" node (always first in the report), and runs
+     * {@link PreSuiteHealthCheck}.
+     *
+     * @throws RuntimeException if the pre-execution health check fails — aborts the suite before
+     *                          any test runs rather than letting every test fail against a broken environment
+     */
     @Override
     public void onStart(ISuite suite) {
         Log.logHeap("suite-start:" + suite.getName());
+        logBuildFingerprint();
+        // Snapshots each live log file's current size before this run writes a single line — see
+        // LogArchiver's own Javadoc for why this offset-based approach replaced relying on Log4j2's
+        // own rollover to scope reports/runs/<runId>/logs.zip to just this run.
+        LogArchiver.markRunStart();
         DomainReporterRegistry.register(new FinanceDomainReporter());
         ExtentReport.initReports();
 
@@ -133,40 +181,88 @@ public class TestListener implements ITestListener, ISuiteListener {
         }
     }
 
+    /**
+     * Round 24 — logs when the currently-loaded classes were actually compiled, so a "did my fix
+     * really run?" question can be answered by reading one log line instead of manual `.class`
+     * timestamp archaeology (see the plan's Round 24 investigation, which needed exactly that to
+     * root-cause a stale-build-timing false alarm). Reads {@code TestListener.class}'s own
+     * classloader resource — works identically whether classes load from a directory (normal
+     * dev/CI runs) or from inside a jar.
+     */
+    private static void logBuildFingerprint() {
+        try {
+            java.net.URL classUrl = TestListener.class.getResource(TestListener.class.getSimpleName() + ".class");
+            long compiledAt = classUrl != null ? classUrl.openConnection().getLastModified() : 0;
+            Log.info("[BuildFingerprint] Classes on this JVM's classpath were compiled at: {} — if this "
+                    + "looks older than your last source edit, this run loaded STALE classes; rebuild and re-run.",
+                    compiledAt > 0 ? java.time.Instant.ofEpochMilli(compiledAt) : "unknown");
+        } catch (Exception e) {
+            Log.warn("[BuildFingerprint] Could not resolve build timestamp: {}", e.getMessage());
+        }
+    }
+
+    /**
+     * Fires once per {@code <suite>}, after every {@code <test>} block has finished. Drains and logs
+     * out every session in {@link com.gsl.driver.SessionPool} (moved here from the per-{@code <test>}
+     * hook below in Round 22 — {@code IDLE}/{@code BORROWED} are single, JVM-wide, shared-across-blocks
+     * fields, so draining at ANY one block's own finish while a sibling block is still running under
+     * {@code parallel="tests"} would destroy sessions genuinely still in use elsewhere, and did — see
+     * the plan's Round 22 for the live evidence, traced from an {@code UnreachableBrowserException}
+     * back to this drain destroying a still-borrowed session out from under another thread. Only safe
+     * once every block has truly finished, which is exactly this hook's own contract), then builds the
+     * summary report, flushes the Extent report (which also republishes {@code reports/latest/}), and
+     * archives this run's logs via {@link LogArchiver}.
+     */
     @Override
     public void onFinish(ISuite suite) {
+        com.gsl.driver.SessionPool.drainAll("end of suite: " + suite.getName());
         SummaryReportBuilder.build(suite);
         // flushReports() also republishes reports/latest/index.html (see ExtentReport) —
         // no separate copyToLatest() call needed here anymore.
         ExtentReport.flushReports();
+        // Bundles this run's logs into reports/runs/<runId>/logs.zip, right next to the report
+        // flushed above — see LogArchiver's own Javadoc for why this depends on log4j2.xml's
+        // OnStartupTriggeringPolicy to be a genuinely per-run archive.
+        LogArchiver.archiveRunLogs();
         Log.logHeap("suite-finish:" + suite.getName());
     }
 
     // ── Test-context lifecycle — fires once per <test> element ───────────────────
 
+    /** Fires once per {@code <test>} element, before its methods start. Logs the context name only. */
     @Override
     public void onStart(ITestContext context) {
         Log.info("SUITE STARTED: {}", context.getName());
         ReportLogger.framework("TEST CONTEXT STARTED: {}", context.getName());
     }
 
+    /**
+     * Fires once per {@code <test>} element, after all its methods have run. Clears
+     * {@link com.gsl.driver.ExecutionContext} for the calling thread — safe per-block since it's
+     * {@code ThreadLocal}-scoped and only ever clears the calling thread's own state. Session pool
+     * draining does NOT happen here (moved to {@link #onFinish(ISuite)} in Round 22 — see that
+     * method's Javadoc for why draining per-block is unsafe under {@code parallel="tests"}).
+     */
     @Override
     public void onFinish(ITestContext context) {
         Log.info("SUITE FINISHED: {}", context.getName());
         ReportLogger.framework("TEST CONTEXT FINISHED: {}", context.getName());
 
-        // End-of-block session teardown: SessionPool owns every session now, so one call logs
-        // out and closes them ALL — each idle session is bound to this thread in turn, given a
-        // REAL application logout when healthy, then quit, its user released. Nothing is
-        // thread-resident anymore, so this reaches every session regardless of which worker
-        // threads ran the rows (the ThreadLocal-registry drain this replaces could not do the
-        // logout and existed only because sessions used to live in per-thread state).
-        com.gsl.driver.SessionPool.drainAll("end of <test> block: " + context.getName());
         com.gsl.driver.ExecutionContext.clear();
     }
 
     // ── Per-test callbacks ────────────────────────────────────────────────────────
 
+    /**
+     * Fires before each {@code @Test} method invocation (including each retry and each
+     * data-provider row). Skips immediately if {@link SuiteCircuitBreaker#isTripped()}; otherwise
+     * resets the per-test buffers ({@link com.gsl.reports.ActionTrailBuffer}, {@link StepDurationBuffer},
+     * {@link RetryHistoryBuffer}, {@link PopupTrailBuffer}, …), creates the ExtentReport test node
+     * with a rich title/description built from {@link TestCaseId}, {@link FrameworkAnnotation}, and
+     * the resolved {@link DomainReporter} (or renders a lightweight "Rule Validation" node for
+     * {@link FrameworkValidation} methods), logs the correlation block (execution id/user/session),
+     * and injects the browser JS/network log capture for this test.
+     */
     @Override
     public void onTestStart(ITestResult result) {
         if (SuiteCircuitBreaker.isTripped()) {
@@ -186,6 +282,10 @@ public class TestListener implements ITestListener, ISuiteListener {
         TestContextManager.setEnv(ConfigFactory.getConfig().env());
         com.gsl.reports.ActionTrailBuffer.clear();
         StepDurationBuffer.clear();
+        com.gsl.validation.ui.UiFailureCollector.clear();   // deferred UI failures never leak into the next test
+        com.gsl.validation.ui.UiStyleScope.clear();         // nor does the previous test's voucher style scope
+        com.gsl.utils.Selenium.PageStateDiagnostics.reset();
+        ScreenshotPolicy.discard();                         // nor do unattached screenshots
         WaitDurationBuffer.startNewTest();   // preserves @BeforeMethod/login waits as "[pre-test]" instead of dropping them
         RetryHistoryBuffer.clear();
         PopupTrailBuffer.clear();
@@ -341,6 +441,8 @@ public class TestListener implements ITestListener, ISuiteListener {
                 sessionLabel != null ? sessionLabel : "n/a",
                 previousTestCase != null ? previousTestCase : "n/a"));
 
+        renderUserPoolStatusTable();
+
         // Inject JS logger and reset log buffers so this test sees only its own activity
         if (ConfigFactory.getNetworkConfig().browserLogsEnabled() && DriverManager.getDriver() != null) {
             AdvancedJsLogger.inject();
@@ -351,6 +453,57 @@ public class TestListener implements ITestListener, ISuiteListener {
         NetworkCaptureManager.get().clear();
     }
 
+    /**
+     * Renders the Extent report's "User Pool Status" table — User / Test Case ID / Status — at
+     * the start of every real test. Must run AFTER {@code SessionPool.updateCurrentLabel} (called
+     * a few lines above, in {@link #onTestStart}) so a REUSED session's row shows the test case
+     * that's using it right now, not the one that first created the session (see {@code
+     * SessionPool.currentTestCaseIdsByUsername()}'s Javadoc for why that distinction matters).
+     * Joins {@link UserPool#allUsernamesOfType} (the full configured roster) with that live
+     * borrower map: a username present there is {@code Used} (+ its current test case), every
+     * other configured username is {@code Unused}. Best-effort — a reporting problem here must
+     * never fail the test itself.
+     */
+    private void renderUserPoolStatusTable() {
+        try {
+            java.util.Map<String, String> liveTestCaseIdsByUsername =
+                    com.gsl.driver.SessionPool.currentTestCaseIdsByUsername();
+
+            List<UserPoolStatusRow> rows = new java.util.ArrayList<>();
+            for (UserType type : UserType.values()) {
+                for (String username : UserPool.allUsernamesOfType(type)) {
+                    String liveTestCaseId = liveTestCaseIdsByUsername.get(username);
+                    rows.add(liveTestCaseId != null
+                            ? new UserPoolStatusRow(username, UserPoolStatusRow.USED, liveTestCaseId)
+                            : new UserPoolStatusRow(username, UserPoolStatusRow.UNUSED, ""));
+                }
+            }
+            if (rows.isEmpty() || !ExtentManager.hasTest()) {
+                return;
+            }
+
+            String[][] table = new String[rows.size() + 1][3];
+            table[0] = new String[]{"User", "Test Case ID", "Status"};
+            for (int i = 0; i < rows.size(); i++) {
+                UserPoolStatusRow row = rows.get(i);
+                table[i + 1] = new String[]{row.username(), row.testCaseId(), row.status()};
+            }
+
+            ExtentLogger.infoHtmlOnChildNode("User Pool Status", FoldableSectionRenderer.foldableTable(
+                    FoldableSectionRenderer.ICO_SUBLEDGER, "User Pool Status", false, table));
+        } catch (Exception e) {
+            Log.warn("[TestListener] renderUserPoolStatusTable failed: {}", e.getMessage());
+        }
+    }
+
+    /**
+     * Fires when a {@code @Test} method passes. Records the pass to {@link SuiteCircuitBreaker},
+     * flushes the domain reporter's "Actual Results" and the diagnostic bundle, forces the Extent
+     * node's status to {@code PASS} (so a recovered fluent-wait retry-throw logged by
+     * {@link com.gsl.aspects.LoggingAspect} doesn't paint a passing test red), and clears the
+     * per-test context. Also handles the lightweight {@link FrameworkValidation} "Rule Validation"
+     * path via {@code frameworkCheckLabel} — see the field's own comment.
+     */
     @Override
     public void onTestSuccess(ITestResult result) {
         SuiteCircuitBreaker.recordPass();
@@ -364,6 +517,9 @@ public class TestListener implements ITestListener, ISuiteListener {
             TestContextManager.clear();
             return;
         }
+        // A passing test has nothing to show: screenshots captured for internally-recovered
+        // failures are dropped rather than attached.
+        ScreenshotPolicy.discard();
         Log.info("TEST PASSED: {}", result.getName());
         ReportLogger.framework("TEST PASSED: {}", result.getName());
         // Trailing child node (not a flat top-level entry) — the bundled ExtentReports Spark
@@ -405,6 +561,15 @@ public class TestListener implements ITestListener, ISuiteListener {
         ExtentManager.clearAll();
     }
 
+    /**
+     * Fires when a {@code @Test} method fails. Records the failure to {@link SuiteCircuitBreaker}
+     * (which may trip the breaker and abort the suite), flushes the domain reporter's "Actual
+     * Results", classifies the failure via {@link RootCauseClassifier} and renders it as a banner
+     * through {@link FailureSummaryRenderer}, attaches the full diagnostic bundle via
+     * {@link FailureBundleOrchestrator}, and clears the per-test context. Also handles the
+     * lightweight {@link FrameworkValidation} "Rule Validation" failure path — see
+     * {@code frameworkCheckLabel}'s own comment.
+     */
     @Override
     public void onTestFailure(ITestResult result) {
         SuiteCircuitBreaker.recordFail(result.getTestContext().getSuite());
@@ -418,6 +583,25 @@ public class TestListener implements ITestListener, ISuiteListener {
             ExtentReport.flushReports();
             TestContextManager.clear();
             return;
+        }
+        // Attach the failure screenshot(s) the configured report.screenshots.mode keeps (default
+        // LAST = just the final one), delete the rest.
+        try {
+            ScreenshotPolicy.flush();
+        } catch (Exception e) {
+            Log.warn("[TestListener] Screenshot policy flush failed: {}", e.getMessage());
+        }
+        // Safety net: UI-contract failures that were deferred but never reported because the flow
+        // failed first (e.g. an Edit snapshot failure) must still be visible in the report.
+        if (com.gsl.validation.ui.UiFailureCollector.hasPending()) {
+            StringBuilder pendingHtml = new StringBuilder("<b>UI-contract failures found earlier "
+                    + "(deferred; the flow then failed):</b><br>");
+            for (com.gsl.validation.ui.UiValidationFailure f : com.gsl.validation.ui.UiFailureCollector.pending()) {
+                pendingHtml.append("&#8226; ").append(f.shortLabel()
+                        .replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")).append("<br>");
+            }
+            ExtentLogger.infoHtmlOnChildNode("Deferred UI failures", pendingHtml.toString());
+            com.gsl.validation.ui.UiFailureCollector.clear();
         }
         Log.error("TEST FAILED: {}", result.getName());
         Log.error("Failure cause: {}",
@@ -468,6 +652,15 @@ public class TestListener implements ITestListener, ISuiteListener {
         ExtentManager.clearAll();
     }
 
+    /**
+     * Fires when a {@code @Test} method is skipped — either a genuine {@code SkipException} (e.g.
+     * data-provider-driven data-unavailability skip, or {@link SuiteCircuitBreaker} having tripped)
+     * or a data-provider failure surfacing as a skip. When {@link #onTestStart(ITestResult)} never
+     * created a node (circuit breaker tripped before it ran, or the failure happened at
+     * DataProvider time), builds one here from the method's annotations; otherwise enriches an
+     * already-created node's title with the now-bound row parameters (handles the parallel
+     * {@code @DataSupplier} race where parameters aren't bound yet at {@code onTestStart} time).
+     */
     @Override
     public void onTestSkipped(ITestResult result) {
         Log.warn("TEST SKIPPED: {}", result.getName());

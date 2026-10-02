@@ -33,6 +33,9 @@ public final class LedgerMasterBackfillStrategy implements BackfillStrategy {
     private final Collection<Long> assignedSiteCodes;
 
     /**
+     * @param type                the required {@link GlAccountType} for the new GL
+     * @param subLedgerApplicable whether the new GL must be Sub-Ledger-Applicable ({@code fingl.slapp = 'Y'})
+     * @param siteApplicable      whether the new GL must be Site-Applicable ({@code fingl.costapp = 'Y'})
      * @param assignedSiteCodes the calling test's logged-in user's assigned sites
      *                          ({@code admsite.code} values, resolved live via
      *                          {@code DbGeneralVoucherDataSource.fetchAssignedSiteCodesLive} —
@@ -54,6 +57,7 @@ public final class LedgerMasterBackfillStrategy implements BackfillStrategy {
         this.assignedSiteCodes = assignedSiteCodes;
     }
 
+    /** Creates {@code neededQuantity} GL masters matching {@link #type}/{@link #subLedgerApplicable}/{@link #siteApplicable} via {@code platform}, verifying each landing row. */
     @Override
     public void backfill(ApiPlatform platform, int neededQuantity) {
         ApiSessionBundle session = ApiSessionFactory.create(platform);
@@ -90,12 +94,24 @@ public final class LedgerMasterBackfillStrategy implements BackfillStrategy {
         Jdbi jdbi = DatabaseManager.getJdbi();
         FinGlDao finGlDao = jdbi.onDemand(FinGlDao.class);
 
+        // The row can take a few seconds to become visible (measured live: ~6 s), so poll instead of
+        // a single look - and if it never lands, say so loudly: a success reply with no row means the
+        // call was served by a different deployment/DB than the one these tests read.
         FinGl created = finGlDao.findByGlName(glname);
+        long deadline = System.currentTimeMillis() + 30_000L;
+        while (created == null && System.currentTimeMillis() < deadline) {
+            try {
+                Thread.sleep(1_000L);
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+                break;
+            }
+            created = finGlDao.findByGlName(glname);
+        }
         if (created == null) {
-            ReportLogger.dataBackfillWarn(
-                    "[LedgerMasterBackfillStrategy] No fingl row found yet for glname='{}' — Ledger/Create "
-                            + "may not have actually persisted.", glname);
-            return;
+            throw new com.gsl.api.core.DataSetupException("Ledger/Create reported success but no fingl row with glname='"
+                    + glname + "' appeared within 30 s. Check that webapi.baseuri (api.properties) points at the "
+                    + "same deployment as the UI url (config.properties) and the database the tests read.");
         }
         ReportLogger.dataBackfill(
                 "[LedgerMasterBackfillStrategy] Confirmed fingl row — glcode={}, glname='{}', type={}, slapp={}, costapp={}",
@@ -104,7 +120,8 @@ public final class LedgerMasterBackfillStrategy implements BackfillStrategy {
         String slapp = subLedgerApplicable ? "Y" : "N";
         String costapp = siteApplicable ? "Y" : "N";
         List<FinGl> visibleToTriggeringQuery = finGlDao.findByTypeAndApplicability(type.code(), slapp, costapp);
-        boolean visible = visibleToTriggeringQuery.stream().anyMatch(gl -> gl.getGlcode() == created.getGlcode());
+        final long createdGlcode = created.getGlcode();
+        boolean visible = visibleToTriggeringQuery.stream().anyMatch(gl -> gl.getGlcode() == createdGlcode);
         if (!visible) {
             ReportLogger.dataBackfillWarn(
                     "[LedgerMasterBackfillStrategy] glcode={} exists in fingl but is NOT returned by the "
@@ -113,6 +130,7 @@ public final class LedgerMasterBackfillStrategy implements BackfillStrategy {
         }
     }
 
+    /** {@inheritDoc} Always {@code "ledgerMasterBackfill"} — see the inline comment below for why {@code K6BULK} never actually reaches this path. */
     @Override
     public String k6ScriptKey() {
         // No k6 script exists for this path — quantities here are always 1 (one GL per missing

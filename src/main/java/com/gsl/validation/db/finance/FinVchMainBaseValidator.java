@@ -50,6 +50,7 @@ public abstract class FinVchMainBaseValidator {
 
     // ── Shared blocking fetch ─────────────────────────────────────────────────
 
+    /** Blocking existence fetch: asserts exactly one {@code finvchmain} row exists for {@code schemeDocno} and its {@code vchcode} is valid, then returns it. */
     protected FinVchMain fetchAndBlock(String schemeDocno) {
         ReportLogger.db("Level 1 — finvchmain for scheme_docno [" + schemeDocno + "]");
         com.gsl.reports.ValidationBuffer.start();
@@ -105,6 +106,10 @@ public abstract class FinVchMainBaseValidator {
             ReportLogger.infoLabeledTable("fingl", buildGlTable(gl));
         }
         ReportLogger.infoLabeledTable("finnar", buildNarTable(nar, h.getGlcode()));
+        // Item F (Round 9): deposit the already-resolved finnar row so "Actual Results" can
+        // render it too, without a second DB call — shared here (not GV-only) since finnar is the
+        // identical concept/table for AR/AP/GV alike.
+        ActualResultsHolder.get().setFinnar(nar.orElse(null));
 
         Optional<AdmYear> year = yearDao.findByYcode(h.getYcode());
         soft.assertThat(year)
@@ -152,14 +157,34 @@ public abstract class FinVchMainBaseValidator {
                     .as("[Level 1] finvchmain.nartext != input remarks")
                     .isEqualTo(doc.getRemarks());
 
-        if (h.getEntrySource() != null)
+        // Item G's flagged defense-in-depth fix: unconditional (was previously gated on
+        // getEntrySource() != null, which let a null entry_source silently pass Level 1 —
+        // now redundantly caught by the snapshot engine's own MANDATORY check too, but this
+        // hand-written Level 1 check should never have had a null-skip in the first place).
+        if (h.getEntrySource() == null) {
+            soft.fail("[Level 1] entry_source is null — expected WEB or API");
+        } else {
             soft.assertThat(h.getEntrySource())
                     .as("[Level 1] Unexpected entry_source [" + h.getEntrySource() + "]")
                     .matches("(?i)WEB|API");
+        }
 
         soft.assertThat(h.getCreationDt())
                 .as("[Level 1] finvchmain.creation_dt is null")
                 .isNotNull();
+
+        // Round 6: release_time/release_ecode and last_access_time/last_access_ecode are each a
+        // "both or neither" pair — per explicit clarification, they change together (release_time
+        // set only when release_ecode also is, and vice versa; same for the last_access pair),
+        // never one side populated alone. Shared here (not GV-only) since these columns and their
+        // pairing behavior are identical across AR/AP/GV — same physical finvchmain table.
+        // release_ecode/last_access_ecode are mapped as primitive `long` (see FinVchMain.java's
+        // own Javadoc on these fields) — a genuinely-NULL DB value maps to 0, not Java null, so
+        // ">0" is the correct "is this side populated" check, not a null check.
+        assertBothOrNeither(soft, "finvchmain", "release_time/release_ecode",
+                h.getReleaseTime() != null, h.getReleaseEcode() > 0);
+        assertBothOrNeither(soft, "finvchmain", "last_access_time/last_access_ecode",
+                h.getLastAccessTime() != null, h.getLastAccessEcode() > 0);
 
         if (finalDiff != null)
             soft.assertThat(finalDiff)
@@ -173,13 +198,15 @@ public abstract class FinVchMainBaseValidator {
         return buildLevel1Summary(h, doc, saveStartTime, diffSeconds, toleranceSeconds, expectedType, gl, nar, year);
     }
 
+    /** Builds the Level 1 green-checklist HTML box (vchtype/glcode/finnar/admyear/vchdt/refno/nartext/entry_source/doccode/admou_code/creation_dt) reported alongside {@link #validateCommonHeaderFields}'s assertions. */
     private static String buildLevel1Summary(FinVchMain h, VoucherDocumentHeader doc,
                                               LocalDateTime saveStartTime,
                                               Long diffSeconds, long toleranceSeconds,
                                               VoucherType expectedType, FinGl gl, Optional<FinNar> nar,
                                               Optional<AdmYear> year) {
         StringBuilder sb = new StringBuilder();
-        sb.append("<div style='font-family:monospace;font-size:12px;line-height:1.8;padding:8px 12px;")
+        // Item Q: 13px to match DocumentMessageBox's "VERIFY SAVE RESULT" box.
+        sb.append("<div style='font-family:monospace;font-size:13px;line-height:1.8;padding:8px 12px;")
           .append("background:#f0fff4;border-left:4px solid #38a169;border-radius:2px;margin:4px 0;'>");
         sb.append("<b>Level 1 &mdash; finvchmain field checks</b><br/>");
         sb.append("&#10003;&nbsp; vchtype: <b>").append(esc(h.getVchtype()))
@@ -219,6 +246,16 @@ public abstract class FinVchMainBaseValidator {
             sb.append("&#10003;&nbsp; nartext: <b>").append(esc(h.getNartext())).append("</b><br/>");
         if (h.getEntrySource() != null)
             sb.append("&#10003;&nbsp; entry_source: ").append(esc(h.getEntrySource())).append("<br/>");
+        // Items H/I (Round 9): surfaced here too, not just the DiffEngine/changeset layer.
+        if (h.getDoccode() != null)
+            sb.append("&#10003;&nbsp; doccode: <b>").append(str(h.getDoccode())).append("</b><br/>");
+        if (h.getAdmouCode() != null) {
+            String ouName = com.gsl.database.query.AdmOuQuery.findNameByCode(
+                    DatabaseManager.getJdbi(), h.getAdmouCode());
+            sb.append("&#10003;&nbsp; admou_code: <b>").append(str(h.getAdmouCode()));
+            if (ouName != null) sb.append(" (").append(esc(ouName)).append(")");
+            sb.append("</b><br/>");
+        }
         if (diffSeconds != null && saveStartTime != null && h.getCreationDt() != null) {
             String result = diffSeconds <= toleranceSeconds ? "&#10003; within tolerance" : "&#10007; exceeds tolerance";
             sb.append("&#10003;&nbsp; creation_dt: saved at <b>")
@@ -232,6 +269,19 @@ public abstract class FinVchMainBaseValidator {
         return sb.toString();
     }
 
+    /** Asserts a column pair is populated together, never mismatched — one side present without
+     *  the other is a genuine data-integrity issue (a partially-completed release/access event),
+     *  not a display nuance. Promoted to package-private (Round 7) so {@link FinPostValidator}
+     *  can reuse the identical check on {@code finpost}'s own matching column pairs instead of
+     *  duplicating the logic. */
+    static void assertBothOrNeither(SoftAssertions soft, String tableLabel, String pairLabel,
+                                     boolean firstPresent, boolean secondPresent) {
+        soft.assertThat(firstPresent)
+                .as("[Level 1] " + tableLabel + " " + pairLabel + " mismatch — one side populated, "
+                        + "the other not (first=" + firstPresent + ", second=" + secondPresent + ")")
+                .isEqualTo(secondPresent);
+    }
+
     private static String esc(Object o) {
         if (o == null) return "&mdash;";
         return o.toString().replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;");
@@ -239,23 +289,29 @@ public abstract class FinVchMainBaseValidator {
 
     // ── Shared display table ──────────────────────────────────────────────────
 
+    /** Builds the {@code finvchmain} row's display table for the Extent Report. */
     protected static String[][] buildMainTable(FinVchMain r) {
+        // Items H/I (Round 9): doccode/admou_code were asserted only in the DiffEngine/changeset
+        // layer, invisible here — added so the hand-written "Database Validation" layer shows them.
         String[] headers = {"vchcode", "vchno", "scheme_docno", "vchdt", "vchtype",
                             "refno", "nartext", "glcode", "damount", "camount", "admsite_code_owner",
-                            "ycode", "entry_source", "status", "release_status", "creation_dt"};
+                            "admou_code", "doccode", "ycode", "entry_source", "status",
+                            "release_status", "creation_dt"};
         String[][] table = new String[2][headers.length];
         table[0] = headers;
         table[1] = new String[]{
             str(r.getVchcode()),      str(r.getVchno()),        str(r.getSchemeDocno()),
             str(r.getVchdt()),        str(r.getVchtype()),      str(r.getRefno()),
             str(r.getNartext()),      str(r.getGlcode()),       str(r.getDamount()),
-            str(r.getCamount()),      str(r.getAdmsiteCodeOwner()), str(r.getYcode()),
+            str(r.getCamount()),      str(r.getAdmsiteCodeOwner()), str(r.getAdmouCode()),
+            str(r.getDoccode()),      str(r.getYcode()),
             str(r.getEntrySource()),  str(r.getStatus()),       str(r.getReleaseStatus()),
             str(r.getCreationDt())
         };
         return table;
     }
 
+    /** Builds the resolved {@code fingl} row's display table for the Extent Report. */
     protected static String[][] buildGlTable(FinGl r) {
         String[] headers = {"glcode", "glname", "srctype"};
         return new String[][]{
@@ -264,6 +320,7 @@ public abstract class FinVchMainBaseValidator {
         };
     }
 
+    /** Builds the resolved {@code finnar} row's display table for the Extent Report, or a "not registered" placeholder row when {@code r} is empty. */
     protected static String[][] buildNarTable(Optional<FinNar> r, long glcode) {
         String[] headers = {"narcode", "nartext", "glcode"};
         if (r.isEmpty())
@@ -275,6 +332,7 @@ public abstract class FinVchMainBaseValidator {
         };
     }
 
+    /** Builds the resolved {@code admyear} row's display table for the Extent Report, or a "not found" placeholder row when {@code r} is empty. */
     protected static String[][] buildYearTable(Optional<AdmYear> r, long ycode) {
         String[] headers = {"ycode", "yname", "dtfr", "dtto"};
         if (r.isEmpty())

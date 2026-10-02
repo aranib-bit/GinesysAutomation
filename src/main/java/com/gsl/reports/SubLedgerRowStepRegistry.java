@@ -66,6 +66,7 @@ public final class SubLedgerRowStepRegistry {
         ROWS.get().put(rowKey, new RowEntry(node, baseLabel));
     }
 
+    /** Looks up a row's entry by exact key, then by trimmed key as a fallback; {@code null} if neither matches. */
     private static RowEntry lookup(String rowKey) {
         if (rowKey == null) return null;
         Map<String, RowEntry> rows = ROWS.get();

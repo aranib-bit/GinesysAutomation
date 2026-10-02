@@ -2,6 +2,15 @@ package com.gsl.pages.enums.Procurement.Operations;
 
 import com.gsl.enums.ISubModule;
 
+/**
+ * Procurement &gt; Operations' side-menu sub-items (grouped under Order/Goods In-Out/Invoicing/
+ * Service-Expenses/Others headers) — consumed by {@code
+ * NavigationUtils.navigateToProcurementSideMenu(HomePage, MainMenuType, OperationsMenuType, Class)},
+ * which passes it to {@code OperationsSideMenuComponent.clickMenuItem(ISubModule, Class)} to
+ * expand the right group and click the matching item. Also registered in {@code
+ * SubModuleResolver}'s {@code PROCUREMENT} entry so a test's declared {@code fw.subModule} short
+ * code (e.g. {@code "ProcGRCAdhoc"}) resolves back to one of these constants.
+ */
 public enum OperationsMenuType implements ISubModule {
 
     PURCHASE_ORDER                   ("Purchase Order",                   "ProcOrd",                   "Order"),

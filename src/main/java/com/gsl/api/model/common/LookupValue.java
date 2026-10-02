@@ -19,6 +19,7 @@ public class LookupValue {
     private Integer code;
     private String name;
 
+    /** Convenience factory for the common case of sending only {@code code} (name omitted/null). */
     public static LookupValue ofCode(int code) {
         return LookupValue.builder().code(code).build();
     }

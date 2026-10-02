@@ -2,6 +2,13 @@ package com.gsl.pages.enums.Procurement.Setup;
 
 import com.gsl.enums.ISubModule;
 
+/**
+ * Procurement module's Setup side-menu items (Vendors / Services / Invoice Overheads) — each
+ * constant pairs the menu's human-readable name with its app-internal menu short code and the
+ * side-menu group/section it's listed under, per {@link ISubModule}. Used to drive Setup-side
+ * navigation (see {@code SetupSideMenuComponent}) and, via {@code SubModuleResolver}, to resolve a
+ * test's declared sub-module short code back to a constant.
+ */
 public enum SetupMenuType implements ISubModule {
 
     VENDOR                             ("Vendor",                               "Vendor",                    "Vendors"),

@@ -3,6 +3,7 @@ package com.gsl.pages.pagecomponent.Finance.Operations.Common;
 import com.gsl.annotations.LogStep;
 import com.gsl.enums.LogCategory;
 import com.gsl.pages.VerifiablePage;
+import com.gsl.pages.enums.Finance.Operations.Common.CommonVoucherActionsMenu;
 import com.gsl.pages.enums.Finance.Operations.Common.CommonVoucherListColumn;
 import com.gsl.pages.enums.Finance.Operations.Common.IVoucherListColumn;
 import com.gsl.reports.ExtentLogger;
@@ -154,6 +155,13 @@ public abstract class VoucherListPageBase<
         gridHeader.clickAddButton();
         TAddPage page = newAddPage();
         verifyFormOpened(page, "Add", gridHeader::clickAddButton);
+        // Centralized here — every voucher Create test called this same shared method but only
+        // one of them hand-wrote its own "Add form opened for X" summary line. The domain label
+        // is already resolved one call away (verifyFormOpened uses the same accessor), so every
+        // caller gets the enrichment for free instead of duplicating it per test class.
+        // Item AG (Round 5): explicit "Success" wording, same as NavigationUtils' nav summary.
+        com.gsl.reports.StepSummaryBuffer.record(
+                "Add form opened for <b>" + gridHeader.getDomain().getVoucherLabel() + "</b> — <b>Success</b>");
         return page;
     }
 
@@ -190,7 +198,7 @@ public abstract class VoucherListPageBase<
     @LogStep("Open Voucher for Edit via Actions")
     public TAddPage clickEditFromActions(String documentNumber, DocumentSearchStrategy strategy) {
         Runnable reselect = () -> {
-            selectDocumentFast(documentNumber, strategy);
+            selectDocumentForAction(documentNumber, strategy);
             clickActions();
         };
         reselect.run(); // initial select + open Actions — same as the previous inline call-site sequence
@@ -274,17 +282,13 @@ public abstract class VoucherListPageBase<
     /**
      * Document-number-aware overload (Round 10, RC-11) — see
      * {@link #clickEditFromActions(String, DocumentSearchStrategy)} for the rationale; same
-     * re-select-and-retry-once recovery, for Actions→Delete.
+     * re-select-and-retry-once recovery, for Actions→Delete. Delegates to
+     * {@link #performGridAction(CommonVoucherActionsMenu, String, DocumentSearchStrategy)} — kept
+     * as its own named method since {@code Delete} call sites read better than the generic name.
      */
     @LogStep("Click Delete for Voucher")
     public TSelf clickDeleteForVoucher(String documentNumber, DocumentSearchStrategy strategy) {
-        Runnable reselect = () -> {
-            selectDocumentFast(documentNumber, strategy);
-            clickActions();
-        };
-        reselect.run(); // initial select + open Actions — same as the previous inline call-site sequence
-        mainGrid.clickDeleteForVoucher(reselect); // clicks Delete; on failure, reselect.run() then one retry
-        return self();
+        return performGridAction(CommonVoucherActionsMenu.DELETE, documentNumber, strategy);
     }
 
     @LogStep("Unpost Voucher")
@@ -416,6 +420,57 @@ public abstract class VoucherListPageBase<
         // NoSuchElementException itself — kept only so every path returns TSelf for the compiler.
         throw new NoSuchElementException(
                 "selectDocumentFast: document [" + documentNumber + "] not found by any strategy.");
+    }
+
+    /**
+     * The full "prepare list page + locate document" sequence every Revert/Delete/Edit test's own
+     * "Select document" step needs: clear any stale filter, refresh, reset to page 1, then locate
+     * and check the document's row via {@link #selectDocumentFast(String, DocumentSearchStrategy)}.
+     * Consolidates what was previously 2-3 separately-chained calls, repeated — and, in several
+     * call sites, incompletely copied (missing the clear-filter step entirely) — across every
+     * Revert/Delete/Edit test class in GV/AR/AP. See {@link #doubleClickForAction(String,
+     * DocumentSearchStrategy)} for the double-click-entry equivalent, and
+     * {@link #performGridAction(CommonVoucherActionsMenu, String, DocumentSearchStrategy)} for the
+     * one level up composite that also opens Actions and clicks a specific action item.
+     */
+    public TSelf selectDocumentForAction(String documentNumber, DocumentSearchStrategy strategy) {
+        return clearFilterAndRefreshList().resetToFirstPageIfEnabled().selectDocumentFast(documentNumber, strategy);
+    }
+
+    /**
+     * Double-click-entry analogue of {@link #selectDocumentForAction(String,
+     * DocumentSearchStrategy)} — same clear-filter-first guarantee, for callers that open Edit via
+     * {@link #doubleClickToEditFast(String, DocumentSearchStrategy)} instead of a checkbox+Actions
+     * flow. Without this, {@code doubleClickToEditFast} only clears the filter *between* its own
+     * failed tiers, never before the first one — a caller that doesn't independently clear the
+     * filter first (as {@code EditGeneralVoucher} happens to, for an unrelated reason, before
+     * either of its own branches) could have its EXACT_MATCH tier hidden behind a stale filter,
+     * the same exposure {@link #selectDocumentForAction} closes for the checkbox path.
+     */
+    public TAddPage doubleClickForAction(String documentNumber, DocumentSearchStrategy strategy) {
+        clearFilterAndRefreshList().resetToFirstPageIfEnabled();
+        return doubleClickToEditFast(documentNumber, strategy);
+    }
+
+    /**
+     * The common "select + open Actions + click a specific action item" composite — parametrized
+     * by {@code menuItem} (DELETE/EDIT/REVERT/RELEASE) so this one method replaces what were
+     * previously three separate, hand-copied near-duplicates ({@link #clickDeleteForVoucher(String,
+     * DocumentSearchStrategy)}, {@link #clickEditFromActions(String, DocumentSearchStrategy)}, and
+     * {@code GeneralVoucherListPage.clickRevert(String, DocumentSearchStrategy)}), each building
+     * the identical "select, open Actions, click-with-retry" sequence for a different action.
+     * Domain-specific dialog confirmation (e.g. {@code confirmDelete()}/{@code confirmRevert()})
+     * is deliberately NOT included here — that part genuinely differs per domain and stays a
+     * separate, explicit call by the caller.
+     */
+    public TSelf performGridAction(CommonVoucherActionsMenu menuItem, String documentNumber, DocumentSearchStrategy strategy) {
+        Runnable reselect = () -> {
+            selectDocumentForAction(documentNumber, strategy);
+            clickActions();
+        };
+        reselect.run(); // initial select + open Actions
+        mainGrid.clickGridAction(menuItem, reselect); // clicks the action item; on failure, reselect.run() then one retry
+        return self();
     }
 
     // --------------------------------------------------------------------------------------

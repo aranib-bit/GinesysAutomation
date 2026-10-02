@@ -94,6 +94,9 @@ public abstract class VoucherExtentDescriptionLogger<T extends VoucherReportData
 
     // ── Console ────────────────────────────────────────────────────────────────
 
+    /** Logs the full test-data summary (header fields, sub-ledgers, select docs, payments,
+     *  expected result) as one Log4j2 INFO block — the console/file counterpart to the Extent
+     *  sections below, useful for grepping a scenario's full input without opening the report. */
     private void printToConsole(T data) {
         var master = data.getMasterTestData();
         var doc    = data.getDocumentInformation();
@@ -182,6 +185,8 @@ public abstract class VoucherExtentDescriptionLogger<T extends VoucherReportData
 
     // ── Section 1: Header ──────────────────────────────────────────────────────
 
+    /** Renders the shared Header table (Scenario/TestCase/Owner Site/Cash-Bank/.../Remarks),
+     *  extended with {@link #appendExtraHeaderRows} and the Payment Info Warning flag. */
     private void logHeaderTable(T data) {
         var master = data.getMasterTestData();
         var doc    = data.getDocumentInformation();
@@ -208,6 +213,9 @@ public abstract class VoucherExtentDescriptionLogger<T extends VoucherReportData
 
     // ── Section 1b: Expected Results ──────────────────────────────────────────
 
+    /** Renders the Expected Results table — the shared negative-branch table (validation error,
+     *  nothing persisted) when {@code data.getExpectedValidation()} is set, else delegates to
+     *  {@link #logPositiveExpected}. */
     private void logExpectedResultsSection(T data) {
         ExtentLogger.info("<b>Expected Results</b>");
         if (data.getExpectedValidation() != null) {
@@ -226,6 +234,9 @@ public abstract class VoucherExtentDescriptionLogger<T extends VoucherReportData
 
     // ── Section 2: Sub-Ledgers ─────────────────────────────────────────────────
 
+    /** Renders the generic Sub-Ledgers table (Line#/Sub-Ledger/Id/Class/GL/Adj Type/amount/
+     *  Payment Mode), using {@link #amountColumnHeader()}/{@link #slAmount} for the voucher-
+     *  specific amount column. Only called when {@link #hasGenericSubLedgers()} is {@code true}. */
     private void logSubLedgersTable(T data) {
         List<? extends VoucherSubLedgerRow> sls = data.getSubLedgerInformationList();
         String amtCol = amountColumnHeader();
@@ -258,6 +269,8 @@ public abstract class VoucherExtentDescriptionLogger<T extends VoucherReportData
 
     // ── Section 3: Selected Documents ─────────────────────────────────────────
 
+    /** Renders the Selected Documents table (Line#/Doc No/Doc Date/Doc Type/Adj Amount); no-op
+     *  (renders nothing) when the list is null/empty. Fully shared — no voucher-specific hook. */
     protected final void logSelectDocsTable(T data) {
         List<? extends VoucherSelectDocRow> docs = data.getSelectDocumentList();
         if (docs == null || docs.isEmpty()) return;
@@ -280,6 +293,9 @@ public abstract class VoucherExtentDescriptionLogger<T extends VoucherReportData
 
     // ── Section: Payment Information ───────────────────────────────────────────
 
+    /** Renders the Payment Information table (Line#/Mode/Instrument No/Instrument Date), or a
+     *  blank-placeholder row when the scenario has no payments; skipped entirely when
+     *  {@link #supportsPaymentInformation()} is {@code false}. */
     protected final void logPaymentsTable(T data) {
         if (!supportsPaymentInformation()) return;
         List<? extends VoucherPaymentInfo> payments = data.getPaymentInformationList();

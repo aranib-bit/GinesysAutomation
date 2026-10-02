@@ -12,10 +12,34 @@ import com.gsl.utils.NavigationUtils;
 import com.gsl.utils.Selenium.SeleniumUtils;
 import org.openqa.selenium.By;
 
+/**
+ * Drives Finance &gt; Operations' collapsible side menu (Vouchers/Journals/Retail Journals/TDS
+ * groups — see {@link com.gsl.pages.enums.Finance.Operations.OperationsMenuType}): expands the
+ * right group if needed, clicks the requested leaf item by its literal display text, and
+ * instantiates the resulting page object.
+ *
+ * <p>{@link #clickMenuItem(ISubModule, Class)} clicks whatever text {@code item.getName()}/{@code
+ * item.getGroup()} return — it has no knowledge of which Java constant produced them. Callers
+ * passing {@link com.gsl.pages.enums.Finance.Operations.OperationsMenuType#ITEM}/{@link
+ * com.gsl.pages.enums.Finance.Operations.OperationsMenuType#CATEGORY} genuinely click the "Contra
+ * Voucher"/"General Voucher" side-menu entries, not an item/category master, per that enum's own
+ * mislabeled-constant note.
+ */
 public class OperationsSideMenuComponent {
 
     private static final String SIDE_MENU_ITEM = "//span[text()='%s']";
 
+    /**
+     * Clicks the side-menu leaf item whose visible text is {@code name}, then instantiates {@code
+     * expectedPage} as the page now on screen. If the returned page is a {@link VerifiablePage}
+     * and its {@code verifyOnThisPage()} fails — the click can silently land on a still-masked
+     * overlay without actually navigating — retries once with a fresh click/verify, and if that
+     * second attempt also fails, escalates through {@link RecoveryManager#refreshAndRestore} (a
+     * refresh-and-restore recovery tier) before finally letting the original failure propagate.
+     *
+     * @throws RuntimeException if {@code expectedPage} can't be instantiated, or if verification
+     *                          still fails after both retries and recovery
+     */
     public <T> T clickMenuItem(String name, Class<T> expectedPage) {
         By itemLocator = By.xpath(String.format(SIDE_MENU_ITEM, name));
         SeleniumUtils.click(itemLocator, WaitType.CLICKABLE, name, LogCategory.SUB_MENU);
@@ -68,6 +92,7 @@ public class OperationsSideMenuComponent {
         return page;
     }
 
+    /** Instantiates {@code expectedPage} via its no-arg constructor, wrapping any failure with {@code name} for context. */
     private static <T> T instantiate(String name, Class<T> expectedPage) {
         try {
             return expectedPage.getDeclaredConstructor().newInstance();
@@ -77,11 +102,17 @@ public class OperationsSideMenuComponent {
         }
     }
 
+    /**
+     * {@link ISubModule}-driven convenience over {@link #clickMenuItem(String, Class)}: expands
+     * {@code item}'s group (see {@link #ensureGroupExpanded}) if its leaf item isn't already
+     * visible, then clicks that leaf item by {@code item.getName()}.
+     */
     public <T> T clickMenuItem(ISubModule item, Class<T> expectedPage) {
         ensureGroupExpanded(item.getGroup(), item.getName());
         return clickMenuItem(item.getName(), expectedPage);
     }
 
+    /** Clicks {@code groupName}'s header to expand it, unless {@code leafItemName} is already present (group already open). */
     private void ensureGroupExpanded(String groupName, String leafItemName) {
         By leafLocator = By.xpath(String.format(SIDE_MENU_ITEM, leafItemName));
         if (SeleniumUtils.isElementPresent(leafLocator, 2)) {

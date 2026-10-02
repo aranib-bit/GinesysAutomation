@@ -8,7 +8,9 @@ import com.gsl.reports.contract.TestResultsRenderer;
 import com.gsl.database.dao.adm.AdmSiteDao;
 import com.gsl.database.dao.finance.FinGlDao;
 import com.gsl.enums.Finance.Operations.APVoucher.OnAccountValues;
+import com.gsl.enums.PaymentSelectionType;
 import com.gsl.model.adm.AdmSite;
+import com.gsl.model.finance.FinCostTag;
 import com.gsl.model.finance.FinGl;
 import com.gsl.model.finance.FinPost;
 import com.gsl.model.finance.FinVchMain;
@@ -19,6 +21,9 @@ import com.gsl.testdata.dto.MergedFinanceApVoucherData;
 import com.gsl.testdata.dto.MergedFinanceArVoucherData;
 import com.gsl.testdata.dto.MergedFinanceGeneralVoucherData;
 import com.gsl.utils.Log;
+import com.gsl.validation.snapshot.finance.AuditStateSummary;
+import com.gsl.validation.ui.UiValidationFailure;
+import com.gsl.validation.ui.UiValidationReporter;
 
 import static com.gsl.reports.FoldableSectionRenderer.ICO_DB;
 import static com.gsl.reports.FoldableSectionRenderer.ICO_DOC;
@@ -59,7 +64,7 @@ public final class ActualResultsLogger {
     private static final String SECTION_OPEN_PLACEHOLDER = "RS_SECTION_OPEN_PLACEHOLDER";
 
     private static final class Tally {
-        int checked, passed, failed, skipped;
+        int checked, passed, failed, skipped, known;
         final List<String[]> failures = new ArrayList<>(); // {field, expected, actual}
     }
 
@@ -72,6 +77,7 @@ public final class ActualResultsLogger {
         switch (status) {
             case PASS -> t.passed++;
             case SKIP -> t.skipped++;
+            case KNOWN_ISSUE -> t.known++;
             case FAIL -> { t.failed++; t.failures.add(new String[]{field, expected, actual}); }
         }
     }
@@ -88,8 +94,28 @@ public final class ActualResultsLogger {
         return acc -> flushToReport();
     }
 
+    /**
+     * Renders the current thread's {@link ActualResultsHolder} as an "Actual Results" step —
+     * the negative-scenario table when {@code isNegativeScenario()}, else the full positive HTML
+     * (UI Validation / DB Validation / DB Lookups). Call once per test, from both
+     * {@code onTestSuccess} and {@code onTestFailure} (see {@link FinanceDomainReporter}), so the
+     * table always appears regardless of outcome. No-op rendering (a single explanatory line)
+     * when the holder was never populated at all — see {@link #isCompletelyUntouched}.
+     */
     public static void flushToReport() {
         ActualResultsHolder h = ActualResultsHolder.get();
+        // Item H: skip rendering entirely when the holder was never populated at all — e.g.
+        // Revert's list-page flow validates exclusively via the separate Database Snapshot
+        // Validation system (VoucherSnapshotValidator/GeneralVoucherRevertChangeSets) and never
+        // touches this holder, so rendering the full "Actual Results" section here previously
+        // produced nothing but a wall of "(not reached)"/Skip rows for fields that flow will never
+        // reach. Self-heals once any field IS populated (e.g. a future Document-view Revert mode)
+        // — this only fires when EVERY field is still at its untouched default.
+        if (isCompletelyUntouched(h)) {
+            StepExecutor.step("Actual Results", () -> ExtentLogger.info("Actual Results — not "
+                    + "applicable (this test validates via Database Snapshot Validation instead)."));
+            return;
+        }
         JdbiSqlLogger.startCapturing();
         try {
             StepExecutor.step("Actual Results", () -> {
@@ -104,8 +130,27 @@ public final class ActualResultsLogger {
         }
     }
 
+    /** See {@link #flushToReport()}'s Item H guard — {@code true} only when every field the
+     *  positive/negative renderers actually read is still at its untouched constructor default. */
+    private static boolean isCompletelyUntouched(ActualResultsHolder h) {
+        return h.getHeader() == null
+                && h.getUiOwnerSite() == null
+                && h.getUiCashBank() == null
+                && h.getVoucherNo() == null
+                && h.getDetRowCount() == -1
+                && h.getPostEntryCount() == -1
+                // A UI-contract-only flow (e.g. GeneralVoucherUiValidation's tests) never touches
+                // the DB/header/business fields above but DOES populate this — without this check,
+                // such a flow was incorrectly classified as "completely untouched" and its real
+                // Actual Results data silently discarded in favor of the generic placeholder.
+                && (h.getUiValidationResults() == null || h.getUiValidationResults().isEmpty());
+    }
+
     // ─── Positive HTML ────────────────────────────────────────────────────────
 
+    /** Builds and logs the positive-scenario HTML, degrading to a plain error message (logged,
+     *  not thrown) if building the HTML itself fails — a broken report section must never fail
+     *  the test it's reporting on. */
     private static void renderPositiveHtml(ActualResultsHolder h) {
         try {
             ExtentLogger.infoHtml(buildPositiveHtml(h));
@@ -115,6 +160,10 @@ public final class ActualResultsLogger {
         }
     }
 
+    /** Installs a fresh {@link Tally} for the duration of one render so {@link #row}/{@link #flagRow}
+     *  calls made by {@link #buildPositiveHtmlBody} (and everything it calls) can accumulate
+     *  pass/fail/skip counts and the failure list the Summary/Exceptions sections need — always
+     *  removed afterwards so a stale tally never leaks into the next render on this thread. */
     private static String buildPositiveHtml(ActualResultsHolder h) {
         CURRENT_TALLY.set(new Tally());
         try {
@@ -124,6 +173,16 @@ public final class ActualResultsLogger {
         }
     }
 
+    /**
+     * Assembles the full "Actual Results" HTML body: the Validation Summary/Exceptions cards
+     * (filled in afterwards via {@link #SUMMARY_PLACEHOLDER}/{@link #SECTION_OPEN_PLACEHOLDER}
+     * once the tally is complete), a "UI Validation" foldable section (Document Information,
+     * AP-only Flags, Sub-Ledger/Site-Allocation/Payment-Information sub-sections), a "DB
+     * Validation" foldable section (finvchmain/finnar/finvchdet/finpost/fintag-or-fincosttag/
+     * finchqdet-finchqmain, each its own sub-section), and — when any SQL was captured during
+     * rendering — a "DB Lookups" section. Every {@code row()}/{@code flagRow()} call along the way
+     * feeds the thread-local {@link Tally} that the placeholders are swapped for at the end.
+     */
     private static String buildPositiveHtmlBody(ActualResultsHolder h) {
         FinVchMain header = h.getHeader();
 
@@ -164,7 +223,7 @@ public final class ActualResultsLogger {
         StringBuilder sb = new StringBuilder();
         sb.append(FoldableSectionRenderer.CSS);
         sb.append("<div class='rs-wrap'>");
-        sb.append(LEGEND);
+        sb.append(FoldableSectionRenderer.STATUS_LEGEND);
         sb.append(SUMMARY_PLACEHOLDER);
 
         // ── UI Validation section ──────────────────────────────────────────────
@@ -180,14 +239,27 @@ public final class ActualResultsLogger {
         // Doc No — label depends on whether it's auto-assigned
         String docNoLabel = "Doc no";
         String docNoExpected = "(assigned on save)";
-        Status docNoStatus = docNoActual.equals(NOT_REACHED) ? Status.SKIP : Status.PASS;
+        // Item H bonus fix: derive from the raw field, not the already-normalized display string —
+        // ns(null) renders a bare "—" (not the NOT_REACHED sentinel "— (not reached)"), so the old
+        // docNoActual.equals(NOT_REACHED) check silently resolved to PASS-by-construction whenever
+        // voucherNo was never set at all, instead of correctly reporting SKIP.
+        Status docNoStatus = h.getVoucherNo() == null ? Status.SKIP : Status.PASS;
         sb.append(row(docNoLabel, docNoExpected, docNoActual, docNoStatus));
 
         sb.append(row("Owner site",     expOwnerSite, siteActual,   matchContains(siteActual, expOwnerSite)));
+        appendUiContractRows(sb, h, "OWNER_SITE");
         sb.append(row("Cash / bank GL", expCashBank,  glActual,     matchContains(glActual, expCashBank)));
+        appendUiContractRows(sb, h, "CASH_BANK");
         sb.append(row("Doc date",       expDocDate,   docDateActual, matchExact(docDateActual, expDocDate)));
+        appendUiContractRows(sb, h, "DATE");
         sb.append(row("Reference",      expReference, refActual,     matchExact(refActual, expReference)));
         sb.append(row("Remarks",        expRemarks,   remarkActual,  matchExact(remarkActual, expRemarks)));
+        appendUiContractRows(sb, h, "REMARKS");
+        // GV-only fields with no business-match row of their own (Balance/Net Amount) and the
+        // section's own header check — appended at the end of this same table instead of a new
+        // section, per explicit user request.
+        // (CASH_BANK_BALANCE is already merged by the "CASH_BANK" prefix above.)
+        appendUiContractRows(sb, h, "GV_NET_AMOUNT", "SECTION_HEADER_DOCUMENT_INFORMATION", "SECTION_DOCUMENT_INFORMATION");
         sb.append("</tbody>").append(TABLE_CLOSE).append(FoldableSectionRenderer.sectionClose());
 
         // Flags sub-section — AP only
@@ -210,13 +282,27 @@ public final class ActualResultsLogger {
         // (Type2/Type3 rows' Allocate Sites tagging; unrelated to AP/AR's sub-ledger concept).
         if (isGv) {
             sb.append(buildSiteAllocationSection(h));
+            // Round 8 Part B: was entirely absent for any payment mode.
+            sb.append(buildPaymentInformationSection(h));
+            // Round 23: page-styling (font-size/font-family) regression checks for the Edit form.
+            sb.append(buildPageStylingSection(h));
         }
+        sb.append(buildScopedUiContractSection(h));
 
         sb.append(FoldableSectionRenderer.sectionClose()); // end UI Validation
 
         // ── DB Validation section ──────────────────────────────────────────────
         sb.append(FoldableSectionRenderer.sectionOpen(SECTION_OPEN_PLACEHOLDER, "rs-top rs-db", "",
                 FoldableSectionRenderer.headerLabel(ICO_DB, "DB Validation", 8)));
+
+        // Item AH (Round 5): compact one-line audit-trail summary — deliberately NOT a full
+        // table (would visually duplicate the Database Snapshot Validation section's own, more
+        // detailed Audit Trail table). Only rendered when the caller actually deposited an
+        // AuditStateSummary (Create's "Audit State — Before Save" step does; Edit/Revert/Delete
+        // don't populate this holder at all — see Item H).
+        if (h.getAuditState() != null) {
+            sb.append(buildAuditStateSummaryLine(h.getAuditState()));
+        }
 
         // finvchmain
         sb.append(FoldableSectionRenderer.sectionOpen("open", "rs-sub", "",
@@ -256,6 +342,33 @@ public final class ActualResultsLogger {
                 ? "saved at " + saveTime.format(TIME_FMT) + " (within " + h.getCreationDtToleranceSeconds() + "s)"
                 : "not null";
         sb.append(row("creation_dt", creationDtExpected, creationDtActual, creationDtStatus));
+        // Items H/I (Round 9): doccode/admou_code were asserted only in the DiffEngine/changeset
+        // layer, invisible here — no independently-known "expected" value at this layer, so shown
+        // as a not-null presence check (the DiffEngine layer still owns the exact-value assertion).
+        String doccodeActual = header != null && header.getDoccode() != null
+                ? ns(header.getDoccode()) : NOT_REACHED;
+        sb.append(row("doccode", "not null", doccodeActual,
+                doccodeActual.equals(NOT_REACHED) ? Status.SKIP : Status.PASS));
+        String admouCodeActual = header != null && header.getAdmouCode() != null
+                ? ns(header.getAdmouCode()) : NOT_REACHED;
+        sb.append(row("admou_code", "not null", admouCodeActual,
+                admouCodeActual.equals(NOT_REACHED) ? Status.SKIP : Status.PASS));
+        sb.append("</tbody>").append(TABLE_CLOSE).append(FoldableSectionRenderer.sectionClose());
+
+        // finnar — Round 19: promoted out of finvchmain's own table into its own dedicated
+        // sub-section (was a single row folded inside finvchmain, unlike every other table here,
+        // which each get their own section — inconsistent, and easy to overlook). Item F (Round 9)
+        // originally added this; mirrors "Database Validation"'s own finnar table display.
+        sb.append(FoldableSectionRenderer.sectionOpen("open", "rs-sub", "",
+                FoldableSectionRenderer.headerLabel(ICO_TABLE, "finnar", 6)));
+        sb.append(tableOpen());
+        sb.append(headerRow("Column", "Expected", "Actual", "Status"));
+        com.gsl.model.finance.FinNar finnar = h.getFinnar();
+        String finnarActual = header == null ? NOT_REACHED
+                : (finnar != null ? "narcode=" + finnar.getNarcode() + " (" + ns(finnar.getNartext()) + ")"
+                        : "not registered");
+        sb.append(row("Registered", "registered", finnarActual,
+                header == null ? Status.SKIP : (finnar != null ? Status.PASS : Status.FAIL)));
         sb.append("</tbody>").append(TABLE_CLOSE).append(FoldableSectionRenderer.sectionClose());
 
         // finvchdet
@@ -294,7 +407,55 @@ public final class ActualResultsLogger {
         else if (h.getTagCount() == -1) tagStatus = Status.SKIP;
         else tagStatus = Status.PASS;
         sb.append(row(tagRowLabel, expSelectDocEntry, tagActual, tagStatus));
-        sb.append("</tbody>").append(TABLE_CLOSE).append(FoldableSectionRenderer.sectionClose());
+        sb.append("</tbody>").append(TABLE_CLOSE);
+        // Item I: real per-row site/amount/GL detail, mirroring finpost's own GL-entries table
+        // above — previously computed in full by GeneralVoucherDbValidator then discarded, leaving
+        // only the row count visible here.
+        if (h.getCostTagEntries() != null && !h.getCostTagEntries().isEmpty()) {
+            sb.append(buildCostTagEntriesTable(h.getCostTagEntries()));
+        }
+        sb.append(FoldableSectionRenderer.sectionClose());
+
+        // finchqdet/finchqmain — Round 19: cheque-book detail (Level 5 for GV / the equivalent
+        // check for AP, Round 20), previously never surfaced in "Actual Results" at all (only the
+        // validator's own pass/fail assertions existed in "Database Validation"). Rendered only
+        // when ChequeBookValidator.assertKnownChequeIssued actually resolved a row — every
+        // non-Cheque payment mode, and every synthetic/unknown cheque number (no finchqdet row to
+        // resolve), correctly show nothing here rather than a wall of "not applicable" rows.
+        // Round 20: gate loosened from GV-only to GV‖AP now that AP populates the same fields.
+        if ((isGv || isAp) && h.getChequeDet() != null) {
+            com.gsl.model.finance.FinChqDet chqDet = h.getChequeDet();
+            sb.append(FoldableSectionRenderer.sectionOpen("open", "rs-sub", "",
+                    FoldableSectionRenderer.headerLabel(ICO_TABLE, "finchqdet", 6)));
+            sb.append(tableOpen());
+            sb.append(headerRow("Column", "Expected", "Actual", "Status"));
+            sb.append(row("stat", "I (Issued)", ns(chqDet.getStat()),
+                    "I".equalsIgnoreCase(chqDet.getStat()) ? Status.PASS : Status.FAIL));
+            sb.append(row("finchqdet.bookcode", "not null", ns(chqDet.getBookcode()),
+                    chqDet.getBookcode() != null ? Status.PASS : Status.FAIL));
+            // Round 22: the actual cross-table comparison — does the voucher's own finvchdet.bookcode
+            // really match the resolved finchqdet.bookcode? Previously only finchqdet's own
+            // not-null-ness was shown here; the voucher's own value never surfaced anywhere.
+            sb.append(row("finvchdet.bookcode", ns(chqDet.getBookcode()), ns(h.getChequeDetBookcodeOnVoucher()),
+                    java.util.Objects.equals(chqDet.getBookcode(), h.getChequeDetBookcodeOnVoucher())
+                            ? Status.PASS : Status.FAIL));
+            sb.append(row("chqno", "—", ns(chqDet.getChqno()), Status.PASS));
+            sb.append(row("chqdt", "—", ns(chqDet.getChqdt()), Status.PASS));
+            sb.append(row("vchcode", "—", ns(chqDet.getVchcode()), Status.PASS));
+            sb.append("</tbody>").append(TABLE_CLOSE).append(FoldableSectionRenderer.sectionClose());
+
+            if (h.getChequeMain() != null) {
+                com.gsl.model.finance.FinChqMain chqMain = h.getChequeMain();
+                sb.append(FoldableSectionRenderer.sectionOpen("open", "rs-sub", "",
+                        FoldableSectionRenderer.headerLabel(ICO_TABLE, "finchqmain", 6)));
+                sb.append(tableOpen());
+                sb.append(headerRow("Column", "Expected", "Actual", "Status"));
+                sb.append(row("Record existence", "1 record found", "bookcode=" + chqMain.getBookcode(), Status.PASS));
+                sb.append(row("bookno", "—", ns(chqMain.getBookno()), Status.PASS));
+                sb.append(row("glcode", "—", ns(chqMain.getGlcode()), Status.PASS));
+                sb.append("</tbody>").append(TABLE_CLOSE).append(FoldableSectionRenderer.sectionClose());
+            }
+        }
 
         sb.append(FoldableSectionRenderer.sectionClose()); // end DB Validation
 
@@ -333,6 +494,7 @@ public final class ActualResultsLogger {
         sb.append("<span>Fields Checked: <b>").append(tally.checked).append("</b></span>");
         sb.append("<span style='color:#27500A'>Passed: <b>").append(tally.passed).append("</b></span>");
         sb.append("<span style='color:#991B1B'>Failed: <b>").append(tally.failed).append("</b></span>");
+        sb.append("<span style='color:#E65100'>Known issues: <b>").append(tally.known).append("</b></span>");
         sb.append("<span style='color:#5F5E5A'>Skipped: <b>").append(tally.skipped).append("</b></span>");
         sb.append("<span>Overall Result: ").append(badge(overallPass ? Status.PASS : Status.FAIL)).append("</span>");
         sb.append("</div></div>");
@@ -358,6 +520,8 @@ public final class ActualResultsLogger {
 
     // ─── GL entries sub-table ─────────────────────────────────────────────────
 
+    /** Renders finpost's per-GL Dr/Cr breakdown as its own small table — GL name resolved via
+     *  {@link #resolveGlName}. */
     private static String buildGlEntriesTable(List<FinPost> entries) {
         StringBuilder sb = new StringBuilder();
         sb.append("<div style='overflow-x:auto;width:100%;padding:6px 12px 10px;background:#fff'>");
@@ -383,6 +547,66 @@ public final class ActualResultsLogger {
         return sb.toString();
     }
 
+    /** Item AH (Round 5): one compact line, one clause per persistence-map table — "✓ active"
+     *  when audit-active, "— not audited" otherwise (a table registered active but physically
+     *  trigger-disabled on this environment gets its own clause, e.g. "✓ active (trigger
+     *  disabled)"). Built directly from the two sets {@link AuditStateSummary} already resolved —
+     *  no new DB calls. */
+    private static String buildAuditStateSummaryLine(AuditStateSummary auditState) {
+        String[] tables = {"finvchmain", "finvchdet", "finpost", "fincosttag"};
+        List<String> clauses = new ArrayList<>();
+        for (String table : tables) {
+            boolean active = auditState.auditActiveTables().contains(table);
+            boolean triggerDisabled = auditState.auditTriggerDisabledTables().contains(table);
+            clauses.add(table + " " + (active
+                    ? (triggerDisabled ? "&#10003; active (trigger disabled)" : "&#10003; active")
+                    : "&#8212; not audited"));
+        }
+        return "<div style='padding:4px 14px 8px;font-size:11px;color:#64748B'>Audit: "
+                + String.join(", ", clauses) + "</div>";
+    }
+
+    /** Item I: {@code fincosttag}'s per-row site/GL/amount detail — same table chrome as
+     *  {@link #buildGlEntriesTable}, one row per allocated site instead of one row per GL entry. */
+    private static String buildCostTagEntriesTable(List<FinCostTag> entries) {
+        StringBuilder sb = new StringBuilder();
+        sb.append("<div style='overflow-x:auto;width:100%;padding:6px 12px 10px;background:#fff'>");
+        sb.append("<div style='font-size:11px;color:#64748B;margin-bottom:5px;letter-spacing:.03em'>Site allocations</div>");
+        sb.append("<table style='width:100%;border-collapse:collapse;font-size:12px;border:0.5px solid #E2E8F0;border-radius:6px;overflow:hidden;table-layout:fixed'>");
+        sb.append("<thead><tr>");
+        sb.append(glTh("Site",       "left",  "45%"));
+        sb.append(glTh("GL",         "left",  "35%"));
+        sb.append(glTh("Dr amount",  "right", "10%"));
+        sb.append(glTh("Cr amount",  "right", "10%"));
+        sb.append("</tr></thead><tbody>");
+        for (FinCostTag e : entries) {
+            String siteLabel = resolveSiteName(e.getRefAdmsiteCode()) + " (" + e.getRefAdmsiteCode() + ")";
+            String glLabel = resolveGlName(e.getGlcode()) + " (" + e.getGlcode() + ")";
+            String dr = fmtAmount(e.getDamount());
+            String cr = fmtAmount(e.getCamount());
+            sb.append("<tr>");
+            sb.append("<td style='padding:5px 10px;border-bottom:0.5px solid #E2E8F0;color:#1E293B'>").append(esc(siteLabel)).append("</td>");
+            sb.append("<td style='padding:5px 10px;border-bottom:0.5px solid #E2E8F0;color:#1E293B'>").append(esc(glLabel)).append("</td>");
+            sb.append(amountTd(dr));
+            sb.append(amountTd(cr));
+            sb.append("</tr>");
+        }
+        sb.append("</tbody></table></div>");
+        return sb.toString();
+    }
+
+    /** Looks up a site's display name by code for {@link #buildCostTagEntriesTable}; falls back
+     *  to {@code "Site <code>"} when the lookup fails or finds nothing. */
+    private static String resolveSiteName(long siteCode) {
+        try {
+            AdmSiteDao dao = DatabaseManager.getJdbi().onDemand(AdmSiteDao.class);
+            AdmSite site = dao.findByCode(siteCode);
+            return site != null ? site.getName() : "Site " + siteCode;
+        } catch (Exception e) {
+            return "Site " + siteCode;
+        }
+    }
+
     private static String glTh(String label) { return glTh(label, "left", null); }
     private static String glTh(String label, String align) { return glTh(label, align, null); }
     private static String glTh(String label, String align, String width) {
@@ -398,6 +622,9 @@ public final class ActualResultsLogger {
     }
     // ─── DB Lookups section ───────────────────────────────────────────────────
 
+    /** Renders every SQL query {@code JdbiSqlLogger} captured while this report section itself
+     *  was being built, as its own foldable "DB Lookups" section — transparency about the
+     *  reporting layer's own DB cost, not part of the test's actual validation. */
     private static String buildDbLookupsSection(List<String> queries) {
         String title = "DB Lookups &mdash; " + queries.size() + " quer" + (queries.size() == 1 ? "y" : "ies")
                 + " fired during rendering";
@@ -407,12 +634,21 @@ public final class ActualResultsLogger {
              + FoldableSectionRenderer.sectionClose();
     }
 
+    /** Delegates to {@link VoucherReportUtils#fmtAmount} — local shorthand for this file's many
+     *  call sites. */
     private static String fmtAmount(BigDecimal v) {
         return VoucherReportUtils.fmtAmount(v);
     }
 
     // ─── Sub Ledger Information sub-section ──────────────────────────────────
 
+    /**
+     * Renders the "Sub Ledger Information" sub-section — GV's structurally different
+     * Expense/Income Detail rows are delegated to {@link #buildGvExpenseIncomeSection} up front
+     * (no sub-ledger-class/adjustment-type/payment-mode concept, and AP/AR-only footer logic
+     * would otherwise risk a {@code ClassCastException}); AP/AR render their own per-row table
+     * (AP adds Deduct-TDS/TDS-Info columns) plus the shared Payment Info blank-warning footer.
+     */
     private static String buildSubLedgerSection(ActualResultsHolder h) {
         Object td = h.getTestData();
 
@@ -529,6 +765,8 @@ public final class ActualResultsLogger {
         return sb.toString();
     }
 
+    /** Renders one row of {@link #buildGvExpenseIncomeSection}'s table (# badge/GL/Sub Ledger/
+     *  Amount/Is Reversal). */
     private static String slRowGv(int idx, String gl, String subLedger, String amount, String isReversal) {
         StringBuilder sb = new StringBuilder("<tr>");
         sb.append(td("<span style='font-size:10px;color:#64748B;background:#F8FAFC;"
@@ -570,6 +808,103 @@ public final class ActualResultsLogger {
         return sb.toString();
     }
 
+    /**
+     * Round 8 Part B — GV's Payment Information section: was entirely absent for ANY payment
+     * mode (not a Cheque-specific gap). Shows the resolved payment mode; for Cheque, defers
+     * instrument/cheque-book detail to Database Validation's Level 5 check instead of duplicating
+     * the same data here in a second style (the "one canonical place per kind of data" principle
+     * from the report-deduplication review).
+     */
+    private static String buildPaymentInformationSection(ActualResultsHolder h) {
+        Object td = h.getTestData();
+        if (!(td instanceof MergedFinanceGeneralVoucherData)) return "";
+        MergedFinanceGeneralVoucherData gv = (MergedFinanceGeneralVoucherData) td;
+        boolean multiRow = gv.getExpenseIncomeDetailList() != null && gv.getExpenseIncomeDetailList().size() > 1
+                && gv.getFixtureOptions() != null && gv.getFixtureOptions().isMultiRowPayment();
+
+        StringBuilder sb = new StringBuilder();
+        sb.append(FoldableSectionRenderer.sectionOpen("open", "rs-sub", "",
+                FoldableSectionRenderer.headerLabel(ICO_SUBLEDGER, "Payment Information", 6)));
+        sb.append(tableOpen());
+        sb.append(headerRow("Field", "Expected", "Actual", "Status"));
+        if (!multiRow) {
+            var paymentInfo = gv.getCashBankPaymentInfo();
+            // No payment info supplied: the "payment info missing" variant relies on the app's own
+            // post-save "instrument number missing" warning, which only exists for a Cheque-mode
+            // counter-leg — so Cheque (the app default) is the expected mode there, not Cash.
+            PaymentSelectionType expectedType = paymentInfo != null ? paymentInfo.getPaymentMode()
+                    : gv.isNeedsPaymentInfoWarning() ? PaymentSelectionType.CHEQUE : PaymentSelectionType.CASH;
+            sb.append(paymentModeRow("Payment mode", expectedType, h.getPaymentModeActual()));
+            if (expectedType == PaymentSelectionType.CHEQUE) {
+                sb.append(row("Cheque / instrument detail", "see Database Validation — Level 5 (cheque-book)",
+                        "see Level 5", Status.SKIP));
+            }
+        } else {
+            // One payment-mode row per grid row; a row without payment info is expected to store the
+            // Bank-header default (Cheque), same rule as the single-payment case above.
+            boolean anyCheque = false;
+            for (var line : gv.getExpenseIncomeDetailList()) {
+                var info = gv.paymentForLine(line.getLineNo());
+                PaymentSelectionType expectedType = info != null ? info.getPaymentMode() : PaymentSelectionType.CHEQUE;
+                anyCheque |= expectedType == PaymentSelectionType.CHEQUE;
+                sb.append(paymentModeRow("Row " + line.getLineNo() + " payment mode"
+                                + (info == null ? " (no payment info)" : ""),
+                        expectedType, h.getPaymentModeActualByLine().get(line.getLineNo())));
+            }
+            if (anyCheque) {
+                sb.append(row("Cheque / instrument detail", "see Database Validation — Level 5 (cheque-book)",
+                        "see Level 5", Status.SKIP));
+            }
+        }
+        sb.append("</tbody>").append(TABLE_CLOSE).append(FoldableSectionRenderer.sectionClose());
+        return sb.toString();
+    }
+
+    private static String paymentModeRow(String field, PaymentSelectionType expectedType, String actualCode) {
+        String expectedLabel = expectedType != null ? expectedType.label() : "—";
+        PaymentSelectionType actualType = PaymentSelectionType.fromDbCode(actualCode);
+        String actualLabel = actualCode == null ? NOT_REACHED
+                : (actualType != null ? actualType.label() + " (" + actualCode + ")" : actualCode);
+        Status status = actualCode == null ? Status.SKIP : (actualType == expectedType ? Status.PASS : Status.FAIL);
+        return row(field, expectedLabel, actualLabel, status);
+    }
+
+    /**
+     * Round 23 — page-styling regression checks: font-size/font-family for 3 elements on the GV
+     * Edit form (breadcrumb, window title, "Voucher No." saved-document-no field). Values are
+     * deposited by {@code GeneralVoucherAdd.verifyEditFormFullyLoaded} right after the page is
+     * confirmed genuinely rendered — that method also soft-asserts these same expected values
+     * (this section is purely descriptive, like every other "Actual Results" row; it does not by
+     * itself fail the test — see that method for the actual assertion). Skipped entirely (like
+     * {@link #buildSiteAllocationSection}) when none of the 3 fields were ever populated (Create/
+     * Revert/Delete never reach this measurement).
+     */
+    private static String buildPageStylingSection(ActualResultsHolder h) {
+        if (h.getUiBreadcrumbFont() == null && h.getUiWindowTitleFont() == null
+                && h.getUiSavedDocumentNoFont() == null) {
+            return "";
+        }
+        String breadcrumbActual = h.getUiBreadcrumbFont()      != null ? h.getUiBreadcrumbFont()      : NOT_REACHED;
+        String titleActual      = h.getUiWindowTitleFont()     != null ? h.getUiWindowTitleFont()     : NOT_REACHED;
+        String voucherNoActual  = h.getUiSavedDocumentNoFont() != null ? h.getUiSavedDocumentNoFont() : NOT_REACHED;
+
+        // Expected values confirmed live via DevTools (Fin.css/Adm.css/charts.css agree identically).
+        String expBreadcrumb = "13px|Segoe UI Light, Open Sans";
+        String expTitle      = "25px|Segoe UI Light, Open Sans";
+        String expVoucherNo  = "12px|Segoe UI, Open Sans"; // deliberately no "Light" — confirmed different
+
+        StringBuilder sb = new StringBuilder();
+        sb.append(FoldableSectionRenderer.sectionOpen("open", "rs-sub", "",
+                FoldableSectionRenderer.headerLabel(ICO_MONITOR, "Page Styling", 6)));
+        sb.append(tableOpen());
+        sb.append(headerRow("Field", "Expected (size|family)", "Actual (UI)", "Status"));
+        sb.append(row("Breadcrumb font", expBreadcrumb, breadcrumbActual, matchExact(breadcrumbActual, expBreadcrumb)));
+        sb.append(row("Window title font", expTitle, titleActual, matchExact(titleActual, expTitle)));
+        sb.append(row("Voucher No. field font", expVoucherNo, voucherNoActual, matchExact(voucherNoActual, expVoucherNo)));
+        sb.append("</tbody>").append(TABLE_CLOSE).append(FoldableSectionRenderer.sectionClose());
+        return sb.toString();
+    }
+
     /** Resolves expected/actual/statusClass for Payment Info Popup per SL row.
      *  Returns String[3]: {expLabel, actualLabel, statusCssClass} */
     private static String[] resolvePopupCell(boolean needsPaymentInfoWarning,
@@ -607,6 +942,8 @@ public final class ActualResultsLogger {
         return sb.toString();
     }
 
+    /** Renders one row of AP's Sub Ledger Information table (# badge/SL name/SL Id/amount/Adj
+     *  type/Deduct TDS/Payment Info Popup/TDS Info). */
     private static String slRowAp(int idx, String slName, String slId, String amount,
                                    String adjType, String uiDeductTds,
                                    String expPopup, String uiPopup, String popupStatusClass,
@@ -628,6 +965,8 @@ public final class ActualResultsLogger {
         return sb.toString();
     }
 
+    /** Renders one row of AR's Sub Ledger Information table (# badge/SL name/SL Id/amount/Adj
+     *  type/Payment Info Popup) — same shape as {@link #slRowAp} minus the AP-only TDS columns. */
     private static String slRowAr(int idx, String slName, String slId, String amount,
                                    String adjType,
                                    String expPopup, String uiPopup, String popupStatusClass) {
@@ -654,6 +993,8 @@ public final class ActualResultsLogger {
 
     // ─── Negative table ───────────────────────────────────────────────────────
 
+    /** Builds and logs the negative-scenario table via {@link ExtentLogger#infoTable}; a build
+     *  failure is logged, not thrown — same fail-soft contract as {@link #renderPositiveHtml}. */
     private static void renderNegativeTable(ActualResultsHolder h) {
         try {
             ExtentLogger.infoTable(buildNegativeTable(h));
@@ -662,6 +1003,10 @@ public final class ActualResultsLogger {
         }
     }
 
+    /** Builds the fixed Field/Expected/Actual rows for a negative scenario — every DB table is
+     *  expected untouched (save blocked by UI validation), so this is a static shape rather than
+     *  a real query result, with the expected UI message pulled from whichever voucher DTO is
+     *  present in {@code h.getTestData()}. */
     private static String[][] buildNegativeTable(ActualResultsHolder h) {
         String expMsg = "(unknown)";
         Object td = h.getTestData();
@@ -719,6 +1064,128 @@ public final class ActualResultsLogger {
         return sb.append("</tr></thead><tbody>").toString();
     }
 
+    /** Appends one row per UI-contract check ({@code h.getUiValidationResults()}) whose component
+     *  name starts with any of {@code componentPrefixes} — merges style/state/label contract-check
+     *  results directly under the matching field's own business-match row, instead of a separate
+     *  section, per explicit user request (reuses the unmodified {@link #row} so the page's own
+     *  top-level pass/fail tally keeps counting these too). No-op when {@code uiValidationResults}
+     *  is null (flows that never call {@code validateUiContract}, e.g. Revert/Delete) or when no
+     *  result matches the given prefixes (e.g. "Reference" has no contract check yet). */
+    private static void appendUiContractRows(StringBuilder sb, ActualResultsHolder h, String... componentPrefixes) {
+        if (h.getUiValidationResults() == null) return;
+        for (UiValidationFailure f : UiValidationReporter.rowsFor(h.getUiValidationResults(), componentPrefixes)) {
+            if (!f.path().isEmpty()) continue; // row/popup-scoped results render in their own section
+            sb.append(uiContractRow(f));
+        }
+    }
+
+    /** One Actual Results row for a UI-contract check — colour properties render with a swatch
+     *  (via {@link UiValidationReporter#colorAwareValue}, already-safe HTML, so not re-escaped). */
+    private static String uiContractRow(UiValidationFailure f) {
+        return uiContractRow(f, false);
+    }
+
+    /** @param leafLabel {@code true} inside the nested tree, where the path is already shown by the
+     *         enclosing nodes — the label then omits the "Row N / ..." prefix. */
+    private static String uiContractRow(UiValidationFailure f, boolean leafLabel) {
+        // A known issue keeps its real expected/actual and shows its note under the actual value.
+        String actualHtml = UiValidationReporter.colorAwareValue(f.property(), f.actual())
+                + (f.isKnownIssue()
+                ? "<div style='font-size:11px;color:#E65100;margin-top:2px'>" + esc(f.note()) + "</div>" : "");
+        return rowHtml(leafLabel ? UiValidationReporter.leafLabel(f) : UiValidationReporter.fieldLabel(f),
+                UiValidationReporter.colorAwareValue(f.property(), f.expected()),
+                actualHtml,
+                f.expected(), f.actual(), UiValidationReporter.toRendererStatus(f.status()));
+    }
+
+    /** Tree node for {@link #buildScopedUiContractSection}: one section / row / popup / fill phase. */
+    private static final class UiNode {
+        final String name;
+        final java.util.Map<String, UiNode> children = new java.util.LinkedHashMap<>();
+        final List<UiValidationFailure> direct = new ArrayList<>();
+        UiNode(String name) { this.name = name; }
+        void collect(List<UiValidationFailure> out) {
+            out.addAll(direct);
+            children.values().forEach(c -> c.collect(out));
+        }
+    }
+
+    /** UI-contract checks created inside a {@code UiValidationScope} node (grid rows, Allocate Sites,
+     *  Payment Information, grid footer), rendered as the SAME hierarchy the Extent "UI Full Validation
+     *  Details" tree uses — section &gt; Row N &gt; Allocate Sites / Payment Information &gt; Before /
+     *  After fill — so each check sits under the grid row it belongs to instead of in one flat list.
+     *  Expected values are untouched (they still come from the Excel style baseline via the results);
+     *  this only changes how the already-produced results are laid out. Empty string when none. */
+    private static String buildScopedUiContractSection(ActualResultsHolder h) {
+        if (h.getUiValidationResults() == null) return "";
+        List<UiValidationFailure> scoped = h.getUiValidationResults().stream()
+                .filter(f -> !f.path().isEmpty()).toList();
+        if (scoped.isEmpty()) return "";
+
+        UiNode root = new UiNode("");
+        for (UiValidationFailure f : scoped) {
+            UiNode n = root;
+            for (String segment : f.path()) n = n.children.computeIfAbsent(segment, UiNode::new);
+            n.direct.add(f);
+        }
+        StringBuilder sb = new StringBuilder();
+        sb.append(FoldableSectionRenderer.sectionOpen("open", "rs-sub", "",
+                FoldableSectionRenderer.headerLabel(ICO_DOC, "UI checks by section / row", 6)));
+        root.children.values().forEach(top -> renderUiNode(sb, top, 0));
+        sb.append(FoldableSectionRenderer.sectionClose());
+        return sb.toString();
+    }
+
+    private static void renderUiNode(StringBuilder sb, UiNode node, int depth) {
+        List<UiValidationFailure> all = new ArrayList<>();
+        node.collect(all);
+        long fail = all.stream().filter(UiValidationFailure::isFail).count();
+        long skip = all.stream().filter(UiValidationFailure::isSkip).count();
+        long known = all.stream().filter(UiValidationFailure::isKnownIssue).count();
+        long checked = all.size() - skip;
+        String counts = checked + " checked, " + fail + " failed"
+                + (known > 0 ? ", " + known + " known issue" + (known > 1 ? "s" : "") : "")
+                + (skip > 0 ? ", " + skip + " skipped" : "");
+        Status roll = fail > 0 ? Status.FAIL : known > 0 ? Status.KNOWN_ISSUE : checked == 0 ? Status.SKIP : Status.PASS;
+
+        String header = "<span style='display:flex;align-items:center;gap:8px;width:100%;padding-left:" + (depth * 14) + "px'>"
+                + "<span style='flex:1 1 auto;min-width:0;font-weight:500;text-transform:none;letter-spacing:0'>"
+                + esc(node.name) + "</span>"
+                + "<span style='font-size:11px;color:#64748B;white-space:nowrap'>" + esc(counts) + "</span>"
+                + badge(roll) + "</span>";
+        // Open only where something needs attention; green branches stay collapsed.
+        sb.append(FoldableSectionRenderer.sectionOpen(fail > 0 || known > 0 ? "open" : "", "rs-sub", "", header));
+        if (!node.direct.isEmpty()) {
+            sb.append(tableOpen());
+            sb.append(headerRow("Field", "Expected (test input)", "Actual (UI)", "Status"));
+            for (UiValidationFailure f : node.direct) sb.append(uiContractRow(f, true));
+            sb.append("</tbody>").append(TABLE_CLOSE);
+        }
+        node.children.values().forEach(c -> renderUiNode(sb, c, depth + 1));
+        sb.append(FoldableSectionRenderer.sectionClose());
+    }
+
+    /** Same as {@link #row} but {@code expectedHtml}/{@code actualHtml} are already-safe HTML (e.g. a
+     *  colour swatch); the raw {@code expected}/{@code actual} strings feed only the tally. */
+    private static String rowHtml(String field, String expectedHtml, String actualHtml,
+                                  String expected, String actual, Status status) {
+        tally(status, field, expected, actual);
+        String rowBg      = status == Status.FAIL ? "#FEF2F2" : status == Status.KNOWN_ISSUE ? "#FFF7ED" : "transparent";
+        String actualColor = status == Status.FAIL ? "#991B1B" : status == Status.KNOWN_ISSUE ? "#E65100" : "#1E293B";
+        StringBuilder sb = new StringBuilder();
+        sb.append("<tr style='background:").append(rowBg).append("'>");
+        sb.append("<td style='").append(TD_BASE).append(";color:#64748B;font-size:12px'>")
+          .append(esc(field)).append("</td>");
+        sb.append("<td style='").append(TD_BASE).append(";color:#1E293B'>")
+          .append(expectedHtml).append("</td>");
+        sb.append("<td style='").append(TD_BASE).append(";color:").append(actualColor).append("'>")
+          .append(actualHtml).append("</td>");
+        sb.append("<td style='").append(TD_BASE).append(";text-align:center'>")
+          .append(badge(status)).append("</td>");
+        sb.append("</tr>");
+        return sb.toString();
+    }
+
     private static String row(String field, String expected, String actual, Status status) {
         tally(status, field, expected, actual);
         String rowBg      = status == Status.FAIL ? "#FEF2F2" : "transparent";
@@ -774,11 +1241,16 @@ public final class ActualResultsLogger {
 
     // ─── Status match helpers ─────────────────────────────────────────────────
 
+    /** SKIP when {@code actual} is the {@link #NOT_REACHED} sentinel, else PASS/FAIL on an exact,
+     *  trimmed string match. */
     private static Status matchExact(String actual, String expected) {
         if (actual.equals(NOT_REACHED)) return Status.SKIP;
         return actual.trim().equals(expected.trim()) ? Status.PASS : Status.FAIL;
     }
 
+    /** Same SKIP-on-{@link #NOT_REACHED} rule as {@link #matchExact}, but PASS/FAIL on
+     *  substring containment instead of an exact match — used where the actual value legitimately
+     *  carries extra context (e.g. a resolved name/code suffix) around the expected value. */
     private static Status matchContains(String actual, String expected) {
         if (actual.equals(NOT_REACHED)) return Status.SKIP;
         return actual.contains(expected) ? Status.PASS : Status.FAIL;
@@ -786,6 +1258,8 @@ public final class ActualResultsLogger {
 
     // ─── Lookup helpers ───────────────────────────────────────────────────────
 
+    /** Resolves {@code header}'s owner site code to a "code (name)" display string for the DB
+     *  Validation section; {@link #NOT_REACHED} when {@code header} is null. */
     private static String resolveOwnerSite(FinVchMain header) {
         if (header == null) return NOT_REACHED;
         try {
@@ -798,6 +1272,8 @@ public final class ActualResultsLogger {
         }
     }
 
+    /** Resolves {@code header}'s Cash/Bank GL code to a "code (name)" display string for the DB
+     *  Validation section; {@link #NOT_REACHED} when {@code header} is null. */
     private static String resolveCashBankGl(FinVchMain header) {
         if (header == null) return NOT_REACHED;
         try {
@@ -810,6 +1286,9 @@ public final class ActualResultsLogger {
         }
     }
 
+    /** Looks up a GL's display name by code for {@link #buildGlEntriesTable}/
+     *  {@link #buildCostTagEntriesTable}; falls back to {@code "GL <code>"} when the lookup fails
+     *  or finds nothing. */
     private static String resolveGlName(long glcode) {
         try {
             FinGlDao dao = DatabaseManager.getJdbi().onDemand(FinGlDao.class);
@@ -910,32 +1389,17 @@ public final class ActualResultsLogger {
         return s.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;");
     }
 
-    // ─── Status legend ────────────────────────────────────────────────────────
-
-    private static final String LEGEND =
-        "<div class='rs-legend'>" +
-        "<span class='rs-leg-lbl'>Status Badges:</span>" +
-        "<span style='display:inline-flex;align-items:center;gap:3px;background:#EAF3DE;" +
-            "color:#27500A;font-size:11px;padding:2px 7px;border-radius:99px;font-weight:500;" +
-            "white-space:nowrap'>&#10003; Pass</span>" +
-        "<span class='rs-leg-sep'>&#8212; matched</span>" +
-        "<span style='display:inline-flex;align-items:center;gap:3px;background:#FEE2E2;" +
-            "color:#991B1B;font-size:11px;padding:2px 7px;border-radius:99px;font-weight:500;" +
-            "white-space:nowrap'>&#10007; Fail</span>" +
-        "<span class='rs-leg-sep'>&#8212; mismatch, row highlighted red</span>" +
-        "<span style='display:inline-flex;align-items:center;gap:3px;background:#FEF3C7;" +
-            "color:#92400E;font-size:11px;padding:2px 7px;border-radius:99px;font-weight:500;" +
-            "white-space:nowrap'>&#8635; Retry</span>" +
-        "<span class='rs-leg-sep'>&#8212; passed after retry, row highlighted yellow" +
-            "&nbsp;&#xB7;&#xB7;&#xB7;</span>" +
-        "<span style='display:inline-flex;align-items:center;gap:3px;background:#F1EFE8;" +
-            "color:#5F5E5A;font-size:11px;padding:2px 7px;border-radius:99px;font-weight:500;" +
-            "white-space:nowrap'>&#8722; Skip</span>" +
-        "<span class='rs-leg-sep'>&#8212; not applicable</span>" +
-        "</div>";
+    // ─── Status legend — promoted to FoldableSectionRenderer.STATUS_LEGEND (Round 3 Item E) ────
 
     // ─── Hide Extent timestamp script ─────────────────────────────────────────
 
+    /**
+     * Inline {@code <script>} appended once per render: hides the Status/Timestamp cells of the
+     * Extent log row this widget's table lives in (so the wide report content isn't squeezed by
+     * columns it doesn't use), and — once per page — injects a floating "Hide/Show Tests" button
+     * that collapses the sidebar test list to give the (often very wide) Actual Results tables
+     * more horizontal room.
+     */
     private static final String HIDE_TS_SCRIPT =
         "<script>(function(){" +
         // ── Hide timestamp/status cells of the parent Extent log row ──────────

@@ -12,7 +12,7 @@ import com.gsl.testdata.MasterTestData;
 import com.gsl.testdata.dto.MergedFinanceArVoucherData;
 import com.gsl.utils.Log;
 import com.gsl.utils.dataprovider.source.TestDataSource;
-import com.gsl.utils.dataprovider.source.finance.common.AccountingPeriodResolver;
+import com.gsl.utils.dataprovider.source.finance.common.AccountingPeriodCache;
 import org.jdbi.v3.core.Jdbi;
 import org.testng.SkipException;
 
@@ -50,6 +50,13 @@ import java.util.Optional;
  */
 public class DbArVoucherDeleteDataSource implements TestDataSource<MergedFinanceArVoucherData> {
 
+    /**
+     * Polls one {@code vchcode} from {@link DbIdQueue} key {@code "FinanceARVoucher.Delete"} and
+     * builds the minimal {@link MergedFinanceArVoucherData} {@code DeleteArVoucher} needs — see
+     * the class Javadoc's "Data flow" for the full shape.
+     *
+     * @throws SkipException if the queue is exhausted (no eligible voucher left)
+     */
     @Override
     public List<MergedFinanceArVoucherData> load(String testMethodName) {
         Long vchcode = DbIdQueue.getNextId(MenuOperationKey.build("FinanceARVoucher", "Delete"));
@@ -118,19 +125,22 @@ public class DbArVoucherDeleteDataSource implements TestDataSource<MergedFinance
      */
     public static Optional<MergedFinanceArVoucherData> claimOneClosedPeriodCandidate(String testMethodName) {
         Jdbi jdbi = DatabaseManager.getJdbi();
+        // Finding A (Round 12): SELECT * (not just vchcode) + .mapToBean — removes the scan loop's
+        // own per-candidate SELECT * FROM finvchmain WHERE vchcode = ? round trip.
         String sql =
-            "SELECT vchcode FROM finvchmain " +
+            "SELECT * FROM finvchmain " +
             "WHERE vchtype = 'R' AND release_status IN ('N', 'U', 'P') " +
             "ORDER BY vchcode";
 
-        List<Long> candidates = jdbi.withHandle(handle -> handle.createQuery(sql).mapTo(Long.class).list());
-        FinVchMainDao headerDao = jdbi.onDemand(FinVchMainDao.class);
+        List<FinVchMain> candidates = jdbi.withHandle(handle -> handle.createQuery(sql).mapToBean(FinVchMain.class).list());
+        // Memoizes the OU/year/month lookups isEditable below would otherwise re-query per
+        // rejected candidate — see AccountingPeriodCache's own Javadoc.
+        AccountingPeriodCache periodCache = new AccountingPeriodCache();
 
-        for (Long vchcode : candidates) {
-            FinVchMain header = headerDao.findByVoucherCode(vchcode).orElse(null);
-            if (header == null) continue;
+        for (FinVchMain header : candidates) {
+            long vchcode = header.getVchcode();
             // Inverse of the usual guard: we WANT a closed year/month here.
-            if (AccountingPeriodResolver.isEditable(jdbi, header, PeriodDomain.FINANCE)) continue;
+            if (periodCache.isEditable(jdbi, header, PeriodDomain.FINANCE)) continue;
             if (!DocumentReservationRegistry.tryReserve(String.valueOf(vchcode))) continue;
 
             Log.info("[DB-Delete] Claimed closed-period AR Voucher for negative scenario: vchcode={}, "

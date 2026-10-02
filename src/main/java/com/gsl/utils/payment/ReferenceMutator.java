@@ -4,14 +4,21 @@ import java.util.ArrayList;
 import java.util.List;
 
 /**
- * Derives a set of invalid PaymentReference mutations from a valid one.
- * Each mutation targets a specific validation rule so test failures are
- * unambiguous about which rule was violated.
+ * Derives a set of invalid {@link PaymentReference} mutations from a valid one.
+ * Each mutation targets a specific rule enforced by {@link
+ * PaymentReferenceValidator#validate(PaymentReference)} (length, charset, case) so test
+ * failures are unambiguous about which rule was violated. Used by {@link
+ * PaymentReferenceFixture} to build the negative half of each system's scenario set.
  */
 public final class ReferenceMutator {
 
     private ReferenceMutator() {}
 
+    /**
+     * @param valid a valid {@link PaymentReference} to mutate; its {@code system} is carried onto every derived negative
+     * @return one negative {@link PaymentReference} per targeted rule violation (short length, over-length,
+     *         special char appended, alpha-in-numeric, lowercase, empty, null, and — for SWIFT only — dashes stripped)
+     */
     public static List<PaymentReference> generateNegatives(PaymentReference valid) {
         List<PaymentReference> list = new ArrayList<>();
         String val = valid.value;

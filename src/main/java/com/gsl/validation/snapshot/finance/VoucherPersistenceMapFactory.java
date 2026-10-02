@@ -2,6 +2,7 @@ package com.gsl.validation.snapshot.finance;
 
 import com.gsl.enums.VoucherDomain;
 import com.gsl.validation.snapshot.ChangeExpectation;
+import com.gsl.validation.snapshot.ColumnRule;
 import com.gsl.validation.snapshot.DocumentContext;
 import com.gsl.validation.snapshot.RowMatchStrategy;
 import com.gsl.validation.snapshot.TableRule;
@@ -35,21 +36,36 @@ public final class VoucherPersistenceMapFactory {
 
     private VoucherPersistenceMapFactory() {}
 
+    /**
+     * Assembles {@code domain}'s full {@link VoucherPersistenceMap} — the common base table rules
+     * (optionally replaced per-table via {@link VoucherDomain#overridePersistenceTableRule(String)})
+     * plus {@code domain}'s own {@link VoucherDomain#additionalPersistenceTables()}.
+     */
     public static VoucherPersistenceMap build(VoucherDomain domain) {
         TableRule finvchmain = finvchmain();
         TableRule finvchdet = finvchdet();
         TableRule finpost = finpost();
         TableRule fincosttag = fincosttag();
+        TableRule finchqdet = finchqdet();
+        TableRule finchqmain = finchqmain();
 
         List<TableRule> base = List.of(
                 finvchmain,
                 finvchdet,
                 finpost,
                 fincosttag,
+                finchqdet,
+                finchqmain,
                 auditTable("aud2_finvchmain", finvchmain),
                 auditTable("aud2_finvchdet", finvchdet),
                 auditTable("aud2_finpost", finpost),
                 auditTable("aud2_fincosttag", fincosttag)
+                // aud2_finchqdet/aud2_finchqmain deliberately NOT added — unconfirmed whether
+                // these audit-shadow tables are even registered in this app's aud2_active_table
+                // registry (cheque-book master/detail is reference/master data, not necessarily
+                // audit-tracked the way voucher tables are). Add via the same auditTable(...)
+                // helper once confirmed; omitting cleanly costs nothing today since Pass 2 of
+                // DiffEngine simply never runs for a table not in this list.
         );
 
         List<TableRule> resolved = new ArrayList<>(base.size());
@@ -71,6 +87,38 @@ public final class VoucherPersistenceMapFactory {
                 .fkValueResolver(ctx -> ctx.getVchcode())
                 .rowMatchStrategy(RowMatchStrategy.BY_KEY)
                 .defaultRule(ChangeExpectation.MUST_NOT_CHANGE)
+                // Item G — mandatory-not-null columns for a freshly-inserted/deleted row (confirmed
+                // real, non-nullable-by-design fields on FinVchMain.java): a null here on Create is
+                // a genuine data-integrity bug, not a display nuance. Round 23 correction: this is
+                // NOT scoped to DiffEngine's INSERT/DELETE row-explode path alone — a table-wide
+                // `columnRule` override like this one wins over the table's MUST_NOT_CHANGE default
+                // in DiffEngine.resolveColumnRule's priority order for EVERY BY_KEY UPDATE match
+                // too (Edit, Revert, ...), not just INSERT/DELETE. A scenario changeset that wants
+                // "unchanged" instead of "not-null" for one of these columns (e.g.
+                // GeneralVoucherRevertChangeSets) must add its own explicit MUST_NOT_CHANGE
+                // override, since the table-wide default here is otherwise silently bypassed.
+                .columnRule(ColumnRule.mandatoryNotNull("ycode"))
+                .columnRule(ColumnRule.mandatoryNotNull("vchtype"))
+                .columnRule(ColumnRule.mandatoryNotNull("entry_source"))
+                .columnRule(ColumnRule.mandatoryNotNull("admsite_code_owner"))
+                .columnRule(ColumnRule.mandatoryNotNull("ecode"))
+                .columnRule(ColumnRule.mandatoryNotNull("creation_dt"))
+                // Round 6: 4 more genuinely universal invariants for ANY voucher domain's
+                // finvchmain row — table-wide, same home as the 6 above. vchcode is the PK;
+                // scheme_docno/dataversion/time are confirmed (user spec) to never be blank on
+                // any real row, regardless of domain.
+                .columnRule(ColumnRule.mandatoryNotNull("vchcode"))
+                .columnRule(ColumnRule.mandatoryNotNull("scheme_docno"))
+                .columnRule(ColumnRule.mandatoryNotNull("dataversion"))
+                .columnRule(ColumnRule.mandatoryNotNull("time"))
+                // Item H (Round 9): vchdt/doccode/glcode were previously only asserted via a
+                // GV-scoped changeset rule (GeneralVoucherCreateChangeSets) — meaning an
+                // Excel-import or public-API-created voucher, which never runs through that
+                // changeset, got no not-null guarantee at all. Table-wide here since these are
+                // universal invariants regardless of domain or creation channel.
+                .columnRule(ColumnRule.mandatoryNotNull("vchdt"))
+                .columnRule(ColumnRule.mandatoryNotNull("doccode"))
+                .columnRule(ColumnRule.mandatoryNotNull("glcode"))
                 .build();
     }
 
@@ -96,6 +144,24 @@ public final class VoucherPersistenceMapFactory {
                 .fkValueResolver(ctx -> ctx.getVchcode())
                 .rowMatchStrategy(RowMatchStrategy.BY_KEY)
                 .defaultRule(ChangeExpectation.MUST_NOT_CHANGE)
+                // Item G — mandatory-not-null columns for a freshly-inserted/deleted row (confirmed
+                // real fields on FinVchDet.java). damount/camount: double-entry means the unused
+                // side is a legitimate 0.00, never a genuine NULL.
+                .columnRule(ColumnRule.mandatoryNotNull("vchcode"))
+                .columnRule(ColumnRule.mandatoryNotNull("glcode"))
+                .columnRule(ColumnRule.mandatoryNotNull("damount"))
+                .columnRule(ColumnRule.mandatoryNotNull("camount"))
+                .columnRule(ColumnRule.mandatoryNotNull("isreversal"))
+                .columnRule(ColumnRule.mandatoryNotNull("gl_cc_appl"))
+                // Round 7: genuinely universal invariants for ANY voucher domain's finvchdet row
+                // (confirmed live against idealdb's 37-column schema) — "ycode same logic as
+                // finvchmain" (plain not-null) and "dataversion must be present" per the user's
+                // own spec; brsdt/printchq are the opposite direction (must STAY blank at
+                // creation time — reconciled/printed only by their own later-step UI menus).
+                .columnRule(ColumnRule.mandatoryNotNull("ycode"))
+                .columnRule(ColumnRule.mandatoryNotNull("dataversion"))
+                .columnRule(ColumnRule.mandatoryNull("brsdt"))
+                .columnRule(ColumnRule.mandatoryNull("printchq"))
                 .build();
     }
 
@@ -134,6 +200,19 @@ public final class VoucherPersistenceMapFactory {
                 .fkValueResolver(ctx -> String.valueOf(ctx.getVchcode()))
                 .rowMatchStrategy(RowMatchStrategy.BY_KEY)
                 .defaultRule(ChangeExpectation.MUST_NOT_CHANGE)
+                // Item G — mandatory-not-null columns for a freshly-inserted/deleted row (confirmed
+                // real fields on FinPost.java). damount/camount: same both-sides-non-null reasoning
+                // as finvchdet — the unused side is a legitimate 0.00, never a genuine NULL.
+                .columnRule(ColumnRule.mandatoryNotNull("entcode"))
+                .columnRule(ColumnRule.mandatoryNotNull("enttype"))
+                .columnRule(ColumnRule.mandatoryNotNull("glcode"))
+                .columnRule(ColumnRule.mandatoryNotNull("damount"))
+                .columnRule(ColumnRule.mandatoryNotNull("camount"))
+                // Round 7: mirrors finvchmain's own treatment of the identical column names —
+                // genuinely universal invariants for ANY voucher domain's finpost row.
+                .columnRule(ColumnRule.mandatoryNotNull("ycode"))
+                .columnRule(ColumnRule.mandatoryNotNull("scheme_docno"))
+                .columnRule(ColumnRule.mandatoryNotNull("time"))
                 .build();
     }
 
@@ -157,6 +236,65 @@ public final class VoucherPersistenceMapFactory {
                 .fkColumn("entcode")
                 .fkValueResolver(ctx -> String.valueOf(ctx.getVchcode()))
                 .participationCondition(DocumentContext::isCostTagApplicable)
+                .rowMatchStrategy(RowMatchStrategy.BY_KEY)
+                .defaultRule(ChangeExpectation.MUST_NOT_CHANGE)
+                // Item G — mandatory-not-null columns for a freshly-inserted/deleted row (confirmed
+                // real fields on FinCostTag.java). slcode is deliberately excluded — genuinely
+                // nullable (Type1/2 rows have no Sub Ledger).
+                .columnRule(ColumnRule.mandatoryNotNull("entcode"))
+                .columnRule(ColumnRule.mandatoryNotNull("enttype"))
+                .columnRule(ColumnRule.mandatoryNotNull("glcode"))
+                .columnRule(ColumnRule.mandatoryNotNull("ycode"))
+                .columnRule(ColumnRule.mandatoryNotNull("code"))
+                .columnRule(ColumnRule.mandatoryNotNull("postcode"))
+                .columnRule(ColumnRule.mandatoryNotNull("admsite_code"))
+                .columnRule(ColumnRule.mandatoryNotNull("ref_admsite_code"))
+                .columnRule(ColumnRule.mandatoryNotNull("admou_code"))
+                .build();
+    }
+
+    /** {@code finchqdet} — Cheque Book Detail. Key {@code [chqno, glcode]}, NOT {@code vchcode}:
+     *  {@code finchqdet.vchcode} is only populated once a cheque is actually issued (null/blank on
+     *  a fresh {@code 'N'} row — see {@code FinChqDet.java}'s own Javadoc), so it can't identify
+     *  the row in the BEFORE snapshot. {@code (chqno, glcode)} is stable throughout — the same
+     *  compound key {@code ChequeBookValidator}/{@code FinChqDetDao.findByChqnoAndGlcode} already
+     *  use — captured via {@link TableRule#getFkColumns()}'s composite-key path since
+     *  {@link SnapshotService} only supports a single {@code fkColumn} otherwise. Participates
+     *  only when {@link DocumentContext#isChequeBookApplicable()} — a KNOWN/registered cheque
+     *  number was used; {@code false} for AR (never touches the company's own issued-cheque
+     *  register) and for the common synthetic/unregistered-cheque test case. Common to every
+     *  domain, not GV-specific — mirrors {@link #fincosttag()}'s own conditional-participation
+     *  shape. */
+    private static TableRule finchqdet() {
+        return TableRule.builder()
+                .tableName("finchqdet")
+                .businessKeyColumn("chqno")
+                .businessKeyColumn("glcode")
+                .fkColumns(List.of("chqno", "glcode"))
+                .fkValuesResolver(ctx -> java.util.Arrays.asList(ctx.getKnownChqno(), ctx.getKnownChequeGlcode()))
+                .participationCondition(DocumentContext::isChequeBookApplicable)
+                .rowMatchStrategy(RowMatchStrategy.BY_KEY)
+                .defaultRule(ChangeExpectation.MUST_NOT_CHANGE)
+                // Item G — mandatory-not-null columns (confirmed real fields on FinChqDet.java).
+                .columnRule(ColumnRule.mandatoryNotNull("bookcode"))
+                .columnRule(ColumnRule.mandatoryNotNull("chqno"))
+                .build();
+    }
+
+    /** {@code finchqmain} — Cheque Book Master. Key {@code [bookcode]} — unlike
+     *  {@code finchqdet}, this can keep the standard single-column {@code fkColumn} mechanism
+     *  unchanged: {@code bookcode} is carried as an already-resolved value on
+     *  {@link DocumentContext#getKnownChequeBookcode()} (found once, during the same
+     *  {@code finchqdet} lookup that determines {@link #finchqdet()}'s own participation), so no
+     *  second composite lookup is needed here. Same participation condition as
+     *  {@link #finchqdet()} — the two always participate together. */
+    private static TableRule finchqmain() {
+        return TableRule.builder()
+                .tableName("finchqmain")
+                .businessKeyColumn("bookcode")
+                .fkColumn("bookcode")
+                .fkValueResolver(ctx -> ctx.getKnownChequeBookcode())
+                .participationCondition(DocumentContext::isChequeBookApplicable)
                 .rowMatchStrategy(RowMatchStrategy.BY_KEY)
                 .defaultRule(ChangeExpectation.MUST_NOT_CHANGE)
                 .build();

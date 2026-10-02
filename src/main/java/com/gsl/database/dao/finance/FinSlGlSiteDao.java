@@ -14,6 +14,7 @@ import java.util.List;
 @RegisterBeanMapper(FinSlGlSite.class)
 public interface FinSlGlSiteDao {
 
+    /** Returns the Sites narrowed for the given {@code finsl_gl.code} (Sub Ledger, GL) pair. */
     @SqlQuery("SELECT code, finsl_gl_code, admsite_code, ext FROM finsl_gl_site WHERE finsl_gl_code = :finslGlCode")
     List<FinSlGlSite> findByFinslGlCode(@Bind("finslGlCode") long finslGlCode);
 }

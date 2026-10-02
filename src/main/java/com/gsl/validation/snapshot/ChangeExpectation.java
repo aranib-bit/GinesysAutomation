@@ -27,6 +27,13 @@ package com.gsl.validation.snapshot;
  *       plan's "Open item" on {@code finvchdet}/{@code finpost}.</li>
  *   <li>{@link #IGNORE} — column is deliberately excluded from comparison (e.g. a column
  *       known to be volatile/irrelevant for this scenario).</li>
+ *   <li>{@link #MANDATORY} — column-level, applies to a freshly-inserted (or, symmetrically,
+ *       freshly-deleted) row: this specific column must never be null/blank regardless of what
+ *       else the row's INSERT/DELETE acceptance already confirmed (e.g. {@code finvchmain.ycode}/
+ *       {@code vchtype}/{@code entry_source} on Create — a null here is a genuine data-integrity
+ *       bug, not a display nuance). Paired with {@link ComparisonStrategy#NOT_NULL}. Distinct from
+ *       {@link #MUST_CHANGE}: a mandatory column isn't asserted to differ from BEFORE (there is no
+ *       BEFORE for an insert) — only that AFTER itself is populated.</li>
  * </ul>
  */
 public enum ChangeExpectation {
@@ -36,5 +43,6 @@ public enum ChangeExpectation {
     INSERT,
     DELETE,
     RECREATED,
-    IGNORE
+    IGNORE,
+    MANDATORY
 }

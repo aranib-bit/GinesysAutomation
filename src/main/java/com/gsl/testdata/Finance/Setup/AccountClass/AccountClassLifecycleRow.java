@@ -4,6 +4,13 @@ import io.github.sskorol.data.Column;
 import io.github.sskorol.data.Sheet;
 import lombok.Getter;
 
+/**
+ * One row of the "AccountClassLifecycle" sheet — hand-crafted Account Class naming-convention
+ * and lifecycle (create, optional edit, optional duplicate-variant) scenarios.
+ *
+ * <p>Excel-only test data (no DB-sourcing counterpart), read by
+ * {@code MergedAccountClassLifecycleDataSupplier}.
+ */
 @Getter
 @Sheet(name = "AccountClassLifecycle")
 public class AccountClassLifecycleRow {

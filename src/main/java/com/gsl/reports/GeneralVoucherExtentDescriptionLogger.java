@@ -1,13 +1,21 @@
 package com.gsl.reports;
 
+import com.gsl.enums.PaymentSelectionType;
+import com.gsl.enums.VoucherDomain;
 import com.gsl.testdata.Finance.Operations.Vouchers.Common.VoucherSubLedgerRow;
 import com.gsl.testdata.Finance.Operations.Vouchers.GeneralVoucher.DetailLineEditTarget;
 import com.gsl.testdata.Finance.Operations.Vouchers.GeneralVoucher.ExpenseIncomeDetail;
+import com.gsl.testdata.Finance.Operations.Vouchers.GeneralVoucher.PaymentInfoEditTarget;
+import com.gsl.testdata.Finance.Operations.Vouchers.GeneralVoucher.PaymentInformation;
 import com.gsl.testdata.Finance.Operations.Vouchers.GeneralVoucher.SiteAllocation;
 import com.gsl.testdata.dto.GeneralVoucherOperationMode;
 import com.gsl.testdata.dto.MergedFinanceGeneralVoucherData;
+import com.gsl.utils.cheque.ChequeInstrumentResolver;
+import com.gsl.validation.snapshot.finance.AuditStateSummary;
+import com.gsl.validation.snapshot.finance.VoucherPersistenceMapFactory;
 
 import java.math.BigDecimal;
+import java.util.ArrayList;
 import java.util.List;
 
 /**
@@ -64,6 +72,12 @@ public final class GeneralVoucherExtentDescriptionLogger
         // GV has no extra flags beyond the shared Pmt Info Warning line — no On Account/TDS concept.
     }
 
+    /**
+     * Appends GV-specific Header rows: the identifying "Voucher No." for any operation that acts
+     * on an existing voucher (Edit/Revert/Delete), Cheque payment-info rows when the counter-leg
+     * is Cheque-mode, and (Edit-only) the Entry Method plus Current/Expected Doc Date
+     * cross-reference to the fuller Document Context table.
+     */
     @Override
     protected void appendExtraHeaderRows(MergedFinanceGeneralVoucherData data, List<String[]> rows) {
         // Same operationMode-first, existingVoucherNo-fallback check logPositiveExpected uses —
@@ -83,6 +97,25 @@ public final class GeneralVoucherExtentDescriptionLogger
         // since Doc Scheme can't stand in for it on these operation modes.
         if (operatesOnExistingVoucher) {
             rows.add(new String[]{ "Voucher No.", nullSafe(data.getExistingVoucherNo()) });
+        }
+
+        // Cheque payment-info rows — rendered for ALL FOUR GV tests (Create/Edit/Revert/Delete),
+        // deliberately NOT gated to operationMode==EDIT: Cheque-mode payment info is a
+        // document-level attribute independent of which operation touched the voucher (same
+        // "single shared layer" philosophy this method already applies to the rows above). Blank/
+        // omitted whenever the Cash/Bank counter-leg isn't Cheque-mode, or cashBankPaymentInfo
+        // hasn't been resolved at all for this scenario (e.g. Revert/Delete's data sources never
+        // populate it today).
+        // Round 6: a multi-row voucher can carry several cheques — one pair of rows per cheque row,
+        // labelled with the grid row; a single-cheque voucher keeps the original labels.
+        List<PaymentInformation> chequePayments = data.allPayments().stream()
+                .filter(p -> p.getPaymentMode() == PaymentSelectionType.CHEQUE).toList();
+        boolean severalRows = data.getExpenseIncomeDetailList() != null && data.getExpenseIncomeDetailList().size() > 1;
+        for (PaymentInformation cheque : chequePayments) {
+            String suffix = severalRows ? " (Row " + cheque.getLineNo() + ")" : "";
+            var match = severalRows ? data.chequeBankMatchForLine(cheque.getLineNo()) : data.getActualChequeBankMatch();
+            rows.add(new String[]{ "Cheque No." + suffix, nullSafe(cheque.getInstrumentNo()) });
+            rows.add(new String[]{ "Cheque Known/Unknown" + suffix, chequeKnownUnknownLabel(match) });
         }
 
         // Edit-only cross-reference to the fuller "Document Context" table EditGeneralVoucher
@@ -107,6 +140,27 @@ public final class GeneralVoucherExtentDescriptionLogger
         }
     }
 
+    /**
+     * Maps the resolver's live cheque-bank-match outcome ({@link MergedFinanceGeneralVoucherData
+     * #getActualChequeBankMatch()}) to a Header-table display label. KNOWN rows also show which
+     * bank-match subtype in parentheses for extra detail — SAME_BANK/DIFFERENT_BANK both mean "a
+     * real registered cheque was resolved" from a pure business-value perspective (see that
+     * field's own Javadoc), but the subtype is still useful context for a report reviewer.
+     * {@code null} (payment info not yet resolved, or a non-Cheque payment mode) renders as blank
+     * rather than a fabricated label.
+     */
+    private static String chequeKnownUnknownLabel(ChequeInstrumentResolver.ChequeBankMatch match) {
+        if (match == null) return "";
+        return switch (match) {
+            case SAME_BANK -> "KNOWN (Same Bank)";
+            case DIFFERENT_BANK -> "KNOWN (Different Bank)";
+            case UNKNOWN -> "UNKNOWN";
+        };
+    }
+
+    /** Dispatches to the operation-specific Expected Results table builder (Create/Edit/Revert/
+     *  Delete) based on {@code data.getOperationMode()}, with the same null-fallback inference
+     *  {@link GeneralVoucherDescriptionBuilder} uses when that field predates the current data. */
     @Override
     protected void logPositiveExpected(MergedFinanceGeneralVoucherData data) {
         // Same null-fallback GeneralVoucherDescriptionBuilder uses for its actionVerb swap: check
@@ -129,9 +183,14 @@ public final class GeneralVoucherExtentDescriptionLogger
         logPositiveExpectedForCreate(data);
     }
 
+    /** Renders the Expected Results table for a Create run: finvchmain/finvchdet/finpost/
+     *  fincosttag row expectations plus the audit-trail expectation note. */
     private void logPositiveExpectedForCreate(MergedFinanceGeneralVoucherData data) {
         int lineCount = data.getExpenseIncomeDetailList() != null ? data.getExpenseIncomeDetailList().size() : 0;
         int siteRowCount = data.getSiteApplicableRows() != null ? data.getSiteApplicableRows().size() : 0;
+
+        List<String> auditTables = new ArrayList<>(List.of("finvchmain", "finvchdet", "finpost"));
+        if (siteRowCount > 0) auditTables.add("fincosttag");
 
         ExtentLogger.infoTable(new String[][]{
             { "Expected Outcome",  "Details" },
@@ -140,9 +199,37 @@ public final class GeneralVoucherExtentDescriptionLogger
             { "DB — finvchdet",    lineCount + " row(s): glcode, damount/camount (per row's isDebit()), isreversal" },
             { "DB — finpost",      "1 VMG + " + lineCount + " VDG posting entries, balanced (BLOCKING — test fails if absent)" },
             { "DB — fincosttag",   siteRowCount + " row(s) — site allocation tagging for Type2/Type3 rows (COLLECT — non-blocking)" },
+            { "DB — Audit Trail",  buildAuditExpectationNote("INSERT", auditTables.toArray(new String[0])) },
         });
     }
 
+    /**
+     * States what audit-trail coverage is actually expected for this Save — and, crucially, makes
+     * that conditional on whether audit is CURRENTLY active for each named table on this
+     * environment (resolved live, the same {@link AuditStateSummary} mechanism Item AA/AH already
+     * use elsewhere) rather than unconditionally claiming an aud2_* row always shows up. An
+     * audit-inactive table is explicitly called out as skipped, not silently omitted — a reader
+     * shouldn't have to guess whether "no audit row" for a table means "nothing happened" or
+     * "audit isn't even on for it right now".
+     */
+    private static String buildAuditExpectationNote(String action, String... tables) {
+        AuditStateSummary state = AuditStateSummary.resolveFor(VoucherPersistenceMapFactory.build(VoucherDomain.GV));
+        List<String> active = new ArrayList<>();
+        List<String> inactive = new ArrayList<>();
+        for (String table : tables) {
+            (state.auditActiveTables().contains(table) ? active : inactive).add(table);
+        }
+        if (active.isEmpty()) {
+            return "Audit currently inactive for " + String.join(", ", tables)
+                    + " on this environment — no aud2_* " + action + " row expected, none checked.";
+        }
+        String note = "aud2_* " + action + " row expected for: " + String.join(", ", active);
+        return inactive.isEmpty() ? note + "."
+                : note + "; audit inactive (skipped, not checked) for: " + String.join(", ", inactive) + ".";
+    }
+
+    /** Renders the Expected Results table for an Edit run — phrasing differs for a detail-line
+     *  edit vs. a header-only edit (see {@link #headerChangeDetail}). */
     private void logPositiveExpectedForEdit(MergedFinanceGeneralVoucherData data) {
         boolean isDetailLineEdit = data.getEditedDetailLine() != null;
         String finvchdetDetail = isDetailLineEdit
@@ -168,6 +255,7 @@ public final class GeneralVoucherExtentDescriptionLogger
             { "DB — finvchdet",    finvchdetDetail },
             { "DB — finpost",      finpostDetail },
             { "DB — fincosttag",   "Row(s) deleted+reinserted under new surrogate code (site allocation recomputed on every Save for a cost-tag-applicable document)" },
+            { "DB — Audit Trail",  buildAuditExpectationNote("UPDATE", "finvchmain", "finvchdet", "finpost", "fincosttag") },
         });
     }
 
@@ -198,6 +286,8 @@ public final class GeneralVoucherExtentDescriptionLogger
         return sb.length() > 0 ? sb.toString() : "no header field actually changed";
     }
 
+    /** Renders the Expected Results table for a Revert run — only {@code finvchmain.release_status}
+     *  is expected to change; every other table is asserted unchanged. */
     private void logPositiveExpectedForRevert() {
         ExtentLogger.infoTable(new String[][]{
             { "Expected Outcome",  "Details" },
@@ -206,15 +296,24 @@ public final class GeneralVoucherExtentDescriptionLogger
             { "DB — finvchdet",    "no record changes expected" },
             { "DB — finpost",      "no record changes expected" },
             { "DB — fincosttag",   "no record changes expected" },
+            // Only finvchmain actually changes on a Revert (release_status) — the others are
+            // asserted unchanged above, so no audit row is expected for them either.
+            { "DB — Audit Trail",  buildAuditExpectationNote("UPDATE", "finvchmain") },
         });
     }
 
+    /** Renders the Expected Results table for a Delete run (Revert-then-delete when the voucher
+     *  started Posted). */
     private void logPositiveExpectedForDelete() {
         ExtentLogger.infoTable(new String[][]{
             { "Expected Outcome",  "Details" },
             { "UI — Delete",       "Voucher removed from the list page; confirmation dialog dismissed" },
             { "DB — finvchmain",   "row deleted (unposted first via Revert if it started Posted)" },
-            { "DB — aud2_finvchmain", "1 DELETE audit row recorded, matching the pre-delete finvchmain state" },
+            // Reworded to be audit-state-aware, not an unconditional claim — see
+            // buildAuditExpectationNote's Javadoc. Scoped to finvchmain only: Item K (Round 3,
+            // not yet implemented) explicitly flags finvchdet/finpost/fincosttag's own Delete
+            // audit coverage as a separate follow-up, not yet asserted here.
+            { "DB — Audit Trail",  buildAuditExpectationNote("DELETE", "finvchmain") },
         });
     }
 
@@ -273,6 +372,7 @@ public final class GeneralVoucherExtentDescriptionLogger
         }
         ExtentLogger.infoTable(table);
         logSiteAllocationTable(data);
+        logPaymentInformationTable(data);
     }
 
     /**
@@ -304,6 +404,74 @@ public final class GeneralVoucherExtentDescriptionLogger
         }
         ExtentLogger.info("<b>Site Allocation (Expected)</b>");
         ExtentLogger.infoTable(table);
+    }
+
+    /**
+     * Renders a dedicated "Payment Information" table — previously the only Payment Info ever
+     * shown anywhere in the report was two flat Header rows ("Cheque No."/"Cheque Known/Unknown",
+     * see {@link #appendExtraHeaderRows}), which for an Edit scenario showed only the NEW
+     * instrument number with no before→after comparison, no Instrument Date, no Drawn On/Cheque
+     * label, and no Payment Mode — even though those are exactly what a Payment-Info-Edit
+     * scenario validates (report-review finding, run {@code 20260916_133846}). Follows the same
+     * "own dedicated table, skip entirely when not applicable" pattern as
+     * {@link #logSiteAllocationTable}.
+     *
+     * <p>Edit ({@link MergedFinanceGeneralVoucherData#getPaymentEditTarget()} non-null) renders an
+     * old→new row per field, using the exact same {@link GeneralVoucherDescriptionBuilder
+     * #diffPaymentInfo} comparison the report title's own sentence
+     * ({@code GeneralVoucherDescriptionBuilder#buildPaymentInfoEditSummary}) is built from, so the
+     * two can never disagree about what changed. Create/Revert/Delete render a single current-value
+     * row from {@link MergedFinanceGeneralVoucherData#getCashBankPaymentInfo()}; skipped entirely
+     * when that's {@code null} (CASH/NONE payment, or Revert/Delete's data sources that never
+     * resolve it).
+     */
+    private void logPaymentInformationTable(MergedFinanceGeneralVoucherData data) {
+        PaymentInfoEditTarget target = data.getPaymentEditTarget();
+        if (target != null) {
+            PaymentInformation before = target.getBeforePayment();
+            PaymentInformation after = target.getNewPayment();
+            GeneralVoucherDescriptionBuilder.PaymentInfoDiff diff = GeneralVoucherDescriptionBuilder.diffPaymentInfo(target);
+
+            ExtentLogger.info("<b>Payment Information (Expected)</b>");
+            ExtentLogger.infoTable(new String[][]{
+                { "Field", "Before", "After", "Changed (this Edit)" },
+                { "Payment Mode", nullSafe(before.getPaymentMode()), nullSafe(after.getPaymentMode()),
+                        diff.modeChanged() ? "YES" : "NO" },
+                { "Instrument No.", nullSafe(before.getInstrumentNo()), nullSafe(after.getInstrumentNo()),
+                        diff.instrumentNoChanged() ? "YES" : "NO" },
+                { "Instrument Date", nullSafe(before.getInstrumentDate()), nullSafe(after.getInstrumentDate()),
+                        diff.instrumentDateChanged() ? "YES" : "NO" },
+                { "Drawn On / Cheque Label", nullSafe(before.getDrawnOn()), nullSafe(after.getDrawnOn()), "NO" },
+            });
+            return;
+        }
+
+        List<PaymentInformation> payments = data.allPayments();
+        if (payments.isEmpty()) return;
+
+        ExtentLogger.info("<b>Payment Information (Expected)</b>");
+        if (payments.size() == 1 && (data.getExpenseIncomeDetailList() == null
+                || data.getExpenseIncomeDetailList().size() <= 1)) {
+            PaymentInformation paymentInfo = payments.get(0);
+            ExtentLogger.infoTable(new String[][]{
+                { "Payment Mode", "Instrument No.", "Instrument Date", "Drawn On / Cheque Label", "Reference" },
+                { nullSafe(paymentInfo.getPaymentMode()), nullSafe(paymentInfo.getInstrumentNo()),
+                        nullSafe(paymentInfo.getInstrumentDate()), nullSafe(paymentInfo.getDrawnOn()),
+                        nullSafe(paymentInfo.getReference()) },
+            });
+            return;
+        }
+        // Several grid rows: one line per row, "none" for a row that carries no payment.
+        List<String[]> table = new ArrayList<>();
+        table.add(new String[]{ "Row", "Payment Mode", "Instrument No.", "Instrument Date", "Drawn On / Cheque Label", "Reference" });
+        for (ExpenseIncomeDetail line : data.getExpenseIncomeDetailList()) {
+            PaymentInformation p = data.paymentForLine(line.getLineNo());
+            table.add(p == null
+                    ? new String[]{ nullSafe(line.getLineNo()), "none", "", "", "", "" }
+                    : new String[]{ nullSafe(line.getLineNo()), nullSafe(p.getPaymentMode()), nullSafe(p.getInstrumentNo()),
+                            nullSafe(p.getInstrumentDate()), nullSafe(p.getDrawnOn()), nullSafe(p.getReference()) });
+        }
+        ExtentLogger.infoTable(table.toArray(new String[0][]));
     }
 
     /**
@@ -365,6 +533,8 @@ public final class GeneralVoucherExtentDescriptionLogger
         sb.append(clause);
     }
 
+    /** GL name, suffixed with its resolved account class in brackets when known — mirrors
+     *  {@link GeneralVoucherDescriptionBuilder#glLabel}'s own helper for this table's GL column. */
     private static String glLabel(ExpenseIncomeDetail row) {
         return row.getGeneralLedger() + (row.getResolvedAccountClass() != null
                 ? " [" + row.getResolvedAccountClass().label() + "]" : "");

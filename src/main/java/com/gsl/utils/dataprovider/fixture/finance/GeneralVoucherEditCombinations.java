@@ -4,12 +4,13 @@ import com.gsl.enums.CashBankType;
 import com.gsl.enums.Finance.Operations.GeneralVoucher.GlLineType;
 import com.gsl.enums.GlAccountType;
 import com.gsl.testdata.Finance.Operations.Vouchers.GeneralVoucher.DetailLineEditTarget;
+import com.gsl.testdata.Finance.Operations.Vouchers.GeneralVoucher.PaymentInfoEditTarget;
 
 import java.util.ArrayList;
 import java.util.List;
 
 /**
- * Enumerates the 23-scenario General Voucher Edit matrix (originally a fixed 7 — plan §7's
+ * Enumerates the 30-scenario General Voucher Edit matrix (originally a fixed 7 — plan §7's
  * table — expanded with accounting-year-aware header date variants, see the "GV Edit:
  * accounting-year-aware dates..." plan; #18 (formerly #14/#17) added to verify the "finpost
  * narration change detection" fix — see the "Fix finpost/finvchdet narration-change detection"
@@ -19,7 +20,12 @@ import java.util.List;
  * closed-period negative-test coverage" plan; #8/#9 split from a single, ambiguous #8 — see
  * "Round 22" of the GV plan, FIN-GV-EDIT-HEADER-04: the app's own post-dated-document rule
  * differs by the claimed voucher's Cash/Bank ledger type, so the old single variant's pass/fail
- * meaning depended on pure luck of which candidate got claimed):
+ * meaning depended on pure luck of which candidate got claimed; #24 added for the new
+ * Payment-Info edit scenario — see the "Payment Info Edit" plan; #25/#26 added for that same
+ * plan's payment-MODE-change extension, Cheque↔NEFT/RTGS; #27-30 added for {@link
+ * PaymentInfoDateScenario} — Instrument Date vs. entry-date validation across the Dr/Cr ×
+ * Cheque/NEFT/RTGS combinations that are actually reachable via the live UI, see that enum's own
+ * class Javadoc for the full combination analysis and why Dr+NEFT/RTGS is excluded):
  *
  * <table>
  *     <caption>Edit scenario matrix</caption>
@@ -60,6 +66,28 @@ import java.util.List;
  *     <tr><td>23</td><td>MANDATORY</td><td>Negative: header-only, source Posted, claimed candidate's own
  *         accounting year/financial month is already closed — expects the live app to refuse even the
  *         "Unpost if Posted" prep step (never reaches Save)</td></tr>
+ *     <tr><td>24</td><td>REGRESSION_PHASE1</td><td>Payment-Info edit, source Unposted, claimed candidate's
+ *         Cash/Bank ledger is Bank-type with an existing Cheque instrument no. — changes it to a fresh
+ *         known/same-bank one (first live exercise of the Cash/Bank Payment popup in Edit mode)</td></tr>
+ *     <tr><td>25</td><td>REGRESSION_PHASE1</td><td>Payment-Info edit, source Unposted, claimed candidate's
+ *         first finvchdet row is Cheque-mode — changes payment MODE to NEFT/RTGS (a fresh synthetic
+ *         reference)</td></tr>
+ *     <tr><td>26</td><td>REGRESSION_PHASE1</td><td>Payment-Info edit, source Unposted, claimed candidate's
+ *         first finvchdet row is NEFT/RTGS-mode — changes payment MODE to Cheque (a fresh known/same-bank
+ *         instrument no.)</td></tr>
+ *     <tr><td>27</td><td>REGRESSION_PHASE1</td><td>Negative: Payment-Info edit, Cr-side counter-leg,
+ *         final mode NEFT/RTGS, Instrument Date set after the voucher's own entry date — app rejects the
+ *         save ("Instrument date cannot be greater than entry date")</td></tr>
+ *     <tr><td>28</td><td>REGRESSION_PHASE1</td><td>Positive: Payment-Info edit, Cr-side counter-leg,
+ *         final mode NEFT/RTGS, Instrument Date left at the voucher's own entry date — baseline confirming
+ *         the Cr-side NEFT/RTGS path itself succeeds, independent of #27's rejection rule</td></tr>
+ *     <tr><td>29</td><td>REGRESSION_PHASE1</td><td>Positive: Payment-Info edit, Cr-side counter-leg,
+ *         final mode Cheque, Instrument Date set after the voucher's own entry date — confirms Cheque,
+ *         unlike NEFT/RTGS, allows a post-dated instrument</td></tr>
+ *     <tr><td>30</td><td>REGRESSION_PHASE1</td><td>Positive: Payment-Info edit, Dr-side counter-leg,
+ *         final mode Cheque, Instrument Date set after the voucher's own entry date — same rule as #29,
+ *         exercised through the other popup implementation (GvPaymentInformationPopup's known-cheque
+ *         branch, not GvReceiptPaymentInformationPopup)</td></tr>
  * </table>
  *
  * Unlike {@link GeneralVoucherCombinations}, this is a small, fixed, hand-enumerated list —
@@ -79,6 +107,12 @@ public final class GeneralVoucherEditCombinations {
 
     private GeneralVoucherEditCombinations() {}
 
+    /**
+     * Builds the fixed 30-scenario Edit matrix (see this class's own Javadoc for the full
+     * numbered table), then makes a final pass over the built list to alternate each variant's
+     * {@link VoucherEditEntryMethod} (plan §9.5) — hand-enumerated, not a Cartesian product like
+     * {@link GeneralVoucherCombinations#allCombinations()}.
+     */
     public static List<GeneralVoucherEditVariant> allCombinations() {
         List<GeneralVoucherEditVariant> out = new ArrayList<>();
 
@@ -324,6 +358,92 @@ public final class GeneralVoucherEditCombinations {
                 .sourceStatus(GeneralVoucherEditVariant.SourceStatus.UNPOSTED)
                 .glLineType(GlLineType.TYPE3_SITE_AND_SUBLEDGER)
                 .detailLineEditShape(DetailLineEditTarget.EditShape.SITE_SPLIT_ONLY)
+                .executionGroup(GeneralVoucherEditExecutionGroup.REGRESSION_PHASE1)
+                .build());
+
+        // #24 — Payment-Info edit: changes the claimed voucher's existing Cheque instrument
+        // number to a fresh known/same-bank one. requiredCashBankType=BANK reuses claimOne's
+        // existing Cash/Bank-type filter machinery (previously only used by the FUTURE_DATE
+        // variants) — a Cheque/NEFT payment concept is only meaningful against a Bank-type
+        // ledger. Promoted to MANDATORY (was REGRESSION_PHASE1) once the GV Cheque Dr/Cr
+        // bifurcation fix landed — by explicit request, ahead of this scenario's own originally-
+        // planned "prove stable in regression first" staging, so treat its first few live runs
+        // as still-unverified rather than assumed-green.
+        out.add(GeneralVoucherEditVariant.builder()
+                .variantId("GV_EDIT_PAYMENT_CHEQUE_INSTRUMENT_CHANGE_UNPOSTED")
+                .scenarioType(GeneralVoucherEditVariant.ScenarioType.PAYMENT_INFO)
+                .sourceStatus(GeneralVoucherEditVariant.SourceStatus.UNPOSTED)
+                .requiredCashBankType(CashBankType.BANK)
+                .paymentInfoEditShape(PaymentInfoEditTarget.PaymentModeShape.SAME_MODE_NEW_INSTRUMENT)
+                .executionGroup(GeneralVoucherEditExecutionGroup.MANDATORY)
+                .build());
+
+        // #25/#26 — Payment mode change (Cheque <-> NEFT/RTGS): swaps the payment MODE itself,
+        // not just the instrument number within Cheque mode. Same MANDATORY promotion and
+        // caveat as #24 above — additionally doubly unverified here since a mode-switch's effect
+        // on the Instrument No./Instrument Date fields has never been exercised at all.
+        out.add(GeneralVoucherEditVariant.builder()
+                .variantId("GV_EDIT_PAYMENT_MODE_CHEQUE_TO_NEFT_UNPOSTED")
+                .scenarioType(GeneralVoucherEditVariant.ScenarioType.PAYMENT_INFO)
+                .sourceStatus(GeneralVoucherEditVariant.SourceStatus.UNPOSTED)
+                .requiredCashBankType(CashBankType.BANK)
+                .paymentInfoEditShape(PaymentInfoEditTarget.PaymentModeShape.CHEQUE_TO_NEFT)
+                .executionGroup(GeneralVoucherEditExecutionGroup.MANDATORY)
+                .build());
+
+        out.add(GeneralVoucherEditVariant.builder()
+                .variantId("GV_EDIT_PAYMENT_MODE_NEFT_TO_CHEQUE_UNPOSTED")
+                .scenarioType(GeneralVoucherEditVariant.ScenarioType.PAYMENT_INFO)
+                .sourceStatus(GeneralVoucherEditVariant.SourceStatus.UNPOSTED)
+                .requiredCashBankType(CashBankType.BANK)
+                .paymentInfoEditShape(PaymentInfoEditTarget.PaymentModeShape.NEFT_TO_CHEQUE)
+                .executionGroup(GeneralVoucherEditExecutionGroup.MANDATORY)
+                .build());
+
+        // #27-30 — PaymentInfoDateScenario: Instrument Date vs. entry-date validation. Each
+        // variant sets BOTH paymentInfoEditShape (from dateScenario.shape(), so every existing
+        // variant.getPaymentInfoEditShape() call site keeps working unchanged) and dateScenario
+        // itself (which additionally pins the claimed candidate's counter-leg to Dr/Cr and
+        // overrides the new Instrument Date — see PaymentInfoDateScenario's own class Javadoc for
+        // the full Dr/Cr x Cheque/NEFT x future/current combination analysis and why only these 4
+        // of the 8 theoretical combinations are meaningfully testable via the live UI).
+        out.add(GeneralVoucherEditVariant.builder()
+                .variantId("GV_EDIT_PAYMENT_MODE_NEFT_FUTURE_INSTRUMENT_DATE_NEGATIVE")
+                .scenarioType(GeneralVoucherEditVariant.ScenarioType.PAYMENT_INFO)
+                .sourceStatus(GeneralVoucherEditVariant.SourceStatus.UNPOSTED)
+                .requiredCashBankType(CashBankType.BANK)
+                .paymentInfoEditShape(PaymentInfoDateScenario.NEFT_FUTURE_DATE_CR_REJECTED.shape())
+                .dateScenario(PaymentInfoDateScenario.NEFT_FUTURE_DATE_CR_REJECTED)
+                .executionGroup(GeneralVoucherEditExecutionGroup.REGRESSION_PHASE1)
+                .build());
+
+        out.add(GeneralVoucherEditVariant.builder()
+                .variantId("GV_EDIT_PAYMENT_MODE_NEFT_CURRENT_INSTRUMENT_DATE_POSITIVE")
+                .scenarioType(GeneralVoucherEditVariant.ScenarioType.PAYMENT_INFO)
+                .sourceStatus(GeneralVoucherEditVariant.SourceStatus.UNPOSTED)
+                .requiredCashBankType(CashBankType.BANK)
+                .paymentInfoEditShape(PaymentInfoDateScenario.NEFT_CURRENT_DATE_CR_ACCEPTED.shape())
+                .dateScenario(PaymentInfoDateScenario.NEFT_CURRENT_DATE_CR_ACCEPTED)
+                .executionGroup(GeneralVoucherEditExecutionGroup.REGRESSION_PHASE1)
+                .build());
+
+        out.add(GeneralVoucherEditVariant.builder()
+                .variantId("GV_EDIT_PAYMENT_CHEQUE_FUTURE_INSTRUMENT_DATE_CR_POSITIVE")
+                .scenarioType(GeneralVoucherEditVariant.ScenarioType.PAYMENT_INFO)
+                .sourceStatus(GeneralVoucherEditVariant.SourceStatus.UNPOSTED)
+                .requiredCashBankType(CashBankType.BANK)
+                .paymentInfoEditShape(PaymentInfoDateScenario.CHEQUE_FUTURE_DATE_CR_ACCEPTED.shape())
+                .dateScenario(PaymentInfoDateScenario.CHEQUE_FUTURE_DATE_CR_ACCEPTED)
+                .executionGroup(GeneralVoucherEditExecutionGroup.REGRESSION_PHASE1)
+                .build());
+
+        out.add(GeneralVoucherEditVariant.builder()
+                .variantId("GV_EDIT_PAYMENT_CHEQUE_FUTURE_INSTRUMENT_DATE_DR_POSITIVE")
+                .scenarioType(GeneralVoucherEditVariant.ScenarioType.PAYMENT_INFO)
+                .sourceStatus(GeneralVoucherEditVariant.SourceStatus.UNPOSTED)
+                .requiredCashBankType(CashBankType.BANK)
+                .paymentInfoEditShape(PaymentInfoDateScenario.CHEQUE_FUTURE_DATE_DR_ACCEPTED.shape())
+                .dateScenario(PaymentInfoDateScenario.CHEQUE_FUTURE_DATE_DR_ACCEPTED)
                 .executionGroup(GeneralVoucherEditExecutionGroup.REGRESSION_PHASE1)
                 .build());
 

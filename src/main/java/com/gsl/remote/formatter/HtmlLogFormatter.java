@@ -7,6 +7,10 @@ import java.util.List;
 /**
  * Formats log entries as an HTML snippet suitable for embedding inside an ExtentReport
  * collapsible section. Applies severity-based colour coding and truncation notice.
+ *
+ * <p>Used wherever a {@link com.gsl.remote.model.LogFetchResponse}'s entries need to be shown
+ * inline in a test report rather than dumped as plain text — see {@link LogFormatter} for the
+ * general contract.
  */
 public final class HtmlLogFormatter implements LogFormatter {
 
@@ -14,14 +18,17 @@ public final class HtmlLogFormatter implements LogFormatter {
 
     private final int maxDisplay;
 
+    /** Formats with the default cap of {@value #DEFAULT_MAX_DISPLAY} displayed lines. */
     public HtmlLogFormatter() {
         this.maxDisplay = DEFAULT_MAX_DISPLAY;
     }
 
+    /** Formats with a caller-supplied cap on the number of lines rendered before truncating. */
     public HtmlLogFormatter(int maxDisplay) {
         this.maxDisplay = maxDisplay;
     }
 
+    /** Renders up to {@code maxDisplay} entries as colour-coded {@code <div>} lines, with a truncation notice for the remainder. */
     @Override
     public String format(List<LogEntry> entries) {
         if (entries == null || entries.isEmpty()) {
@@ -54,6 +61,7 @@ public final class HtmlLogFormatter implements LogFormatter {
         return sb.toString();
     }
 
+    /** Maps a log level to its display colour; unknown/null levels get the INFO colour. */
     private static String levelColour(String level) {
         if (level == null) return "#555";
         return switch (level.toUpperCase()) {
@@ -64,6 +72,7 @@ public final class HtmlLogFormatter implements LogFormatter {
         };
     }
 
+    /** Escapes {@code &}, {@code <}, {@code >} so raw log text is safe to embed as HTML. */
     private static String esc(String s) {
         if (s == null) return "";
         return s.replace("&", "&amp;")

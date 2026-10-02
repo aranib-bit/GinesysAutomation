@@ -119,6 +119,7 @@ public final class ApVoucherExtentDescriptionLogger
 
     // ── AP-specific tables ─────────────────────────────────────────────────────
 
+    /** Renders the Reference Site wise FIFO Set-Off table, or does nothing when the list is empty. */
     private void logFifoTable(MergedFinanceApVoucherData data) {
         List<ReferenceSitewiseFIFOsetoff> fifoList = data.getReferenceSitewiseFIFOList();
         if (fifoList == null || fifoList.isEmpty()) return;
@@ -137,6 +138,7 @@ public final class ApVoucherExtentDescriptionLogger
         ExtentLogger.infoTable(table);
     }
 
+    /** Renders the TDS &amp; Net Payable table, or does nothing when the list is empty. */
     private void logTdsTable(MergedFinanceApVoucherData data) {
         List<TdsAndNetPayable> tdsList = data.getTdsAndNetPayableList();
         if (tdsList == null || tdsList.isEmpty()) return;

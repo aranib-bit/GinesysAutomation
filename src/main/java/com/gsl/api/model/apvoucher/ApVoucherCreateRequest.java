@@ -20,6 +20,7 @@ import java.util.List;
 @NoArgsConstructor
 @AllArgsConstructor
 public class ApVoucherCreateRequest {
+    /** {@code 0} to create a new voucher; would carry the existing voucher's code when editing one. */
     @Builder.Default
     private int code = 0;
     private long empCode;
@@ -33,12 +34,18 @@ public class ApVoucherCreateRequest {
      */
     private Long autoCreatedJournalDocSchemeCode;
     private long docSchemeCode;
+    /** Populated only when the resolved {@code docSchemeCode}'s scheme is manual-numbered (see
+     *  {@code DocNumberSchemeEntry#getManual()}); left null otherwise so the server auto-generates it. */
     private String docNumber;
     private long cashBankGLCode;
     private String voucherDate;
+    /** Accounting year code — kept at the HAR-observed default of {@code 0} in every captured
+     *  request; compare {@code VoucherDateValidationRequest}'s {@code OldYCODE} field, the same
+     *  concept used elsewhere in this module. */
     @Builder.Default
     private int yCode = 0;
     private String remarks;
+    /** Coded document status — {@code "N"} (kept at the HAR-observed literal) in every captured request. */
     @Builder.Default
     private String documentStatus = "N";
     /** Always true for the on-account Customer/Vendor Advance flow this client builds. */

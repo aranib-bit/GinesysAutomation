@@ -18,9 +18,11 @@ import java.util.List;
 @RegisterBeanMapper(FinSlGl.class)
 public interface FinSlGlDao {
 
+    /** Returns the active (non-deleted, {@code ext = 'N'}) Sub Ledgers allow-listed for the given GL. */
     @SqlQuery("SELECT code, slcode, glcode, ext FROM finsl_gl WHERE glcode = :glcode AND ext = 'N'")
     List<FinSlGl> findByGlcode(@Bind("glcode") long glcode);
 
+    /** Resolves the finsl_gl row (and its own {@code code}) for a specific (GL, Sub Ledger) pair. */
     @SqlQuery("SELECT code, slcode, glcode, ext FROM finsl_gl WHERE glcode = :glcode AND slcode = :slcode")
     FinSlGl findByGlcodeAndSlcode(@Bind("glcode") long glcode, @Bind("slcode") long slcode);
 }

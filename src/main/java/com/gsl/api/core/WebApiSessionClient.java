@@ -40,6 +40,13 @@ public final class WebApiSessionClient {
 
     private WebApiSessionClient() {}
 
+    /**
+     * Logs {@code credential} in against WEBAPI, retrying once through {@link #killSession} on a
+     * code-012 ("already logged in elsewhere") response. Nests the call under a "Create Token"
+     * Extent step when a test is active, otherwise runs the same logic flat (see {@link #loginInternal}).
+     *
+     * @throws ApiException if login still fails after the code-012 retry (or fails for any other reason)
+     */
     public static WebApiLoginResult login(UserCredential credential) {
         // Nest as a "Create Token" step whenever an ExtentTest is active (e.g. inside DataBackFill's
         // own report entry) — falls back to the plain flat-logging path otherwise, since
@@ -52,6 +59,7 @@ public final class WebApiSessionClient {
         return resultHolder[0];
     }
 
+    /** Actual login logic behind {@link #login} — issues the call, handles the code-012 retry, and parses the token response. */
     private static WebApiLoginResult loginInternal(UserCredential credential) {
         ApiConfig cfg = ConfigFactory.getApiConfig();
         String loginUrl = cfg.webApiBaseUri() + cfg.webApiLoginPath();
@@ -125,6 +133,7 @@ public final class WebApiSessionClient {
                 .build();
     }
 
+    /** POSTs the raw {@code grant_type=password} login request — no response handling, just the HTTP call. */
     private static Response performLogin(UserCredential credential) {
         ApiConfig cfg = ConfigFactory.getApiConfig();
         return RestAssured.given()
@@ -168,6 +177,7 @@ public final class WebApiSessionClient {
                 method + " " + url + " (" + durationMs + "ms, HTTP " + response.getStatusCode() + ")", table);
     }
 
+    /** Masks {@code access_token}/{@code access_token2} (and their camelCase multi-tenant forms) values in a JSON body for logging. */
     private static String redactTokens(String json) {
         if (json == null) {
             return json;
@@ -177,6 +187,7 @@ public final class WebApiSessionClient {
                 "$1***REDACTED***$2");
     }
 
+    /** Pretty-prints {@code json} for report readability; returns it unchanged if it doesn't parse as JSON. */
     private static String prettyJson(String json) {
         try {
             return MAPPER.writerWithDefaultPrettyPrinter().writeValueAsString(MAPPER.readTree(json));
@@ -242,6 +253,7 @@ public final class WebApiSessionClient {
         }
     }
 
+    /** Decodes a JWT's payload segment (base64url, unverified) and returns the named claim's value, or null if absent/unparseable. */
     private static String extractClaim(String jwt, String claimUri) {
         try {
             String[] parts = jwt.split("\\.");
@@ -256,6 +268,7 @@ public final class WebApiSessionClient {
         }
     }
 
+    /** Pads a base64url segment to a multiple of 4 chars with {@code "="}, as {@link Base64.Decoder} requires. */
     private static String padBase64Url(String segment) {
         int padding = (4 - segment.length() % 4) % 4;
         return segment + "=".repeat(padding);

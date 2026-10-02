@@ -32,12 +32,18 @@ public final class PendingArDocumentBackfillStrategy implements BackfillStrategy
     private final int ouCode;
     private final int inventoryGroupCode;
 
+    /**
+     * @param siteCode           site code the Item/GRC/DC chain is created against
+     * @param ouCode             organizational unit code for the created GRC/DC
+     * @param inventoryGroupCode inventory group the throwaway Item is created under
+     */
     public PendingArDocumentBackfillStrategy(int siteCode, int ouCode, int inventoryGroupCode) {
         this.siteCode = siteCode;
         this.ouCode = ouCode;
         this.inventoryGroupCode = inventoryGroupCode;
     }
 
+    /** Creates {@code neededQuantity} fresh Item -&gt; GRC -&gt; DC chains via {@code platform}; see the class Javadoc for why this shape lands in v_pending_adj as a debit. */
     @Override
     public void backfill(ApiPlatform platform, int neededQuantity) {
         ApiSessionBundle session = ApiSessionFactory.create(platform);
@@ -76,6 +82,7 @@ public final class PendingArDocumentBackfillStrategy implements BackfillStrategy
         }
     }
 
+    /** {@inheritDoc} Always {@code "createDc"} — the k6 script backing this Item -&gt; GRC -&gt; DC chain's bulk path. */
     @Override
     public String k6ScriptKey() {
         return "createDc";

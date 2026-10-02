@@ -1,6 +1,8 @@
 package com.gsl.pages.Finance.Operations;
 
+import com.gsl.pages.enums.Finance.Operations.ARVoucher.ARVoucherRevertOutcome;
 import com.gsl.pages.pagecomponent.Finance.Operations.ARVoucher.ARVoucherListFooter;
+import com.gsl.utils.dataprovider.fixture.finance.DocumentSearchStrategy;
 import com.gsl.pages.pagecomponent.Finance.Operations.ARVoucher.ARVoucherListGridHeader;
 import com.gsl.pages.pagecomponent.Finance.Operations.ARVoucher.ARVoucherMainGrid;
 import com.gsl.pages.pagecomponent.Finance.Operations.Common.VoucherListPageBase;
@@ -27,5 +29,38 @@ public class ArVoucherListPage extends VoucherListPageBase<
     @Override
     protected ArVoucherAdd newAddPage() {
         return new ArVoucherAdd();
+    }
+
+
+    // ── Revert from List Page — mirrors ApVoucherListPage's equivalents ──────────
+
+    /** Clicks "Revert" in the open Actions dropdown; confirm separately via {@link #confirmRevert()}. */
+    public ArVoucherListPage clickRevert() {
+        getMainGrid().clickRevert();
+        return this;
+    }
+
+    /** Document-aware overload: on a lost/never-opened Actions dropdown, re-selects the document
+     *  and re-opens Actions once before giving up (same shape as AP/GV). */
+    public ArVoucherListPage clickRevert(String documentNumber, DocumentSearchStrategy strategy) {
+        Runnable reselect = () -> {
+            selectDocumentFast(documentNumber, strategy);
+            clickActions();
+        };
+        getMainGrid().clickRevert(reselect);
+        return this;
+    }
+
+    /** Confirms whichever post-Revert dialog appears; returns which one so callers can assert the DB outcome. */
+    public ARVoucherRevertOutcome confirmRevert() {
+        return getMainGrid().confirmRevert();
+    }
+
+    /** Actions → Revert → confirm, for an already-selected document. AR has no standalone
+     *  "Unpost" button — un-posting IS Revert (replaces the {@code //TODO-unpost-button} placeholder). */
+    public ARVoucherRevertOutcome revertSelectedDocument() {
+        clickActions();
+        clickRevert();
+        return confirmRevert();
     }
 }

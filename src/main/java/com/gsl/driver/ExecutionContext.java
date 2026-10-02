@@ -19,6 +19,7 @@ import com.gsl.testdata.UserCredential;
  */
 public final class ExecutionContext {
 
+    /** How far navigation has progressed for this session, coarsest-to-finest — used by recovery to decide how much can be skipped when restoring state. */
     public enum Checkpoint { NONE, LOGIN, MODULE, SUBMODULE, PAGE }
 
     private static final ThreadLocal<ExecutionContext> CONTEXT = ThreadLocal.withInitial(ExecutionContext::new);
@@ -84,23 +85,32 @@ public final class ExecutionContext {
         CONTEXT.remove();
     }
 
+    /** Whether this thread's session has completed application login. */
     public boolean isLoggedIn()                  { return loggedIn; }
     public void setLoggedIn(boolean loggedIn)     { this.loggedIn = loggedIn; }
 
+    /** The credential currently logged in on this session, or {@code null} before login. */
     public UserCredential getUser()               { return user; }
     public void setUser(UserCredential user)      { this.user = user; }
 
+    /** The {@link HomePage} returned by the last successful login on this session. */
     public HomePage getHomePage()                 { return homePage; }
     public void setHomePage(HomePage homePage)    { this.homePage = homePage; }
 
+    /** Whether {@link #getUser()} was acquired from {@code UserPool} (vs. a fixed/config-supplied credential). */
     public boolean isUserFromPool()               { return userFromPool; }
     public void setUserFromPool(boolean fromPool) { this.userFromPool = fromPool; }
 
+    /** Free-form key (e.g. "FINANCE") of the module last navigated to — not the module's own enum type, so this class stays decoupled from every module. */
     public String getCurrentModule()                    { return currentModule; }
+    /** Free-form key of the submodule last navigated to, or {@code null} if navigation hasn't gone past module level. */
     public String getCurrentSubModule()                 { return currentSubModule; }
+    /** The page object returned by the last {@code navigateToSubMenu} call, cached so a later row can skip re-navigating. */
     public Object getCurrentSubModulePage()             { return currentSubModulePage; }
+    /** Free-form key of the page last navigated to, or {@code null} if navigation hasn't gone past submodule level. */
     public String getCurrentPage()                      { return currentPage; }
 
+    /** Records a module-level navigation checkpoint, clearing any deeper (submodule/page) state that no longer applies. */
     public void setModuleCheckpoint(String module) {
         this.currentModule = module;
         this.currentSubModule = null;
@@ -108,27 +118,33 @@ public final class ExecutionContext {
         this.lastStableCheckpoint = Checkpoint.MODULE;
     }
 
+    /** Records a submodule-level navigation checkpoint, caching the resolved page object for reuse by a later row. */
     public void setSubModuleCheckpoint(String subModule, Object subModulePage) {
         this.currentSubModule = subModule;
         this.currentSubModulePage = subModulePage;
         this.lastStableCheckpoint = Checkpoint.SUBMODULE;
     }
 
+    /** Records a page-level navigation checkpoint — the finest-grained {@link Checkpoint}. */
     public void setCurrentPage(String page) {
         this.currentPage = page;
         this.lastStableCheckpoint = Checkpoint.PAGE;
     }
 
+    /** Whether {@link RecoveryManager} has flagged this session for a forced fresh acquire+login next time. */
     public boolean isNeedsRecovery()              { return needsRecovery; }
     public void setNeedsRecovery(boolean needsRecovery) { this.needsRecovery = needsRecovery; }
 
+    /** The recovery level ({@code RecoveryManager} 1-4) last attempted on this session, if any. */
     public int getRecoveryLevel()                 { return recoveryLevel; }
     public void setRecoveryLevel(int recoveryLevel) { this.recoveryLevel = recoveryLevel; }
 
+    /** Number of consecutive retry attempts recorded for the current action. */
     public int getRetryCount()                    { return retryCount; }
     public void incrementRetryCount()              { this.retryCount++; }
     public void resetRetryCount()                  { this.retryCount = 0; }
 
+    /** The finest-grained {@link Checkpoint} reached since the last {@link #resetSession()}. */
     public Checkpoint getLastStableCheckpoint()   { return lastStableCheckpoint; }
 
     /** Call once per real login — starts the lease clock and resets the reuse counter. */
@@ -159,12 +175,15 @@ public final class ExecutionContext {
         return leaseRowCount >= maxRows || (System.currentTimeMillis() - sessionStartMs) >= maxMs;
     }
 
+    /** True once this thread has ever completed a real login — deliberately never cleared by {@link #resetSession()}. */
     public boolean hasEverLoggedIn()               { return hasEverLoggedIn; }
     public void setHasEverLoggedIn(boolean v)      { this.hasEverLoggedIn = v; }
 
+    /** True for the short window spanning this thread's very first login + first navigation (cold-start cost attribution). */
     public boolean isColdStartInProgress()         { return coldStartInProgress; }
     public void setColdStartInProgress(boolean v)  { this.coldStartInProgress = v; }
 
+    /** "SimpleClassName.methodName" of the test that triggered the current cold start, for attribution logging. */
     public String getColdStartLabel()              { return coldStartLabel; }
     public void setColdStartLabel(String label)     { this.coldStartLabel = label; }
 

@@ -14,6 +14,13 @@ import com.gsl.reports.ReportLogger;
  * Hybrid API+DB setup for Item: create via {@link ItemApiClient} (API — complex, multi-lookup),
  * validate the response (success + non-blank item code via {@link ItemApiValidator}).
  *
+ * <p>First link of the Item &rarr; GRC &rarr; DC inventory chain: the returned {@code itemCode}
+ * feeds {@link GrcDataSetup#setupGrcForTest} and {@link DcDataSetup#setupDcForTest}. That full
+ * chain is currently only assembled by {@code com.gsl.database.finance.PendingArDocumentBackfillStrategy},
+ * which is itself no longer constructed anywhere in this codebase (superseded by {@code
+ * ApVoucherArBackfillStrategy} — see that strategy's class Javadoc for why); no other caller of
+ * this method exists today.
+ *
  * <p><b>Follow-up, not yet done here</b>: a dedicated {@code ItemDao} querying the item-master
  * table (to confirm the API-created row actually landed in the DB, the "D" half of hybrid
  * API+DB setup) needs the live schema confirmed first — this build had no DB access to verify
@@ -25,6 +32,14 @@ public final class ItemDataSetup {
 
     private ItemDataSetup() {}
 
+    /**
+     * Creates a throwaway Item via {@code client}, using a unique name derived from
+     * {@code namePrefix}, and validates the response before returning it.
+     *
+     * @param namePrefix          prefix fed into {@link UniqueNameGenerator#itemName} to avoid name collisions
+     * @param inventoryGroupCode  the {@code invgrp} the new item is created under
+     * @throws DataSetupException if the API response fails {@link ItemApiValidator}'s checks
+     */
     public static ItemCreateResponse setupItemForTest(ItemApiClient client, String namePrefix,
                                                         ItemManagementMode mode, PricingData pricing,
                                                         int inventoryGroupCode) {

@@ -60,3 +60,6 @@ OLD\ LOGS\ AND\ REPORTS/**/*
 # Also ignore the specific JSON report I saw in your example
 /reports/js-errors/
 *.json
+### Environment selection / secrets (see EnvResolver, Secrets) ###
+/env.local
+src/test/resources/env/*/secrets.local.properties

@@ -7,10 +7,16 @@ import com.gsl.network.pattern.FinanceApiPattern;
 import com.gsl.enums.AppOperation;
 import com.gsl.enums.TestAuthor;
 import com.gsl.enums.VoucherDomain;
+import com.gsl.database.DatabaseManager;
+import com.gsl.database.dao.finance.FinVchDetDao;
+import com.gsl.database.dao.finance.FinVchMainDao;
+import com.gsl.flow.Finance.Operations.Common.DocumentAdjustmentFlow;
+import com.gsl.flow.Finance.Operations.Common.VoucherEditFlowSteps;
+import com.gsl.model.finance.FinVchDet;
+import com.gsl.model.finance.FinVchMain;
 import com.gsl.pages.enums.topmenucomponent.MainModuleType;
 import com.gsl.pages.Finance.Operations.ArVoucherListPage;
 import com.gsl.pages.HomePage;
-import com.gsl.pages.LoginPage;
 import com.gsl.pages.enums.Finance.MainMenuType;
 import com.gsl.pages.enums.Finance.Operations.OperationsMenuType;
 import com.gsl.driver.DriverManager;
@@ -21,6 +27,9 @@ import com.gsl.testdata.dto.MergedFinanceArVoucherData;
 import com.gsl.utils.Log;
 import com.gsl.utils.NavigationUtils;
 import com.gsl.utils.dataprovider.MergedFinArVoucherDataSupplier;
+import com.gsl.utils.dataprovider.fixture.finance.DocumentSearchStrategy;
+import org.testng.Assert;
+import com.gsl.utils.dataprovider.source.finance.common.AccountingPeriodResolver;
 import com.gsl.validation.snapshot.DocumentContext;
 import com.gsl.validation.snapshot.SnapshotService;
 import com.gsl.validation.snapshot.TableRule;
@@ -29,8 +38,11 @@ import com.gsl.validation.snapshot.audit.AuditAssertion;
 import com.gsl.validation.snapshot.finance.Aud2SnapshotDao;
 import com.gsl.validation.snapshot.finance.VoucherDocumentContextResolver;
 import com.tests.WebTest;
+import org.jdbi.v3.core.Jdbi;
 import org.testng.annotations.Test;
 
+import java.math.BigDecimal;
+import java.util.List;
 import java.util.Map;
 
 /**
@@ -72,41 +84,68 @@ public class DeleteArVoucher extends WebTest {
         Aud2SnapshotDao auditDao = new Aud2SnapshotDao();
 
         // ── Step 1: Login ─────────────────────────────────────────────────────────
+        // Was new LoginPage().loginToApplication(...) — a session-unaware fresh login that only
+        // works when the browser happens to already be sitting on the actual login page. Confirmed
+        // via AP's identical DeleteApVoucher.java hitting this exact bug live (run 20260927_190439,
+        // FIN-AP-DELETE-01/02, mirrored from this class): a previous test on the same thread had
+        // already left the browser logged in elsewhere (no username field to fill there).
+        // SessionManager.ensureLoggedIn(u) is the session-reuse-aware helper every OTHER voucher
+        // test class (Revert/Edit/GV Delete) already uses.
         StepExecutor.step("Login to Application", () -> {
             UserCredential u = DriverManager.getCurrentUser();
-            homeRef[0] = new LoginPage().loginToApplication(u.username(), u.password());
+            homeRef[0] = com.gsl.driver.SessionManager.ensureLoggedIn(u);
             ReportLogger.business("Logged in as: " + u.username());
         });
 
         // ── Step 2: Navigate ──────────────────────────────────────────────────────
-        StepExecutor.step("Open Finance → AR Voucher List", () -> {
-            listRef[0] = NavigationUtils.navigateToFinanceSideMenu(
-                    homeRef[0],
-                    MainMenuType.OPERATIONS,
-                    OperationsMenuType.ARVOUCHER,
-                    ArVoucherListPage.class);
-            ReportLogger.business("AR Voucher list page opened");
-        });
+        // Business log + "Navigated: ..." summary are now recorded inside
+        // NavigationUtils.navigateToFinanceSideMenu itself.
+        StepExecutor.step("Open Finance → AR Voucher List", () -> listRef[0] =
+                NavigationUtils.navigateToFinanceSideMenu(
+                        homeRef[0],
+                        MainMenuType.OPERATIONS,
+                        OperationsMenuType.ARVOUCHER,
+                        ArVoucherListPage.class));
 
-        // ── Step 3: Search ────────────────────────────────────────────────────────
-        StepExecutor.step("Search AR Voucher by Document Number", () -> {
-            listRef[0].searchByVoucherNo(testData.getExistingVoucherNo());
-            ReportLogger.business("Searched for voucher: " + testData.getExistingVoucherNo());
+        // ── Step 3: Clear Filter + Select Document — was searchByVoucherNo(...), which is
+        // exact-match-only with no clear-filter step and no pagination fallback (same exposure
+        // Round 9/10 confirmed live and fixed for DeleteApVoucher — see that class's own
+        // equivalent step for the evidence). Now uses the shared common function
+        // (VoucherListPageBase.selectDocumentForAction) every other Revert/Delete/Edit test class
+        // uses. Its own follow-on action-click step (clickDeleteForVoucher()/clickUnpost(), both
+        // still no-arg/no-retry) is unchanged — a separate, already-flagged, already-deferred gap.
+        StepExecutor.step("Select AR Voucher in List Page", () -> {
+            listRef[0].selectDocumentForAction(testData.getExistingVoucherNo(), DocumentSearchStrategy.EXACT_MATCH);
+            ReportLogger.business("Filter cleared, list refreshed, selected voucher: "
+                    + testData.getExistingVoucherNo());
         });
 
         // ── Step 4: Unpost + untag if posted ──────────────────────────────────────
-        StepExecutor.step("Unpost and Untag if Posted (release_status='P')", () -> {
+        // Untag replaces the previous // TODO: query fintag... stub — resolves vchcode/slcode/
+        // actualAmount via a fresh FinVchMainDao/FinVchDetDao read keyed on
+        // testData.getExistingVoucherNo(), then delegates the fintag-both-directions check +
+        // single Document Adjustment API call to the shared, domain-agnostic
+        // DocumentAdjustmentFlow.untagIfNeeded (same helper AP's RevertApVoucher/DeleteApVoucher/
+        // EditApVoucher use). AR's existing UI-based unpost (clickUnpost()) is unchanged — only
+        // this untag step is new.
+        // Untag BEFORE unpost (a Posted+tagged document cannot be un-posted until its fintag rows
+        // are cleared — the previous order here unposted first). Unpost is the Actions → Revert
+        // UI action (AR has no standalone Unpost button; the old //TODO-unpost-button placeholder
+        // never existed), via the dialogs AR shares with AP (ArApVoucherDialogs).
+        VoucherEditFlowSteps.untagIfTagged(
+                testData.getExistingVoucherNo(), testData.getReleaseStatus(), new java.util.ArrayList<>());
+        StepExecutor.step("Unpost if Posted (release_status='P') — Actions → Revert", () -> {
             if ("P".equals(testData.getReleaseStatus())) {
-                listRef[0].clickUnpost();
-                // TODO: query fintag for this voucher (SELECT COUNT(*) FROM fintag WHERE vchcode = ?)
-                //   If count > 0 → navigate to Document Adjustment and remove the tagging.
-                //   Until the Document Adjustment page object is available, this step will
-                //   fail at runtime if the voucher is tagged. Add the fintag query and
-                //   DocumentAdjustmentPage.removeTagForVoucher(voucherNo) call here.
-                ReportLogger.business("Voucher unposted (was release_status='P'). Fintag check: TODO.");
+                listRef[0].selectDocumentForAction(testData.getExistingVoucherNo(), DocumentSearchStrategy.EXACT_MATCH);
+                com.gsl.pages.enums.Finance.Operations.ARVoucher.ARVoucherRevertOutcome outcome =
+                        listRef[0].revertSelectedDocument();
+                Assert.assertEquals(outcome,
+                        com.gsl.pages.enums.Finance.Operations.ARVoucher.ARVoucherRevertOutcome.UNPOSTED,
+                        "[Unpost] Expected the Posted AR voucher to be un-posted by Revert");
+                ReportLogger.business("Voucher unposted via Revert (was release_status='P') for: "
+                        + testData.getExistingVoucherNo());
             } else {
-                ReportLogger.business("Voucher status='" + testData.getReleaseStatus()
-                        + "' — unpost not required");
+                ReportLogger.business("Voucher status=" + testData.getReleaseStatus() + " — unpost not required");
             }
         });
 
@@ -129,7 +168,7 @@ public class DeleteArVoucher extends WebTest {
         // ── Step 5: Delete and Confirm ────────────────────────────────────────────
         StepExecutor.step("Click Delete and Confirm", () -> {
             listRef[0]
-                    .clickDeleteForVoucher()
+                    .clickDeleteForVoucher(testData.getExistingVoucherNo(), DocumentSearchStrategy.EXACT_MATCH)
                     .confirmDelete();
             ReportLogger.pass("Deletion confirmed for voucher: " + testData.getExistingVoucherNo());
         });

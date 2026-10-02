@@ -1,10 +1,12 @@
 package com.gsl.driver;
 
+import com.gsl.utils.Log;
 import com.gsl.utils.Selenium.WaitUtils;
 import org.openqa.selenium.By;
 import org.openqa.selenium.JavascriptExecutor;
 import org.openqa.selenium.WebDriver;
 import org.openqa.selenium.WebDriverException;
+import org.openqa.selenium.remote.UnreachableBrowserException;
 
 /**
  * "Health Checker" — cheap, non-throwing probes of session/browser/page state, run BEFORE
@@ -23,16 +25,46 @@ public final class HealthChecker {
 
     private HealthChecker() {}
 
-    /** Cheapest possible probe — a dead/closed driver throws on any call, including getTitle(). */
+    /**
+     * Cheapest possible probe — a dead/closed driver throws on any call, including getTitle().
+     *
+     * <p><b>Round 18</b> — retries specifically on {@link UnreachableBrowserException}, up to 3
+     * total attempts, 500ms apart. Confirmed live (multiple runs, e.g. 20260926_180427) that this
+     * exact exception fires when 2-3 concurrent Chrome sessions' chromedriver HTTP calls transiently
+     * time out under momentary contention — with NO corresponding Windows "Application Error" crash
+     * record or Crashpad minidump at the same moment, i.e. Chrome itself was still alive, just
+     * briefly unresponsive. A single failed probe used to be treated as conclusive "dead"
+     * ({@link com.gsl.driver.FailureClassifier} escalates straight to Level-4 session teardown),
+     * destroying a perfectly healthy session — and that teardown/recreate itself adds MORE load
+     * right when the system was already strained. Every OTHER {@link WebDriverException} subtype
+     * (closed window, invalid session, etc.) keeps the original immediate-{@code false} behavior —
+     * those are more clearly conclusive, so retrying them would only waste time.
+     */
     public static boolean isBrowserAlive() {
         WebDriver driver = DriverManager.getDriver();
         if (driver == null) return false;
-        try {
-            driver.getTitle();
-            return true;
-        } catch (WebDriverException e) {
-            return false;
+
+        int maxAttempts = 3;
+        for (int attempt = 1; attempt <= maxAttempts; attempt++) {
+            try {
+                driver.getTitle();
+                return true;
+            } catch (UnreachableBrowserException e) {
+                if (attempt == maxAttempts) return false;
+                Log.warn("[HealthChecker] isBrowserAlive() attempt {}/{} hit UnreachableBrowserException "
+                        + "— retrying after a short settle delay (transient communication timeout, not "
+                        + "necessarily a real crash).", attempt, maxAttempts);
+                try {
+                    Thread.sleep(500);
+                } catch (InterruptedException ie) {
+                    Thread.currentThread().interrupt();
+                    return false;
+                }
+            } catch (WebDriverException e) {
+                return false;
+            }
         }
+        return false;
     }
 
     /**

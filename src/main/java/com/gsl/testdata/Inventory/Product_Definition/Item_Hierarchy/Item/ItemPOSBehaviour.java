@@ -9,6 +9,14 @@ import io.github.sskorol.data.Sheet;
 import lombok.Getter;
 import lombok.Setter;
 
+/**
+ * Fixture-data counterpart of the "POS Behaviour" sheet of the Inventory Item workbook ({@code
+ * ConfigFactory.getExcelDataConfig().inventoryitemPath()}) — how the item behaves at point of
+ * sale: multi-price action, price-change allowance/limit, batch-selection process, auto-quantity
+ * popup, extra tax, and return behavior. Optional sheet: {@code MergedInvItemDataSupplier} joins
+ * a row in only when one exists for the {@code TestCaseID} (unlike the mandatory {@link
+ * ItemGeneral}). Feeds {@code MergedInventoryItemData.itemPOSBehaviour}.
+ */
 @Getter
 @Setter
 @Sheet(name = "POS Behaviour")

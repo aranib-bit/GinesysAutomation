@@ -45,6 +45,19 @@ public final class RootCauseClassifier {
                     + "application had not finished loading/processing in time. " + firstLine(msg, 240), "HIGH");
         }
 
+        // 0c — App-side business-rejection dialogs that happen to intercept a later click must not
+        // be misclassified as a generic loading-mask timing race just because the underlying
+        // exception is ElementClickInterceptedException — confirmed live (run 20260925_234705,
+        // FIN-GV-ADD-COMBO-04): the intercepting element was the app's own "This cheque no is
+        // already in use" error dialog, not a loadmask. Message-pattern check, independent of
+        // exception type (same idea as 0a/0b), checked before the generic x-mask rule below so a
+        // real app rejection always wins over that shallower match.
+        if (contains(msg, "cheque no is already in use")) {
+            return RootCause.of(RootCauseCategory.APP_SAVE_REJECTED,
+                    "Application rejected the save — the resolved cheque number was already in use "
+                    + "by another document. " + firstLine(msg, 240), "HIGH");
+        }
+
         // 1–2 — Click intercepted (very common). x-mask overlay is the dominant cause here.
         if (t instanceof ElementClickInterceptedException) {
             if (contains(msg, "x-mask")) {
@@ -127,6 +140,24 @@ public final class RootCauseClassifier {
             return RootCause.of(RootCauseCategory.DOM_REBUILT,
                     "Element went stale — the page re-rendered between findElement() and interaction "
                     + "(AJAX refresh or ExtJS layout recalculation).", "MEDIUM");
+        }
+
+        // 14a — Combined validation failure (UI contract / database / snapshot areas, all of which ran).
+        if (t instanceof com.gsl.validation.CombinedValidationError cve) {
+            String areas = cve.areas().stream()
+                    .map(a -> a.title() + " (" + a.lines().size() + ")")
+                    .collect(java.util.stream.Collectors.joining(", "));
+            if (cve.onlyUi()) {
+                return RootCause.of(RootCauseCategory.UI_CONTRACT_MISMATCH,
+                        "Only the UI contract failed — the flow itself (Save, DB and snapshot validation) "
+                        + "completed. Failed: " + areas, "HIGH");
+            }
+            if (cve.hasKind(com.gsl.validation.CombinedValidationError.Kind.DATABASE)
+                    || cve.hasKind(com.gsl.validation.CombinedValidationError.Kind.SNAPSHOT)) {
+                return RootCause.of(RootCauseCategory.DB_VALIDATION_FAILURE,
+                        "Database state does not match expected after save. Failed areas: " + areas, "HIGH");
+            }
+            return RootCause.of(RootCauseCategory.ASSERTION_FAILURE, "Failed areas: " + areas, "HIGH");
         }
 
         // 14–15 — Assertions: DB validation vs. generic.

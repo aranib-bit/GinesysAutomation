@@ -5,6 +5,12 @@ import io.github.sskorol.data.Sheet;
 import lombok.Data;
 import lombok.Getter;
 
+/**
+ * One row of the "ScanItem" sheet in the receipts workbook — the item-scan detail rows joined
+ * onto an {@link ItemBlock} by {@code MergedReceiptDataSupplier} when that block's {@link
+ * ItemDetailsRow#getItemSelectionMajorMethod()} is {@code "Item"} and {@link
+ * ItemDetailsRow#getItemSetSelectionWay()} is {@code "Scan Item"}.
+ */
 @Getter
 @Sheet(name="ScanItem")
 public class ScanItemRow {

@@ -12,6 +12,7 @@ public class MandatoryColumnException extends RuntimeException {
 
     private final IVoucherListColumn column;
 
+    /** @param column the mandatory column the caller attempted to hide */
     public MandatoryColumnException(IVoucherListColumn column) {
         super(String.format(
                 "Cannot hide column '%s' (declared in %s) — it is marked mandatory() = true, "
@@ -22,6 +23,7 @@ public class MandatoryColumnException extends RuntimeException {
         this.column = column;
     }
 
+    /** The mandatory column the caller attempted to hide. */
     public IVoucherListColumn getColumn() { return column; }
 
     /** Uses {@code Enum.getDeclaringClass()} where applicable so a constant-specific enum body
