@@ -137,7 +137,7 @@ public final class SummaryReportBuilder {
         sb.append("<div class='meta-row'>")
           .append("<span>Run: ").append(runDate).append("</span>")
           .append(" &nbsp;|&nbsp; <span>Env: ").append(fw.env()).append("</span>")
-          .append(" &nbsp;|&nbsp; <span>Browser: ").append(fw.browser().toUpperCase()).append("</span>")
+          .append(" &nbsp;|&nbsp; <span>Browser: ").append(com.gsl.config.BrowserResolver.name().toUpperCase()).append("</span>")
           .append("</div>");
 
         sb.append("<div class='totals'>")

@@ -24,6 +24,11 @@ public class GeneralVoucherEditVariant {
     /** Unique short identifier used as the test-case label. */
     String variantId;
 
+    /** One-line, human-readable description of what this scenario does and expects — mirrors the
+     *  scenario table in {@link GeneralVoucherEditCombinations}'s class Javadoc. Document-only
+     *  metadata (read by the coverage workbook, {@code CoverageCatalog}); never drives execution. */
+    String description;
+
     /** Whether this scenario edits only the document header, or one existing detail line. */
     ScenarioType scenarioType;
 

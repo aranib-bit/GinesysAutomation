@@ -63,7 +63,7 @@ import java.util.List;
  *         same total amount, sitewise allocation redistributed</td></tr>
  *     <tr><td>22</td><td>REGRESSION_PHASE1</td><td>Detail-line edit, site-split-only (Type3), source Unposted —
  *         same total amount, sitewise allocation redistributed</td></tr>
- *     <tr><td>23</td><td>MANDATORY</td><td>Negative: header-only, source Posted, claimed candidate's own
+ *     <tr><td>23</td><td>REGRESSION_PHASE1</td><td>Negative: header-only, source Posted, claimed candidate's own
  *         accounting year/financial month is already closed — expects the live app to refuse even the
  *         "Unpost if Posted" prep step (never reaches Save)</td></tr>
  *     <tr><td>24</td><td>REGRESSION_PHASE1</td><td>Payment-Info edit, source Unposted, claimed candidate's
@@ -123,6 +123,7 @@ public final class GeneralVoucherEditCombinations {
         // unchanged — easy to retune by moving entries between groups.
         out.add(GeneralVoucherEditVariant.builder()
                 .variantId("GV_EDIT_HEADER_UNPOSTED_FIRSTDAY")
+                .description("Header-only edit, source Unposted, date = first valid day of accounting year")
                 .scenarioType(GeneralVoucherEditVariant.ScenarioType.HEADER_ONLY)
                 .sourceStatus(GeneralVoucherEditVariant.SourceStatus.UNPOSTED)
                 .dateVariant(VoucherEditDateVariant.FIRST_DAY)
@@ -131,6 +132,7 @@ public final class GeneralVoucherEditCombinations {
 
         out.add(GeneralVoucherEditVariant.builder()
                 .variantId("GV_EDIT_HEADER_UNPOSTED_LASTDAY")
+                .description("Header-only edit, source Unposted, date = last valid day of accounting year")
                 .scenarioType(GeneralVoucherEditVariant.ScenarioType.HEADER_ONLY)
                 .sourceStatus(GeneralVoucherEditVariant.SourceStatus.UNPOSTED)
                 .dateVariant(VoucherEditDateVariant.LAST_DAY)
@@ -139,6 +141,7 @@ public final class GeneralVoucherEditCombinations {
 
         out.add(GeneralVoucherEditVariant.builder()
                 .variantId("GV_EDIT_HEADER_UNPOSTED_RANDOMMID")
+                .description("Header-only edit, source Unposted, date = random day (capped at today)")
                 .scenarioType(GeneralVoucherEditVariant.ScenarioType.HEADER_ONLY)
                 .sourceStatus(GeneralVoucherEditVariant.SourceStatus.UNPOSTED)
                 .dateVariant(VoucherEditDateVariant.RANDOM_MID)
@@ -147,6 +150,7 @@ public final class GeneralVoucherEditCombinations {
 
         out.add(GeneralVoucherEditVariant.builder()
                 .variantId("GV_EDIT_HEADER_POSTED_REVERT_FIRSTDAY")
+                .description("Header-only edit, source Posted (revert-backfill), date = first valid day")
                 .scenarioType(GeneralVoucherEditVariant.ScenarioType.HEADER_ONLY)
                 .sourceStatus(GeneralVoucherEditVariant.SourceStatus.POSTED_NEEDS_REVERT)
                 .dateVariant(VoucherEditDateVariant.FIRST_DAY)
@@ -155,6 +159,7 @@ public final class GeneralVoucherEditCombinations {
 
         out.add(GeneralVoucherEditVariant.builder()
                 .variantId("GV_EDIT_HEADER_POSTED_REVERT_LASTDAY")
+                .description("Header-only edit, source Posted (revert-backfill), date = last valid day")
                 .scenarioType(GeneralVoucherEditVariant.ScenarioType.HEADER_ONLY)
                 .sourceStatus(GeneralVoucherEditVariant.SourceStatus.POSTED_NEEDS_REVERT)
                 .dateVariant(VoucherEditDateVariant.LAST_DAY)
@@ -163,6 +168,7 @@ public final class GeneralVoucherEditCombinations {
 
         out.add(GeneralVoucherEditVariant.builder()
                 .variantId("GV_EDIT_HEADER_POSTED_REVERT_RANDOMMID")
+                .description("Header-only edit, source Posted (revert-backfill), date = random day (capped at today)")
                 .scenarioType(GeneralVoucherEditVariant.ScenarioType.HEADER_ONLY)
                 .sourceStatus(GeneralVoucherEditVariant.SourceStatus.POSTED_NEEDS_REVERT)
                 .dateVariant(VoucherEditDateVariant.RANDOM_MID)
@@ -175,6 +181,7 @@ public final class GeneralVoucherEditCombinations {
         // depend on post/unpost state.
         out.add(GeneralVoucherEditVariant.builder()
                 .variantId("GV_EDIT_HEADER_UNPOSTED_CROSS_YEAR_NEGATIVE")
+                .description("Negative: header-only edit, date crosses into a different accounting year - expects rejection")
                 .scenarioType(GeneralVoucherEditVariant.ScenarioType.HEADER_ONLY)
                 .sourceStatus(GeneralVoucherEditVariant.SourceStatus.UNPOSTED)
                 .dateVariant(VoucherEditDateVariant.CROSS_YEAR_INVALID)
@@ -191,6 +198,7 @@ public final class GeneralVoucherEditCombinations {
         // matching ledger type. See "Round 22" of the GV plan.
         out.add(GeneralVoucherEditVariant.builder()
                 .variantId("GV_EDIT_HEADER_UNPOSTED_FUTURE_DATE_BANK")
+                .description("Positive: header-only edit, future date (same accounting year), Bank-type Cash/Bank ledger - app accepts future-dated documents")
                 .scenarioType(GeneralVoucherEditVariant.ScenarioType.HEADER_ONLY)
                 .sourceStatus(GeneralVoucherEditVariant.SourceStatus.UNPOSTED)
                 .dateVariant(VoucherEditDateVariant.FUTURE_DATE)
@@ -200,6 +208,7 @@ public final class GeneralVoucherEditCombinations {
 
         out.add(GeneralVoucherEditVariant.builder()
                 .variantId("GV_EDIT_HEADER_UNPOSTED_FUTURE_DATE_CASH_NEGATIVE")
+                .description("Negative: header-only edit, future date (same accounting year), Cash-type Cash/Bank ledger - app rejects post-dated cash entries")
                 .scenarioType(GeneralVoucherEditVariant.ScenarioType.HEADER_ONLY)
                 .sourceStatus(GeneralVoucherEditVariant.SourceStatus.UNPOSTED)
                 .dateVariant(VoucherEditDateVariant.FUTURE_DATE)
@@ -219,10 +228,11 @@ public final class GeneralVoucherEditCombinations {
         // detail rows/new date are built for this variant at all).
         out.add(GeneralVoucherEditVariant.builder()
                 .variantId("GV_EDIT_HEADER_POSTED_MONTH_CLOSED_NEGATIVE")
+                .description("Negative: header-only, source Posted, accounting year/financial month already closed - app refuses the Unpost prep step (never reaches Save)")
                 .scenarioType(GeneralVoucherEditVariant.ScenarioType.HEADER_ONLY)
                 .sourceStatus(GeneralVoucherEditVariant.SourceStatus.POSTED_NEEDS_REVERT)
                 .requireClosedPeriod(true)
-                .executionGroup(GeneralVoucherEditExecutionGroup.MANDATORY)
+                .executionGroup(GeneralVoucherEditExecutionGroup.REGRESSION_PHASE1)
                 .build());
 
         // ── Field-isolated header scenarios (plan §4D): each holds two of the three header
@@ -233,6 +243,7 @@ public final class GeneralVoucherEditCombinations {
         // with the boundary scenarios above) — headerFieldScope is the only new dimension.
         out.add(GeneralVoucherEditVariant.builder()
                 .variantId("GV_EDIT_HEADER_UNPOSTED_REFERENCE_ONLY")
+                .description("Header-only edit, source Unposted, only Reference changes (Remarks/Date unchanged)")
                 .scenarioType(GeneralVoucherEditVariant.ScenarioType.HEADER_ONLY)
                 .sourceStatus(GeneralVoucherEditVariant.SourceStatus.UNPOSTED)
                 .headerFieldScope(GeneralVoucherEditVariant.HeaderFieldScope.REFERENCE_ONLY)
@@ -241,6 +252,7 @@ public final class GeneralVoucherEditCombinations {
 
         out.add(GeneralVoucherEditVariant.builder()
                 .variantId("GV_EDIT_HEADER_UNPOSTED_REMARKS_ONLY")
+                .description("Header-only edit, source Unposted, only Remarks changes (Reference/Date unchanged)")
                 .scenarioType(GeneralVoucherEditVariant.ScenarioType.HEADER_ONLY)
                 .sourceStatus(GeneralVoucherEditVariant.SourceStatus.UNPOSTED)
                 .headerFieldScope(GeneralVoucherEditVariant.HeaderFieldScope.REMARKS_ONLY)
@@ -249,6 +261,7 @@ public final class GeneralVoucherEditCombinations {
 
         out.add(GeneralVoucherEditVariant.builder()
                 .variantId("GV_EDIT_HEADER_UNPOSTED_DATE_ONLY")
+                .description("Header-only edit, source Unposted, only Date changes (Reference/Remarks unchanged)")
                 .scenarioType(GeneralVoucherEditVariant.ScenarioType.HEADER_ONLY)
                 .sourceStatus(GeneralVoucherEditVariant.SourceStatus.UNPOSTED)
                 .dateVariant(VoucherEditDateVariant.RANDOM_MID)
@@ -258,6 +271,7 @@ public final class GeneralVoucherEditCombinations {
 
         out.add(GeneralVoucherEditVariant.builder()
                 .variantId("GV_EDIT_DETAIL_TYPE1_UNPOSTED")
+                .description("Detail-line edit, Type1 line (no Site/Sub Ledger), source Unposted")
                 .scenarioType(GeneralVoucherEditVariant.ScenarioType.DETAIL_LINE)
                 .sourceStatus(GeneralVoucherEditVariant.SourceStatus.UNPOSTED)
                 .glLineType(GlLineType.TYPE1_NONE)
@@ -266,6 +280,7 @@ public final class GeneralVoucherEditCombinations {
 
         out.add(GeneralVoucherEditVariant.builder()
                 .variantId("GV_EDIT_DETAIL_TYPE2_UNPOSTED")
+                .description("Detail-line edit, Type2 line (Site only), source Unposted")
                 .scenarioType(GeneralVoucherEditVariant.ScenarioType.DETAIL_LINE)
                 .sourceStatus(GeneralVoucherEditVariant.SourceStatus.UNPOSTED)
                 .glLineType(GlLineType.TYPE2_SITE_ONLY)
@@ -274,6 +289,7 @@ public final class GeneralVoucherEditCombinations {
 
         out.add(GeneralVoucherEditVariant.builder()
                 .variantId("GV_EDIT_DETAIL_TYPE3_UNPOSTED")
+                .description("Detail-line edit, Type3 line (Site and Sub Ledger), source Unposted")
                 .scenarioType(GeneralVoucherEditVariant.ScenarioType.DETAIL_LINE)
                 .sourceStatus(GeneralVoucherEditVariant.SourceStatus.UNPOSTED)
                 .glLineType(GlLineType.TYPE3_SITE_AND_SUBLEDGER)
@@ -282,6 +298,7 @@ public final class GeneralVoucherEditCombinations {
 
         out.add(GeneralVoucherEditVariant.builder()
                 .variantId("GV_EDIT_DETAIL_REVERSAL_TOGGLE_UNPOSTED")
+                .description("Detail-line edit toggling Is Reversal, source Unposted")
                 .scenarioType(GeneralVoucherEditVariant.ScenarioType.DETAIL_LINE)
                 .sourceStatus(GeneralVoucherEditVariant.SourceStatus.UNPOSTED)
                 .glLineType(GlLineType.TYPE1_NONE)
@@ -291,6 +308,7 @@ public final class GeneralVoucherEditCombinations {
 
         out.add(GeneralVoucherEditVariant.builder()
                 .variantId("GV_EDIT_DETAIL_POSTED_REVERT")
+                .description("Detail-line edit, source Posted (revert-backfill)")
                 .scenarioType(GeneralVoucherEditVariant.ScenarioType.DETAIL_LINE)
                 .sourceStatus(GeneralVoucherEditVariant.SourceStatus.POSTED_NEEDS_REVERT)
                 .glLineType(GlLineType.TYPE1_NONE)
@@ -311,6 +329,7 @@ public final class GeneralVoucherEditCombinations {
         // never find this shape.
         out.add(GeneralVoucherEditVariant.builder()
                 .variantId("GV_EDIT_DETAIL_NARRATION_SHARED_GLCODE_UNPOSTED")
+                .description("Detail-line edit of Ledger Narration on a line whose GL code is shared with a sibling line of a different Sub Ledger (finpost/finvchdet narration regression guard), source Unposted")
                 .scenarioType(GeneralVoucherEditVariant.ScenarioType.DETAIL_LINE)
                 .sourceStatus(GeneralVoucherEditVariant.SourceStatus.UNPOSTED)
                 .narrationEdit(true)
@@ -324,6 +343,7 @@ public final class GeneralVoucherEditCombinations {
         // detail-line variant's tier.
         out.add(GeneralVoucherEditVariant.builder()
                 .variantId("GV_EDIT_DETAIL_GLTYPE_TRANSITION_UNPOSTED")
+                .description("Detail-line edit, GL-type transition (Type1 line moves to a different, unused Asset-class GL), source Unposted")
                 .scenarioType(GeneralVoucherEditVariant.ScenarioType.DETAIL_LINE)
                 .sourceStatus(GeneralVoucherEditVariant.SourceStatus.UNPOSTED)
                 .glLineType(GlLineType.TYPE1_NONE)
@@ -334,6 +354,7 @@ public final class GeneralVoucherEditCombinations {
 
         out.add(GeneralVoucherEditVariant.builder()
                 .variantId("GV_EDIT_DETAIL_ADD_NEW_LINE_UNPOSTED")
+                .description("Detail-line edit, add a brand-new Type1 line, source Unposted")
                 .scenarioType(GeneralVoucherEditVariant.ScenarioType.DETAIL_LINE)
                 .sourceStatus(GeneralVoucherEditVariant.SourceStatus.UNPOSTED)
                 // glLineType here describes the NEW line's own shape, not an existing row to find —
@@ -345,6 +366,7 @@ public final class GeneralVoucherEditCombinations {
 
         out.add(GeneralVoucherEditVariant.builder()
                 .variantId("GV_EDIT_DETAIL_SITE_SPLIT_ONLY_TYPE2_UNPOSTED")
+                .description("Detail-line edit, site-split-only (Type2), same total amount with sitewise allocation redistributed, source Unposted")
                 .scenarioType(GeneralVoucherEditVariant.ScenarioType.DETAIL_LINE)
                 .sourceStatus(GeneralVoucherEditVariant.SourceStatus.UNPOSTED)
                 .glLineType(GlLineType.TYPE2_SITE_ONLY)
@@ -354,6 +376,7 @@ public final class GeneralVoucherEditCombinations {
 
         out.add(GeneralVoucherEditVariant.builder()
                 .variantId("GV_EDIT_DETAIL_SITE_SPLIT_ONLY_TYPE3_UNPOSTED")
+                .description("Detail-line edit, site-split-only (Type3), same total amount with sitewise allocation redistributed, source Unposted")
                 .scenarioType(GeneralVoucherEditVariant.ScenarioType.DETAIL_LINE)
                 .sourceStatus(GeneralVoucherEditVariant.SourceStatus.UNPOSTED)
                 .glLineType(GlLineType.TYPE3_SITE_AND_SUBLEDGER)
@@ -371,6 +394,7 @@ public final class GeneralVoucherEditCombinations {
         // as still-unverified rather than assumed-green.
         out.add(GeneralVoucherEditVariant.builder()
                 .variantId("GV_EDIT_PAYMENT_CHEQUE_INSTRUMENT_CHANGE_UNPOSTED")
+                .description("Payment-Info edit, Bank-type ledger with an existing Cheque instrument no. - changes it to a fresh known/same-bank one, source Unposted")
                 .scenarioType(GeneralVoucherEditVariant.ScenarioType.PAYMENT_INFO)
                 .sourceStatus(GeneralVoucherEditVariant.SourceStatus.UNPOSTED)
                 .requiredCashBankType(CashBankType.BANK)
@@ -384,6 +408,7 @@ public final class GeneralVoucherEditCombinations {
         // on the Instrument No./Instrument Date fields has never been exercised at all.
         out.add(GeneralVoucherEditVariant.builder()
                 .variantId("GV_EDIT_PAYMENT_MODE_CHEQUE_TO_NEFT_UNPOSTED")
+                .description("Payment-Info edit, payment mode changes Cheque to NEFT/RTGS (fresh synthetic reference), source Unposted")
                 .scenarioType(GeneralVoucherEditVariant.ScenarioType.PAYMENT_INFO)
                 .sourceStatus(GeneralVoucherEditVariant.SourceStatus.UNPOSTED)
                 .requiredCashBankType(CashBankType.BANK)
@@ -393,6 +418,7 @@ public final class GeneralVoucherEditCombinations {
 
         out.add(GeneralVoucherEditVariant.builder()
                 .variantId("GV_EDIT_PAYMENT_MODE_NEFT_TO_CHEQUE_UNPOSTED")
+                .description("Payment-Info edit, payment mode changes NEFT/RTGS to Cheque (fresh known/same-bank instrument no.), source Unposted")
                 .scenarioType(GeneralVoucherEditVariant.ScenarioType.PAYMENT_INFO)
                 .sourceStatus(GeneralVoucherEditVariant.SourceStatus.UNPOSTED)
                 .requiredCashBankType(CashBankType.BANK)
@@ -409,6 +435,7 @@ public final class GeneralVoucherEditCombinations {
         // of the 8 theoretical combinations are meaningfully testable via the live UI).
         out.add(GeneralVoucherEditVariant.builder()
                 .variantId("GV_EDIT_PAYMENT_MODE_NEFT_FUTURE_INSTRUMENT_DATE_NEGATIVE")
+                .description("Negative: Payment-Info edit, Cr-side counter-leg, mode NEFT/RTGS, Instrument Date after entry date - app rejects the save")
                 .scenarioType(GeneralVoucherEditVariant.ScenarioType.PAYMENT_INFO)
                 .sourceStatus(GeneralVoucherEditVariant.SourceStatus.UNPOSTED)
                 .requiredCashBankType(CashBankType.BANK)
@@ -419,6 +446,7 @@ public final class GeneralVoucherEditCombinations {
 
         out.add(GeneralVoucherEditVariant.builder()
                 .variantId("GV_EDIT_PAYMENT_MODE_NEFT_CURRENT_INSTRUMENT_DATE_POSITIVE")
+                .description("Positive: Payment-Info edit, Cr-side counter-leg, mode NEFT/RTGS, Instrument Date equal to entry date - baseline for the Cr-side NEFT/RTGS path")
                 .scenarioType(GeneralVoucherEditVariant.ScenarioType.PAYMENT_INFO)
                 .sourceStatus(GeneralVoucherEditVariant.SourceStatus.UNPOSTED)
                 .requiredCashBankType(CashBankType.BANK)
@@ -429,6 +457,7 @@ public final class GeneralVoucherEditCombinations {
 
         out.add(GeneralVoucherEditVariant.builder()
                 .variantId("GV_EDIT_PAYMENT_CHEQUE_FUTURE_INSTRUMENT_DATE_CR_POSITIVE")
+                .description("Positive: Payment-Info edit, Cr-side counter-leg, mode Cheque, Instrument Date after entry date - Cheque allows a post-dated instrument")
                 .scenarioType(GeneralVoucherEditVariant.ScenarioType.PAYMENT_INFO)
                 .sourceStatus(GeneralVoucherEditVariant.SourceStatus.UNPOSTED)
                 .requiredCashBankType(CashBankType.BANK)
@@ -439,6 +468,7 @@ public final class GeneralVoucherEditCombinations {
 
         out.add(GeneralVoucherEditVariant.builder()
                 .variantId("GV_EDIT_PAYMENT_CHEQUE_FUTURE_INSTRUMENT_DATE_DR_POSITIVE")
+                .description("Positive: Payment-Info edit, Dr-side counter-leg, mode Cheque, Instrument Date after entry date - same rule via the other popup implementation")
                 .scenarioType(GeneralVoucherEditVariant.ScenarioType.PAYMENT_INFO)
                 .sourceStatus(GeneralVoucherEditVariant.SourceStatus.UNPOSTED)
                 .requiredCashBankType(CashBankType.BANK)

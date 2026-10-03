@@ -28,9 +28,6 @@ public interface FrameworkConfig extends Config {
     @DefaultValue("local")
     String env();
 
-    /** Raw browser name string — used by TestContextManager and report metadata. */
-    String browser();
-
     /** Max time (seconds) allowed for an item-scan/lookup operation before timing out. */
     long itemscanmaxtimeout();
 

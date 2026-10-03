@@ -97,6 +97,7 @@ public final class ConfigValidator {
         FinanceConfig     fin    = ConfigFactory.getFinanceConfig();
 
         validateEnvironment(core, fatals);
+        BrowserResolver.current(); // logs the resolved browser (and fails on an unknown value) at suite start
 
         // ── Core ──────────────────────────────────────────────────────────────
         String url = core.url();

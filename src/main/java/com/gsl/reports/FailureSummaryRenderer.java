@@ -44,7 +44,7 @@ public final class FailureSummaryRenderer {
         List<String> trail = ActionTrailBuffer.getForDisplay();
         String lastStep = trail.isEmpty() ? "—" : trail.get(trail.size() - 1);
 
-        String browser  = safe(ConfigFactory.getConfig().browser());
+        String browser  = safe(com.gsl.config.BrowserResolver.name());
         String env      = safe(ConfigFactory.getConfig().env());
         String tcId     = nvl(TestContextManager.getTestCaseId(), "—");
         String execId   = nvl(TestContextManager.getExecutionId(), "—");

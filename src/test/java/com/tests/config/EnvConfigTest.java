@@ -52,4 +52,37 @@ public class EnvConfigTest {
     public void environmentValuesMatchTheEnumExpectations() {
         ConfigValidator.validate();
     }
+
+    @Test
+    public void unknownBrowserNamesTheValueAndEveryValidChoice() {
+        IllegalArgumentException e = expectThrows(IllegalArgumentException.class,
+                () -> com.gsl.enums.Browser.from("opera", "-Dbrowser"));
+        assertTrue(e.getMessage().contains("opera") && e.getMessage().contains("-Dbrowser")
+                && e.getMessage().contains("chrome") && e.getMessage().contains("firefox")
+                && e.getMessage().contains("edge") && e.getMessage().contains("safari"), e.getMessage());
+    }
+
+    @Test
+    public void blankBrowserFallsBackToChromeAndKnownValuesAreCaseInsensitive() throws Exception {
+        com.gsl.config.converter.StringToBrowserConverter c = new com.gsl.config.converter.StringToBrowserConverter();
+        assertEquals(c.convert(null, ""), com.gsl.enums.Browser.CHROME);
+        assertEquals(c.convert(null, null), com.gsl.enums.Browser.CHROME);
+        assertEquals(c.convert(null, "FireFox"), com.gsl.enums.Browser.FIREFOX);
+        assertEquals(c.convert(null, " edge "), com.gsl.enums.Browser.EDGE);
+    }
+
+    @Test
+    public void reportBrowserIsTheBrowserThatRuns() {
+        assertEquals(com.gsl.config.BrowserResolver.name(), com.gsl.config.BrowserResolver.current().name().toLowerCase());
+    }
+
+    @Test
+    public void gridUrlCanBeOverriddenPerRun() {
+        String override = System.getProperty("docker.grid.url");
+        String actual = ConfigFactory.getBrowserConfig().dockerGridUrl();
+        System.out.println("docker.grid.url -> " + actual);
+        if (override != null && !override.isBlank()) {
+            assertEquals(actual, override);
+        }
+    }
 }

@@ -217,6 +217,15 @@ public class TestListener implements ITestListener, ISuiteListener {
     public void onFinish(ISuite suite) {
         com.gsl.driver.SessionPool.drainAll("end of suite: " + suite.getName());
         SummaryReportBuilder.build(suite);
+        // Document-only per-run workbook (planned catalog vs. executed results). Failure-safe by
+        // contract — buildSafely never throws, so it can't affect the suite's outcome.
+        try {
+            java.nio.file.Path reportPath = java.nio.file.Paths.get(com.gsl.constants.FrameworkConstants.getReportPath());
+            com.gsl.reports.CoverageWorkbookBuilder.buildSafely(reportPath.getParent(),
+                    reportPath.getFileName().toString());
+        } catch (Throwable t) {
+            Log.warn("[CoverageWorkbook] Skipped: {}", t.toString());
+        }
         // flushReports() also republishes reports/latest/index.html (see ExtentReport) —
         // no separate copyToLatest() call needed here anymore.
         ExtentReport.flushReports();
@@ -278,7 +287,7 @@ public class TestListener implements ITestListener, ISuiteListener {
         TestContextManager.setTestName(methodName);
         TestContextManager.setTestId();
         TestContextManager.setExecutionId();
-        TestContextManager.setBrowser(ConfigFactory.getConfig().browser());
+        TestContextManager.setBrowser(com.gsl.config.BrowserResolver.name());
         TestContextManager.setEnv(ConfigFactory.getConfig().env());
         com.gsl.reports.ActionTrailBuffer.clear();
         StepDurationBuffer.clear();
@@ -434,7 +443,7 @@ public class TestListener implements ITestListener, ISuiteListener {
                         + "session=%s | previousTestCase=%s",
                 TestContextManager.getExecutionId(),
                 TestContextManager.getTestCaseId(),
-                ConfigFactory.getConfig().browser(),
+                com.gsl.config.BrowserResolver.name(),
                 ConfigFactory.getConfig().env(),
                 Thread.currentThread().getName(),
                 username,
@@ -506,6 +515,7 @@ public class TestListener implements ITestListener, ISuiteListener {
      */
     @Override
     public void onTestSuccess(ITestResult result) {
+        com.gsl.reports.ResultCollector.record(result, "PASS");
         SuiteCircuitBreaker.recordPass();
         String label = frameworkCheckLabel.get();
         if (label != null) {
@@ -572,6 +582,7 @@ public class TestListener implements ITestListener, ISuiteListener {
      */
     @Override
     public void onTestFailure(ITestResult result) {
+        com.gsl.reports.ResultCollector.record(result, "FAIL");
         SuiteCircuitBreaker.recordFail(result.getTestContext().getSuite());
         String label = frameworkCheckLabel.get();
         if (label != null) {
@@ -663,6 +674,7 @@ public class TestListener implements ITestListener, ISuiteListener {
      */
     @Override
     public void onTestSkipped(ITestResult result) {
+        com.gsl.reports.ResultCollector.record(result, "SKIP");
         Log.warn("TEST SKIPPED: {}", result.getName());
         ReportLogger.frameworkWarn("TEST SKIPPED: {}", result.getName());
 

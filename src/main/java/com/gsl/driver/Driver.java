@@ -40,7 +40,7 @@ public final class Driver {
     public static void initDriver() {
         // Typed enum resolution via Owner Converter — no inline valueOf needed
         RunMode  mode    = ConfigFactory.getBrowserConfig().runMode();
-        Browser  browser = ConfigFactory.getBrowserConfig().browserType();
+        Browser  browser = com.gsl.config.BrowserResolver.current();
 
         if (DriverManager.getDriver() == null) {
             WebDriver driver = MasterDriverFactory.create(mode, browser);

@@ -133,7 +133,7 @@ public final class JsErrorJsonExporter {
         j.append("  },\n");
 
         j.append("  \"browser\": {\n");
-        j.append("    \"name\": ").append(q(ConfigFactory.getConfig().browser())).append(",\n");
+        j.append("    \"name\": ").append(q(com.gsl.config.BrowserResolver.name())).append(",\n");
         j.append("    \"version\": \"unknown\"\n");
         j.append("  },\n");
 

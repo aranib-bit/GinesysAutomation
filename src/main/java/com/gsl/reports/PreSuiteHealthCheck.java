@@ -187,7 +187,7 @@ public final class PreSuiteHealthCheck {
     private static boolean checkViewport(ExtentReports extent) {
         BrowserConfig browserCfg = ConfigFactory.getBrowserConfig();
         RunMode mode = browserCfg.runMode();
-        Browser browser = browserCfg.browserType();
+        Browser browser = com.gsl.config.BrowserResolver.current();
         int expectedWidth = browserCfg.windowWidth();
         int expectedHeight = browserCfg.windowHeight();
 

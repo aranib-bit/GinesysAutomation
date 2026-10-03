@@ -65,7 +65,7 @@ public final class RuntimeProfileBuilder {
         com.gsl.config.RemoteLogConfig rc = ConfigFactory.getRemoteLogConfig();
         return ExecutionConfig.builder()
                 .environment(fw.env())
-                .browser(fw.browser())
+                .browser(com.gsl.config.BrowserResolver.name())
                 .runMode(bc.runmode())
                 .executionType(ec.executionType())
                 .threadCount(ec.threadCount())

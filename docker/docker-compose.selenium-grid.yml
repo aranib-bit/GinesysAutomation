@@ -1,5 +1,11 @@
 services:
-  # Standalone (hub+node in one process) instead of a separate hub + chrome-node pair.
+  # One Grid PER ENVIRONMENT. The Jenkinsfile starts it as compose project "grid-<ENV_NAME>"
+  # (docker compose -p ...) and passes GRID_PORT / VNC_PORT derived from the environment, so Grids
+  # for different environments never share container names or host ports. There is deliberately no
+  # fixed container_name here: compose names the container after the project.
+  # Run by hand with no variables set and it behaves like before: hub on 4444, VNC on 7900.
+  #
+  # Standalone (hub+node in one process) instead of a separate hub + node pair.
   # A distributed hub/node topology has a real addressing conflict for CDP: the node must
   # register with the hub using an address reachable ON THE DOCKER NETWORK (its own bridge IP or
   # service name), but the se:cdp/se:vnc URLs it returns for each session must be reachable BY THE
@@ -13,12 +19,20 @@ services:
   # the se:cdp/se:vnc URLs (confirmed: still 172.18.0.x without this override) — with no second
   # hop to break, setting it to "localhost" here is safe and makes those URLs resolve to exactly
   # what the client already used to reach this container.
-  selenium-chrome:
-    image: selenium/standalone-chrome:4.46.0-20260707
-    container_name: selenium-chrome-node
+  #
+  # The published host port (GRID_PORT) differs from the container's own 4444, so the URLs the node
+  # advertises must carry the published port: SE_NODE_GRID_URL does that.
+  #
+  # One image runs Chrome, Firefox and Edge (Edge is amd64-only). The tag matches selenium-java
+  # in pom.xml (4.49.0) and is date-pinned so the Grid cannot change underneath Jenkins.
+  selenium:
+    image: selenium/standalone-all-browsers:4.49.0-20260909
     shm_size: "2gb"
+    # Several environments' Grids can run at once on one host; cap each one's memory.
+    mem_limit: ${GRID_MEM_LIMIT:-4g}
     environment:
       - SE_NODE_HOST=localhost
+      - SE_NODE_GRID_URL=http://localhost:${GRID_PORT:-4444}
       - SE_NODE_MAX_SESSIONS=5
       - SE_NODE_OVERRIDE_MAX_SESSIONS=true
       - SE_NODE_SESSION_TIMEOUT=900
@@ -31,7 +45,7 @@ services:
       - SE_SCREEN_DEPTH=24
       - SE_START_XVFB=true
     ports:
-      - "4442:4442"
-      - "4443:4443"
-      - "4444:4444"
-      - "7900:7900"
+      # Clients only need the hub port (and VNC for debugging); 4442/4443 are the event bus used
+      # between a separate hub and nodes, which a standalone container does not need published.
+      - "${GRID_PORT:-4444}:4444"
+      - "${VNC_PORT:-7900}:7900"

@@ -11,34 +11,36 @@ def pickDefaultProfile(jobName) {
     return 'ap-mandatory' // safe fallback for any job not yet mapped (e.g. future regression jobs)
 }
 
-// Same idea for the target environment: a job whose name contains FEATURE-05 (or CLONE-STAGING, ...)
-// defaults to that environment; everything else falls back to staging. The value must be one of the
-// folder names under src/test/resources/env/ (see com.gsl.enums.TestEnvironment).
-def pickDefaultEnv(jobName) {
-    def name = (jobName ?: '').toLowerCase()
-    // No regex Matcher here: it is not serializable under the pipeline CPS engine.
-    for (n in 1..8) {
-        def feature = 'feature-0' + n
-        if (name.contains(feature)) return feature
+// Lockable Resource that guards an environment AND its Selenium Grid. Resource names are the
+// environment names (clone-staging, feature-05, ...), except staging, which keeps the pre-existing
+// "staging-slot" resource. Two builds on the same environment queue; different environments run in parallel.
+def lockResourceFor(envName) {
+    return envName == 'staging' ? 'staging-slot' : envName
+}
+
+// Fixed position of each environment, used to give every environment its own Grid ports
+// (hub 4500 + index, VNC 7950 + index) so Grids of different environments never collide.
+// Keep the order stable: appending is safe, reordering changes the ports.
+// Names are the folders under src/test/resources/env/ (see com.gsl.enums.TestEnvironment).
+def gridIndexFor(envName) {
+    def known = ['staging', 'clone-staging',
+                 'feature-01', 'feature-02', 'feature-03', 'feature-04',
+                 'feature-05', 'feature-06', 'feature-07', 'feature-08',
+                 'mnt-01', 'oracle-staging', 'oracle-mnt', 'prod-staging']
+    def idx = known.indexOf(envName)
+    if (idx < 0) {
+        error "Unknown environment '${envName}'. Valid environments: ${known.join(', ')}."
     }
-    if (name.contains('clone-staging')) return 'clone-staging'
-    if (name.contains('oracle-staging')) return 'oracle-staging'
-    if (name.contains('oracle-mnt')) return 'oracle-mnt'
-    if (name.contains('mnt-01')) return 'mnt-01'
-    return 'staging'
+    return idx
 }
 
 pipeline {
     agent any
 
     options {
-        // Only one staging build (any feature: AP, AR, or future ones) may run at a time —
-        // two builds racing here would both try to stand up the Selenium Grid via the same
-        // docker-compose file, colliding on container names/ports. A second build queues
-        // ("Waiting for lock") until the first finishes instead of colliding.
-        // Any future staging Jenkinsfile must reuse this exact resource name to stay in
-        // the same mutual-exclusion group.
-        lock(resource: 'staging-slot')
+        // The lock is NOT taken here: its name depends on the ENV_NAME parameter, so it is taken by
+        // the 'Environment' stage below (one Lockable Resource per environment). Taking it in a stage
+        // also means the build name set in 'Init' is visible while a build waits for its environment.
         // Prefixes every console log line with a wall-clock timestamp, making it possible
         // to correlate stage duration (grid startup, test run, etc.) directly from the log.
         timestamps()
@@ -54,22 +56,25 @@ pipeline {
             defaultValue: pickDefaultProfile(env.JOB_NAME),
             description: 'Maven profile / suite to run'
         )
-        // string (not choice): declarative `choice` only accepts a literal list, so it cannot
-        // take the job-name-derived default. Must be a folder name under src/test/resources/env/
-        // (staging, clone-staging, feature-01..08, mnt-01, oracle-staging, oracle-mnt, prod-staging).
-        string(
+        // Dropdowns: the first item is the preselected one. Names are folders under
+        // src/test/resources/env/ — add mnt-01, oracle-staging, oracle-mnt, prod-staging here once their
+        // folders exist (gridIndexFor above already knows them).
+        choice(
             name: 'ENV_NAME',
-            defaultValue: pickDefaultEnv(env.JOB_NAME),
-            description: 'Target environment (src/test/resources/env/<name>). Defaults from the job name.'
+            choices: ['staging', 'clone-staging',
+                      'feature-01', 'feature-02', 'feature-03', 'feature-04',
+                      'feature-05', 'feature-06', 'feature-07', 'feature-08'],
+            description: 'Target environment (src/test/resources/env/<name>)'
+        )
+        choice(
+            name: 'BROWSER',
+            choices: ['chrome', 'firefox', 'edge'],
+            description: 'Browser to run on (the Grid image runs all three)'
         )
     }
 
     environment {
         GRID_COMPOSE_FILE = 'docker/docker-compose.selenium-grid.yml'
-        // Single source of truth for the grid hub URL — same key BrowserConfig.dockerGridUrl()
-        // reads at test-runtime (via DockerGridProvider), so the health-check below can never
-        // drift from what the framework itself actually connects to.
-        BROWSER_CONFIG_FILE = 'src/test/resources/config/browser.properties'
         // Jenkins service runs as LocalSystem, a different Windows identity than the
         // interactive user session Docker Desktop (per-user install) runs under — so
         // neither the docker CLI's location nor its default named-pipe daemon connection
@@ -86,96 +91,126 @@ pipeline {
     }
 
     stages {
-        stage('Checkout') {
+        stage('Init') {
             steps {
                 script {
-                    // The job's git SCM remote is configured as the dev folder's local path
-                    // itself (see Jenkins job config) — capturing GIT_URL here derives that
-                    // path at runtime instead of hardcoding it, so the post-build robocopy
-                    // step below never needs a literal absolute path.
-                    def scmVars = checkout scm
-                    if (!scmVars.GIT_URL) {
-                        error "GIT_URL was not returned by checkout scm — cannot derive PROJECT_ROOT."
-                    }
-                    env.PROJECT_ROOT = scmVars.GIT_URL
+                    def idx = gridIndexFor(params.ENV_NAME)
+                    env.LOCK_RESOURCE = lockResourceFor(params.ENV_NAME)
+                    // Per-environment Grid: compose project name and host ports. The tests reach this
+                    // Grid through -Ddocker.grid.url (see 'Run Tests'), and the compose file publishes
+                    // GRID_PORT / VNC_PORT.
+                    env.GRID_PROJECT = "grid-${params.ENV_NAME}"
+                    env.GRID_PORT = (4500 + idx).toString()
+                    env.VNC_PORT = (7950 + idx).toString()
+                    currentBuild.displayName = "#${env.BUILD_NUMBER} ${params.ENV_NAME} | ${params.BROWSER}"
+                    echo "Environment=${params.ENV_NAME}, browser=${params.BROWSER}, profile=${params.MAVEN_PROFILE}, " +
+                         "lock=${env.LOCK_RESOURCE}, grid project=${env.GRID_PROJECT}, hub port=${env.GRID_PORT}, vnc port=${env.VNC_PORT}"
                 }
             }
         }
 
-        stage('Start Selenium Grid') {
-            steps {
-                powershell '''
-                    & $env:DOCKER_EXE version --format "{{.Server.Version}}" *>$null
-                    if ($LASTEXITCODE -ne 0) {
-                        Write-Error "Docker Desktop is not running (or its daemon is unreachable at $env:DOCKER_HOST). Start Docker Desktop on the host and re-run this job."
-                        exit 1
-                    }
-                    Write-Host "Docker daemon is reachable."
-
-                    $running = & $env:DOCKER_EXE ps --filter "name=selenium-chrome-node" --filter "status=running" --format "{{.Names}}"
-                    if ($running -contains "selenium-chrome-node") {
-                        Write-Host "selenium-chrome-node is already running - skipping deploy."
-                    } else {
-                        Write-Host "selenium-chrome-node is not running - deploying via compose."
-                        & $env:DOCKER_EXE compose -f $env:GRID_COMPOSE_FILE up -d
-                        if ($LASTEXITCODE -ne 0) {
-                            Write-Error "docker compose up failed."
-                            exit 1
-                        }
-                    }
-                '''
-                powershell '''
-                    $line = Get-Content $env:BROWSER_CONFIG_FILE | Where-Object { $_ -match "^\\s*docker\\.grid\\.url\\s*=" } | Select-Object -First 1
-                    if (-not $line) {
-                        Write-Error "docker.grid.url not found in $env:BROWSER_CONFIG_FILE"
-                        exit 1
-                    }
-                    $gridUrl = ($line -split "=", 2)[1].Trim()
-                    $statusUrl = "$gridUrl/status"
-                    Write-Host "Polling grid status at $statusUrl"
-
-                    $deadline = (Get-Date).AddSeconds(60)
-                    while ((Get-Date) -lt $deadline) {
-                        try {
-                            $r = Invoke-RestMethod -Uri $statusUrl -TimeoutSec 3
-                            if ($r.value.ready -eq $true) { Write-Host "Grid ready"; exit 0 }
-                        } catch {}
-                        Start-Sleep -Seconds 2
-                    }
-                    Write-Error "Grid did not become ready in time"
-                    exit 1
-                '''
+        stage('Environment') {
+            options {
+                lock(resource: lockResourceFor(params.ENV_NAME))
             }
-        }
-
-        stage('Run Tests') {
-            steps {
-                // * NOTE on live progress: reports/latest/index.html is refreshed by the
-                // framework after every single test case (ExtentReport.flushReports(),
-                // gated by report.flush.batch.enabled=false in report.properties). To
-                // watch it update live *during* this stage, open this build's
-                // "Workspace" link in Jenkins and browse to reports/latest/index.html
-                // directly — do NOT call publishHTML on a timer here: the HTML
-                // Publisher plugin registers a brand-new project-level "Extent Report"
-                // sidebar action on every single invocation regardless of the keepAll
-                // setting (keepAll only affects whether past builds' archived HTML is
-                // retained on disk, not whether a call registers a fresh sidebar
-                // action) — a periodic call therefore produces one duplicate link per
-                // poll. publishHTML must be called at most once per build; that one
-                // call is the authoritative post.always publish below.
-                // Secrets are not in git. Each environment has one Jenkins "Secret file" credential,
-                // id gsl-secrets-<env> (e.g. gsl-secrets-feature-05), whose content is a
-                // secrets.local.properties file (template: src/test/resources/env/secrets.local.properties.example).
-                // It is copied next to the environment's config for the run and deleted afterwards.
-                script {
-                    withCredentials([file(credentialsId: "gsl-secrets-${params.ENV_NAME}", variable: 'SECRETS_FILE')]) {
-                        try {
-                            bat 'copy /Y "%SECRETS_FILE%" "src\\test\\resources\\env\\%ENV_NAME%\\secrets.local.properties"'
-                            bat ".\\mvnw.cmd clean test -P%MAVEN_PROFILE% -Denv=%ENV_NAME% -Drunmode=docker_grid -Dheadless=true"
-                        } finally {
-                            bat 'if exist "src\\test\\resources\\env\\%ENV_NAME%\\secrets.local.properties" del /Q "src\\test\\resources\\env\\%ENV_NAME%\\secrets.local.properties"'
+            stages {
+                stage('Checkout') {
+                    steps {
+                        script {
+                            // The job's git SCM remote is configured as the dev folder's local path
+                            // itself (see Jenkins job config) — capturing GIT_URL here derives that
+                            // path at runtime instead of hardcoding it, so the post-build robocopy
+                            // step below never needs a literal absolute path.
+                            def scmVars = checkout scm
+                            if (!scmVars.GIT_URL) {
+                                error "GIT_URL was not returned by checkout scm — cannot derive PROJECT_ROOT."
+                            }
+                            env.PROJECT_ROOT = scmVars.GIT_URL
                         }
                     }
+                }
+
+                stage('Start Selenium Grid') {
+                    steps {
+                        powershell '''
+                            & $env:DOCKER_EXE version --format "{{.Server.Version}}" *>$null
+                            if ($LASTEXITCODE -ne 0) {
+                                Write-Error "Docker Desktop is not running (or its daemon is unreachable at $env:DOCKER_HOST). Start Docker Desktop on the host and re-run this job."
+                                exit 1
+                            }
+                            Write-Host "Docker daemon is reachable."
+
+                            # One Grid per environment: compose project grid-<env>, host ports from GRID_PORT / VNC_PORT.
+                            $running = & $env:DOCKER_EXE compose -p $env:GRID_PROJECT -f $env:GRID_COMPOSE_FILE ps --status running -q
+                            if ($running) {
+                                Write-Host "Grid $env:GRID_PROJECT is already running - skipping deploy."
+                            } else {
+                                Write-Host "Grid $env:GRID_PROJECT is not running - deploying via compose (hub port $env:GRID_PORT, VNC port $env:VNC_PORT)."
+                                & $env:DOCKER_EXE compose -p $env:GRID_PROJECT -f $env:GRID_COMPOSE_FILE up -d
+                                if ($LASTEXITCODE -ne 0) {
+                                    Write-Error "docker compose up failed."
+                                    exit 1
+                                }
+                            }
+                        '''
+                        powershell '''
+                            $statusUrl = "http://localhost:$($env:GRID_PORT)/status"
+                            Write-Host "Polling grid status at $statusUrl"
+
+                            $deadline = (Get-Date).AddSeconds(90)
+                            while ((Get-Date) -lt $deadline) {
+                                try {
+                                    $r = Invoke-RestMethod -Uri $statusUrl -TimeoutSec 3
+                                    if ($r.value.ready -eq $true) { Write-Host "Grid ready"; exit 0 }
+                                } catch {}
+                                Start-Sleep -Seconds 2
+                            }
+                            Write-Error "Grid did not become ready in time at $statusUrl"
+                            exit 1
+                        '''
+                    }
+                }
+
+                stage('Run Tests') {
+                    steps {
+                        // * NOTE on live progress: reports/latest/index.html is refreshed by the
+                        // framework after every single test case (ExtentReport.flushReports(),
+                        // gated by report.flush.batch.enabled=false in report.properties). To
+                        // watch it update live *during* this stage, open this build's
+                        // "Workspace" link in Jenkins and browse to reports/latest/index.html
+                        // directly — do NOT call publishHTML on a timer here: the HTML
+                        // Publisher plugin registers a brand-new project-level "Extent Report"
+                        // sidebar action on every single invocation regardless of the keepAll
+                        // setting (keepAll only affects whether past builds' archived HTML is
+                        // retained on disk, not whether a call registers a fresh sidebar
+                        // action) — a periodic call therefore produces one duplicate link per
+                        // poll. publishHTML must be called at most once per build; that one
+                        // call is the authoritative post.always publish below.
+                        // Secrets are not in git. Each environment has one Jenkins "Secret file" credential,
+                        // id gsl-secrets-<env> (e.g. gsl-secrets-feature-05), whose content is a
+                        // secrets.local.properties file (template: src/test/resources/env/secrets.local.properties.example).
+                        // It is copied next to the environment's config for the run and deleted afterwards.
+                        // -Ddocker.grid.url points the tests at THIS environment's Grid; Maven forwards -D
+                        // user properties to the forked test JVM, and BrowserConfig reads system properties.
+                        script {
+                            withCredentials([file(credentialsId: "gsl-secrets-${params.ENV_NAME}", variable: 'SECRETS_FILE')]) {
+                                try {
+                                    bat 'copy /Y "%SECRETS_FILE%" "src\\test\\resources\\env\\%ENV_NAME%\\secrets.local.properties"'
+                                    bat ".\\mvnw.cmd clean test -P%MAVEN_PROFILE% -Denv=%ENV_NAME% -Dbrowser=%BROWSER% -Ddocker.grid.url=http://localhost:%GRID_PORT%/wd/hub -Drunmode=docker_grid -Dheadless=true"
+                                } finally {
+                                    bat 'if exist "src\\test\\resources\\env\\%ENV_NAME%\\secrets.local.properties" del /Q "src\\test\\resources\\env\\%ENV_NAME%\\secrets.local.properties"'
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+            post {
+                always {
+                    // Teardown of THIS environment's Grid only (compose project grid-<env>), run while the
+                    // environment lock is still held so another build on the same environment cannot
+                    // start a Grid that this step then removes.
+                    bat "\"%DOCKER_EXE%\" compose -p %GRID_PROJECT% -f %GRID_COMPOSE_FILE% down"
                 }
             }
         }
@@ -183,7 +218,6 @@ pipeline {
 
     post {
         always {
-            bat "\"%DOCKER_EXE%\" compose -f %GRID_COMPOSE_FILE% down"
             junit allowEmptyResults: true, testResults: 'target/surefire-reports/*.xml'
             archiveArtifacts artifacts: 'reports/**', allowEmptyArchive: true
             publishHTML(target: [
