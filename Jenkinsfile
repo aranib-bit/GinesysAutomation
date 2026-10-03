@@ -11,6 +11,27 @@ def pickDefaultProfile(jobName) {
     return 'ap-mandatory' // safe fallback for any job not yet mapped (e.g. future regression jobs)
 }
 
+// Dropdown values, repeated here (declarative `choices:` needs literal lists) so a value that did not
+// come from the dropdown is rejected. KEEP IN SYNC with the ENV_NAME / BROWSER choices below.
+def allowedEnvs() {
+    return ['staging', 'clone-staging',
+            'feature-01', 'feature-02', 'feature-03', 'feature-04',
+            'feature-05', 'feature-06', 'feature-07', 'feature-08']
+}
+def allowedBrowsers() {
+    return ['chrome', 'firefox', 'edge']
+}
+
+// The environment / browser this run uses. Falls back to the dropdown defaults when the parameter is
+// missing — the first run after the parameter definitions changed (Jenkins registers new definitions only
+// once a build has started, so that run still gets the old form), and runs started by a trigger or the API.
+def effectiveEnv() {
+    return (params.ENV_NAME ?: 'staging').toString().trim()
+}
+def effectiveBrowser() {
+    return (params.BROWSER ?: 'chrome').toString().trim().toLowerCase()
+}
+
 // Lockable Resource that guards an environment AND its Selenium Grid. Resource names are the
 // environment names (clone-staging, feature-05, ...), except staging, which keeps the pre-existing
 // "staging-slot" resource. Two builds on the same environment queue; different environments run in parallel.
@@ -94,16 +115,33 @@ pipeline {
         stage('Init') {
             steps {
                 script {
-                    def idx = gridIndexFor(params.ENV_NAME)
-                    env.LOCK_RESOURCE = lockResourceFor(params.ENV_NAME)
+                    def targetEnv = effectiveEnv()
+                    def targetBrowser = effectiveBrowser()
+                    // Reject anything that did not come from the dropdowns (a typed or API-supplied value).
+                    if (!allowedEnvs().contains(targetEnv)) {
+                        error "Unknown environment '${targetEnv}'. Choose one of: ${allowedEnvs().join(', ')}."
+                    }
+                    if (!allowedBrowsers().contains(targetBrowser)) {
+                        error "Unknown browser '${targetBrowser}'. Choose one of: ${allowedBrowsers().join(', ')}."
+                    }
+                    if (!params.ENV_NAME || !params.BROWSER) {
+                        echo "NOTE: ENV_NAME='${params.ENV_NAME}' BROWSER='${params.BROWSER}' were not supplied " +
+                             "(first run after the parameters changed, or started without parameters) - using " +
+                             "${targetEnv} / ${targetBrowser}."
+                    }
+                    // Everything below reads TARGET_ENV / TARGET_BROWSER, never params.* directly.
+                    env.TARGET_ENV = targetEnv
+                    env.TARGET_BROWSER = targetBrowser
+                    def idx = gridIndexFor(targetEnv)
+                    env.LOCK_RESOURCE = lockResourceFor(targetEnv)
                     // Per-environment Grid: compose project name and host ports. The tests reach this
                     // Grid through -Ddocker.grid.url (see 'Run Tests'), and the compose file publishes
                     // GRID_PORT / VNC_PORT.
-                    env.GRID_PROJECT = "grid-${params.ENV_NAME}"
+                    env.GRID_PROJECT = "grid-${targetEnv}"
                     env.GRID_PORT = (4500 + idx).toString()
                     env.VNC_PORT = (7950 + idx).toString()
-                    currentBuild.displayName = "#${env.BUILD_NUMBER} ${params.ENV_NAME} | ${params.BROWSER}"
-                    echo "Environment=${params.ENV_NAME}, browser=${params.BROWSER}, profile=${params.MAVEN_PROFILE}, " +
+                    currentBuild.displayName = "#${env.BUILD_NUMBER} ${targetEnv} | ${targetBrowser}"
+                    echo "Environment=${targetEnv}, browser=${targetBrowser}, profile=${params.MAVEN_PROFILE}, " +
                          "lock=${env.LOCK_RESOURCE}, grid project=${env.GRID_PROJECT}, hub port=${env.GRID_PORT}, vnc port=${env.VNC_PORT}"
                 }
             }
@@ -111,7 +149,7 @@ pipeline {
 
         stage('Environment') {
             options {
-                lock(resource: lockResourceFor(params.ENV_NAME))
+                lock(resource: lockResourceFor(effectiveEnv()))
             }
             stages {
                 stage('Checkout') {
@@ -193,12 +231,12 @@ pipeline {
                         // -Ddocker.grid.url points the tests at THIS environment's Grid; Maven forwards -D
                         // user properties to the forked test JVM, and BrowserConfig reads system properties.
                         script {
-                            withCredentials([file(credentialsId: "gsl-secrets-${params.ENV_NAME}", variable: 'SECRETS_FILE')]) {
+                            withCredentials([file(credentialsId: "gsl-secrets-${env.TARGET_ENV}", variable: 'SECRETS_FILE')]) {
                                 try {
-                                    bat 'copy /Y "%SECRETS_FILE%" "src\\test\\resources\\env\\%ENV_NAME%\\secrets.local.properties"'
-                                    bat ".\\mvnw.cmd clean test -P%MAVEN_PROFILE% -Denv=%ENV_NAME% -Dbrowser=%BROWSER% -Ddocker.grid.url=http://localhost:%GRID_PORT%/wd/hub -Drunmode=docker_grid -Dheadless=true"
+                                    bat 'copy /Y "%SECRETS_FILE%" "src\\test\\resources\\env\\%TARGET_ENV%\\secrets.local.properties"'
+                                    bat ".\\mvnw.cmd clean test -P%MAVEN_PROFILE% -Denv=%TARGET_ENV% -Dbrowser=%TARGET_BROWSER% -Ddocker.grid.url=http://localhost:%GRID_PORT%/wd/hub -Drunmode=docker_grid -Dheadless=true"
                                 } finally {
-                                    bat 'if exist "src\\test\\resources\\env\\%ENV_NAME%\\secrets.local.properties" del /Q "src\\test\\resources\\env\\%ENV_NAME%\\secrets.local.properties"'
+                                    bat 'if exist "src\\test\\resources\\env\\%TARGET_ENV%\\secrets.local.properties" del /Q "src\\test\\resources\\env\\%TARGET_ENV%\\secrets.local.properties"'
                                 }
                             }
                         }

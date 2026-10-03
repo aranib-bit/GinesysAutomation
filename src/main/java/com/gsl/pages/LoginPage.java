@@ -33,13 +33,14 @@ public class LoginPage {
         static final By AUTHENTICATOR_LOADER = By.xpath("//*[@class='x-window vport x-layer x-window-default x-border-box x-window-maximized']");
 
         /**
-         * Best-effort, unconfirmed locator for a reported (not yet captured in any run artifact)
-         * post-login popup carrying a "Skip" button — see {@link #handleUnexpectedSkipPopup()}.
-         * Kept local rather than promoted to {@link CommonButton} until its real DOM markup is
-         * confirmed live (that registry's own Javadoc warns against adding page/context-specific
-         * buttons speculatively).
+         * "Skip" button of the post-login "Confirm User Details" popup — see
+         * {@link #handleConfirmUserDetailsPopup()}. The button text is rendered as
+         * {@code <u>S</u>kip}, so {@code normalize-space()='Skip'} alone matches all three nested
+         * ExtJS spans (btnWrap/btnEl/btnInnerEl); pinning to {@code x-btn-inner} yields exactly one
+         * match (verified live). Kept local rather than promoted to {@link CommonButton} as it is
+         * specific to this popup.
          */
-        static final By BTN_SKIP = By.xpath("//span[normalize-space()='Skip']");
+        static final By BTN_SKIP = By.xpath("//span[contains(@class,'x-btn-inner') and normalize-space()='Skip']");
     }
 
     // OK_BUTTON  → CommonButton.OK.locator()
@@ -126,40 +127,47 @@ public class LoginPage {
     }
 
     /**
-     * Defensive handling for a reported, not-yet-captured post-login popup carrying a "Skip"
-     * button — seen live when a NEW user's first login lands on a freshly-launched browser
-     * (see {@code SessionPool.createSession()}/{@code isReusable()}: a REUSED session never
-     * reaches {@code loginToApplication()} at all, since {@code SessionManager.ensureLoggedIn()}
-     * returns the cached {@code HomePage} directly — so this can only ever fire on that one
-     * first-login path, making it safe to poll for unconditionally on every login).
+     * Handles the post-login "Confirm User Details" popup (Ginesys One SSO migration notice with
+     * Email ID / Mobile fields and Skip / Confirm buttons) by clicking <b>Skip</b>.
      *
-     * <p>Modeled directly on {@link #handleConcurrentSessionPopup()}'s self-polling, MAYBE-
-     * classified pattern: a short bounded wait for the Skip button; click it and log if present,
-     * no-op immediately if absent. No screenshot/DOM of this popup exists in any run artifact yet
-     * — {@link Loc#BTN_SKIP} is a best-effort generic guess; refine it once a live occurrence is
-     * captured.
+     * <p>Classified {@link PopupOutcome#MAYBE}: it only conditionally appears (per user, until the
+     * account is migrated), so it is neither a routine part of every login nor a hard anomaly.
+     * A REUSED session never reaches {@code loginToApplication()} (see
+     * {@code SessionManager.ensureLoggedIn()}), so this only runs on a first login.
+     *
+     * <p>Self-polling, bounded by the configured timeout: exits as soon as the Skip button shows
+     * up, or the home page is genuinely loaded (login form AND authentication loader both gone —
+     * the login form disappearing alone can precede the popup rendering). Never fails a login:
+     * absent popup / timeout is a no-op and {@link #checkAuthenticationLoader()} deals with
+     * whatever state the page is actually in.
      */
-    private LoginPage handleUnexpectedSkipPopup() {
+    private LoginPage handleConfirmUserDetailsPopup() {
         WebDriver driver = DriverManager.getDriver();
         try {
             new FluentWait<>(driver)
-                    .withTimeout(Duration.ofSeconds(5))
+                    .withTimeout(Duration.ofSeconds(ConfigFactory.getConfig().timeout()))
                     .pollingEvery(Duration.ofMillis(300))
                     .ignoring(NoSuchElementException.class)
-                    .until(d -> isVisibleQuiet(d, Loc.BTN_SKIP) || !isVisibleQuiet(d, Loc.TXTBOX_USERNAME));
+                    .until(d -> isVisibleQuiet(d, Loc.BTN_SKIP)
+                            || (!isVisibleQuiet(d, Loc.TXTBOX_USERNAME)
+                                && !isVisibleQuiet(d, Loc.AUTHENTICATOR_LOADER)));
         } catch (org.openqa.selenium.TimeoutException ignored) {
-            // Neither the Skip button nor the login form's disappearance showed up within the
-            // bounded wait — fall through and let checkAuthenticationLoader() handle whatever
-            // state the page is actually in; this method must never itself fail a login.
+            // Neither the popup nor a fully-loaded home page showed up — fall through.
         }
 
         if (isVisibleQuiet(driver, Loc.BTN_SKIP)) {
-            click(Loc.BTN_SKIP, WaitType.CLICKABLE, "Unexpected Skip Popup Button");
-            // MAYBE, not EXPECTED/UNEXPECTED — same rationale as handleConcurrentSessionPopup:
-            // this popup only conditionally appears (apparently on a new user's first login),
-            // it's neither a routine part of every login nor a hard anomaly.
-            ReportLogger.popup(PopupOutcome.MAYBE, "Unrecognized post-login popup detected "
-                    + "(carrying a 'Skip' button) — clicked 'Skip' to dismiss and continue.");
+            click(Loc.BTN_SKIP, WaitType.CLICKABLE, "Confirm User Details - Skip Button");
+            ReportLogger.popup(PopupOutcome.MAYBE, "'Confirm User Details' popup detected — "
+                    + "clicked 'Skip' to dismiss and continue.");
+            try {
+                new FluentWait<>(driver)
+                        .withTimeout(Duration.ofSeconds(5))
+                        .pollingEvery(Duration.ofMillis(300))
+                        .ignoring(NoSuchElementException.class)
+                        .until(d -> !isVisibleQuiet(d, Loc.BTN_SKIP));
+            } catch (org.openqa.selenium.TimeoutException ignored) {
+                // Popup still showing; downstream steps will surface it with diagnostics.
+            }
         }
         return this;
     }
@@ -222,7 +230,7 @@ public class LoginPage {
         StepExecutor.step("Submit & Authenticate", () -> {
             setLogin();
             handleConcurrentSessionPopup();
-            handleUnexpectedSkipPopup();
+            handleConfirmUserDetailsPopup();
             result[0] = checkAuthenticationLoader();
         });
 
