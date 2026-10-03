@@ -399,6 +399,150 @@
             </build>
         </profile>
 
+        <!-- AR Voucher — Regression Phase-1 -->
+        <profile>
+            <id>ar-regression-phase1</id>
+            <build>
+                <plugins>
+                    <plugin>
+                        <groupId>org.apache.maven.plugins</groupId>
+                        <artifactId>maven-surefire-plugin</artifactId>
+                        <version>3.2.5</version>
+                        <configuration>
+                            <testFailureIgnore>true</testFailureIgnore>
+                            <suiteXmlFiles>
+                                <suiteXmlFile>testng-regression-arvoucher-phase1.xml</suiteXmlFile>
+                            </suiteXmlFiles>
+                            <argLine>${test.jvm.args} --add-opens java.base/java.lang=ALL-UNNAMED -Drunmode=${runmode} -Dheadless=${headless} -Dbrowser=${browser} -Denv=${env}</argLine>
+                            <systemPropertyVariables>
+                                <arv.group>REGRESSION_PHASE1</arv.group>
+                            </systemPropertyVariables>
+                        </configuration>
+                    </plugin>
+                </plugins>
+            </build>
+        </profile>
+
+        <!-- AR Voucher — Regression Phase-2 -->
+        <profile>
+            <id>ar-regression-phase2</id>
+            <build>
+                <plugins>
+                    <plugin>
+                        <groupId>org.apache.maven.plugins</groupId>
+                        <artifactId>maven-surefire-plugin</artifactId>
+                        <version>3.2.5</version>
+                        <configuration>
+                            <testFailureIgnore>true</testFailureIgnore>
+                            <suiteXmlFiles>
+                                <suiteXmlFile>testng-regression-arvoucher-phase2.xml</suiteXmlFile>
+                            </suiteXmlFiles>
+                            <argLine>${test.jvm.args} --add-opens java.base/java.lang=ALL-UNNAMED -Drunmode=${runmode} -Dheadless=${headless} -Dbrowser=${browser} -Denv=${env}</argLine>
+                            <systemPropertyVariables>
+                                <arv.group>REGRESSION_PHASE2</arv.group>
+                            </systemPropertyVariables>
+                        </configuration>
+                    </plugin>
+                </plugins>
+            </build>
+        </profile>
+
+        <!-- AR Voucher — Regression Phase-3 -->
+        <profile>
+            <id>ar-regression-phase3</id>
+            <build>
+                <plugins>
+                    <plugin>
+                        <groupId>org.apache.maven.plugins</groupId>
+                        <artifactId>maven-surefire-plugin</artifactId>
+                        <version>3.2.5</version>
+                        <configuration>
+                            <testFailureIgnore>true</testFailureIgnore>
+                            <suiteXmlFiles>
+                                <suiteXmlFile>testng-regression-arvoucher-phase3.xml</suiteXmlFile>
+                            </suiteXmlFiles>
+                            <argLine>${test.jvm.args} --add-opens java.base/java.lang=ALL-UNNAMED -Drunmode=${runmode} -Dheadless=${headless} -Dbrowser=${browser} -Denv=${env}</argLine>
+                            <systemPropertyVariables>
+                                <arv.group>REGRESSION_PHASE3</arv.group>
+                            </systemPropertyVariables>
+                        </configuration>
+                    </plugin>
+                </plugins>
+            </build>
+        </profile>
+
+        <!-- AP Voucher — Regression Phase-1 -->
+        <profile>
+            <id>ap-regression-phase1</id>
+            <build>
+                <plugins>
+                    <plugin>
+                        <groupId>org.apache.maven.plugins</groupId>
+                        <artifactId>maven-surefire-plugin</artifactId>
+                        <version>3.2.5</version>
+                        <configuration>
+                            <testFailureIgnore>true</testFailureIgnore>
+                            <suiteXmlFiles>
+                                <suiteXmlFile>testng-regression-apvoucher-phase1.xml</suiteXmlFile>
+                            </suiteXmlFiles>
+                            <argLine>${test.jvm.args} --add-opens java.base/java.lang=ALL-UNNAMED -Drunmode=${runmode} -Dheadless=${headless} -Dbrowser=${browser} -Denv=${env}</argLine>
+                            <systemPropertyVariables>
+                                <apv.group>REGRESSION_PHASE1</apv.group>
+                            </systemPropertyVariables>
+                        </configuration>
+                    </plugin>
+                </plugins>
+            </build>
+        </profile>
+
+        <!-- AP Voucher — Regression Phase-2 -->
+        <profile>
+            <id>ap-regression-phase2</id>
+            <build>
+                <plugins>
+                    <plugin>
+                        <groupId>org.apache.maven.plugins</groupId>
+                        <artifactId>maven-surefire-plugin</artifactId>
+                        <version>3.2.5</version>
+                        <configuration>
+                            <testFailureIgnore>true</testFailureIgnore>
+                            <suiteXmlFiles>
+                                <suiteXmlFile>testng-regression-apvoucher-phase2.xml</suiteXmlFile>
+                            </suiteXmlFiles>
+                            <argLine>${test.jvm.args} --add-opens java.base/java.lang=ALL-UNNAMED -Drunmode=${runmode} -Dheadless=${headless} -Dbrowser=${browser} -Denv=${env}</argLine>
+                            <systemPropertyVariables>
+                                <apv.group>REGRESSION_PHASE2</apv.group>
+                            </systemPropertyVariables>
+                        </configuration>
+                    </plugin>
+                </plugins>
+            </build>
+        </profile>
+
+        <!-- AP Voucher — Regression Phase-3 -->
+        <profile>
+            <id>ap-regression-phase3</id>
+            <build>
+                <plugins>
+                    <plugin>
+                        <groupId>org.apache.maven.plugins</groupId>
+                        <artifactId>maven-surefire-plugin</artifactId>
+                        <version>3.2.5</version>
+                        <configuration>
+                            <testFailureIgnore>true</testFailureIgnore>
+                            <suiteXmlFiles>
+                                <suiteXmlFile>testng-regression-apvoucher-phase3.xml</suiteXmlFile>
+                            </suiteXmlFiles>
+                            <argLine>${test.jvm.args} --add-opens java.base/java.lang=ALL-UNNAMED -Drunmode=${runmode} -Dheadless=${headless} -Dbrowser=${browser} -Denv=${env}</argLine>
+                            <systemPropertyVariables>
+                                <apv.group>REGRESSION_PHASE3</apv.group>
+                            </systemPropertyVariables>
+                        </configuration>
+                    </plugin>
+                </plugins>
+            </build>
+        </profile>
+
         <!-- AP Voucher UI-Contract Validation — unfiltered, both Add/Edit form checks -->
         <profile>
             <id>ap-ui</id>

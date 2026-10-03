@@ -1,0 +1,33 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE suite SYSTEM "http://testng.org/testng-1.0.dtd">
+<!--
+    AR Voucher — Regression Phase-1 (AR only): payment validation, basic SL/doc count, amount modes, grid EQUAL, date TODAY/BACKDATE, NO_ADJUSTMENT User SL, FIFO variants, Finance-Dup (REG-01 to REG-12).
+    AR-only split of testng-regression-phase1.xml; arv.group=REGRESSION_PHASE1 is set via Maven Surefire.
+
+    Run: mvn clean test -Par-regression-phase1
+-->
+<!-- data-provider-thread-count MUST be at suite level — TestNG ignores it on <test>. -->
+<suite name="AR Voucher — Regression Phase-1" parallel="tests" thread-count="2" data-provider-thread-count="6">
+    <listeners>
+        <listener class-name="com.gsl.listeners.RetryAnnotationTransformer"/>
+        <listener class-name="com.gsl.listeners.TestListener"/>
+        <listener class-name="com.gsl.listeners.SuiteDataLoader"/>
+        <listener class-name="com.gsl.listeners.AnnotationMethodInterceptor"/>
+    </listeners>
+
+    <test name="AR Voucher Validation — Regression">
+        <parameter name="voucherDomain" value="AR"/>
+        <parameter name="executionType" value="ALL"/>
+        <classes>
+            <class name="com.tests.Validation.RuleTest"/>
+        </classes>
+    </test>
+
+    <test name="AR Voucher Create — Regression Phase-1"
+          parallel="methods" thread-count="6">
+        <parameter name="arv.group" value="REGRESSION_PHASE1"/>
+        <classes>
+            <class name="com.tests.Finance.Operations.Vouchers.CreateArVoucher"/>
+        </classes>
+    </test>
+</suite>

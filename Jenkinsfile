@@ -8,7 +8,11 @@ def pickDefaultProfile(jobName) {
     if (name.contains('AR-MANDATORY')) return 'ar-mandatory'
     if (name.contains('GV-MANDATORY')) return 'gv-mandatory'
     if (name.contains('AP-MANDATORY')) return 'ap-mandatory'
-    return 'ap-mandatory' // safe fallback for any job not yet mapped (e.g. future regression jobs)
+    // Regression jobs default to Phase-1; override MAVEN_PROFILE per build for phase 2/3.
+    if (name.contains('AR-REGRESSION')) return 'ar-regression-phase1'
+    if (name.contains('GV-REGRESSION')) return 'regression-generalvoucher-phase1'
+    if (name.contains('AP-REGRESSION')) return 'ap-regression-phase1'
+    return 'ap-mandatory' // safe fallback for any job not yet mapped
 }
 
 // Dropdown values, repeated here (declarative `choices:` needs literal lists) so a value that did not
@@ -20,6 +24,14 @@ def allowedEnvs() {
 }
 def allowedBrowsers() {
     return ['chrome', 'firefox', 'edge']
+}
+// Profiles a build may run (pom.xml profile ids). KEEP IN SYNC with pom.xml when adding a suite.
+def allowedProfiles() {
+    return ['ar-mandatory', 'ap-mandatory', 'gv-mandatory',
+            'ar-regression-phase1', 'ar-regression-phase2', 'ar-regression-phase3',
+            'ap-regression-phase1', 'ap-regression-phase2', 'ap-regression-phase3',
+            'regression-generalvoucher-phase1', 'regression-generalvoucher-phase2', 'regression-generalvoucher-phase3',
+            'gv-edit-mandatory', 'ar-ui', 'ap-ui', 'gv-ui']
 }
 
 // The environment / browser this run uses. Falls back to the dropdown defaults when the parameter is
@@ -81,7 +93,7 @@ pipeline {
         string(
             name: 'MAVEN_PROFILE',
             defaultValue: pickDefaultProfile(env.JOB_NAME),
-            description: 'Maven profile / suite to run'
+            description: 'Maven profile / suite to run (mandatory, regression phase1/2/3, or *-ui). Allowed list: allowedProfiles() in the Jenkinsfile'
         )
         // Dropdowns: the first item is the preselected one. Names are folders under
         // src/test/resources/env/ — add mnt-01, oracle-staging, oracle-mnt, prod-staging here once their
@@ -129,6 +141,9 @@ pipeline {
                     }
                     if (!allowedBrowsers().contains(targetBrowser)) {
                         error "Unknown browser '${targetBrowser}'. Choose one of: ${allowedBrowsers().join(', ')}."
+                    }
+                    if (!allowedProfiles().contains(params.MAVEN_PROFILE)) {
+                        error "Unknown Maven profile '${params.MAVEN_PROFILE}'. Choose one of: ${allowedProfiles().join(', ')}."
                     }
                     if (!params.ENV_NAME || !params.BROWSER) {
                         echo "NOTE: ENV_NAME='${params.ENV_NAME}' BROWSER='${params.BROWSER}' were not supplied " +
