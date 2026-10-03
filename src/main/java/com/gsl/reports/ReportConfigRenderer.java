@@ -49,6 +49,8 @@ public final class ReportConfigRenderer {
 
         extent.setSystemInfo("Environment",       nullSafe(e.getEnvironment()));
         extent.setSystemInfo("Browser",           nullSafe(e.getBrowser()));
+        extent.setSystemInfo("Target OS",         nullSafe(com.gsl.config.TargetOsResolver.name()));
+        extent.setSystemInfo("Session Cap",       nullSafe(com.gsl.config.ConcurrencyCap.describe().isBlank() ? "none" : com.gsl.config.ConcurrencyCap.describe()));
         extent.setSystemInfo("Run Mode",          nullSafe(e.getRunMode()));
         extent.setSystemInfo("Execution Type",    nullSafe(e.getExecutionType()));
         extent.setSystemInfo("Thread Count",      String.valueOf(e.getThreadCount()));

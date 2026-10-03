@@ -223,6 +223,15 @@ public class SuiteDataLoader implements ISuiteListener {
                         xmlTest.getName(), testConcurrency, testThreadCount);
             }
 
+            var osCap = com.gsl.config.ConcurrencyCap.current();
+            if (osCap.isPresent() && testConcurrency > osCap.getAsInt()) {
+                Log.warn("[UserPool] <test name=\"{}\">: effective concurrency={} is capped to {} by {} "
+                        + "(target.os={}). Extra thread(s)/row(s) queue for a browser session, so this run is "
+                        + "slower than an uncapped one.",
+                        xmlTest.getName(), testConcurrency, osCap.getAsInt(),
+                        com.gsl.config.ConcurrencyCap.describe(), com.gsl.config.TargetOsResolver.name());
+            }
+
             if (uiCount > 0 && testConcurrency > uiCount) {
                 Log.warn("[UserPool] VALIDATION WARN — <test name=\"{}\">: " +
                          "effective concurrency={} exceeds UI user count={}. " +
