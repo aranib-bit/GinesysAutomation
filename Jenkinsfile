@@ -5,13 +5,22 @@
 // a new job its own default, add a case here instead.
 def pickDefaultProfile(jobName) {
     def name = (jobName ?: '').toUpperCase()
+    // Job names: SeleniumFramework-<AR|AP|GV>-<Mandatory-Staging | UI-Validation | Regression-P1/P2/P3>.
+    // Regression is one job per phase; the phase number in the name picks the profile.
+    // contains() only - no Matcher (not CPS-serializable; see the pickDefaultEnv commit).
+    for (def n in ['1', '2', '3']) {
+        if (name.contains('REGRESSION-P' + n)) {
+            if (name.contains('AR-REGRESSION')) return 'ar-regression-phase' + n
+            if (name.contains('AP-REGRESSION')) return 'ap-regression-phase' + n
+            if (name.contains('GV-REGRESSION')) return 'regression-generalvoucher-phase' + n
+        }
+    }
+    if (name.contains('AR-UI-VALIDATION')) return 'ar-ui'
+    if (name.contains('AP-UI-VALIDATION')) return 'ap-ui'
+    if (name.contains('GV-UI-VALIDATION')) return 'gv-ui'
     if (name.contains('AR-MANDATORY')) return 'ar-mandatory'
     if (name.contains('GV-MANDATORY')) return 'gv-mandatory'
     if (name.contains('AP-MANDATORY')) return 'ap-mandatory'
-    // Regression jobs default to Phase-1; override MAVEN_PROFILE per build for phase 2/3.
-    if (name.contains('AR-REGRESSION')) return 'ar-regression-phase1'
-    if (name.contains('GV-REGRESSION')) return 'regression-generalvoucher-phase1'
-    if (name.contains('AP-REGRESSION')) return 'ap-regression-phase1'
     return 'ap-mandatory' // safe fallback for any job not yet mapped
 }
 
