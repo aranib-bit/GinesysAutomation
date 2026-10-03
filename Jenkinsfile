@@ -71,6 +71,12 @@ pipeline {
         jdk 'jdk17'
     }
 
+    // Windows browsers are NOT offered here yet. The framework side is ready (-Dtarget.os=windows,
+    // max.concurrent.sessions.windows, browser/OS version recording) but no Windows Grid exists.
+    // To enable later: add an OS choice (linux/windows) below, pass -Dtarget.os=%TARGET_OS% in 'Run Tests',
+    // and branch the Grid stages on it (compose file, DOCKER_HOST of the KVM host, hub URL, a '-win' lock suffix).
+    // See docs/windows-grid-readiness.md for the full checklist. Until then -Dtarget.os is deliberately not
+    // passed, so every run uses the default (linux) exactly as before.
     parameters {
         string(
             name: 'MAVEN_PROFILE',

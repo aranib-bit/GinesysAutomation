@@ -1,6 +1,8 @@
 package com.gsl.diagnostics.section;
 
+import com.gsl.config.TargetOsResolver;
 import com.gsl.diagnostics.DiagnosticSection;
+import com.gsl.reports.BrowserFingerprint;
 import org.openqa.selenium.Capabilities;
 import org.openqa.selenium.HasCapabilities;
 import org.openqa.selenium.WebDriver;
@@ -35,8 +37,15 @@ public final class DriverCapabilitiesSection implements DiagnosticSection {
                 put("platformName",   String.valueOf(c.getPlatformName()));
             }
             if (unwrapped instanceof RemoteWebDriver) {
-                put("sessionId", ((RemoteWebDriver) unwrapped).getSessionId().toString());
+                String sessionId = ((RemoteWebDriver) unwrapped).getSessionId().toString();
+                put("sessionId", sessionId);
+                // Fingerprint was recorded when the session was created (Driver.initDriver)
+                BrowserFingerprint f = BrowserFingerprint.forSession(sessionId);
+                if (f != null) {
+                    put("driverVersion", f.driverVersion());
+                }
             }
+            put("targetOs", TargetOsResolver.name());
         } catch (Exception e) {
             put("error", "Could not read capabilities: " + e.getMessage());
         }

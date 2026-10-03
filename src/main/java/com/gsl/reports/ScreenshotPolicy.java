@@ -32,6 +32,13 @@ public final class ScreenshotPolicy {
         PENDING.get().add(new Pending(List.copyOf(targets), label, path, annotation));
     }
 
+    /** File path of the most recent pending (not yet flushed) failure screenshot on this thread, or
+     *  {@code null}. Read-only peek for the coverage workbook; call BEFORE {@link #flush()}. */
+    public static String lastPendingPath() {
+        List<Pending> all = PENDING.get();
+        return all.isEmpty() ? null : all.get(all.size() - 1).path();
+    }
+
     /** Attaches the screenshots the configured mode keeps and deletes the rest. Safe to call when
      *  nothing is pending; always leaves the pending list empty. */
     public static void flush() {

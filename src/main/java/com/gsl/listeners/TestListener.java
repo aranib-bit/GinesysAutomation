@@ -147,6 +147,7 @@ public class TestListener implements ITestListener, ISuiteListener {
         // own rollover to scope reports/runs/<runId>/logs.zip to just this run.
         LogArchiver.markRunStart();
         DomainReporterRegistry.register(new FinanceDomainReporter());
+        beginCoverageRun(suite);
         ExtentReport.initReports();
 
         // Build the runtime profile ONCE — frozen for the entire suite.
@@ -178,6 +179,31 @@ public class TestListener implements ITestListener, ISuiteListener {
         if (!healthy) {
             throw new RuntimeException(
                     "Pre-execution health check failed — suite aborted. Open index.html for details.");
+        }
+    }
+
+    /** Group/tag filters resolved at suite start, read at suite finish by the coverage workbook. */
+    private static volatile com.gsl.utils.dataprovider.fixture.finance.ActiveGroupFilters coverageFilters =
+            com.gsl.utils.dataprovider.fixture.finance.ActiveGroupFilters.none();
+
+    /**
+     * Records run-level facts (env, browser, start time, active {@code *.group}/{@code *.tag}
+     * filters read from system properties and the suite's XML parameters) for the coverage
+     * workbook. Failure-safe: a problem here must never affect the suite.
+     */
+    private static void beginCoverageRun(ISuite suite) {
+        try {
+            java.util.Map<String, String> xml = new java.util.HashMap<>(suite.getXmlSuite().getAllParameters());
+            for (org.testng.xml.XmlTest t : suite.getXmlSuite().getTests()) {
+                t.getAllParameters().forEach(xml::putIfAbsent);
+            }
+            coverageFilters = com.gsl.utils.dataprovider.fixture.finance.ActiveGroupFilters.resolve(xml::get);
+            String file = suite.getXmlSuite().getFileName();
+            String fileName = file == null ? "" : java.nio.file.Paths.get(file).getFileName().toString();
+            com.gsl.reports.RunMeta.begin(suite.getName(), fileName, ConfigFactory.getConfig().env(),
+                    com.gsl.config.BrowserResolver.name(), coverageFilters.describe());
+        } catch (Throwable t) {
+            Log.warn("[CoverageWorkbook] Run metadata unavailable: {}", t.toString());
         }
     }
 
@@ -221,13 +247,25 @@ public class TestListener implements ITestListener, ISuiteListener {
         // contract — buildSafely never throws, so it can't affect the suite's outcome.
         try {
             java.nio.file.Path reportPath = java.nio.file.Paths.get(com.gsl.constants.FrameworkConstants.getReportPath());
+            com.gsl.reports.RunMeta runMeta = com.gsl.reports.RunMeta.finish(
+                    reportPath.getParent().getFileName().toString());
             com.gsl.reports.CoverageWorkbookBuilder.buildSafely(reportPath.getParent(),
-                    reportPath.getFileName().toString());
+                    reportPath.getFileName().toString(), runMeta, coverageFilters);
+            com.gsl.reports.RunEnvironmentFile.writeSafely(reportPath.getParent(), runMeta);
         } catch (Throwable t) {
             Log.warn("[CoverageWorkbook] Skipped: {}", t.toString());
         }
         // flushReports() also republishes reports/latest/index.html (see ExtentReport) —
         // no separate copyToLatest() call needed here anymore.
+        try {
+            // Browser builds are only known once sessions exist, so they join the Extent header here, just before the final flush.
+            var builds = com.gsl.reports.BrowserFingerprint.browserVersions();
+            if (!builds.isEmpty() && ExtentReport.getExtentReports() != null) {
+                ExtentReport.getExtentReports().setSystemInfo("Browser Build", String.join("; ", builds));
+            }
+        } catch (Throwable t) {
+            Log.warn("[BrowserVersions] Extent header not updated: {}", t.toString());
+        }
         ExtentReport.flushReports();
         // Bundles this run's logs into reports/runs/<runId>/logs.zip, right next to the report
         // flushed above — see LogArchiver's own Javadoc for why this depends on log4j2.xml's

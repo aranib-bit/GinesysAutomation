@@ -103,6 +103,23 @@ public interface ExecutionConfig extends Config {
     @DefaultValue("2")
     int headedColdStartMaxConcurrent();
 
+    // Optional caps on concurrent browser sessions (SessionPool capacity), per target OS — see
+    // ConcurrencyCap. Strings, not Integer: a blank value means "no cap" and Owner cannot convert "" to a number.
+    /** One-off cap for any OS; overrides the per-OS keys when set. Blank = not set. */
+    @Key("max.concurrent.sessions")
+    @DefaultValue("")
+    String maxConcurrentSessions();
+
+    /** Cap when {@code target.os=linux}. Blank = no cap. */
+    @Key("max.concurrent.sessions.linux")
+    @DefaultValue("")
+    String maxConcurrentSessionsLinux();
+
+    /** Cap when {@code target.os=windows} (one Windows VM supports only a few parallel sessions). Blank = no cap. */
+    @Key("max.concurrent.sessions.windows")
+    @DefaultValue("")
+    String maxConcurrentSessionsWindows();
+
     /** WebDriver command read-timeout, applied to every LOCAL driver (Chrome/Edge/Firefox) — see
      *  {@code com.gsl.driver.BrowserOptions#clientConfig()}. Reverted to Selenium's own built-in
      *  180s default ({@code ClientConfig#defaultReadTimeout}) on 2026-09-28 — a shorter 60s value

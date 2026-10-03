@@ -51,6 +51,28 @@ public final class GeneralVoucherExtentDescriptionLogger
         INSTANCE.render(data);
     }
 
+    /** The Header table rows ({@code Field | Value} header first) exactly as the Extent report shows them. */
+    public static List<String[]> headerRowsOf(MergedFinanceGeneralVoucherData data) {
+        return INSTANCE.headerRows(data);
+    }
+
+    /**
+     * The Expected Results rows exactly as the Extent report shows them, except the audit-trail line
+     * is stated without the live audit-state DB lookup (safe to call from a TestNG listener thread;
+     * the Extent path keeps the live lookup).
+     */
+    public static List<String[]> expectedRowsOf(MergedFinanceGeneralVoucherData data) {
+        OFFLINE.set(Boolean.TRUE);
+        try {
+            return INSTANCE.expectedRows(data);
+        } finally {
+            OFFLINE.remove();
+        }
+    }
+
+    /** {@code true} while {@link #expectedRowsOf} builds rows without any DB lookup. */
+    private static final ThreadLocal<Boolean> OFFLINE = ThreadLocal.withInitial(() -> Boolean.FALSE);
+
     // ── Abstract implementations ───────────────────────────────────────────────
 
     @Override
@@ -162,37 +184,34 @@ public final class GeneralVoucherExtentDescriptionLogger
      *  Delete) based on {@code data.getOperationMode()}, with the same null-fallback inference
      *  {@link GeneralVoucherDescriptionBuilder} uses when that field predates the current data. */
     @Override
-    protected void logPositiveExpected(MergedFinanceGeneralVoucherData data) {
+    protected String[][] positiveExpectedRows(MergedFinanceGeneralVoucherData data) {
         // Same null-fallback GeneralVoucherDescriptionBuilder uses for its actionVerb swap: check
         // operationMode==EDIT first (Edit also sets existingVoucherNo, so it must win before the
         // existingVoucherNo-based REVERT fallback below), then existingVoucherNo!=null for REVERT,
         // else CREATE. A null operationMode (rows built before that field existed) falls through
         // to the same existingVoucherNo-based inference the description builder always used.
         if (data.getOperationMode() == GeneralVoucherOperationMode.EDIT) {
-            logPositiveExpectedForEdit(data);
-            return;
+            return positiveExpectedForEdit(data);
         }
         if (data.getOperationMode() == GeneralVoucherOperationMode.DELETE) {
-            logPositiveExpectedForDelete();
-            return;
+            return positiveExpectedForDelete();
         }
         if (data.getExistingVoucherNo() != null) {
-            logPositiveExpectedForRevert();
-            return;
+            return positiveExpectedForRevert();
         }
-        logPositiveExpectedForCreate(data);
+        return positiveExpectedForCreate(data);
     }
 
-    /** Renders the Expected Results table for a Create run: finvchmain/finvchdet/finpost/
+    /** Builds the Expected Results rows for a Create run: finvchmain/finvchdet/finpost/
      *  fincosttag row expectations plus the audit-trail expectation note. */
-    private void logPositiveExpectedForCreate(MergedFinanceGeneralVoucherData data) {
+    private String[][] positiveExpectedForCreate(MergedFinanceGeneralVoucherData data) {
         int lineCount = data.getExpenseIncomeDetailList() != null ? data.getExpenseIncomeDetailList().size() : 0;
         int siteRowCount = data.getSiteApplicableRows() != null ? data.getSiteApplicableRows().size() : 0;
 
         List<String> auditTables = new ArrayList<>(List.of("finvchmain", "finvchdet", "finpost"));
         if (siteRowCount > 0) auditTables.add("fincosttag");
 
-        ExtentLogger.infoTable(new String[][]{
+        return new String[][]{
             { "Expected Outcome",  "Details" },
             { "UI — Save",         "Document saved; Document No. displayed on form" },
             { "DB — finvchmain",   "1 record: ownersite, cashbank, voucherno, docdate, refno, remarks, vchtype='G'" },
@@ -200,7 +219,7 @@ public final class GeneralVoucherExtentDescriptionLogger
             { "DB — finpost",      "1 VMG + " + lineCount + " VDG posting entries, balanced (BLOCKING — test fails if absent)" },
             { "DB — fincosttag",   siteRowCount + " row(s) — site allocation tagging for Type2/Type3 rows (COLLECT — non-blocking)" },
             { "DB — Audit Trail",  buildAuditExpectationNote("INSERT", auditTables.toArray(new String[0])) },
-        });
+        };
     }
 
     /**
@@ -213,6 +232,11 @@ public final class GeneralVoucherExtentDescriptionLogger
      * "audit isn't even on for it right now".
      */
     private static String buildAuditExpectationNote(String action, String... tables) {
+        if (OFFLINE.get()) {
+            // Workbook path: no DB round-trip from the listener thread - name the tables, state the condition.
+            return "aud2_* " + action + " row expected for: " + String.join(", ", tables)
+                    + " (where audit is active on the environment)";
+        }
         AuditStateSummary state = AuditStateSummary.resolveFor(VoucherPersistenceMapFactory.build(VoucherDomain.GV));
         List<String> active = new ArrayList<>();
         List<String> inactive = new ArrayList<>();
@@ -228,9 +252,9 @@ public final class GeneralVoucherExtentDescriptionLogger
                 : note + "; audit inactive (skipped, not checked) for: " + String.join(", ", inactive) + ".";
     }
 
-    /** Renders the Expected Results table for an Edit run — phrasing differs for a detail-line
+    /** Builds the Expected Results rows for an Edit run — phrasing differs for a detail-line
      *  edit vs. a header-only edit (see {@link #headerChangeDetail}). */
-    private void logPositiveExpectedForEdit(MergedFinanceGeneralVoucherData data) {
+    private String[][] positiveExpectedForEdit(MergedFinanceGeneralVoucherData data) {
         boolean isDetailLineEdit = data.getEditedDetailLine() != null;
         String finvchdetDetail = isDetailLineEdit
                 ? "LineNo '" + data.getEditedDetailLine().getLineNo() + "' updated in place (damount/camount and/or isreversal); every other row unchanged"
@@ -248,7 +272,7 @@ public final class GeneralVoucherExtentDescriptionLogger
                 ? "Only the matching per-line (VDG) posting entry for the edited line updates its damount/camount to the new amount; every other posting row unchanged"
                 : "Matching narration/refno posting entries updated together with finvchmain";
 
-        ExtentLogger.infoTable(new String[][]{
+        return new String[][]{
             { "Expected Outcome",  "Details" },
             { "UI — Save",         "Document updated in place; same Document No. redisplayed on form" },
             { "DB — finvchmain",   finvchmainDetail },
@@ -256,7 +280,7 @@ public final class GeneralVoucherExtentDescriptionLogger
             { "DB — finpost",      finpostDetail },
             { "DB — fincosttag",   "Row(s) deleted+reinserted under new surrogate code (site allocation recomputed on every Save for a cost-tag-applicable document)" },
             { "DB — Audit Trail",  buildAuditExpectationNote("UPDATE", "finvchmain", "finvchdet", "finpost", "fincosttag") },
-        });
+        };
     }
 
     /** Plan §9b: states precisely which of refno/nartext/vchdt changed and to what value, instead
@@ -286,10 +310,10 @@ public final class GeneralVoucherExtentDescriptionLogger
         return sb.length() > 0 ? sb.toString() : "no header field actually changed";
     }
 
-    /** Renders the Expected Results table for a Revert run — only {@code finvchmain.release_status}
+    /** Builds the Expected Results rows for a Revert run — only {@code finvchmain.release_status}
      *  is expected to change; every other table is asserted unchanged. */
-    private void logPositiveExpectedForRevert() {
-        ExtentLogger.infoTable(new String[][]{
+    private String[][] positiveExpectedForRevert() {
+        return new String[][]{
             { "Expected Outcome",  "Details" },
             { "UI — Revert",       "release_status flips Posted ('P') → Un-posted ('U'); no-op if already 'U'" },
             { "DB — finvchmain",   "release_status updated only; every other column unchanged" },
@@ -299,13 +323,13 @@ public final class GeneralVoucherExtentDescriptionLogger
             // Only finvchmain actually changes on a Revert (release_status) — the others are
             // asserted unchanged above, so no audit row is expected for them either.
             { "DB — Audit Trail",  buildAuditExpectationNote("UPDATE", "finvchmain") },
-        });
+        };
     }
 
-    /** Renders the Expected Results table for a Delete run (Revert-then-delete when the voucher
+    /** Builds the Expected Results rows for a Delete run (Revert-then-delete when the voucher
      *  started Posted). */
-    private void logPositiveExpectedForDelete() {
-        ExtentLogger.infoTable(new String[][]{
+    private String[][] positiveExpectedForDelete() {
+        return new String[][]{
             { "Expected Outcome",  "Details" },
             { "UI — Delete",       "Voucher removed from the list page; confirmation dialog dismissed" },
             { "DB — finvchmain",   "row deleted (unposted first via Revert if it started Posted)" },
@@ -314,7 +338,7 @@ public final class GeneralVoucherExtentDescriptionLogger
             // not yet implemented) explicitly flags finvchdet/finpost/fincosttag's own Delete
             // audit coverage as a separate follow-up, not yet asserted here.
             { "DB — Audit Trail",  buildAuditExpectationNote("DELETE", "finvchmain") },
-        });
+        };
     }
 
     // ── Hooks ──────────────────────────────────────────────────────────────────

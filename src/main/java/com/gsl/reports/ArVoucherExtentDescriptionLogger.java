@@ -29,6 +29,16 @@ public final class ArVoucherExtentDescriptionLogger
         INSTANCE.render(data);
     }
 
+    /** The Header table rows (Field / Value header first) exactly as the Extent report shows them. */
+    public static List<String[]> headerRowsOf(MergedFinanceArVoucherData data) {
+        return INSTANCE.headerRows(data);
+    }
+
+    /** The Expected Results rows exactly as the Extent report shows them. */
+    public static List<String[]> expectedRowsOf(MergedFinanceArVoucherData data) {
+        return INSTANCE.expectedRows(data);
+    }
+
     // ── Abstract implementations ───────────────────────────────────────────────
 
     @Override
@@ -53,7 +63,7 @@ public final class ArVoucherExtentDescriptionLogger
     }
 
     @Override
-    protected void logPositiveExpected(MergedFinanceArVoucherData data) {
+    protected String[][] positiveExpectedRows(MergedFinanceArVoucherData data) {
         int slCount    = data.getSubLedgerInformationList()       != null ? data.getSubLedgerInformationList().size() : 0;
         boolean hasPmt = data.getPaymentInformationList()         != null && !data.getPaymentInformationList().isEmpty();
         boolean hasDoc = data.getSelectDocumentList()             != null && !data.getSelectDocumentList().isEmpty();
@@ -66,14 +76,14 @@ public final class ArVoucherExtentDescriptionLogger
                       : hasFifo ? "Tag entries matching FIFO set-off amounts (COLLECT — non-blocking)"
                       :            "Tag entries for FIFO set-off adjustments (COLLECT — non-blocking)";
 
-        ExtentLogger.infoTable(new String[][]{
+        return new String[][]{
             { "Expected Outcome", "Details" },
             { "UI — Save",        "Document saved; Document No. displayed on form" },
             { "DB — finvchmain",  "1 record: ownersite, cashbank, voucherno, docdate, refno, remarks" },
             { "DB — finvchdet",   vchdet },
             { "DB — finpost",     "GL balance postings created and balanced (BLOCKING — test fails if absent)" },
             { "DB — fintag",      fintag },
-        });
+        };
     }
 
     // ── Hooks ──────────────────────────────────────────────────────────────────

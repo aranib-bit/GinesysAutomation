@@ -89,7 +89,7 @@ public class CoverageCatalogTest {
     }
 
     @Test
-    public void workbookIsWrittenWithAllFiveSheets() throws Exception {
+    public void workbookIsWrittenWithAllNineSheets() throws Exception {
         Path out = Files.createTempFile("coverage", ".xlsx");
         try {
             CoverageWorkbookBuilder.build(out, CoverageCatalog.all(),
@@ -98,15 +98,18 @@ public class CoverageCatalogTest {
             try (InputStream in = Files.newInputStream(out); Workbook wb = new XSSFWorkbook(in)) {
                 List<String> names = new java.util.ArrayList<>();
                 wb.forEach(s -> names.add(s.getSheetName()));
-                assertEquals(names, List.of("Summary", "Results", "GV Coverage", "AR AP Coverage", "Notes"));
-                Sheet results = wb.getSheet("Results");
-                assertEquals(results.getRow(1).getCell(6).getStringCellValue(), "PASS");
-                assertEquals(results.getRow(1).getCell(4).getStringCellValue(), "REGRESSION_PHASE1");
+                assertEquals(names, List.of("Dashboard", "Execution Results", "Test Details", "Failure Details", "Pivot",
+                        "GV Coverage", "AR AP Coverage", "Group Matrix", "Notes"));
+                Sheet results = wb.getSheet("Execution Results");
+                assertEquals(results.getRow(4).getCell(9).getStringCellValue(), "PASS");
+                assertEquals(results.getRow(4).getCell(6).getStringCellValue(), "REGRESSION_PHASE1");
                 Sheet gv = wb.getSheet("GV Coverage");
-                String statuses = java.util.stream.IntStream.rangeClosed(1, gv.getLastRowNum())
+                String statuses = java.util.stream.IntStream.rangeClosed(0, gv.getLastRowNum())
+                        .filter(i -> gv.getRow(i) != null && gv.getRow(i).getCell(6) != null
+                                && gv.getRow(i).getCell(6).getCellType() == org.apache.poi.ss.usermodel.CellType.STRING)
                         .mapToObj(i -> gv.getRow(i).getCell(6).getStringCellValue()).distinct().sorted()
                         .collect(Collectors.joining(","));
-                assertEquals(statuses, "NOT RUN,PASS");
+                assertEquals(statuses, "Not run,PASS,Selected but not run,Skip,Status");
             }
         } finally {
             Files.deleteIfExists(out);

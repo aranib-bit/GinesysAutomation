@@ -22,7 +22,15 @@ public final class UiKnownIssues {
 
     private UiKnownIssues() {}
 
-    private static final List<UiKnownIssue> ENTRIES = List.of();
+    private static final List<UiKnownIssue> ENTRIES = List.of(
+            // Grid row "Site" / "Cheque/RTGS" buttons are unstyled native <button>s (the app's CSS sets no
+            // background), so the colour is the browser default: Windows 240, Linux 239 (observed run
+            // 20261003_235401). Exact value only — any other colour still FAILS.
+            new UiKnownIssue("GRID_ROW_BUTTON_(SITE|CHEQUE_RTGS)_ROW_\\d+", "background-color",
+                    "rgb(239, 239, 239)",
+                    "Unstyled native button: browser default differs by OS (Windows 240 / Linux 239); "
+                            + "app should set an explicit background. Awaiting app-team fix.",
+                    "linux"));
 
     /** The note of the registered issue this FAIL matches exactly, if any. */
     public static Optional<String> match(String component, String property, String actual) {

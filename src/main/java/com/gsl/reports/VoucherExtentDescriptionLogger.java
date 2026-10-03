@@ -63,8 +63,10 @@ public abstract class VoucherExtentDescriptionLogger<T extends VoucherReportData
     /** Appends voucher-specific rows (e.g. On Account, TDS Provided) to the header table. */
     protected abstract void appendExtraHeaderRows(T data, List<String[]> rows);
 
-    /** Renders the positive-scenario Expected Results table (voucher-specific content). */
-    protected abstract void logPositiveExpected(T data);
+    /** Builds the positive-scenario Expected Results rows (voucher-specific content): a header row
+     *  ({@code Expected Outcome | Details}) followed by one row per expectation. Pure - no Extent
+     *  output - so the Extent report and the coverage workbook render the very same rows. */
+    protected abstract String[][] positiveExpectedRows(T data);
 
     // ── No-op hooks ────────────────────────────────────────────────────────────
 
@@ -188,6 +190,16 @@ public abstract class VoucherExtentDescriptionLogger<T extends VoucherReportData
     /** Renders the shared Header table (Scenario/TestCase/Owner Site/Cash-Bank/.../Remarks),
      *  extended with {@link #appendExtraHeaderRows} and the Payment Info Warning flag. */
     private void logHeaderTable(T data) {
+        ExtentLogger.info("<b>Test Data &#8212; Header</b>");
+        ExtentLogger.infoTable(headerRows(data).toArray(new String[0][]));
+    }
+
+    /**
+     * The Header table as plain data: a {@code Field | Value} header row followed by one row per
+     * field. Pure (no Extent/Log output) and the single source for both the Extent report
+     * ({@link #logHeaderTable}) and the coverage workbook's "Test Details" sheet.
+     */
+    public final List<String[]> headerRows(T data) {
         var master = data.getMasterTestData();
         var doc    = data.getDocumentInformation();
         String docDate = doc.getDocumentdate() != null ? doc.getDocumentdate().format(DATE_FMT) : "";
@@ -206,9 +218,7 @@ public abstract class VoucherExtentDescriptionLogger<T extends VoucherReportData
         rows.add(new String[]{ "Remarks",           nullSafe(doc.getRemarks()) });
         appendExtraHeaderRows(data, rows);
         rows.add(new String[]{ "Payment Info Warning", data.isNeedsPaymentInfoWarning() ? "YES" : "NO" });
-
-        ExtentLogger.info("<b>Test Data &#8212; Header</b>");
-        ExtentLogger.infoTable(rows.toArray(new String[0][]));
+        return rows;
     }
 
     // ── Section 1b: Expected Results ──────────────────────────────────────────
@@ -218,18 +228,27 @@ public abstract class VoucherExtentDescriptionLogger<T extends VoucherReportData
      *  {@link #logPositiveExpected}. */
     private void logExpectedResultsSection(T data) {
         ExtentLogger.info("<b>Expected Results</b>");
+        ExtentLogger.infoTable(expectedRows(data).toArray(new String[0][]));
+    }
+
+    /**
+     * The Expected Results table as plain data ({@code Expected Outcome | Details} header row plus
+     * one row per expectation): the shared negative-branch table (validation error, nothing
+     * persisted) when {@code data.getExpectedValidation()} is set, else {@link #positiveExpectedRows}.
+     * Pure - the single source for the Extent report and the coverage workbook.
+     */
+    public final List<String[]> expectedRows(T data) {
         if (data.getExpectedValidation() != null) {
-            ExtentLogger.infoTable(new String[][]{
+            return new ArrayList<>(java.util.Arrays.asList(new String[][]{
                 { "Expected Outcome",      "Details" },
                 { "UI — Validation Error",  data.getExpectedValidation().expectedMessage() },
                 { "DB — finvchmain",        "No record created (save blocked by UI validation)" },
                 { "DB — finvchdet",         "No record created" },
                 { "DB — finpost",           "No posting created" },
                 { "DB — fintag",            "No tag entries created" },
-            });
-            return;
+            }));
         }
-        logPositiveExpected(data);
+        return new ArrayList<>(java.util.Arrays.asList(positiveExpectedRows(data)));
     }
 
     // ── Section 2: Sub-Ledgers ─────────────────────────────────────────────────

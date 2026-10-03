@@ -324,9 +324,17 @@ public final class SessionPool {
             // adding 2 spare UI users for backfill made 6 browsers open instead of the intended 4,
             // because capacity() derived straight from the raw UserPool UI-user count.
             cap = Math.max(1, totalUiUsers - backfillHeadroom);
+            int poolDerived = cap;
+            // Optional per-OS cap (max.concurrent.sessions.<os>): the Windows Grid node supports far
+            // fewer parallel browsers than the UI-user count implies. Lowers capacity only, never raises it.
+            var osCap = com.gsl.config.ConcurrencyCap.current();
+            if (osCap.isPresent() && osCap.getAsInt() < cap) {
+                cap = osCap.getAsInt();
+            }
             cachedCapacity = cap;
-            Log.info("[SessionPool] capacity={} (UI users={} - backfill headroom={})",
-                    cap, totalUiUsers, backfillHeadroom);
+            Log.info("[SessionPool] capacity={} (UI users={} - backfill headroom={} = {}{})",
+                    cap, totalUiUsers, backfillHeadroom, poolDerived,
+                    cap < poolDerived ? ", capped by " + com.gsl.config.ConcurrencyCap.describe() : "");
         }
         return cap;
     }

@@ -97,6 +97,11 @@ public interface BrowserConfig extends Config {
     @DefaultValue("http://localhost:4444/wd/hub")
     String dockerGridUrl();
 
+    /** Raw {@code target.os} value (linux|windows) — the OS the Grid node runs on. Parse with {@link com.gsl.enums.TargetOs#parse(String)}; see {@link com.gsl.config.TargetOsResolver}. Same DefaultValue caveat as browserType(). */
+    @Key("target.os")
+    @DefaultValue("linux")
+    String targetOsRaw();
+
     /** BrowserStack account username. */
     @Key("browserstack.username")
     @DefaultValue("")

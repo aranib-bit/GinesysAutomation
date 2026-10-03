@@ -30,6 +30,16 @@ public final class ApVoucherExtentDescriptionLogger
         INSTANCE.render(data);
     }
 
+    /** The Header table rows (Field / Value header first) exactly as the Extent report shows them. */
+    public static List<String[]> headerRowsOf(MergedFinanceApVoucherData data) {
+        return INSTANCE.headerRows(data);
+    }
+
+    /** The Expected Results rows exactly as the Extent report shows them. */
+    public static List<String[]> expectedRowsOf(MergedFinanceApVoucherData data) {
+        return INSTANCE.expectedRows(data);
+    }
+
     // ── Abstract implementations ───────────────────────────────────────────────
 
     @Override
@@ -56,7 +66,7 @@ public final class ApVoucherExtentDescriptionLogger
     }
 
     @Override
-    protected void logPositiveExpected(MergedFinanceApVoucherData data) {
+    protected String[][] positiveExpectedRows(MergedFinanceApVoucherData data) {
         int slCount     = data.getSubLedgerInformationList() != null ? data.getSubLedgerInformationList().size() : 0;
         boolean onAcct  = data.isOnAccount();
         boolean tds     = data.isTdsProvided();
@@ -78,7 +88,7 @@ public final class ApVoucherExtentDescriptionLogger
                             : hasFifo   ? "NO — FIFO set-off applied (reference sitewise FIFO if applicable)"
                             :             "NO — document adjustment method derived from scenario";
 
-        ExtentLogger.infoTable(new String[][]{
+        return new String[][]{
             { "Expected Outcome",    "Details" },
             { "UI — Save",           "Document saved; Document No. displayed on form" },
             { "DB — finvchmain",     "1 record: ownersite, cashbank, voucherno, docdate, refno, remarks, onaccount=" + (onAcct ? "1" : "0") },
@@ -88,7 +98,7 @@ public final class ApVoucherExtentDescriptionLogger
             { "Flag — On Account",   onAcctDetail },
             { "Flag — TDS Provided", tds ? "YES — tds_app='Y'; damount = NetPayable (gross − TDS)"
                                               : "NO — tds_app='N'; damount = gross AmountDr" },
-        });
+        };
     }
 
     // ── Hooks ──────────────────────────────────────────────────────────────────

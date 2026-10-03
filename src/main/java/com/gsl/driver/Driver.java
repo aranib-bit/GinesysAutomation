@@ -51,6 +51,9 @@ public final class Driver {
                 sessionId = rwd.getSessionId().toString();
                 TestContextManager.setSessionId(sessionId);
             }
+            // Record browser/OS/driver versions now, while the session's capabilities are known —
+            // reports show them so Linux-vs-Windows differences can be tied to exact builds.
+            com.gsl.reports.BrowserFingerprint.register(sessionId, driver);
             BrowserConfig browserCfg = ConfigFactory.getBrowserConfig();
             Log.info("Driver init — thread={}, provider={}, browser={}, sessionId={}, "
                             + "runmode={}, headless={}, requestedViewport={}x{}",
