@@ -22,8 +22,9 @@ public class SeleniumGridProvider implements ExecutionProvider {
     /**
      * Builds driver options for {@code browser}, opens a {@link RemoteWebDriver} against
      * {@link #getGridUrl()}, then wraps it with {@link Augmenter} so a remote session gains
-     * {@code HasDevTools} support (required for CDP-dependent features such as
-     * {@code ViewportEnforcer} and network capture against a grid/remote session).
+     * {@code HasDevTools} support for Chromium sessions (CDP-based viewport pinning and network
+     * capture). Firefox has no CDP; it is served by {@code HasBiDi} instead (see
+     * {@code ViewportPinnerFactory} / {@code NetworkServiceFactory}).
      *
      * @throws RuntimeException if the grid URL is malformed
      */
@@ -37,8 +38,9 @@ public class SeleniumGridProvider implements ExecutionProvider {
             // returned capabilities (the grid advertises "se:cdp": "ws://...") and wraps the
             // driver in a dynamic subclass that adds HasDevTools support wired to that endpoint.
             // Without this, every CDP-dependent feature against a remote/grid session — this
-            // includes ViewportEnforcer's device-metrics override AND CdpNetworkCapture's request
-            // logging — silently no-ops via its own `driver instanceof HasDevTools` check.
+            // includes CdpViewportPinner's device-metrics override AND CdpNetworkCapture's request
+            // logging — for Chromium. Firefox sessions get HasBiDi from the same Augmenter, which
+            // ViewportPinnerFactory/NetworkServiceFactory use instead of CDP.
             return new Augmenter().augment(raw);
         } catch (MalformedURLException e) {
             throw new RuntimeException("[SeleniumGridProvider] Invalid grid URL: " + getGridUrl(), e);

@@ -5,14 +5,11 @@ import com.gsl.config.ConfigFactory;
 import com.gsl.enums.RunMode;
 import com.gsl.utils.Log;
 import org.openqa.selenium.Dimension;
-import org.openqa.selenium.JavascriptExecutor;
 import org.openqa.selenium.WebDriver;
-import org.openqa.selenium.devtools.DevTools;
-import org.openqa.selenium.devtools.HasDevTools;
-import org.openqa.selenium.devtools.v153.emulation.Emulation;
-
-import java.util.List;
-import java.util.Optional;
+import com.gsl.driver.viewport.OuterSizeViewportPinner;
+import com.gsl.driver.viewport.ViewportPinner;
+import com.gsl.driver.viewport.ViewportPinnerFactory;
+import com.gsl.driver.viewport.ViewportReader;
 
 /**
  * Forces the browser viewport to the configured width/height and fails fast if it cannot.
@@ -34,8 +31,8 @@ public final class ViewportEnforcer {
     /**
      * Forces {@code driver}'s viewport to the configured width/height, unless {@link #isEnabled}
      * says this run should skip enforcement entirely. Applies {@code window().setSize()} first,
-     * then (for a {@link HasDevTools} driver) the CDP {@code Emulation.setDeviceMetricsOverride}
-     * override, then polls {@code window.innerWidth}/{@code innerHeight} until they match or the
+     * then the {@link ViewportPinner} chosen by {@link ViewportPinnerFactory} (CDP for
+     * Chrome/Edge, BiDi for Firefox, outer-size compensation otherwise), then polls {@code window.innerWidth}/{@code innerHeight} until they match or the
      * poll budget is exhausted.
      *
      * @throws IllegalStateException if neither mechanism produces the requested viewport size —
@@ -61,54 +58,28 @@ public final class ViewportEnforcer {
         Log.info("[ViewportEnforcer] After setSize() — outer={} viewport={}x{}",
                 safeOuterSize(driver), afterSetSize[0], afterSetSize[1]);
 
-        if (driver instanceof HasDevTools hasDevTools) {
-            try {
-                DevTools devTools = hasDevTools.getDevTools();
-                Log.info("[ViewportEnforcer] DevTools impl={}, cdpSession before={}",
-                        devTools.getClass().getName(), devTools.getCdpSession());
-                // Reuses CdpNetworkCapture's session when one is already open (network capture
-                // enabled) instead of creating a second one — DevTools.createSession() attaches a
-                // fresh CDP session unconditionally, which NetworkTimingCapture (see its class
-                // Javadoc) deliberately avoids triggering a second time. createSessionIfThereIsNotOne()
-                // is the session-agnostic entry point: safe whether or not one already exists.
-                devTools.createSessionIfThereIsNotOne();
-                Log.info("[ViewportEnforcer] cdpSession after createSessionIfThereIsNotOne={}",
-                        devTools.getCdpSession());
-                devTools.send(Emulation.setDeviceMetricsOverride(
-                        width, height,
-                        1,      // deviceScaleFactor — keep 1:1 so screenshots stay CSS-pixel-accurate
-                        false,  // mobile — must stay false or ExtJS switches to touch event handling
-                        Optional.empty(), Optional.empty(), Optional.empty(),
-                        Optional.empty(), Optional.empty(), Optional.empty(),
-                        Optional.empty(), Optional.empty(), Optional.empty(),
-                        Optional.empty(), Optional.empty(), Optional.empty()));
-                Log.info("[ViewportEnforcer] Emulation.setDeviceMetricsOverride sent without exception");
-            } catch (Exception e) {
-                Log.warn("[ViewportEnforcer] CDP setDeviceMetricsOverride failed — {}", e.getMessage(), e);
-            }
-        } else {
-            Log.warn("[ViewportEnforcer] driver is not HasDevTools (actual class={}) — CDP step skipped",
-                    driver.getClass().getName());
-        }
+        ViewportPinner pinner = ViewportPinnerFactory.create(driver);
+        Log.info("[ViewportEnforcer] Using {} viewport pinner", pinner.protocolName());
+        boolean pinned = tryPin(pinner, driver, width, height);
 
-        // Bounded poll rather than a single immediate read: an async race between the CDP
+        // Bounded poll rather than a single immediate read: an async race between the pin
         // command's ack and the renderer actually repainting at the new size would otherwise be
         // indistinguishable from a genuine failure. Every attempt is logged so a real failure
         // (never converges) is still visible, not silently retried away.
-        long[] actual = afterSetSize;
-        for (int attempt = 1; attempt <= 10; attempt++) {
-            actual = readViewport(driver);
-            Log.info("[ViewportEnforcer] Poll attempt {} — viewport={}x{}", attempt, actual[0], actual[1]);
-            if (actual[0] == width && actual[1] == height) break;
-            try { Thread.sleep(100); } catch (InterruptedException ie) { Thread.currentThread().interrupt(); break; }
+        long[] actual = pollViewport(driver, width, height);
+        if (!(actual[0] == width && actual[1] == height) && !(pinner instanceof OuterSizeViewportPinner)) {
+            Log.warn("[ViewportEnforcer] {} pinner left viewport at {}x{} (pinCompleted={}) — "
+                    + "falling back to outer-size compensation", pinner.protocolName(), actual[0], actual[1], pinned);
+            tryPin(new OuterSizeViewportPinner(), driver, width, height);
+            actual = pollViewport(driver, width, height);
         }
         long actualWidth = actual[0];
         long actualHeight = actual[1];
         if (actualWidth != width || actualHeight != height) {
             throw new IllegalStateException(String.format(
                     "[ViewportEnforcer] Viewport mismatch — expected %dx%d but the browser reports %dx%d. "
-                    + "Both window().setSize() and the CDP device-metrics override failed to take effect "
-                    + "on this node; ExtJS dialogs taller than the real viewport will render off-screen "
+                    + "window().setSize(), the " + pinner.protocolName() + " viewport pinner and the outer-size "
+                    + "compensation all failed to take effect on this node; ExtJS dialogs taller than the real viewport will render off-screen "
                     + "and every subsequent click on them will fail.",
                     width, height, actualWidth, actualHeight));
         }
@@ -131,6 +102,27 @@ public final class ViewportEnforcer {
         return cfg.runMode() != RunMode.LOCAL;
     }
 
+    private static boolean tryPin(ViewportPinner pinner, WebDriver driver, int width, int height) {
+        try {
+            pinner.pin(driver, width, height);
+            return true;
+        } catch (Exception e) {
+            Log.warn("[ViewportEnforcer] {} viewport pin failed — {}", pinner.protocolName(), e.getMessage(), e);
+            return false;
+        }
+    }
+
+    private static long[] pollViewport(WebDriver driver, int width, int height) {
+        long[] actual = readViewport(driver);
+        for (int attempt = 1; attempt <= 10; attempt++) {
+            actual = readViewport(driver);
+            Log.info("[ViewportEnforcer] Poll attempt {} — viewport={}x{}", attempt, actual[0], actual[1]);
+            if (actual[0] == width && actual[1] == height) break;
+            try { Thread.sleep(100); } catch (InterruptedException ie) { Thread.currentThread().interrupt(); break; }
+        }
+        return actual;
+    }
+
     private static String safeOuterSize(WebDriver driver) {
         try {
             return driver.manage().window().getSize().toString();
@@ -139,12 +131,7 @@ public final class ViewportEnforcer {
         }
     }
 
-    /** Reads {@code [window.innerWidth, window.innerHeight]} from the page via JS, as a 2-element {@code [width, height]} array. */
-    @SuppressWarnings("unchecked")
     private static long[] readViewport(WebDriver driver) {
-        Object result = ((JavascriptExecutor) driver)
-                .executeScript("return [window.innerWidth, window.innerHeight];");
-        List<Number> dims = (List<Number>) result;
-        return new long[] {dims.get(0).longValue(), dims.get(1).longValue()};
+        return ViewportReader.read(driver);
     }
 }
