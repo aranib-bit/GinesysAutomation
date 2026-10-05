@@ -83,8 +83,9 @@ public enum VoucherDomain implements VoucherDocumentLabels {
         @Override public String getVoucherLabel() { return "General Voucher"; }
         @Override public FinanceVoucherListPageHeader getListPageHeaderEnum() { return FinanceVoucherListPageHeader.GV; }
         @Override public FinanceVoucherAddEditPageHeader getAddEditPageHeaderEnum() { return FinanceVoucherAddEditPageHeader.GV; }
-        /** TODO-confirm against {@code mdmenu.sys_shortcode} — same open item flagged in plan §2/§4/§9. */
-        @Override public String getMenuShortcode() { return "FinanceGeneralVoucher"; }
+        /** Confirmed against {@code admmenu_docscheme.mdmenushortcode} (and the tests' own
+         *  {@code subModule = "FinanceGenVoucher"}) — was previously a wrong guess ("FinanceGeneralVoucher"). */
+        @Override public String getMenuShortcode() { return "FinanceGenVoucher"; }
         @Override public VoucherType getVoucherType() { return VoucherType.GENERAL; }
         /** Confirmed live (screenshot) — GV's Payment Information popup labels this field
          *  "Cheque label:", the same as AP, NOT "Drawn on:" as previously (wrongly) assumed in

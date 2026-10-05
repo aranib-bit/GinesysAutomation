@@ -53,6 +53,9 @@ public class ArVoucherLiveDbRefs {
     String cashBankName;
     String ownerSiteName;
     String docSchemeName;
+    /** Why {@link #docSchemeName} was chosen (mode, candidates, remaining numbers) — appended to the
+     *  data-gathering log. May be null when the refs are built without a resolver run. */
+    List<String> docSchemeNarrative;
     List<SlNameWithId> pendingSlNames;
     Map<String, List<PendingSlDocument>> pendingDocsBySlName;
     Map<String, String> slToArApName;              // key="slName|slId", value=GL name from fingl

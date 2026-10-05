@@ -245,6 +245,14 @@ public enum ApVoucherScenarioType implements
             true
     ),
 
+    /** Save on a document scheme with no numbers left → proper rejection message; nothing created.
+     *  The scheme is resolved in EXHAUSTED mode (provisions + fills a dedicated test scheme if none is full). */
+    NEG_DOC_SCHEME_EXHAUSTED(
+            ApVoucherTemplateLoader::negDocSchemeExhaustedTemplate,
+            ApVoucherPredicateFactory.NEG_DOC_SCHEME_EXHAUSTED_BEHAVIOR,
+            true
+    ),
+
     // ─── T-03 Boundary pair: blank reference allowed ──────────────────────────
 
     /**

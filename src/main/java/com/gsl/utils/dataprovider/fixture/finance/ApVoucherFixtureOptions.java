@@ -70,6 +70,14 @@ public class ApVoucherFixtureOptions {
     private final long slClsCode = 0L;
 
     /**
+     * Which kind of document scheme the data source should resolve for this scenario — AUTO for every
+     * normal scenario; EXHAUSTED for the "Save on a full scheme" negative scenario.
+     */
+    @Builder.Default
+    private final com.gsl.utils.dataprovider.source.finance.common.DocSchemeMode docSchemeMode =
+            com.gsl.utils.dataprovider.source.finance.common.DocSchemeMode.AUTO;
+
+    /**
      * When {@code true}, the SL lookup restricts to TDS-applicable vendor sub-ledgers
      * (e.g. {@code finsl.tds_app = 'Y'}).
      * Used for {@link ApVoucherScenarioType#ADVANCE_WITH_TDS} scenarios.
@@ -166,6 +174,17 @@ public class ApVoucherFixtureOptions {
      *
      * @param glType the target GL type (CASH or BANK)
      */
+    /** Options for the "Save on a full document scheme" negative scenario: resolves the scheme in EXHAUSTED mode. */
+    public static ApVoucherFixtureOptions forExhaustedScheme(CashBankType glType) {
+        return ApVoucherFixtureOptions.builder()
+                .subLedgerCount(1)
+                .documentCount(0)
+                .glType(glType)
+                .tdsApplicable(false)
+                .docSchemeMode(com.gsl.utils.dataprovider.source.finance.common.DocSchemeMode.EXHAUSTED)
+                .build();
+    }
+
     public static ApVoucherFixtureOptions forAdvance(CashBankType glType) {
         return ApVoucherFixtureOptions.builder()
                 .subLedgerCount(1)

@@ -64,7 +64,7 @@ public final class GeneralVoucherTemplateLoader {
         };
 
         DocumentInformation doc = new DocumentInformation(
-                tcId, null, LocalDate.now(), null, refs.getCashBankName(),
+                tcId, refs.getDocSchemeName(), LocalDate.now(), null, refs.getCashBankName(),
                 "Automated GV DB-driven combination test — " + variant.getTestCaseName());
         doc.setOwnersite(refs.getOwnerSiteName());
 
@@ -270,7 +270,7 @@ public final class GeneralVoucherTemplateLoader {
     public static MergedFinanceGeneralVoucherData negSiteAllocationPendingTemplate(LiveGvDbRefs refs) {
         String tcId = "GV_NEG_PENDING";
         LiveGvDbRefs.ResolvedGlRow row = refs.getResolvedRows().get(0);
-        DocumentInformation doc = new DocumentInformation(tcId, null, LocalDate.now(), null,
+        DocumentInformation doc = new DocumentInformation(tcId, refs.getDocSchemeName(), LocalDate.now(), null,
                 refs.getCashBankName(), "Negative: Allocate Sites Pending Amount != 0");
 
         ExpenseIncomeDetail line = new ExpenseIncomeDetail(tcId, "1", row.getGl().getGlname(), null, null,
@@ -307,7 +307,7 @@ public final class GeneralVoucherTemplateLoader {
     public static MergedFinanceGeneralVoucherData negSubledgerRequiredTemplate(LiveGvDbRefs refs) {
         String tcId = "GV_NEG_SUBLEDGER";
         LiveGvDbRefs.ResolvedGlRow row = refs.getResolvedRows().get(0);
-        DocumentInformation doc = new DocumentInformation(tcId, null, LocalDate.now(), null,
+        DocumentInformation doc = new DocumentInformation(tcId, refs.getDocSchemeName(), LocalDate.now(), null,
                 refs.getCashBankName(), "Negative: Type3 row missing Sub Ledger");
 
         // Sub Ledger deliberately left null (subLedger/subLedgerId args below) even though refs
@@ -341,7 +341,7 @@ public final class GeneralVoucherTemplateLoader {
     public static MergedFinanceGeneralVoucherData negSiteNotAllocatedTemplate(LiveGvDbRefs refs) {
         String tcId = "GV_NEG_NOSITE";
         LiveGvDbRefs.ResolvedGlRow row = refs.getResolvedRows().get(0);
-        DocumentInformation doc = new DocumentInformation(tcId, null, LocalDate.now(), null,
+        DocumentInformation doc = new DocumentInformation(tcId, refs.getDocSchemeName(), LocalDate.now(), null,
                 refs.getCashBankName(), "Negative: Type2 row, Site button clicked but nothing allocated");
 
         ExpenseIncomeDetail line = new ExpenseIncomeDetail(tcId, "1", row.getGl().getGlname(), null, null,
@@ -371,7 +371,7 @@ public final class GeneralVoucherTemplateLoader {
         String tcId = "GV_NEG_CASH_POSTDATED";
         LiveGvDbRefs.ResolvedGlRow row = refs.getResolvedRows().get(0);
         LocalDate postDatedDate = LocalDate.now().plusDays(30);
-        DocumentInformation doc = new DocumentInformation(tcId, null, postDatedDate, null,
+        DocumentInformation doc = new DocumentInformation(tcId, refs.getDocSchemeName(), postDatedDate, null,
                 refs.getCashBankName(), "Negative: Cash payment mode cannot be post-dated");
 
         ExpenseIncomeDetail line = new ExpenseIncomeDetail(tcId, "1", row.getGl().getGlname(), null, null,
@@ -396,6 +396,17 @@ public final class GeneralVoucherTemplateLoader {
     }
 
     /**
+     * NEG_DOC_SCHEME_EXHAUSTED — a complete, otherwise-valid voucher (same shape as a positive combination)
+     * whose Voucher No. is a document scheme with no numbers left; Save must be rejected with a proper message.
+     * {@code refs} is resolved with {@code DocSchemeMode.EXHAUSTED}, so {@code refs.getDocSchemeName()} is the full scheme.
+     */
+    public static MergedFinanceGeneralVoucherData negDocSchemeExhaustedTemplate(LiveGvDbRefs refs) {
+        MergedFinanceGeneralVoucherData data = combinationTemplate(refs);
+        data.setExpectedValidation(NegativeValidation.DOC_SCHEME_EXHAUSTED);
+        return data;
+    }
+
+    /**
      * Round 16 — {@code NEG_SITE_ALLOCATION_CROSS_OU}. {@code refs} is resolved with
      * {@code GeneralVoucherFixtureOptions#requireCrossOuSite} set, so {@code
      * row.getSiteNames().get(0)} is a real GL-linked, user-assigned site belonging to a DIFFERENT
@@ -411,7 +422,7 @@ public final class GeneralVoucherTemplateLoader {
     public static MergedFinanceGeneralVoucherData negSiteAllocationCrossOuTemplate(LiveGvDbRefs refs) {
         String tcId = "GV_NEG_SITE_CROSS_OU";
         LiveGvDbRefs.ResolvedGlRow row = refs.getResolvedRows().get(0);
-        DocumentInformation doc = new DocumentInformation(tcId, null, LocalDate.now(), null,
+        DocumentInformation doc = new DocumentInformation(tcId, refs.getDocSchemeName(), LocalDate.now(), null,
                 refs.getCashBankName(), "Negative: site from a different Organizational Unit than "
                 + "the Owner Site must not be selectable in Allocate Sites");
 

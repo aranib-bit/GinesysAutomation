@@ -16,6 +16,7 @@ import com.gsl.database.finance.SubLedgerOthersBackfillStrategy;
 import com.gsl.driver.DriverManager;
 import com.gsl.enums.CashBankType;
 import com.gsl.enums.Finance.Operations.GeneralVoucher.GlLineType;
+import com.gsl.enums.VoucherDomain;
 import com.gsl.model.adm.AdmSite;
 import com.gsl.model.finance.FinGl;
 import com.gsl.model.finance.FinGlSite;
@@ -37,6 +38,9 @@ import com.gsl.utils.dataprovider.fixture.finance.GeneralVoucherScenarioType;
 import com.gsl.utils.dataprovider.fixture.finance.GeneralVoucherTag;
 import com.gsl.utils.dataprovider.fixture.finance.GeneralVoucherVariant;
 import com.gsl.utils.dataprovider.source.TestDataSource;
+import com.gsl.database.finance.ExhaustedDocSchemeBackfill;
+import com.gsl.utils.dataprovider.source.finance.common.DocSchemeMode;
+import com.gsl.utils.dataprovider.source.finance.common.DocSchemeSelection;
 import org.jdbi.v3.core.Jdbi;
 import org.testng.SkipException;
 
@@ -458,8 +462,17 @@ public class DbGeneralVoucherDataSource implements TestDataSource<MergedFinanceG
                     .build());
         }
 
+        // Pick a doc scheme that can still generate a number (instead of leaving the app default,
+        // which may be exhausted) — the choice and every candidate go into the Test Data Resolution log.
+        // Mode comes from the scenario's fixture options: AUTO normally, EXHAUSTED for the full-scheme negative
+        // scenario (which backfills a full test scheme when none exists).
+        DocSchemeSelection docScheme = ExhaustedDocSchemeBackfill.resolve(jdbi,
+                VoucherDomain.GV, assignedSiteCodes, ownerSite.code, opts.getDocSchemeMode());
+        gatheringLog.addAll(docScheme.getNarrative());
+
         LiveGvDbRefs refs = LiveGvDbRefs.builder()
                 .ownerSiteName(ownerSite.name)
+                .docSchemeName(docScheme.docName())
                 .cashBankName(cashBankName)
                 .cashBankGlcode(cashBankGlcode)
                 .cashBankType(opts.cashBankType())

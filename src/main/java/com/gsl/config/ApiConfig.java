@@ -209,6 +209,31 @@ public interface ApiConfig extends Config {
     @Key("datafallback.k6.scriptPath.${0}")
     String k6ScriptPathFor(String scriptKey);
 
+    /**
+     * k6 tenant (a {@code config/environments/<tenant>.json} in the k6 project) the doc-scheme filler runs
+     * against. Must point at the SAME host/DB the UI tests use — {@link #activeTenant()} often names a
+     * different host (e.g. {@code clone-staging} keeps {@code stage-ideal}), so the filler has its own
+     * setting. Blank falls back to {@link #activeTenant()}.
+     */
+    @Key("docscheme.fill.k6.tenant")
+    @DefaultValue("")
+    String docSchemeFillK6Tenant();
+
+    /** Parallel k6 users (VUs) the filler uses; capped at the number of documents still needed. */
+    @Key("docscheme.fill.vus")
+    @DefaultValue("5")
+    int docSchemeFillVus();
+
+    /** k6 {@code MAX_DURATION} for one filler pass (k6 duration string, e.g. {@code 15m}). */
+    @Key("docscheme.fill.maxDuration")
+    @DefaultValue("15m")
+    String docSchemeFillMaxDuration();
+
+    /** Above this many documents the report shows per-VU summaries (plus every failure) instead of a line per document. */
+    @Key("docscheme.fill.report.detailLimit")
+    @DefaultValue("200")
+    int docSchemeFillReportDetailLimit();
+
     // ── Tenant ────────────────────────────────────────────────────────────────
 
     /** Currently active tenant name (e.g. "stage-ideal"). */

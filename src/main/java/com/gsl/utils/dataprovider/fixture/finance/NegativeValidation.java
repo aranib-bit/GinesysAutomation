@@ -182,6 +182,13 @@ public enum NegativeValidation {
     GV_PAYMENT_NEFT_FUTURE_INSTRUMENT_DATE_NOT_ALLOWED(
             "Instrument date cannot be greater than entry date"),
 
+    // ─── Document scheme exhausted (shared by GV / AR / AP Create) ────────────
+    // The wording is NOT known yet (the app currently shows no proper message — known defect), so it is
+    // read from config key docscheme.exhausted.expected.message rather than hardcoded; see expectedMessage().
+
+    /** Save on a document scheme that has no numbers left must be rejected with a proper message. */
+    DOC_SCHEME_EXHAUSTED(null),
+
     ;
 
     // ─────────────────────────────────────────────────────────────────────────
@@ -197,6 +204,15 @@ public enum NegativeValidation {
      * Used by {@code NEGATIVE_FORM_VALIDATION_BEHAVIOR} to assert the popup.
      */
     public String expectedMessage() {
-        return expectedMessage;
+        if (expectedMessage != null) {
+            return expectedMessage;
+        }
+        // Config-backed constant (currently only DOC_SCHEME_EXHAUSTED) — fail fast rather than assert an invented text.
+        String configured = com.gsl.config.ConfigFactory.getFinanceConfig().docSchemeExhaustedExpectedMessage();
+        if (configured == null || configured.isBlank()) {
+            throw new IllegalStateException(name() + ": expected message not configured. Set "
+                    + "docscheme.exhausted.expected.message in finance.properties to the text the app should show.");
+        }
+        return configured;
     }
 }

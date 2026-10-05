@@ -1,7 +1,12 @@
 package com.gsl.database.dao.adm;
 
+import com.gsl.model.adm.AdmDocSchemeCandidate;
+import org.jdbi.v3.sqlobject.config.RegisterBeanMapper;
 import org.jdbi.v3.sqlobject.customizer.Bind;
+import org.jdbi.v3.sqlobject.customizer.BindList;
 import org.jdbi.v3.sqlobject.statement.SqlQuery;
+
+import java.util.List;
 
 /**
  * Forward lookup for {@code admdocscheme} — resolves a document scheme's {@code doccode} from its
@@ -31,4 +36,32 @@ public interface AdmDocSchemeDao {
      */
     @SqlQuery("SELECT docname FROM admdocscheme WHERE doccode = :doccode")
     String findDocnameByDoccode(@Bind("doccode") long doccode);
+
+    /**
+     * Every document scheme mapped to {@code menuShortcode} ({@code admmenu_docscheme}) AND enabled
+     * for at least one of {@code siteCodes} ({@code admou_docscheme}), with its current counter state.
+     *
+     * <p>{@code admlastdoc} is keyed {@code (doccode, ycode, admou_code)} — its own
+     * {@code mdmenushortcode} is mostly null, so it is joined on doccode/ycode/OU only. Two
+     * aggregates are returned ({@code lastno_year} for the given year, {@code lastno_any} across all
+     * years) so the caller can honour the scheme's own reset interval. Ranking and the
+     * available/exhausted decision are deliberately NOT done in SQL — see {@code DocSchemeResolver}.
+     */
+    @SqlQuery("SELECT d.doccode AS doccode, d.docname AS docname, d.width AS width, d.starting AS starting, "
+            + "d.manual AS manual, d.generation_interval AS generation_interval, d.ext AS ext, "
+            + "(SELECT MAX(l.lastno) FROM admlastdoc l WHERE l.doccode = d.doccode "
+            + "   AND l.ycode = :ycode AND l.admou_code = :ouCode) AS lastno_year, "
+            + "(SELECT MAX(l2.lastno) FROM admlastdoc l2 WHERE l2.doccode = d.doccode "
+            + "   AND l2.admou_code = :ouCode) AS lastno_any "
+            + "FROM admdocscheme d "
+            + "WHERE d.doccode IN (SELECT mds.doccode FROM admmenu_docscheme mds "
+            + "                    WHERE mds.mdmenushortcode = :menuShortcode) "
+            + "AND d.doccode IN (SELECT ods.doccode FROM admou_docscheme ods "
+            + "                  WHERE ods.admsite_code IN (<siteCodes>)) "
+            + "ORDER BY d.doccode")
+    @RegisterBeanMapper(AdmDocSchemeCandidate.class)
+    List<AdmDocSchemeCandidate> findCandidates(@Bind("ycode") long ycode,
+                                               @Bind("ouCode") long ouCode,
+                                               @Bind("menuShortcode") String menuShortcode,
+                                               @BindList("siteCodes") List<Long> siteCodes);
 }

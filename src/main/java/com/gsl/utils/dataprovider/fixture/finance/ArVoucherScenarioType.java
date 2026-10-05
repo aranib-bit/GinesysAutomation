@@ -69,6 +69,13 @@ public enum ArVoucherScenarioType implements
             ArVoucherPredicateFactory.NEGATIVE_FORM_VALIDATION_BEHAVIOR
     ),
 
+    /** Save on a document scheme with no numbers left → proper rejection message; nothing created.
+     *  The scheme is resolved in EXHAUSTED mode (provisions + fills a dedicated test scheme if none is full). */
+    NEG_DOC_SCHEME_EXHAUSTED(
+            ArVoucherTemplateLoader::negDocSchemeExhaustedTemplate,
+            ArVoucherPredicateFactory.NEG_DOC_SCHEME_EXHAUSTED_BEHAVIOR
+    ),
+
     // ─── T-03 Boundary pair: minimum line amount ──────────────────────────────
 
     /** Smallest positive line amount (0.01) — must save successfully. */

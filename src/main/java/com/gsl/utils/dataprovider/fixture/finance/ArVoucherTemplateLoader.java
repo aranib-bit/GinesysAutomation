@@ -354,6 +354,34 @@ public final class ArVoucherTemplateLoader {
                 .build();
     }
 
+    /**
+     * NEG_DOC_SCHEME_EXHAUSTED — a complete, valid voucher (same shape as the boundary-valid one, a normal
+     * 1.00 amount) whose Voucher No. is a document scheme with no numbers left; Save must be rejected with a
+     * proper message. {@code refs} is resolved in EXHAUSTED mode with a Cash counter-leg.
+     */
+    public static MergedFinanceArVoucherData negDocSchemeExhaustedTemplate(ArVoucherLiveDbRefs refs) {
+        String id = "DB_NEG_DOC_SCHEME_EXHAUSTED";
+        List<SubLedgerInformation> subLedgers = buildSubLedgersWithAmount(
+                refs.getPendingSlNames(), refs.getOwnerSiteName(), refs.getSlToArApName(),
+                new BigDecimal("1.00"));
+        List<PaymentInformation> payments = refs.getCashBankType() == CashBankType.CASH
+                ? buildPayments(id, subLedgers, SelectDocumentVariant.PaymentMode.CASH)
+                : List.of();
+        return MergedFinanceArVoucherData.builder()
+                .masterTestData(buildMaster("createArVoucherNegativeBoundary", id, "NEGATIVE | Document scheme exhausted"))
+                .documentInformation(buildDoc(id, refs, FakerUtils.randomRemarks(), FakerUtils.randomReference()))
+                .subLedgerInformationList(subLedgers)
+                .selectDocumentList(List.of())
+                .referenceSitewiseFIFOList(List.of())
+                .paymentInformationList(payments)
+                .paymentProvided(!payments.isEmpty())
+                .needsPaymentInfoWarning(computeNeedsPaymentInfoWarning(subLedgers, payments, refs.getCashBankType()))
+                .expectedValidation(NegativeValidation.DOC_SCHEME_EXHAUSTED)
+                .invocationIndex(1)
+                .totalInvocations(1)
+                .build();
+    }
+
     /** BOUND_AMOUNT_MIN_INVALID — zero line amount → rejected (NegativeValidation.ZERO_AMOUNT). */
     public static MergedFinanceArVoucherData boundAmountMinInvalidTemplate(ArVoucherLiveDbRefs refs) {
         String id = "DB_BOUND_AMT_MIN_INVALID";

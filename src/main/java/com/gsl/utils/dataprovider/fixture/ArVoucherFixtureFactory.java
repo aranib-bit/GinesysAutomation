@@ -40,6 +40,7 @@ public class ArVoucherFixtureFactory {
                         scenario == ArVoucherScenarioType.NEG_BLANK_CASHBANK
                                 || scenario == ArVoucherScenarioType.NEG_BLANK_SUBLEDGER
                                 || scenario == ArVoucherScenarioType.NEG_BLANK_MANDATORY_REFERENCE
+                                || scenario == ArVoucherScenarioType.NEG_DOC_SCHEME_EXHAUSTED
                                 || scenario == ArVoucherScenarioType.BOUND_AMOUNT_MIN_VALID
                                 || scenario == ArVoucherScenarioType.BOUND_AMOUNT_MIN_INVALID;
 

@@ -20,7 +20,11 @@ import com.gsl.model.finance.SlNameWithId;
 import com.gsl.testdata.Finance.Operations.Vouchers.ARVoucher.SubLedgerInformation;
 import com.gsl.testdata.dto.MergedFinanceArVoucherData;
 import com.gsl.utils.Faker.FakerUtils;
+import com.gsl.enums.VoucherDomain;
 import com.gsl.utils.Log;
+import com.gsl.database.finance.ExhaustedDocSchemeBackfill;
+import com.gsl.utils.dataprovider.source.finance.common.DocSchemeMode;
+import com.gsl.utils.dataprovider.source.finance.common.DocSchemeSelection;
 import com.gsl.utils.dataprovider.fixture.ArVoucherFixtureFactory;
 import com.gsl.utils.dataprovider.fixture.ArVoucherLiveDbRefs;
 import com.gsl.utils.dataprovider.fixture.finance.ArVoucherExecutionGroup;
@@ -153,6 +157,14 @@ public class DbArVoucherDataSource implements TestDataSource<MergedFinanceArVouc
                     placeholders.add(buildPlaceholder(testMethodName, loginName, loginPwd, scenario,
                             ArVoucherFixtureOptions.forCashBankTypeAndClsCode(CashBankType.BANK, userClsCode),
                             "DOC_NO_ADJ_USER", "DOC_NO_ADJUSTMENT | [Bank GL] | User SL"));
+                }
+
+            } else if (scenario == ArVoucherScenarioType.NEG_DOC_SCHEME_EXHAUSTED) {
+                // Cash counter-leg (payment handled inline) + EXHAUSTED doc-scheme mode; REGRESSION_PHASE1 like the other negatives.
+                if (matchesGroup(activeGroup, ArVoucherExecutionGroup.REGRESSION_PHASE1)) {
+                    placeholders.add(buildPlaceholder(testMethodName, loginName, loginPwd, scenario,
+                            ArVoucherFixtureOptions.forExhaustedScheme(CashBankType.CASH),
+                            "DB_" + scenario.name(), scenario.name()));
                 }
 
             } else if (scenario == ArVoucherScenarioType.NEG_BLANK_CASHBANK
@@ -525,7 +537,11 @@ public class DbArVoucherDataSource implements TestDataSource<MergedFinanceArVouc
         }
 
         // 7. AR Voucher doc scheme verified for user's site
-        String docSchemeName = findArVoucherDocSchemeName(jdbi, d, siteCodes);
+        // Mode comes from the scenario's fixture options: AUTO normally, EXHAUSTED for the full-scheme negative
+        // scenario (which backfills a full test scheme when none exists).
+        DocSchemeSelection docScheme = ExhaustedDocSchemeBackfill.resolve(jdbi,
+                VoucherDomain.AR, siteCodes, ownerSite.code, opts.getDocSchemeMode());
+        String docSchemeName = docScheme.docName();
 
         // 8. Package into ArVoucherLiveDbRefs — AR Voucher has no TDS behaviour or TDS name
         //    resolution (those fields don't exist on this AR-specific type at all; see its
@@ -534,6 +550,7 @@ public class DbArVoucherDataSource implements TestDataSource<MergedFinanceArVouc
                 .cashBankName(cashBankName)
                 .ownerSiteName(ownerSiteName)
                 .docSchemeName(docSchemeName)
+                .docSchemeNarrative(docScheme.getNarrative())
                 .pendingSlNames(pendingSlNames)
                 .pendingDocsBySlName(pendingDocsBySlName)
                 .slToArApName(slToArApName)
@@ -672,45 +689,6 @@ public class DbArVoucherDataSource implements TestDataSource<MergedFinanceArVouc
         return FakerUtils.randomElement(results);
     }
 
-    /**
-     * Finds the AR Voucher doc scheme name that is:
-     * 1. Linked to 'FinanceARVoucher' menu shortcode in admmenu_docscheme
-     * 2. Assigned to at least one of the user's sites in admou_docscheme
-     */
-    private static String findArVoucherDocSchemeName(Jdbi jdbi, DbDialect d, List<Long> siteCodes) {
-        if (siteCodes == null || siteCodes.isEmpty()) {
-            throw new IllegalStateException("No site codes available — cannot resolve AR Voucher doc scheme name");
-        }
-        // Build IN clause directly from Long values — bypasses JDBI3 template engine
-        // which does not reliably expand <name> templates in raw handle queries.
-        // No SQL injection risk: siteCodes is List<Long> sourced from the DB.
-        String inClause = siteCodes.stream()
-                .map(String::valueOf)
-                .collect(java.util.stream.Collectors.joining(", "));
-        String sql =
-            "SELECT d.docname " +
-            "FROM admdocscheme d " +
-            "WHERE d.doccode IN (" +
-            "    SELECT mds.doccode FROM admmenu_docscheme mds " +
-            "    WHERE mds.mdmenushortcode = 'FinanceARVoucher'" +
-            ") " +
-            "AND d.doccode IN (" +
-            "    SELECT ods.doccode FROM admou_docscheme ods " +
-            "    WHERE ods.admsite_code IN (" + inClause + ")" +
-            ") " +
-            d.limit1();
-
-        Optional<String> result = jdbi.withHandle(handle ->
-            handle.createQuery(sql)
-                .mapTo(String.class)
-                .findFirst()
-        );
-        return result.orElseThrow(() -> new IllegalStateException(
-                "No AR Voucher doc scheme found for sites: " + siteCodes +
-                ". Check admmenu_docscheme WHERE mdmenushortcode='FinanceARVoucher' " +
-                "and admou_docscheme for the user's sites."));
-    }
-
     // ─── Logging helpers ──────────────────────────────────────────────────────
 
     /**
@@ -734,6 +712,9 @@ public class DbArVoucherDataSource implements TestDataSource<MergedFinanceArVouc
         log.add("  Owner Site   : " + refs.getOwnerSiteName());
         log.add("  Cash/Bank GL : " + refs.getCashBankName() + "  (" + refs.getCashBankType().label() + ")");
         log.add("  Doc Scheme   : " + refs.getDocSchemeName());
+        if (refs.getDocSchemeNarrative() != null) {
+            log.addAll(refs.getDocSchemeNarrative());
+        }
         log.add("  Pending SLs  : " + refs.getPendingSlNames());
 
         if (!pendingDocsBySlName.isEmpty()) {

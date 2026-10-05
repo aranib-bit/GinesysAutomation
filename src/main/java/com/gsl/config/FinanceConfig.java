@@ -119,4 +119,62 @@ public interface FinanceConfig extends Config {
     @Key("ar.cheque.differentBank.weight")
     @DefaultValue("1")
     int arChequeDifferentBankWeight();
+
+    /**
+     * Minimum numbers a document scheme must still have left ({@code 10^width - 1 - lastno}) to be
+     * considered available by {@code DocSchemeResolver}. A scheme below this is "exhausted".
+     */
+    @Key("docscheme.min.headroom")
+    @DefaultValue("1")
+    int docSchemeMinHeadroom();
+
+    /**
+     * Docnames of the dedicated small-width test schemes (created by the doc-scheme provisioner and
+     * filled by the k6 filler). {@code DocSchemeResolver} AUTO mode never picks these, so regular
+     * tests cannot consume them; the filler/provisioner touch ONLY these docnames. Comma-separated.
+     */
+    @Key("docscheme.test.names")
+    @DefaultValue("")
+    String[] docSchemeTestNames();
+
+    /**
+     * Environment folders ({@code -Denv}) in which the doc-scheme provisioner and k6 filler may run.
+     * They create/fill data in bulk, so anything not listed here (e.g. a shared or production-like
+     * tenant) is refused. Comma-separated.
+     */
+    @Key("docscheme.provision.allowed.envs")
+    @DefaultValue("clone-staging")
+    String[] docSchemeProvisionAllowedEnvs();
+
+    /**
+     * Expected UI error text when Save is clicked on a document scheme with no numbers left. Deliberately
+     * has NO default: the app currently shows no proper message (known defect), so the wording is whatever
+     * product decides — the exhausted-scheme scenario fails fast with a clear message while this is blank.
+     */
+    @Key("docscheme.exhausted.expected.message")
+    @DefaultValue("")
+    String docSchemeExhaustedExpectedMessage();
+
+    /** Dedicated test scheme (docname, number prefix) used to produce a full scheme for General Voucher. */
+    @Key("docscheme.test.gv.name")
+    @DefaultValue("GV Test")
+    String docSchemeTestGvName();
+
+    @Key("docscheme.test.gv.prefix")
+    @DefaultValue("TGV/")
+    String docSchemeTestGvPrefix();
+
+    /** Dedicated test scheme shared by AR and AP (like the real "AR/AP Voucher" scheme). */
+    @Key("docscheme.test.arap.name")
+    @DefaultValue("AR AP Test")
+    String docSchemeTestArApName();
+
+    @Key("docscheme.test.arap.prefix")
+    @DefaultValue("TAR/")
+    String docSchemeTestArApPrefix();
+
+    /** Digits in the dedicated test schemes' numbers: cap = 10^width - 1 documents to fill (3 -> 999). */
+    @Key("docscheme.test.width")
+    @DefaultValue("3")
+    int docSchemeTestWidth();
 }

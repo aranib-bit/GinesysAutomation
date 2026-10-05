@@ -161,12 +161,24 @@ public abstract class ApiClient {
         return response;
     }
 
+    /** Max response-body characters carried into an {@link ApiException} message. */
+    private static final int ERROR_BODY_MAX_CHARS = 500;
+
+    private static String truncate(String text, int max) {
+        String oneLine = text.replaceAll("\\s+", " ").trim();
+        return oneLine.length() <= max ? oneLine : oneLine.substring(0, max) + "…";
+    }
+
     /** Throws {@link ApiException} on an HTTP 4xx/5xx status or an envelope with {@code success=false}; otherwise a no-op. */
     protected void validateResponse(Response response, String endpoint) {
         int status = response.getStatusCode();
         if (status >= 400) {
-            ReportLogger.networkError("[ApiClient] {} -> HTTP {}: {}", endpoint, status, response.getBody().asString());
-            throw new ApiException("Call to " + endpoint + " failed with HTTP " + status, status);
+            String body = response.getBody().asString();
+            ReportLogger.networkError("[ApiClient] {} -> HTTP {}: {}", endpoint, status, body);
+            // Body goes into the message too (truncated) so the real server reason — e.g. a doc
+            // scheme with no numbers left — is visible wherever the exception is reported.
+            throw new ApiException("Call to " + endpoint + " failed with HTTP " + status
+                    + (body == null || body.isBlank() ? "" : ": " + truncate(body, ERROR_BODY_MAX_CHARS)), status);
         }
         Boolean success = response.jsonPath().get("success");
         if (Boolean.FALSE.equals(success)) {

@@ -506,6 +506,58 @@ public final class GeneralVoucherPredicateFactory {
         };
 
     /**
+     * NEG_DOC_SCHEME_EXHAUSTED_BEHAVIOR — fills a complete valid voucher against a document scheme that has
+     * no numbers left, clicks Save, asserts the proper rejection message, and proves via a before/after
+     * {@code finvchmain} count for the scheme that nothing was created. Same dialog assertion shape as
+     * {@link #NEG_CASH_POST_DATED_BEHAVIOR}; the expected text comes from
+     * {@code docscheme.exhausted.expected.message} (see {@code NegativeValidation.DOC_SCHEME_EXHAUSTED}).
+     */
+    public static final Supplier<BiPredicate<MergedFinanceGeneralVoucherData, GeneralVoucherAdd>>
+        NEG_DOC_SCHEME_EXHAUSTED_BEHAVIOR = () -> (data, page) -> {
+
+            final String scheme = data.getDocumentInformation().getVoucherno();
+            final long[] countBefore = new long[1];
+
+            StepExecutor.step("Count vouchers under '" + scheme + "' before Save", () -> {
+                countBefore[0] = DocSchemeVoucherCounter.count(scheme);
+                ReportLogger.db("Vouchers under '" + scheme + "' before: " + countBefore[0]);
+            });
+
+            StepExecutor.step("Fill Document Information", () ->
+                    page.fillDocumentHeader(data.getDocumentInformation()));
+
+            StepExecutor.step("Fill Expense/Income Detail", () ->
+                    page.fillExpenseIncomeRows(data));
+
+            StepExecutor.step("Fill Cash/Bank Payment Information", () ->
+                    page.handlePaymentInformation(data.getCashBankPaymentInfo(), data.isCashBankPaymentDebit()));
+
+            StepExecutor.step("Click Save — expect doc-scheme-exhausted rejection", () -> {
+                DocumentPopup popup = page.clickSave();
+                String expectedMsg = data.getExpectedValidation().expectedMessage();
+                String actualHeader = popup.verifyErrorHeader("Error");
+                String actualMsg = popup.verifyErrorMessage(expectedMsg);
+                ReportLogger.pass("Popup header: [" + actualHeader + "] | Expected body: ["
+                        + expectedMsg + "] | Actual body: [" + actualMsg + "]");
+                popup.clickOkOnErrorDialog();
+            });
+
+            StepExecutor.step("Verify no voucher was created under '" + scheme + "'", () -> {
+                long after = DocSchemeVoucherCounter.count(scheme);
+                ReportLogger.db("Vouchers under '" + scheme + "' after: " + after);
+                org.testng.Assert.assertEquals(after, countBefore[0],
+                        "A rejected Save must not create a voucher under '" + scheme + "'");
+            });
+
+            StepExecutor.step("Cancel (Logout deferred)", () -> {
+                page.close().clickYes(GeneralVoucherListPage::new);
+                ReportLogger.session("Logout deferred — session may be reused by a later test on this thread.");
+            });
+
+            return true;
+        };
+
+    /**
      * NEG_SITE_ALLOCATION_CROSS_OU_BEHAVIOR — for
      * {@link GeneralVoucherTemplateLoader#negSiteAllocationCrossOuTemplate} (Round 16).
      *

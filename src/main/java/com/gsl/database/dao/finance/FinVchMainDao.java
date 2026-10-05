@@ -18,6 +18,10 @@ public interface FinVchMainDao {
     @SqlQuery("SELECT COUNT(*) FROM finvchmain WHERE scheme_docno = :schemeDocno")
     int countBySchemeDocno(@Bind("schemeDocno") String schemeDocno);
 
+    /** Number of vouchers saved under document scheme {@code doccode} — a before/after delta of 0 proves a rejected Save created nothing. */
+    @SqlQuery("SELECT COUNT(*) FROM finvchmain WHERE doccode = :doccode")
+    long countByDoccode(@Bind("doccode") long doccode);
+
     /** Resolves the {@code vchcode} primary key for a voucher given its {@code scheme_docno}. */
     @SqlQuery("SELECT vchcode FROM finvchmain WHERE scheme_docno = :schemeDocno")
     long findVchcodeBySchemeDocno(@Bind("schemeDocno") String schemeDocno);

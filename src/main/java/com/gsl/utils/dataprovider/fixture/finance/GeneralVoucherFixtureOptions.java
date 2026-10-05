@@ -40,6 +40,14 @@ public class GeneralVoucherFixtureOptions {
     private final int glCount = 1;
 
     /**
+     * Which kind of document scheme the data source should resolve for this scenario — AUTO for every
+     * normal scenario; EXHAUSTED for the "Save on a full scheme" negative scenario.
+     */
+    @Builder.Default
+    private final com.gsl.utils.dataprovider.source.finance.common.DocSchemeMode docSchemeMode =
+            com.gsl.utils.dataprovider.source.finance.common.DocSchemeMode.AUTO;
+
+    /**
      * Number of distinct Sites each such GL row allocates its amount across — mirrors
      * {@link GeneralVoucherVariant#getSiteCount()}. Defaults to 1 (today's single-site behavior)
      * for callers that don't set it explicitly.

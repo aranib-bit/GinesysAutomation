@@ -77,6 +77,7 @@ public class ApVoucherFixtureFactory {
                                 || scenario == ApVoucherScenarioType.NEG_BLANK_SUBLEDGER
                                 || scenario == ApVoucherScenarioType.NEG_BLANK_SUBLEDGER_RECOVER
                                 || scenario == ApVoucherScenarioType.BLANK_REFERENCE_ALLOWED
+                                || scenario == ApVoucherScenarioType.NEG_DOC_SCHEME_EXHAUSTED
                                 || scenario == ApVoucherScenarioType.BOUND_AMOUNT_MIN_VALID
                                 || scenario == ApVoucherScenarioType.BOUND_AMOUNT_MIN_INVALID
                         || scenario == ApVoucherScenarioType.NEG_BLANK_CASHBANK_ADD_ROW

@@ -82,6 +82,14 @@ public enum GeneralVoucherScenarioType implements
             GeneralVoucherPredicateFactory.NEG_CASH_POST_DATED_BEHAVIOR
     ),
 
+    /** A complete valid voucher saved against a document scheme with no numbers left; Save must be
+     *  rejected with a proper message and create nothing. The scheme is resolved in EXHAUSTED mode,
+     *  which provisions and fills a dedicated test scheme when no full scheme exists. */
+    NEG_DOC_SCHEME_EXHAUSTED(
+            GeneralVoucherTemplateLoader::negDocSchemeExhaustedTemplate,
+            GeneralVoucherPredicateFactory.NEG_DOC_SCHEME_EXHAUSTED_BEHAVIOR
+    ),
+
     /** Round 16 — a GL-linked, user-assigned site belonging to a DIFFERENT Organizational Unit
      *  than the resolved Owner Site must not appear in the Allocate Sites picker's search
      *  results (confirmed live, Round 15: "S&CM"/OU=3 vs. "Hena Embroidery"/OU=1). */

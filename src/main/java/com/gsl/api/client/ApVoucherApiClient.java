@@ -327,15 +327,25 @@ public class ApVoucherApiClient extends ApiClient {
     public ApVoucherCreateResponse createApVoucherWithDefaults(
             SubLedgerLookupResult subLedger, int ownerSiteCode, int ouCode, long empCode, int quantity, int rate,
             boolean tdsApplicable) {
+        return createApVoucherWithDefaults(subLedger, ownerSiteCode, ouCode, empCode, quantity, rate,
+                tdsApplicable, null);
+    }
+
+    /**
+     * Same as above, but uses the doc scheme named {@code docSchemeName} (resolved by the caller from
+     * the DB so an exhausted scheme is never picked). {@code null} keeps the legacy pick: the
+     * preferred "AR/AP Voucher" scheme, else the first one the API offers.
+     */
+    public ApVoucherCreateResponse createApVoucherWithDefaults(
+            SubLedgerLookupResult subLedger, int ownerSiteCode, int ouCode, long empCode, int quantity, int rate,
+            boolean tdsApplicable, String docSchemeName) {
 
         String workDate = LocalDate.now() + "T00:00:00";
 
         List<DocNumberSchemeEntry> schemes = StepExecutor.call("Get Doc Scheme Nos for AP Voucher",
                 () -> fetchDocNumberSchemes(ownerSiteCode, workDate));
-        DocNumberSchemeEntry scheme = schemes.stream()
-                .filter(s -> PREFERRED_DOC_SCHEME_NAME.equalsIgnoreCase(s.getName()))
-                .findFirst()
-                .orElseGet(() -> schemes.isEmpty() ? null : schemes.get(0));
+        DocNumberSchemeEntry scheme = DocSchemeSelector.select(
+                schemes, docSchemeName, PREFERRED_DOC_SCHEME_NAME, "AP Voucher");
         long docSchemeCode = scheme != null ? scheme.getCode() : 0;
 
         List<CashBankLedgerLookupResult> cashBankLedgers = StepExecutor.call("Get Cash/Bank Details for AP Voucher",

@@ -40,6 +40,28 @@ public final class K6ProcessBulkDataProvisioner implements BulkDataProvisioner {
     private static final Pattern K6_ACTION_LINE =
             Pattern.compile("^(CreateItem|CreateGrc|CreateDc|Save)\\s\\[VU (\\d+) iter (\\d+)\\]\\s(.*)$");
 
+    // k6 wraps every console.log in its own log format, e.g.
+    //   time="2026-10-05T15:59:43+05:30" level=info msg="FillVoucher [VU 1 iter 0] OK type=AR ..." source=console   (non-TTY)
+    //   INFO[0001] FillVoucher [VU 1 iter 0] OK type=AR ...  source=console                                       (TTY)
+    private static final Pattern K6_LOGFMT_MSG =
+            Pattern.compile("\\smsg=\"((?:[^\"\\\\]|\\\\.)*)\"(?:\\s+\\w+=\\S+)*\\s*$");
+    private static final Pattern K6_TTY_MSG =
+            Pattern.compile("^(?:INFO|WARN|ERRO|DEBU)\\[\\d+\\]\\s+(.*?)\\s+source=console\\s*$");
+
+    /**
+     * Returns the plain {@code console.log} text from a line k6 printed, undoing k6's own log wrapping
+     * (see above); a line that is not wrapped is returned unchanged. Lets structured flow lines such as
+     * {@code FillVoucher [VU n iter m] OK ...} be matched the same way however k6 was launched.
+     */
+    public static String unwrapConsoleLine(String line) {
+        Matcher logfmt = K6_LOGFMT_MSG.matcher(line);
+        if (logfmt.find()) {
+            return logfmt.group(1).replace("\\\"", "\"").replace("\\\\", "\\");
+        }
+        Matcher tty = K6_TTY_MSG.matcher(line);
+        return tty.matches() ? tty.group(1) : line;
+    }
+
     /** Maps a {@link #K6_ACTION_LINE} action prefix (e.g. {@code "CreateItem"}) to its report step label.
      *  @throws IllegalStateException if {@code k6ActionPrefix} isn't one of the mapped prefixes */
     private static BackfillStepLabel labelFor(String k6ActionPrefix) {
@@ -54,12 +76,12 @@ public final class K6ProcessBulkDataProvisioner implements BulkDataProvisioner {
 
     /**
      * Resolves {@code scriptKey} to its k6 script path via {@link ApiConfig#k6ScriptPathFor(String)},
-     * launches it as a child process with {@code TARGET_DOC_COUNT} and {@code TENANT} environment
+     * launches it as a child process with {@code TARGET_DOCS} and {@code TENANT} environment
      * variables set, streams its combined stdout/stderr into the report as it runs (see
      * {@link #captureOutputToReport(Process)}), and blocks until the process exits.
      *
      * @param scriptKey which k6 scenario script to run (see {@link BulkDataProvisioner#provisionAndWait})
-     * @param quantity  how many records the run should produce; forwarded as {@code TARGET_DOC_COUNT}
+     * @param quantity  how many records the run should produce; forwarded as {@code TARGET_DOCS}
      * @throws DataSetupException if the k6 process exits non-zero, or if it can't be started/awaited
      */
     @Override
@@ -68,7 +90,10 @@ public final class K6ProcessBulkDataProvisioner implements BulkDataProvisioner {
         String scriptPath = cfg.k6ScriptPathFor(scriptKey);
 
         ProcessBuilder pb = new ProcessBuilder(cfg.k6BinaryPath(), "run", scriptPath);
-        pb.environment().put("TARGET_DOC_COUNT", String.valueOf(quantity));
+        // TARGET_DOCS is the name the k6 scenarios actually read (scenarios/targetDocs.js,
+        // itemGrcDcTransferOutChainTargetDocs.js, fillDocScheme.js). This used to be sent as
+        // TARGET_DOC_COUNT, which no k6 script reads, so the requested quantity was silently ignored.
+        pb.environment().put("TARGET_DOCS", String.valueOf(quantity));
         pb.environment().put("TENANT", cfg.activeTenant());
         pb.redirectErrorStream(true);
 
@@ -89,6 +114,43 @@ public final class K6ProcessBulkDataProvisioner implements BulkDataProvisioner {
                 Thread.currentThread().interrupt();
             }
             throw new DataSetupException("[K6ProcessBulkDataProvisioner] Failed to run k6 bulk provisioning", e);
+        }
+    }
+
+    /**
+     * Runs the k6 script for {@code scriptKey} with {@code extraEnv} added to the child's environment,
+     * hands every combined stdout/stderr line to {@code lineHandler} as it arrives, and blocks until the
+     * process exits. Unlike {@link #provisionAndWait} it never throws on a non-zero exit — the caller
+     * decides what a failed/partial run means (e.g. {@code DocSchemeFiller} re-reads the DB instead).
+     *
+     * @return the process exit code
+     * @throws DataSetupException if the process can't be started or awaited
+     */
+    public int run(String scriptKey, Map<String, String> extraEnv, java.util.function.Consumer<String> lineHandler) {
+        ApiConfig cfg = ConfigFactory.getApiConfig();
+        String scriptPath = cfg.k6ScriptPathFor(scriptKey);
+
+        ProcessBuilder pb = new ProcessBuilder(cfg.k6BinaryPath(), "run", scriptPath);
+        pb.environment().putAll(extraEnv);
+        pb.redirectErrorStream(true);
+        ReportLogger.dataBackfillWarn("[K6ProcessBulkDataProvisioner] Launching k6: {} (env {})",
+                String.join(" ", pb.command()), extraEnv);
+
+        try {
+            Process process = pb.start();
+            try (BufferedReader reader = new BufferedReader(
+                    new InputStreamReader(process.getInputStream(), StandardCharsets.UTF_8))) {
+                String line;
+                while ((line = reader.readLine()) != null) {
+                    lineHandler.accept(unwrapConsoleLine(line));
+                }
+            }
+            return process.waitFor();
+        } catch (IOException | InterruptedException e) {
+            if (e instanceof InterruptedException) {
+                Thread.currentThread().interrupt();
+            }
+            throw new DataSetupException("[K6ProcessBulkDataProvisioner] Failed to run k6", e);
         }
     }
 

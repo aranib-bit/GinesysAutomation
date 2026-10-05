@@ -301,6 +301,39 @@ public final class ApVoucherTemplateLoader {
                 .build();
     }
 
+    /**
+     * NEG_DOC_SCHEME_EXHAUSTED — a complete, valid advance voucher (normal 1.00 amount) whose Voucher No. is a
+     * document scheme with no numbers left; Save must be rejected with a proper message. {@code refs} is
+     * resolved in EXHAUSTED mode with a Cash counter-leg.
+     */
+    public static MergedFinanceApVoucherData negDocSchemeExhaustedTemplate(ApVoucherLiveDbRefs refs) {
+        String id = "DB_NEG_DOC_SCHEME_EXHAUSTED";
+        List<SubLedgerInformation> subLedgers = buildSubLedgersForAdvance(
+                refs.getPendingSlNames(), refs.getSlToArApName(), refs.getSlToRefSiteName(),
+                new BigDecimal("1.00"));
+        List<PaymentInformation> payments = refs.getCashBankType() == CashBankType.CASH
+                ? buildPayments(id, subLedgers, SelectDocumentVariant.PaymentMode.CASH)
+                : List.of();
+        return MergedFinanceApVoucherData.builder()
+                .masterTestData(buildMaster("createApVoucherNegativeBoundary", id,
+                        "NEGATIVE | Document scheme exhausted | " + glLabel(refs)))
+                .documentInformation(buildDoc(id, refs, FakerUtils.randomRemarks(),
+                        FakerUtils.randomReference(), "Yes"))
+                .subLedgerInformationList(subLedgers)
+                .selectDocumentList(List.of())
+                .referenceSitewiseFIFOList(List.of())
+                .paymentInformationList(payments)
+                .tdsAndNetPayableList(List.of())
+                .onAccount(true)
+                .tdsProvided(false)
+                .paymentProvided(!payments.isEmpty())
+                .needsPaymentInfoWarning(computeNeedsPaymentInfoWarning(subLedgers, payments, refs.getCashBankType()))
+                .expectedValidation(NegativeValidation.DOC_SCHEME_EXHAUSTED)
+                .invocationIndex(1)
+                .totalInvocations(1)
+                .build();
+    }
+
     /** BOUND_AMOUNT_MIN_VALID — smallest positive line amount (0.01) → must save. */
     public static MergedFinanceApVoucherData boundAmountMinValidTemplate(ApVoucherLiveDbRefs refs) {
         String id = "DB_BOUND_AMT_MIN_VALID";

@@ -60,6 +60,14 @@ public class ArVoucherFixtureOptions {
     private final long slClsCode = 0L;
 
     /**
+     * Which kind of document scheme the data source should resolve for this scenario — AUTO for every
+     * normal scenario; EXHAUSTED for the "Save on a full scheme" negative scenario.
+     */
+    @Builder.Default
+    private final com.gsl.utils.dataprovider.source.finance.common.DocSchemeMode docSchemeMode =
+            com.gsl.utils.dataprovider.source.finance.common.DocSchemeMode.AUTO;
+
+    /**
      * Optional document-type filter applied to the pending-document query.
      * When non-null, only documents matching {@code v_pending_adj.entype = docTypeFilter}
      * are fetched. Examples: {@code "INV"} (Invoice), {@code "DN"} (Debit Note).
@@ -91,6 +99,17 @@ public class ArVoucherFixtureOptions {
      * Returns an instance configured for a specific GL type (used for FIFO / REF_SITEWISE_FIFO
      * Cash GL placeholders that do not require SL-classification filtering).
      */
+    /** Options for the "Save on a full document scheme" negative scenario: resolves the scheme in EXHAUSTED mode. */
+    public static ArVoucherFixtureOptions forExhaustedScheme(CashBankType type) {
+        int floor = com.gsl.config.ConfigFactory.getWaitConfig().docSelectorDocumentCountDefault();
+        return ArVoucherFixtureOptions.builder()
+                .subLedgerCount(1)
+                .documentCount(Math.max(1, floor))
+                .glType(type)
+                .docSchemeMode(com.gsl.utils.dataprovider.source.finance.common.DocSchemeMode.EXHAUSTED)
+                .build();
+    }
+
     public static ArVoucherFixtureOptions forCashBankType(CashBankType type) {
         int floor = com.gsl.config.ConfigFactory.getWaitConfig().docSelectorDocumentCountDefault();
         return ArVoucherFixtureOptions.builder()

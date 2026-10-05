@@ -93,6 +93,16 @@ public class CreateGeneralVoucherNegativeBoundary extends WebTest {
         scenarios.put(GeneralVoucherScenarioType.NEG_CASH_POST_DATED,
                 GeneralVoucherFixtureOptions.of(GlAccountType.EXPENSE, GlLineType.TYPE2_SITE_ONLY,
                         true, false, GeneralVoucherPaymentVariant.CASH));
+        // CASH + Type2, like NEG_CASH_POST_DATED (a proven-resolvable shape). EXHAUSTED makes the data
+        // source hand back a document scheme with no numbers left, provisioning/filling a dedicated
+        // test scheme first when none exists (see ExhaustedDocSchemeBackfill) — skipped, not failed,
+        // in environments where that is not allowed.
+        scenarios.put(GeneralVoucherScenarioType.NEG_DOC_SCHEME_EXHAUSTED,
+                GeneralVoucherFixtureOptions.of(GlAccountType.EXPENSE, GlLineType.TYPE2_SITE_ONLY,
+                        true, false, GeneralVoucherPaymentVariant.CASH)
+                        .toBuilder()
+                        .docSchemeMode(com.gsl.utils.dataprovider.source.finance.common.DocSchemeMode.EXHAUSTED)
+                        .build());
         // Round 16 — needs a GL with at least one fingl_site-linked, user-assigned site whose OWN
         // admou_code differs from the resolved Owner Site's (see ofCrossOuSite's Javadoc and
         // DbGeneralVoucherDataSource#resolveCrossOuSiteForNegativeTest).

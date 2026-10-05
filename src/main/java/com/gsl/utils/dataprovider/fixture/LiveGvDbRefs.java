@@ -32,6 +32,10 @@ public class LiveGvDbRefs {
     /** First usable OS-OO-CM owner site the logged-in user is assigned to (admsite). */
     String ownerSiteName;
 
+    /** Doc scheme ({@code admdocscheme.docname}) chosen by {@code DocSchemeResolver} as one that can still
+     *  generate a number; passed as the Voucher No. selection. Null leaves the app default in place. */
+    String docSchemeName;
+
     /** Active Cash or Bank GL scoped to the owner site (fingl), matching {@link #cashBankType}. */
     String cashBankName;
 

@@ -151,6 +151,54 @@ public final class ArVoucherPredicateFactory {
             return true;    // test passes when expected error was raised
         };
 
+    // ─── Document scheme exhausted ────────────────────────────────────────────
+
+    /**
+     * NEG_DOC_SCHEME_EXHAUSTED_BEHAVIOR — fills a complete valid voucher against a document scheme with no
+     * numbers left, clicks Save, asserts the proper rejection message, and proves via a before/after
+     * {@code finvchmain} count for the scheme that nothing was created. Same dialog handling as
+     * {@link #NEGATIVE_FORM_VALIDATION_BEHAVIOR}; the expected text comes from
+     * {@code docscheme.exhausted.expected.message} (see {@code NegativeValidation.DOC_SCHEME_EXHAUSTED}).
+     */
+    public static final Supplier<BiPredicate<MergedFinanceArVoucherData, ArVoucherAdd>>
+        NEG_DOC_SCHEME_EXHAUSTED_BEHAVIOR = () -> (data, page) -> {
+
+            final String scheme = data.getDocumentInformation().getVoucherno();
+            final long[] countBefore = new long[1];
+
+            StepExecutor.step("Count vouchers under '" + scheme + "' before Save", () -> {
+                countBefore[0] = DocSchemeVoucherCounter.count(scheme);
+                ReportLogger.db("Vouchers under '" + scheme + "' before: " + countBefore[0]);
+            });
+
+            StepExecutor.step("Fill Document Information", () ->
+                    page.fillDocumentHeader(data.getDocumentInformation()));
+
+            StepExecutor.step("Fill Sub-Ledger Rows", () ->
+                    page.fillSubLedgerRows(data, false));
+
+            StepExecutor.step("Click Save — expect doc-scheme-exhausted rejection", () -> {
+                DocumentPopup popup = page.clickSave();
+                String expectedMsg = data.getExpectedValidation().expectedMessage();
+                String actualMsg = popup.verifyErrorMessage(expectedMsg);
+                ReportLogger.pass("Validation OK — Expected: [" + expectedMsg + "] | Received: [" + actualMsg + "]");
+            });
+
+            StepExecutor.step("Verify no voucher was created under '" + scheme + "'", () -> {
+                long after = DocSchemeVoucherCounter.count(scheme);
+                ReportLogger.db("Vouchers under '" + scheme + "' after: " + after);
+                org.testng.Assert.assertEquals(after, countBefore[0],
+                        "A rejected Save must not create a voucher under '" + scheme + "'");
+            });
+
+            StepExecutor.step("Cancel (Logout deferred)", () -> {
+                page.close().clickYes(ArVoucherListPage::new);
+                ReportLogger.session("Logout deferred — session may be reused by a later test on this thread.");
+            });
+
+            return true;
+        };
+
     // ─── T-03 Boundary "pass-at-limit" behavior ───────────────────────────────
 
     /**

@@ -34,7 +34,11 @@ import com.gsl.reports.ReportLogger;
 import com.gsl.testdata.MasterTestData;
 import com.gsl.testdata.dto.MergedFinanceApVoucherData;
 import com.gsl.utils.Faker.FakerUtils;
+import com.gsl.enums.VoucherDomain;
 import com.gsl.utils.Log;
+import com.gsl.database.finance.ExhaustedDocSchemeBackfill;
+import com.gsl.utils.dataprovider.source.finance.common.DocSchemeMode;
+import com.gsl.utils.dataprovider.source.finance.common.DocSchemeSelection;
 import com.gsl.utils.dataprovider.fixture.ApVoucherFixtureFactory;
 import com.gsl.utils.dataprovider.fixture.ApVoucherLiveDbRefs;
 import com.gsl.utils.dataprovider.fixture.finance.ApVoucherExecutionGroup;
@@ -225,6 +229,15 @@ public class DbApVoucherDataSource implements TestDataSource<MergedFinanceApVouc
                                 ApVoucherFixtureOptions.forAdvanceWithTdsSingleNature(CashBankType.BANK),
                                 "DB_ADV_TDS_SINGLE_NATURE",
                                 "ADVANCE | [Bank GL] | TDS | Single Nature Tagged"));
+                    }
+
+                // ── Document scheme exhausted (advance path, Cash counter-leg, EXHAUSTED scheme mode) ──
+                } else if (scenario == ApVoucherScenarioType.NEG_DOC_SCHEME_EXHAUSTED) {
+                    if (matchesGroup(activeGroup, ApVoucherExecutionGroup.REGRESSION_PHASE1)) {
+                        batch.add(buildPlaceholder(testMethodName, loginName, scenario,
+                                ApVoucherFixtureOptions.forExhaustedScheme(CashBankType.CASH),
+                                "DB_" + scenario.name(),
+                                scenario.name()));
                     }
 
                 // ── T-03 Negative & Boundary (advance path) ─────────────────────────────
@@ -578,7 +591,11 @@ public class DbApVoucherDataSource implements TestDataSource<MergedFinanceApVouc
         }
 
         // 6. AP Voucher doc scheme verified for user's site
-        String docSchemeName = findApVoucherDocSchemeName(jdbi, d, siteCodes);
+        // Mode comes from the scenario's fixture options: AUTO normally, EXHAUSTED for the full-scheme negative
+        // scenario (which backfills a full test scheme when none exists).
+        DocSchemeSelection docScheme = ExhaustedDocSchemeBackfill.resolve(jdbi,
+                VoucherDomain.AP, siteCodes, ownerSite.code, opts.getDocSchemeMode());
+        String docSchemeName = docScheme.docName();
 
         // 7. Package into ApVoucherLiveDbRefs — include tdsBehaviour from fixture options so that
         //    ApVoucherTemplateLoader.buildTdsRows() generates the correct behaviour name
@@ -591,6 +608,7 @@ public class DbApVoucherDataSource implements TestDataSource<MergedFinanceApVouc
                 .selectDocKnownCheque(opts.isKnownCheque())
                 .ownerSiteName(ownerSiteName)
                 .docSchemeName(docSchemeName)
+                .docSchemeNarrative(docScheme.getNarrative())
                 .pendingSlNames(pendingSlNames)
                 .pendingDocsBySlName(pendingDocsBySlName)
                 .slToArApName(slToArApName)
@@ -1013,44 +1031,6 @@ public class DbApVoucherDataSource implements TestDataSource<MergedFinanceApVouc
         return FakerUtils.randomElement(results);
     }
 
-    /**
-     * Finds the AP Voucher doc scheme name that is:
-     * (1) Linked to {@code 'FinanceAPVoucher'} menu shortcode in admmenu_docscheme
-     * (2) Assigned to at least one of the user's sites in admou_docscheme
-     */
-    private static String findApVoucherDocSchemeName(Jdbi jdbi, DbDialect d, List<Long> siteCodes) {
-        if (siteCodes == null || siteCodes.isEmpty()) {
-            throw new IllegalStateException("No site codes available — cannot resolve AP Voucher doc scheme name");
-        }
-        // Build IN clause directly from Long values — bypasses JDBI3 template engine
-        // which does not reliably expand <name> templates in raw handle queries.
-        // No SQL injection risk: siteCodes is List<Long> sourced from the DB.
-        String inClause = siteCodes.stream()
-                .map(String::valueOf)
-                .collect(java.util.stream.Collectors.joining(", "));
-        String sql =
-            "SELECT d.docname " +
-            "FROM admdocscheme d " +
-            "WHERE d.doccode IN (" +
-            "    SELECT mds.doccode FROM admmenu_docscheme mds " +
-            "    WHERE mds.mdmenushortcode = 'FinanceAPVoucher'" +
-            ") " +
-            "AND d.doccode IN (" +
-            "    SELECT ods.doccode FROM admou_docscheme ods " +
-            "    WHERE ods.admsite_code IN (" + inClause + ")" +
-            ") " +
-            d.limit1();
-
-        Optional<String> result = jdbi.withHandle(handle ->
-            handle.createQuery(sql)
-                .mapTo(String.class)
-                .findFirst()
-        );
-        return result.orElseThrow(() -> new IllegalStateException(
-                "No AP Voucher doc scheme found for sites: " + siteCodes +
-                ". Check admmenu_docscheme WHERE mdmenushortcode='FinanceAPVoucher' " +
-                "and admou_docscheme for the user's sites."));
-    }
 
     /**
      * Returns all distinct {@code admcls} classification codes that have at least one
@@ -1579,6 +1559,9 @@ public class DbApVoucherDataSource implements TestDataSource<MergedFinanceApVouc
         log.add("  Owner Site   : " + refs.getOwnerSiteName());
         log.add("  Cash/Bank GL : " + refs.getCashBankName() + "  (" + refs.getCashBankType().label() + ")");
         log.add("  Doc Scheme   : " + refs.getDocSchemeName());
+        if (refs.getDocSchemeNarrative() != null) {
+            log.addAll(refs.getDocSchemeNarrative());
+        }
         log.add("  Pending SLs  : " + refs.getPendingSlNames());
 
         if (!pendingDocsBySlName.isEmpty()) {
