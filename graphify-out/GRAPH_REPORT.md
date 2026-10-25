@@ -1,78 +1,80 @@
-# Graph Report - SeleniumFramework3.141_NEW  (2026-10-06)
+# Graph Report - SeleniumFramework3.141_NEW  (2026-10-25)
 
 ## Corpus Check
-- 1358 files · ~2,734,801 words
+- 1259 files · ~699,822 words
 - Verdict: corpus is large enough that graph structure adds value.
 
 ## Summary
-- 9973 nodes · 32750 edges · 453 communities (264 shown, 187 thin omitted)
-- Extraction: 94% EXTRACTED · 6% INFERRED · 0% AMBIGUOUS · INFERRED: 1839 edges (avg confidence: 0.81)
+- 10660 nodes · 34646 edges · 423 communities (252 shown, 170 thin omitted)
+- Extraction: 94% EXTRACTED · 6% INFERRED · 0% AMBIGUOUS · INFERRED: 2020 edges (avg confidence: 0.81)
 - Token cost: 0 input · 0 output
 
 ## Graph Freshness
-- Built from commit: `00ff7b68`
+- Built from commit: `376daf21`
 - Run `git rev-parse HEAD` and compare to check if the graph is stale.
 - Run `graphify update .` after code changes (no API cost).
 
 ## Community Hubs (Navigation)
-- org.openqa.selenium.By
+- SeleniumUtils
 - lombok.Builder
 - .getApiConfig
-- FrameworkAnnotation
+- org.testng.annotations.Test
 - PendingArDocumentBackfillStrategy.java
-- .warn
+- .archiveRunLogs
 - lombok.Value
-- io.github.sskorol.converters.IConverter
-- WaitUtils
-- GeneralVoucherGridColumnHeader
+- .getExcelDataConfig
+- .getWaitConfig
+- IVoucherGridColumnHeader
 - GoodsReceiveChallanAdd
 - ApiConfig
 - ExecutionContext
-- DbApVoucherDataSource.java
-- ChequeRegisterPaymentInformationPopup
-- .setUp
-- ConfigFactory.java
+- FormSection
+- .fillAndSubmit
+- .warn
+- DatabaseManager
 - FinVchMain
-- UiValidationFailure
-- .info
-- org.openqa.selenium.WebDriver
-- VoucherDomain
-- com.fasterxml.jackson.annotation.JsonInclude
-- org.testng.annotations.Test
+- UiComponentValidator
+- .loadFreshForScenarioInternal
+- BrowserOptions.java
+- VoucherDomain.java
+- RuntimeProfileHolder
+- K6ProcessBulkDataProvisioner
 - CoverageSheetWriter
-- APVoucherSubLedgerInformation.java
+- .click
 - com.gsl.testdata.dto.MergedFinanceApVoucherData
-- org.apache.logging.log4j.Logger
-- ReportLogger
-- NetworkTimingCapture.java
-- .getDriver
+- ConfigFactory.java
+- StepExecutor.java
+- NetworkConfig
+- JavascriptExecutorUtils
+- MainMenuType
 - DiagnosticSection
-- com.gsl.model.finance.SlNameWithId
+- DbApVoucherDataSource.java
 - org.jdbi.v3.sqlobject.statement.SqlQuery
 - lombok.Getter
+- BaseFrontendSection
 - BulkDataProvisioner
 - LoginPage
 - com.gsl.pages.enums.Finance.Operations.Common.IVoucherListColumn
-- TestResultsAccumulator
-- AllowPriceChangeType
+- FinanceDomainReporter
+- io.github.sskorol.converters.IConverter
 - FailureCategory
 - VoucherListFooterBase
 - PooledSession
-- AccountGroupContextMenu
-- UserCredential
-- .compare
+- org.openqa.selenium.By
+- EditGeneralVoucher.java
+- ApVoucherAdd
 - ApVoucherScenarioType
-- NetworkConfig
+- VoucherMainGridBase
 - PaymentReference
-- SummaryReportBuilder
+- .onStart
 - GeneralVoucherExpenseIncomeDetail
 - PaymentSelectionType
 - DiagnosticsConfig
-- .fmt
+- ReportLogger
 - ItemOthers.java
 - ItemInventoryTracking.java
 - .logMethod
-- ServiceInvoiceAdhocApiScenarioType
+- PreSuiteHealthCheck.java
 - ServiceInvoiceAdhocApiClient.java
 - SelectDocumentVariant
 - UiStyleBaseline
@@ -90,115 +92,115 @@
 - .getExecutionConfig
 - .diffAuditTable
 - DocSchemeAdminApiClient
-- ArVoucherTemplateLoader.java
+- org.jdbi.v3.core.Jdbi
 - AuditTrace
-- .accountGroupLifecycle
+- .isElementPresent
 - CommonVoucherListColumn
 - LogFormat
-- XlsxBook
+- Align
 - ApVoucherTag
-- ValidationRule
+- Observation
 - VoucherListPageBase
 - ArVoucherScenarioType
 - SshConnectionPool
-- SkipException
-- GeneralVoucherFixtureOptions
-- UiComponentSection
+- .selectOrBackfill
+- PopupUi
+- org.openqa.selenium.WebDriver
 - FrontendPerformanceSection
 - AuditComparator.java
 - RegularItemDetail
-- GeneralVoucherExtentDescriptionLogger
+- com.gsl.testdata.Finance.Operations.Vouchers.GeneralVoucher.ExpenseIncomeDetail
 - TestEnvironment
 - WaitConfig
-- org.jdbi.v3.core.Jdbi
+- AccountingPeriodResolver
 - CustomMetricsSection
 - PaymentInformationPopup
 - UiKnownIssue
-- .getJdbi
-- FilledFormUiRecorder
+- GeneralVoucherUiValidation
+- GeneralVoucherAdd
 - ConcurrentResultManager
-- TdsApplicableAmountFlow
-- ExpenseIncomeDetail
+- .waitForExtJS
+- ExpectedChangeSet
 - .parseSheet
 - com.gsl.enums.GlAccountType
 - AutoQtyPopupType
 - RootCauseCategory
-- .enforce
-- MergedInventoryItemData
-- PublicApiAvailabilityChecker
+- ViewportEnforcer.java
+- RunMode
+- AdminTopMenuComponent.java
 - CoverageWorkbookTest
 - LabelEnum
 - CategoryLevel
 - JdbiSqlLogger
 - LogEntry
 - jquery.min.js
-- MobileDriverData
-- VoucherReportData
+- AppiumProvider.java
+- MergedFinanceArVoucherData
 - ISubModule
 - RemoteLogCollector
-- .onTestStart
+- IVoucherGridAction
 - GeneralVoucherTag
 - SetupMenuType
 - Product_DefintionMenuType
-- com.gsl.enums.WaitType
-- PublicApiOAuth2Strategy
+- InventoryTopMenuComponent
+- WebApiTokenAuthStrategy.java
 - OperationsMenuType
 - BrowserFingerprint
-- .getBrowserConfig
-- .click
+- Browser
+- ItemAdd
 - WinRmLogFetcher
 - PaymentInfoLabel
 - VoucherDocumentLabels
-- ARVoucherMainGrid
-- .isElementPresent
+- ArVoucherListPage.java
+- TopModuleMenuComponent
 - WaitAnalysisSection
 - testng-reports.js
 - UiValidationReporter
-- .saveScreenshotWithMetadata
-- ReportConfigRenderer
+- .getDriver
+- .getExtentTest
 - EnvExcelPathConverter
 - LogCategory
 - TestExecutor
-- SshLogFetcher.java
-- ActiveGroupFilters
-- com.gsl.testdata.dto.MergedFinanceGeneralVoucherData
+- RemoteLogCollector.java
+- RowState
+- LiveGvDbRefs
 - DocumentReservationRegistry.tryReserve
 - .getNetworkConfig
 - VoucherType
-- BaseFrontendSection
-- AdjustmentMismatchPlan
-- AppLogPathsConfig
+- UiElementType
+- ApVoucherEditPredicateFactory.java
+- .getBrowserConfig
 - FrameworkConfig
 - HtmlCaptureSection
 - ReturnBehaviourType
 - PopupResult
 - OperationsMenuType
 - .render
-- SnapshotValidationReporter
+- .getJdbi
 - AccountGroupTreeNode.isLeafByTree
-- .getExtentTest
+- .onTestStart
 - PageStylingSpec.java
 - ActualResultsLogger
 - ChangeClassification
 - FinanceConfig
-- ServerUtilSection
+- Handover: Common UI validation (GV / AP / AR) + run stability
 - FoldableSectionRenderer
-- MergedReceiptData
+- MasterTestData
 - FailureCategory
-- WmsBaseScreen
-- PopupOutcome
+- org.openqa.selenium.support.ui.WebDriverWait
+- PopupResult
 - .dataBackfill
 - DownloadUtils
 - DataBaseConfig
 - CombinedValidationError
-- .error
-- FieldStyleSpec
+- com.aventstack.extentreports.ExtentReports
+- APVoucherDocumentInformation.java
 - mvnw
-- GeneralVoucherAdd
+- com.gsl.validation.ui.UiValidationFailure
 - ColumnRule
-- NetworkTimingSection
+- SubModuleResolver.java
 - .fillToCap
-- LogAttachment.java
+- TestListener.java
 - xe
 - CoverageResult
 - ActivePopupSection
@@ -206,36 +208,36 @@
 - EventLogSection
 - PerformanceTimingSection
 - ThreadDumpSection
-- AdvancedExtentLogger
-- XlsxWriter.java
-- .logout
+- java.util.regex.Pattern
+- OperationsMenuType
+- com.gsl.enums.ApiPlatform
 - ChequeEdgeCase
 - t
-- JsErrorCategory
+- ComparisonStrategy
 - DocumentMessageBox
 - ActionTrailSection
 - .session
 - .classify
-- .getFinanceConfig
-- PaymentPanelField
-- ItemSelectionType
-- SubModuleResolver.java
-- FilterType
-- ColumnDataType
+- com.gsl.enums.CashBankType
+- StepTimelineSection
+- AccountGroupContextMenu
+- LogisticsMenuType.java
+- Javadoc pass progress
+- DocumentReservationRegistry
 - DbQueryLogger
 - InventoryManagementSelectionOption
 - WMSMenuType
 - FooterMode
-- Secrets
+- EnvResolver
 - OSType
 - BrowserLogMode
-- ExtentLogger.java
-- ExtJsUtils
-- BaseFrontendSection
-- AuditStateSummary
-- BrowserLogRecord
+- GeneralVoucherPaymentVariant
+- .load
+- NoOpNetworkCapture
+- AnnotationMethodInterceptor.java
+- UiComponentSection
 - ft
-- DbStateSection
+- Override
 - OrganizationMenuType
 - ExecutionType
 - w
@@ -243,8 +245,8 @@
 - DataLoadScope.isActive
 - SuppressWarnings
 - SetupMenuType
-- .record
-- .buildJson
+- EnvExcelPathConverter.java
+- PostgresDialect
 - VariantListPage
 - ItemInformation (Procurement.Operations.Common)
 - ProcurementBasePage
@@ -272,7 +274,7 @@
 - ServiceInvoiceAdhocListPage (stub)
 - ServiceInvoiceAgainstDocumentListPage (stub)
 - ServiceOrderListPage (stub)
-- GeneralVoucherIncomeExpenseRowView
+- SetupSideMenuComponent
 - Config
 - DataProviderTransformer
 - createTransferOut.js (k6 flow)
@@ -286,37 +288,36 @@
 - Maven Wrapper Script (mvnw)
 - org.example:SeleniumFramework
 - RuntimeException
-- .switchTo
+- com.gsl.enums.PlatformType
 - OperationsSideMenuComponent
-- .js
-- .perf
+- .fmtAmount
+- PerformanceLogger
 - CoverageRow
-- CommonButton
+- Windows Grid readiness
 - FlakySummarySection
-- GlAccountType
+- GlLineType.java
 - SqlLogger
-- ValidationBuffer (external)
-- PaymentInfoDateScenario
-- TransferOutCreateResponse
-- com.gsl.enums.Browser
-- DocSchemeSiteUpdateBodyTest
+- OracleDialect
+- ApiException.java
+- SeleniumGridProvider.java
+- .resolveTriggerStatus
 - BatchItemDetail
 - ChequeInstrumentResolver
-- ApVoucherExtentDescriptionLogger
+- APVoucherSubLedgerInformation
 - UniqueNameGenerator.batchOrSerialCode
 - UniqueNameGenerator.itemName
-- PerformanceSummaryStats
+- Comment-Tag Convention (Better Comments)
 - PricingData.jittered
 - AccountGroupTreeNode.flatten
 - GeneralVoucherScenarioType
-- ExtJsPerformanceSection
+- SubLedgerGridButtonLabel
 - DataLoadScope.enter
 - DataLoadScope.exit
-- ARVoucherListColumn
+- Procurement/Setup/SetupMenuType.java
 - ButtonText
 - NetworkLogRecord
 - BackfillStepLabel
-- GeneralVoucherDescriptionBuilder
+- TdsNamePopup
 - HrEmpOuDao.findOuCodesByEcode
 - HrEmpOuDao.findSiteCodesByEcode
 - DbIdQueue.getNextId
@@ -326,81 +327,78 @@
 - ReferenceSiteAmountRegistry.releaseCurrentThread
 - ReferenceSiteAmountRegistry.tryReserve
 - ScreenshotMetadata.toAnnotation
-- .record
-- PopupType
+- ResultCollector
+- DocumentMessageBoxMessage
 - LogFetchRequestValidator
 - ItemItemDetail
 - SetupMenuType
 - VoucherReleaseStatus.java
-- ScanItem
+- TestLogger
 - SerialItemDetail
-- .debug
-- ApVoucherListPage
-- IVoucherListColumn
-- .getAttribute
-- RemoteLogCollector.java
-- VoucherDocumentHeader
-- ScanItemAdapter
+- .sendKeys
+- com.gsl.utils.dataprovider.fixture.finance.DocumentSearchStrategy
+- ItemDetail
+- UiValidationFailure
+- RawPropertyReader
+- VoucherReportData
+- .receiptsDataTest
 - DocPartialKind
-- ExtJsQuickTipUtils
+- NegativeValidationSteps
 - FinanceVoucherAddEditPageHeader
 - ChangeExpectation
-- .flushToReport
+- com.gsl.enums.Finance.Operations.APVoucher.OnAccountClearConfirmAction
 - CoverageSheetWriter.java
-- DriverCapabilitiesSection
-- AngularPerformanceSection
+- UI validation: one common stage for every voucher
+- LedgerMasterBackfillStrategy
 - ArVoucherExecutionGroup
 - VoucherEditDateVariant
-- ReactPerformanceSection
+- GridColumnKind.java
 - TdsNameQuery
 - FinanceSaveHeaderType.java
-- UiFailureCollector
-- PostSaveDialogHandler
-- ExcelSheetReader.java
-- XlsxFill
+- ExtentReports
+- .shouldReExpandPicker
+- DocSchemeVoucherCounter
+- .close
 - AuditTableCheckResult
 - ColumnCheckResult
-- CreateGeneralVoucherNegativeBoundary.java
-- ReportSeverity
+- APVoucherFooter
+- ARVoucherDocumentInformation
 - ItemDetail.java
 - com.gsl.driver.ExecutionContext
-- .loadFreshForScenario
+- com.gsl.testdata.dto.MergedFinanceGeneralVoucherData
 - org.aeonbits.owner.Config
-- com.gsl.model.finance.FinSl
+- ARVoucherFooter
 - RunMeta
-- com.gsl.pages.Common.DocumentMessageBox
+- com.gsl.api.model.generalvoucher.GeneralVoucherCreateRequest
 - com.gsl.pages.enums.Finance.MainMenuType
-- GeneralVoucherApiBackfillStrategy
-- CommonVoucherListColumn
+- GeneralVoucherApiClient
+- com.gsl.reports.profile.NetworkConfig
 - com.gsl.pages.enums.Finance.Operations.OperationsMenuType
 - com.gsl.pages.enums.Inventory.MainMenuType
 - com.gsl.pages.enums.Inventory.Product_Definition.Product_DefintionMenuType
-- PaymentInfoCheckWarning
+- com.gsl.reports.profile.TestDataConfig
 - com.gsl.pages.Finance.Operations.Common.DocumentPopup
-- com.gsl.pages.pagecomponent.Finance.Common.CashBankParent
-- com.gsl.pages.pagecomponent.Finance.Operations.GeneralVoucher.GeneralVoucherDocumentInformation
+- Config.LoadPolicy
+- Config.Sources
 - com.gsl.pages.pagecomponent.Finance.Operations.GeneralVoucher.GeneralVoucherExpenseIncomeDetail
 - DocumentSearchStrategy
-- VoucherExtentDescriptionLogger
-- com.gsl.testdata.UserCredential
-- dto/MergedReceiptData.java
-- AccountClassLifecycleRow
-- KeywordTimeWindowFilter
-- APVoucherListColumn
+- GeneralVoucherExtentDescriptionLogger
+- DefaultValue
+- GeneralVoucherExpenseIncomeDetail
+- Key
+- Override
+- SuppressWarnings
 - com.gsl.utils.dataprovider.MergedFinGeneralVoucherDataSupplier
-- APVoucherListColumn
-- com.gsl.utils.ElementMeta
+- ReferenceSitewiseFIFOsetoff
+- SelectDocument
 - com.gsl.validation.snapshot.audit.AuditFieldCheckResult
-- com.gsl.validation.snapshot.DocumentContext
+- ApVoucherDbContext
 - com.gsl.validation.snapshot.ExpectedChangeSet
 - Counts
-- GeneralVoucherPredicateFactory
+- GeneralVoucherDocumentInformation
 - InvGrp.java
-- SelectItemRow
 - DiffResult
 - HomePage
-- .badge
-- .captureOnce
 - java.util.concurrent.TimeoutException
 - AddAccountClassFieldLabel
 - org.openqa.selenium.devtools.v150.network.model.Cookie
@@ -412,54 +410,27 @@
 - DocumentReservationRegistry.release
 - AdmClsQuery.countDistinctSlCodesByClsCode (external)
 - AdmClsQuery.findSlNamesWithPendingARByClsCode (external)
-- PendingAdjQuery.countDistinctSlCodes (external)
-- PendingAdjQuery.findDocumentsForSlNames (external)
-- PendingAdjQuery.findSlNamesWithPendingAR (external)
 - Override
-- GeneralVoucherDocumentInformation
 - Deprecated
 - SubLedgerInformation
-- SubLedgerInformation
-- com.gsl.enums.ReportSeverity
 - SubLedgerNotFoundException
-- GeneralVoucherDocumentInformation
 - SubLedgerInformation
 - SubLedgerInformation
 - Builder
 - Builder
 - ValidationFailure
-- FinanceVoucherListPageHeader
-- DetailLineEditTarget
+- EditShape
 - ApVoucherExecutionGroup
-- Finance/Setup/SetupMenuType.java
-- Product_DefintionMenuType.java
-- Procurement/Operations/OperationsMenuType.java
-- .failNode
-- HeaderFieldScope
 - GeneralVoucherExecutionGroup
 - GeneralVoucherListPage
-- Override
-- GeneralVoucherPaymentVariant
 - com.gsl.diagnostics.RootCauseInputs
-- Config.LoadPolicy
-- Config.Sources
-- DefaultValue
-- Key
 - FunctionalInterface
 - VoucherEditDateVariant
-- GeneralVoucherOperationMode
 - InvGrpDao (deprecated stub)
-- AppiumProvider
 - com.gsl.testdata.dto.VoucherReportData
-- jenkins-profiles.md
-- .getIgnoreCase
-- Kind
-- PostSaveSpec
+- Jenkins profiles — mandatory & regression (AR / AP / GV)
+- VoucherSnapshot
 - com.gsl.database.SelectorRequest
-- com.gsl.pages.Finance.Operations.Common.PaymentInfoCheckWarning
-- com.gsl.utils.dataprovider.fixture.ArVoucherLiveDbRefs
-- com.gsl.utils.dataprovider.fixture.finance.GeneralVoucherFixtureOptions
-- com.gsl.utils.dataprovider.fixture.finance.GeneralVoucherScenarioType
 - PlatformType
 - VoucherType
 - ArVoucherLiveDbRefs
@@ -468,28 +439,28 @@
 - DocumentSelectionResult
 
 ## God Nodes (most connected - your core abstractions)
-1. `ReportLogger` - 185 edges
-2. `ConfigFactory` - 159 edges
-3. `JavascriptExecutorUtils` - 131 edges
-4. `Log` - 124 edges
-5. `VoucherDomain` - 118 edges
-6. `UiValidationFailure` - 115 edges
-7. `MergedFinanceApVoucherData` - 112 edges
-8. `MergedFinanceGeneralVoucherData` - 111 edges
-9. `SeleniumUtils` - 101 edges
-10. `UserCredential` - 99 edges
+1. `ReportLogger` - 167 edges
+2. `ConfigFactory` - 138 edges
+3. `MergedFinanceApVoucherData` - 129 edges
+4. `JavascriptExecutorUtils` - 121 edges
+5. `SeleniumUtils` - 106 edges
+6. `Log` - 96 edges
+7. `DatabaseManager` - 90 edges
+8. `VoucherDomain` - 89 edges
+9. `UserCredential` - 82 edges
+10. `GeneralVoucherExpenseIncomeDetail` - 80 edges
 
 ## Surprising Connections (you probably didn't know these)
 - `Deferred Logout` --references--> `ApVoucherPredicateFactory`  [EXTRACTED]
   docs/Login-Once-Per-Module-Design.md → src/main/java/com/gsl/utils/dataprovider/fixture/finance/ApVoucherPredicateFactory.java
 - `ThreadLocal Isolation` --references--> `DriverManager`  [EXTRACTED]
   docs/Login-Once-Per-Module-Design.md → src/main/java/com/gsl/driver/DriverManager.java
-- `Utility Layering Convention` --references--> `ApVoucherApiClient`  [EXTRACTED]
-  docs/conventions/utility-layering.md → src/main/java/com/gsl/api/client/ApVoucherApiClient.java
 - `Utility Layering Convention` --references--> `ApiClient`  [EXTRACTED]
   docs/conventions/utility-layering.md → src/main/java/com/gsl/api/core/ApiClient.java
 - `Deferred Logout` --references--> `ArVoucherPredicateFactory`  [EXTRACTED]
   docs/Login-Once-Per-Module-Design.md → src/main/java/com/gsl/utils/dataprovider/fixture/finance/ArVoucherPredicateFactory.java
+- `Graduated Recovery Levels` --references--> `RecoveryManager`  [EXTRACTED]
+  docs/Login-Once-Per-Module-Design.md → src/main/java/com/gsl/driver/RecoveryManager.java
 
 ## Import Cycles
 - None detected.
@@ -635,211 +606,215 @@
 - **Voucher before/after DB snapshot + audit-trail validation engine** — src_test_java_com_tests_finance_operations_vouchers_deletearvoucher, src_test_java_com_tests_finance_operations_vouchers_editarvoucher, src_test_java_com_tests_finance_operations_vouchers_editgeneralvoucher, src_test_java_com_tests_finance_operations_vouchers_revertgeneralvoucher [INFERRED 0.85]
 - **Runtime Execution Profile Build-Hold-Render Pipeline** — src_main_java_com_gsl_reports_runtimeprofilebuilder, src_main_java_com_gsl_reports_runtimeprofileholder, src_main_java_com_gsl_reports_reportconfigrenderer, src_main_java_com_gsl_reports_profile_runtimeexecutionprofile [INFERRED 0.95]
 
-## Communities (453 total, 187 thin omitted)
+## Communities (423 total, 170 thin omitted)
 
-### Community 0 - "org.openqa.selenium.By"
-Cohesion: 0.04
-Nodes (105): com.gsl.annotations.LogStep, org.openqa.selenium.By, org.openqa.selenium.interactions.Actions, org.openqa.selenium.Keys, org.openqa.selenium.support.ui.WebDriverWait, org.openqa.selenium.TimeoutException, org.openqa.selenium.WebElement, FrameworkConstants (+97 more)
+### Community 0 - "SeleniumUtils"
+Cohesion: 0.08
+Nodes (62): BooleanSupplier, com.gsl.enums.LogCategory, com.gsl.enums.WaitType, com.gsl.pages.Finance.Operations.Common.AdjustmentAmountSnapshot, com.gsl.pages.Finance.Operations.Common.ReferenceSiteWiseFIFOPopup, com.gsl.pages.Finance.Operations.Common.SelectDocumentPopup, com.gsl.pages.Finance.Operations.Common.SubLedgerRowIdentity, com.gsl.pages.VerifiablePage (+54 more)
 
 ### Community 1 - "lombok.Builder"
 Cohesion: 0.05
-Nodes (99): com.fasterxml.jackson.annotation.JsonIgnoreProperties, Site Applicable inferred from non-empty ledgerSiteInfo (no boolean flag), POST /EmployeeMaster/CreateFinanceSubLedgerOther endpoint, POST /Ledger/Create endpoint, Provisional API shape pending HAR confirmation, Save-and-release for immediate Posted status in backfill, lombok.AllArgsConstructor, lombok.Builder (+91 more)
+Nodes (116): com.fasterxml.jackson.annotation.JsonIgnoreProperties, com.fasterxml.jackson.annotation.JsonInclude, Site Applicable inferred from non-empty ledgerSiteInfo (no boolean flag), POST /EmployeeMaster/CreateFinanceSubLedgerOther endpoint, POST /Ledger/Create endpoint, lombok.AllArgsConstructor, lombok.Builder, lombok.Data (+108 more)
 
 ### Community 2 - ".getApiConfig"
-Cohesion: 0.16
-Nodes (3): WebApiLoginResult, ParsedLoginError, WebApiSessionClient
-
-### Community 3 - "FrameworkAnnotation"
 Cohesion: 0.12
-Nodes (18): com.gsl.annotations.FrameworkAnnotation, com.gsl.annotations.TestCaseId, FrameworkAnnotation, TestCaseId, handle(), VoucherSaveCtx, PostSaveSpec, VoucherSaveFlowSteps (+10 more)
+Nodes (4): WebApiLoginResult, ParsedLoginError, WebApiSessionClient, DataSourceRouter
+
+### Community 3 - "org.testng.annotations.Test"
+Cohesion: 0.04
+Nodes (55): ApVoucherDetailLineEditTarget, ApVoucherEditScenarioType, ApVoucherPaymentInfoEditTarget, CapturedTag, com.gsl.annotations.FrameworkAnnotation, com.gsl.annotations.TestCaseId, com.gsl.pages.enums.Finance.Operations.APVoucher.APVoucherRevertOutcome, com.gsl.testdata.InvocationData (+47 more)
 
 ### Community 4 - "PendingArDocumentBackfillStrategy.java"
 Cohesion: 0.04
-Nodes (31): com.gsl.api.model.common.PricingData, k6 timestamp+thread+iteration isolation scheme, GrcApiClient, ItemApiClient, SuppressWarnings, ApiSessionManager, DataSetupException, UniqueNameGenerator (+23 more)
+Nodes (29): com.gsl.api.model.common.PricingData, k6 timestamp+thread+iteration isolation scheme, GrcApiClient, ItemApiClient, SuppressWarnings, DataSetupException, UniqueNameGenerator, UniqueNameGenerator (+21 more)
 
-### Community 5 - ".warn"
-Cohesion: 0.07
-Nodes (13): Deprecated, java.util.concurrent.ConcurrentLinkedQueue, org.testng.ISuite, org.testng.ITestListener, org.testng.xml.XmlTest, Override, DbIdQueue, MenuOperationKey (+5 more)
+### Community 5 - ".archiveRunLogs"
+Cohesion: 0.32
+Nodes (3): java.util.zip.ZipOutputStream, LogArchiver, ZipOutputStream
 
 ### Community 6 - "lombok.Value"
 Cohesion: 0.02
-Nodes (94): com.gsl.api.fixture.core.ScenarioKind, lombok.Value, org.testng.asserts.SoftAssert, ApiException, ArVoucherApiFixtureFactory, ArVoucherApiScenarioType, CREATE_AR_VOUCHER_NEGATIVE_MISSING_MANDATORY_FIELDS, CREATE_AR_VOUCHER_POSITIVE (+86 more)
+Nodes (95): com.gsl.api.fixture.core.ScenarioKind, lombok.Value, org.testng.asserts.SoftAssert, TransferOutApiClient, ArVoucherApiFixtureFactory, ArVoucherApiScenarioType, CREATE_AR_VOUCHER_NEGATIVE_MISSING_MANDATORY_FIELDS, CREATE_AR_VOUCHER_POSITIVE (+87 more)
 
-### Community 7 - "io.github.sskorol.converters.IConverter"
-Cohesion: 0.08
-Nodes (24): io.github.sskorol.converters.IConverter, ItcEligibilityConverter, Override, Override, SafeIntegerConverter, buildErrorMessage(), fromExcel(), ItcEligibilityType (+16 more)
+### Community 7 - ".getExcelDataConfig"
+Cohesion: 0.12
+Nodes (12): io.github.sskorol.core.DataSupplier, one.util.streamex.StreamEx, MergedAccountGroupLifecycleData, MergedFinanceAccountGroupData, MergedInventoryGroupData, AccountGroupLifecycleRow, AccountGroupRow, Group (+4 more)
 
-### Community 8 - "WaitUtils"
-Cohesion: 0.07
-Nodes (13): FluentWait, java.util.function.BooleanSupplier, org.openqa.selenium.support.ui.FluentWait, PaymentInfoCheckWarning, DocumentPopup, Loc, AdjustmentEntryParent, By (+5 more)
+### Community 8 - ".getWaitConfig"
+Cohesion: 0.09
+Nodes (7): com.gsl.utils.ElementMeta, FluentWait, ReferenceSiteWiseFIFOPopup, By, WebDriver, WebDriverWait, WebElement
 
-### Community 9 - "GeneralVoucherGridColumnHeader"
-Cohesion: 0.11
-Nodes (21): GridColumnKind, DEFAULT, USER, columnIdXPath(), GeneralVoucherGridColumnHeader, EXPENSE_DR, GENERAL_LEDGER, INCOME_CR (+13 more)
+### Community 9 - "IVoucherGridColumnHeader"
+Cohesion: 0.04
+Nodes (49): com.gsl.pages.enums.Finance.Operations.Common.GridColumnKind, com.gsl.pages.pagecomponent.Finance.Operations.ARVoucher.ARVoucherDocumentInformation, com.gsl.pages.pagecomponent.Finance.Operations.ARVoucher.ARVoucherFooter, APVoucherGridColumnHeader, AMOUNT_DR, DEDUCT_TDS, GENERAL_LEDGER, LEDGER_NARRATION (+41 more)
 
 ### Community 10 - "GoodsReceiveChallanAdd"
-Cohesion: 0.06
-Nodes (12): Keys, GroupListPage, GoodsReceiveChallanItemDetails, BatchDetailsPopup, CopyChallanPage, ScanItemPage, SelectItemPage, SerialDetailsPopup (+4 more)
+Cohesion: 0.05
+Nodes (33): org.openqa.selenium.interactions.Actions, fromString(), ItemSelectionType, ALTERNATE_ORDER_ITEMS, COPY_CHALLAN, CREATE_ITEM, IMPORT_BARCODE, IMPORT_EXCEL (+25 more)
 
 ### Community 11 - "ApiConfig"
-Cohesion: 0.08
+Cohesion: 0.09
 Nodes (7): PlatformType, Override, ApiConfig, Config.LoadPolicy, Config.Sources, DefaultValue, Key
 
 ### Community 12 - "ExecutionContext"
-Cohesion: 0.05
-Nodes (20): com.gsl.pages.HomePage, Bounded Lease Gridlock (Risk 2), Graduated Recovery Levels, Session Lease, ThreadLocal Isolation, SetupMenuType, Checkpoint, LOGIN (+12 more)
+Cohesion: 0.04
+Nodes (20): Bounded Lease Gridlock (Risk 2), Graduated Recovery Levels, Session Lease, ThreadLocal Isolation, SetupMenuType, Checkpoint, LOGIN, MODULE (+12 more)
 
-### Community 13 - "DbApVoucherDataSource.java"
-Cohesion: 0.10
-Nodes (13): com.github.javafaker.Faker, com.gsl.database.DocumentSelectionResult, com.gsl.enums.DocumentSelectionMode, com.gsl.utils.dataprovider.source.TestDataSource, ExhaustedDocSchemeBackfill, AdmDocSchemeCandidate, DocSchemeMode, AUTO (+5 more)
-
-### Community 14 - "ChequeRegisterPaymentInformationPopup"
-Cohesion: 0.12
-Nodes (7): VoucherPaymentInfo, ApPaymentInformationPopup, ChequeRegisterPaymentInformationPopup, GvPaymentInformationPopup, Override, Override, VoucherPaymentInfo
-
-### Community 15 - ".setUp"
+### Community 13 - "FormSection"
 Cohesion: 0.06
-Nodes (20): org.testng.annotations.AfterMethod, org.testng.annotations.BeforeMethod, FrontendDiagnosticsInjector, SessionDownloadDirectory, ApiPlatform, ApiPlatform enum (external), K6BULK, PUBLICAPI (+12 more)
+Nodes (17): FormSection, ADJUSTMENT_INFORMATION, ALLOCATE_SITES_ALLOCATED_SITES, ALLOCATE_SITES_QUICK_SITE_ALLOCATE, ALLOCATE_SITES_TAGGING_SUMMARY, DOCUMENT_INFORMATION, EXPENSE_INCOME_DETAIL, PAYMENT_INFORMATION (+9 more)
 
-### Community 16 - "ConfigFactory.java"
-Cohesion: 0.03
-Nodes (101): com.aventstack.extentreports.markuputils.Markup, com.gsl.config.ExecutionConfig, com.gsl.reports.GeneralVoucherIncomeExpenseRowView, com.gsl.testdata.dto.GeneralVoucherOperationMode, com.gsl.utils.dataprovider.fixture.finance.ArVoucherFixtureOptions, GeneralVoucherOperationMode, InvoiceScoped, io.github.sskorol.core.DataProviderTransformer (+93 more)
+### Community 14 - ".fillAndSubmit"
+Cohesion: 0.14
+Nodes (5): com.gsl.pages.Finance.Operations.Common.ApPaymentInformationPopup, ChequeRegisterPaymentInformationPopup, Override, VoucherPaymentInfo, VoucherPaymentInfo
+
+### Community 15 - ".warn"
+Cohesion: 0.06
+Nodes (22): org.testng.annotations.AfterMethod, org.testng.annotations.BeforeMethod, FrontendDiagnosticsInjector, Driver, SessionDownloadDirectory, ApiPlatform, ApiPlatform enum (external), K6BULK (+14 more)
+
+### Community 16 - "DatabaseManager"
+Cohesion: 0.04
+Nodes (71): com.gsl.database.BackfillStrategy, com.gsl.model.finance.FinSl, com.gsl.model.finance.FinSlGl, com.gsl.model.finance.FinVchMain, com.gsl.testdata.dto.GeneralVoucherOperationMode, com.gsl.testdata.Finance.Operations.Vouchers.Common.VoucherSubLedgerRow, com.gsl.utils.dataprovider.fixture.finance.GeneralVoucherFixtureOptions, com.gsl.utils.dataprovider.fixture.finance.GeneralVoucherScenarioType (+63 more)
 
 ### Community 17 - "FinVchMain"
 Cohesion: 0.04
-Nodes (35): com.gsl.enums.VoucherType, com.gsl.testdata.Finance.Operations.Vouchers.Common.VoucherDocumentHeader, org.assertj.core.api.SoftAssertions, FinAccClassDao, FinNarDao, FinNar, FinVchDet, FinVchMain (+27 more)
+Nodes (40): ApVoucherDbContext, com.gsl.database.dao.finance.FinChqDetDao, com.gsl.database.dao.finance.FinChqMainDao, com.gsl.database.dao.finance.FinGlDao, com.gsl.database.dao.finance.FinSlDao, com.gsl.database.dao.finance.FinVchDetDao, com.gsl.enums.VoucherType, com.gsl.model.finance.FinVchDet (+32 more)
 
-### Community 18 - "UiValidationFailure"
-Cohesion: 0.10
-Nodes (8): UiFieldState, DISABLED, READONLY, UiComponentValidator, Override, UiValidationFailure, UiValidationLevel, SMOKE
-
-### Community 19 - ".info"
-Cohesion: 0.08
-Nodes (8): HrEmpOuDao, DocumentInformation, DocumentInformation, Override, SelectDocument, MergedFinArVoucherDataSupplier, DbArVoucherDataSource, OwnerSiteRef
-
-### Community 20 - "org.openqa.selenium.WebDriver"
-Cohesion: 0.04
-Nodes (47): ChromeOptions, com.gsl.config.BrowserConfig, EdgeOptions, FirefoxOptions, JavascriptExecutor, org.openqa.selenium.chrome.ChromeOptions, org.openqa.selenium.edge.EdgeOptions, org.openqa.selenium.firefox.FirefoxOptions (+39 more)
-
-### Community 21 - "VoucherDomain"
-Cohesion: 0.02
-Nodes (92): BooleanSupplier, com.gsl.pages.enums.Finance.Operations.Common.CommonVoucherActionsMenu, com.gsl.pages.enums.Finance.Operations.Common.CommonVoucherListColumn, com.gsl.pages.enums.Finance.Operations.Common.IVoucherGridAction, com.gsl.pages.enums.Finance.Operations.Common.VoucherDocumentLabels, com.gsl.validation.snapshot.TableRule, additionalPersistenceTables(), excludesCommonAction() (+84 more)
-
-### Community 22 - "com.fasterxml.jackson.annotation.JsonInclude"
+### Community 18 - "UiComponentValidator"
 Cohesion: 0.11
-Nodes (19): com.fasterxml.jackson.annotation.JsonInclude, LookupValue, DcCreateRequest, DcLineItem, GrcCharges, GrcCreateRequest, GrcLineItem, ItemCreateRequest (+11 more)
+Nodes (5): com.gsl.utils.ui.FieldStyleSpec, Pattern, UiValidationFailure, UiValidationLevel, UiComponentValidator
 
-### Community 23 - "org.testng.annotations.Test"
-Cohesion: 0.14
-Nodes (5): org.testng.annotations.Test, EnvConfigTest, TargetOsTest, DocSchemeFillerParsingTest, DocSchemeResolverTest
+### Community 19 - ".loadFreshForScenarioInternal"
+Cohesion: 0.07
+Nodes (12): com.gsl.utils.dataprovider.fixture.ArVoucherLiveDbRefs, com.gsl.utils.dataprovider.fixture.finance.ArVoucherExecutionGroup, com.gsl.utils.dataprovider.fixture.finance.ArVoucherFixtureOptions, com.gsl.utils.dataprovider.fixture.finance.ArVoucherScenarioType, HrEmpOuDao, ArVoucherFixtureOptions, SelectDocumentVariant, DbArVoucherDataSource (+4 more)
+
+### Community 20 - "BrowserOptions.java"
+Cohesion: 0.09
+Nodes (17): ChromeOptions, EdgeOptions, FirefoxOptions, org.openqa.selenium.chrome.ChromeOptions, org.openqa.selenium.edge.EdgeOptions, org.openqa.selenium.firefox.FirefoxOptions, org.openqa.selenium.remote.http.ClientConfig, BrowserOptions (+9 more)
+
+### Community 21 - "VoucherDomain.java"
+Cohesion: 0.03
+Nodes (76): com.gsl.pages.enums.Finance.Operations.Common.CommonVoucherActionsMenu, com.gsl.pages.enums.Finance.Operations.Common.CommonVoucherListColumn, com.gsl.pages.enums.Finance.Operations.Common.IVoucherGridAction, com.gsl.pages.enums.Finance.Operations.Common.VoucherDocumentLabels, com.gsl.validation.snapshot.TableRule, org.testng.annotations.Parameters, RuleGroup, ALL (+68 more)
+
+### Community 23 - "K6ProcessBulkDataProvisioner"
+Cohesion: 0.20
+Nodes (4): BulkDataProvisioner, Override, K6ProcessBulkDataProvisioner, DocSchemeFillerParsingTest
 
 ### Community 24 - "CoverageSheetWriter"
-Cohesion: 0.15
-Nodes (5): org.apache.poi.xssf.usermodel.XSSFSheet, CoverageSheetWriter, CellRangeAddress, TableOptions, XlsxColumn
+Cohesion: 0.10
+Nodes (12): org.apache.poi.ss.usermodel.Cell, org.apache.poi.xssf.usermodel.XSSFCellStyle, org.apache.poi.xssf.usermodel.XSSFColor, org.apache.poi.xssf.usermodel.XSSFFont, org.apache.poi.xssf.usermodel.XSSFSheet, CoverageSheetWriter, CellRangeAddress, TableOptions (+4 more)
 
-### Community 25 - "APVoucherSubLedgerInformation.java"
-Cohesion: 0.02
-Nodes (49): AdjustmentAmountSnapshot, APVoucherFooter, APVoucherTdsAndNetPayable, ARVoucherDocumentInformation, ARVoucherFooter, com.gsl.enums.Finance.Operations.APVoucher.OnAccountClearConfirmAction, com.gsl.enums.Finance.Operations.APVoucher.OnAccountMode, com.gsl.pages.Finance.Operations.Common.AdjustmentAmountSnapshot (+41 more)
+### Community 25 - ".click"
+Cohesion: 0.04
+Nodes (17): AdjustmentAmountSnapshot, com.gsl.pages.pagecomponent.Finance.Common.AdjustmentEntryParent, com.gsl.testdata.Finance.Operations.Vouchers.Common.AdjustmentMismatchPlan, java.util.function.BooleanSupplier, org.openqa.selenium.support.ui.FluentWait, PaymentInfoCheckWarning, ReferenceSiteWiseFIFOPopup, SelectDocumentPopup (+9 more)
 
 ### Community 26 - "com.gsl.testdata.dto.MergedFinanceApVoucherData"
-Cohesion: 0.15
-Nodes (17): com.gsl.testdata.dto.MergedFinanceApVoucherData, com.gsl.testdata.Finance.Operations.Vouchers.APVoucher.PaymentInformation, com.gsl.testdata.Finance.Operations.Vouchers.APVoucher.SelectDocument, com.gsl.testdata.Finance.Operations.Vouchers.APVoucher.SubLedgerInformation, SelectDocument, ApVoucherLiveDbRefs, PaymentMode, ApVoucherPredicateFactory (+9 more)
-
-### Community 27 - "org.apache.logging.log4j.Logger"
-Cohesion: 0.05
-Nodes (43): ActiveUserEntry, EditGeneralVoucher, RevertGeneralVoucher, java.lang.reflect.Method, java.util.concurrent.LinkedBlockingQueue, org.apache.logging.log4j.Logger, org.openqa.selenium.JavascriptExecutor, org.openqa.selenium.support.events.WebDriverListener (+35 more)
-
-### Community 28 - "ReportLogger"
-Cohesion: 0.04
-Nodes (45): BulkDataProvisioner, com.aventstack.extentreports.ExtentTest, com.gsl.enums.ApiPlatform, com.gsl.reports.BackfillStepLabel, GeneralVoucherExpenseIncomeDetail, java.util.regex.Matcher, java.util.regex.Pattern, Centralizing Negative-Validation Assertion Steps Fixes GV's Missing Stop: Marker (+37 more)
-
-### Community 29 - "NetworkTimingCapture.java"
 Cohesion: 0.19
-Nodes (12): org.openqa.selenium.devtools.DevTools, org.openqa.selenium.devtools.v153.network.model.Cookie, org.openqa.selenium.devtools.v153.network.model.Headers, org.openqa.selenium.devtools.v153.network.Network, Request, NetworkTimingSection, CallFrameEntry, NetworkTimingSnapshot (+4 more)
+Nodes (14): com.gsl.testdata.dto.MergedFinanceApVoucherData, com.gsl.testdata.Finance.Operations.Vouchers.APVoucher.PaymentInformation, com.gsl.testdata.Finance.Operations.Vouchers.APVoucher.SelectDocument, com.gsl.testdata.Finance.Operations.Vouchers.APVoucher.SubLedgerInformation, ApVoucherLiveDbRefs, PaymentMode, ApVoucherTemplateLoader, DocumentInformation (+6 more)
 
-### Community 30 - ".getDriver"
-Cohesion: 0.03
-Nodes (17): LogStep, Loc, SelectDocumentPopup, VoucherMainGridBase, AppPopupLocators, By, PopupHandler, PopupTrailBuffer (+9 more)
+### Community 27 - "ConfigFactory.java"
+Cohesion: 0.04
+Nodes (93): ActiveUserEntry, com.gsl.annotations.ApiFlow, com.gsl.config.ExecutionConfig, com.gsl.pages.HomePage, com.gsl.reports.ActualResultsHolder, com.gsl.utils.dataprovider.fixture.finance.GeneralVoucherPaymentVariant, Direct Logout Bypass (Risk 1), Navigation Caching (+85 more)
+
+### Community 28 - "StepExecutor.java"
+Cohesion: 0.04
+Nodes (45): com.gsl.enums.PaymentSelectionType, com.gsl.flow.Finance.Operations.Common.VoucherSaveCtx, com.gsl.model.finance.FinCostTag, com.gsl.model.finance.FinPost, com.gsl.pages.Finance.Operations.Common.PaymentInfoCheckWarning, com.gsl.reports.BackfillStepLabel, com.gsl.utils.Selenium.ScreenshotMetadata, com.gsl.validation.db.finance.ApVoucherDbContext (+37 more)
+
+### Community 29 - "NetworkConfig"
+Cohesion: 0.06
+Nodes (24): org.openqa.selenium.devtools.DevTools, org.openqa.selenium.devtools.v153.network.model.Cookie, org.openqa.selenium.devtools.v153.network.model.Headers, org.openqa.selenium.devtools.v153.network.Network, Request, Config.LoadPolicy, Config.Sources, DefaultValue (+16 more)
+
+### Community 30 - "JavascriptExecutorUtils"
+Cohesion: 0.07
+Nodes (7): com.gsl.pages.Procurement.Operations.ReceiptsListPage, ReceiptsListPage, By, SuppressWarnings, WebDriver, WebElement, JavascriptExecutorUtils
+
+### Community 31 - "MainMenuType"
+Cohesion: 0.40
+Nodes (3): MainMenuType, OPERATIONS, SETUP
 
 ### Community 32 - "DiagnosticSection"
-Cohesion: 0.10
-Nodes (10): org.testng.ITestResult, SuppressWarnings, DiagnosticReport, DiagnosticSection, DiagnosticSection, FailureBundleOrchestrator, ServerRole, APP (+2 more)
+Cohesion: 0.08
+Nodes (11): org.testng.ITestResult, DiagnosticReport, DiagnosticSection, FailureBundleOrchestrator, DbStateSection, Override, ServerRole, APP (+3 more)
 
-### Community 33 - "com.gsl.model.finance.SlNameWithId"
-Cohesion: 0.11
-Nodes (12): AmountMode, com.gsl.model.finance.PendingSlDocument, com.gsl.model.finance.SlNameWithId, com.gsl.testdata.Finance.Operations.Vouchers.ARVoucher.SelectDocument, DocumentSelectionResult, SelectorRequest, DocumentReservationRegistry, DocumentSelector (+4 more)
+### Community 33 - "DbApVoucherDataSource.java"
+Cohesion: 0.09
+Nodes (22): com.github.javafaker.Faker, com.gsl.database.DocumentSelectionResult, com.gsl.enums.AdjustmentType, com.gsl.enums.DocumentSelectionMode, com.gsl.enums.Finance.Operations.APVoucher.TdsApplicableAmountBehaviour, com.gsl.model.finance.PendingSlDocument, com.gsl.model.finance.SlNameWithId, com.gsl.model.finance.TdsResolution (+14 more)
 
 ### Community 34 - "org.jdbi.v3.sqlobject.statement.SqlQuery"
 Cohesion: 0.04
-Nodes (49): com.gsl.model.finance.FinVchMain, com.gsl.testdata.Finance.Operations.Vouchers.Common.VoucherPaymentInfo, org.jdbi.v3.sqlobject.config.RegisterBeanMapper, org.jdbi.v3.sqlobject.statement.SqlQuery, AdmDocSchemeDao, AdmMonthDao, AdmOuMonthDao, AdmOuYearDao (+41 more)
+Nodes (30): com.gsl.validation.snapshot.DocumentContext, org.jdbi.v3.sqlobject.config.RegisterBeanMapper, org.jdbi.v3.sqlobject.statement.SqlQuery, AdmDocSchemeDao, AdmOuYearDao, AdmSiteDao, AdmSiteOuDao, AdmYearDao (+22 more)
 
 ### Community 35 - "lombok.Getter"
+Cohesion: 0.06
+Nodes (47): com.gsl.testdata.Finance.Operations.Vouchers.Common.VoucherDocumentHeader, com.gsl.testdata.Finance.Operations.Vouchers.Common.VoucherSelectDocRow, Converter, io.github.sskorol.converters.DefaultConverter, io.github.sskorol.data.Sheet, lombok.Getter, lombok.Setter, BigDecimalConverter (+39 more)
+
+### Community 36 - "BaseFrontendSection"
 Cohesion: 0.07
-Nodes (35): com.gsl.testdata.Finance.Operations.Vouchers.Common.VoucherSelectDocRow, io.github.sskorol.converters.DefaultConverter, io.github.sskorol.data.Sheet, lombok.Getter, lombok.Setter, BigDecimalConverter, Override, Override (+27 more)
+Nodes (12): AngularPerformanceSection, Override, SuppressWarnings, BaseFrontendSection, Override, SuppressWarnings, ExtJsPerformanceSection, Override (+4 more)
 
 ### Community 38 - "LoginPage"
-Cohesion: 0.12
-Nodes (9): HomePage, GroupHierarchyType, DEPARTMENT, DIVISION, SECTION, Loc, LoginPage, MergedInvGroupDataSupplier (+1 more)
+Cohesion: 0.13
+Nodes (6): HomePage, Loc, LoginPage, MergedInvGroupDataSupplier, CreateGroup, Receipts
 
 ### Community 39 - "com.gsl.pages.enums.Finance.Operations.Common.IVoucherListColumn"
-Cohesion: 0.13
+Cohesion: 0.12
 Nodes (6): com.gsl.pages.enums.Finance.Operations.Common.FilterMatchMode, com.gsl.pages.enums.Finance.Operations.Common.GridColumnMenuItem, com.gsl.pages.enums.Finance.Operations.Common.IVoucherListColumn, MandatoryColumnException, GridColumnMenu, SortSpec
 
-### Community 40 - "TestResultsAccumulator"
-Cohesion: 0.07
-Nodes (7): ApVoucherDescriptionBuilder, ArVoucherDescriptionBuilder, DomainReporter, DomainReporterRegistry, TestResultsAccumulator, FinanceDomainReporter, Override
+### Community 40 - "FinanceDomainReporter"
+Cohesion: 0.06
+Nodes (12): AccountGroupLifecycleDescriptionBuilder, AccountGroupLifecycleDescriptionBuilder, ApVoucherDescriptionBuilder, ArVoucherDescriptionBuilder, DomainReporter, DomainReporterRegistry, DomainReporterRegistry, TestResultsAccumulator (+4 more)
 
-### Community 41 - "AllowPriceChangeType"
-Cohesion: 0.11
-Nodes (19): AllowPriceChangeConverter, Override, Override, MultiPriceActionConverter, AllowPriceChangeType, NO, YES, buildErrorMessage() (+11 more)
+### Community 41 - "io.github.sskorol.converters.IConverter"
+Cohesion: 0.06
+Nodes (36): io.github.sskorol.converters.IConverter, AllowPriceChangeConverter, Override, ItcEligibilityConverter, Override, Override, MultiPriceActionConverter, Override (+28 more)
 
 ### Community 42 - "FailureCategory"
-Cohesion: 0.10
-Nodes (18): com.gsl.validation.CombinedValidationError, com.gsl.validation.ui.UiValidationFailure, FailureCategory, APP_REJECTION, ASSERTION, CIRCUIT_BREAKER, CLICK_BLOCKED, DATA_SHORTAGE (+10 more)
+Cohesion: 0.09
+Nodes (18): com.gsl.validation.CombinedValidationError, Entry, FailureCategory, APP_REJECTION, ASSERTION, CIRCUIT_BREAKER, CLICK_BLOCKED, DATA_SHORTAGE (+10 more)
 
 ### Community 43 - "VoucherListFooterBase"
-Cohesion: 0.07
-Nodes (9): APVoucherListFooter, ARVoucherListFooter, ARVoucherListFooter, VoucherGridPaginationFinder, VoucherListFooterBase, ContraVoucherListFooter, ContraVoucherListFooter, GeneralVoucherListFooter (+1 more)
+Cohesion: 0.06
+Nodes (14): java.lang.annotation.Retention, java.lang.annotation.Target, FrameworkValidation, LogStep, APVoucherListFooter, ARVoucherListFooter, ARVoucherListFooter, Override (+6 more)
 
 ### Community 44 - "PooledSession"
-Cohesion: 0.10
-Nodes (4): PooledSession, HealthChecker, PooledSession, SessionPool
+Cohesion: 0.07
+Nodes (7): PooledSession, HealthChecker, PooledSession, SessionPool, NetworkCapture, NetworkCaptureManager, ColdStartTimeoutTest
 
-### Community 45 - "AccountGroupContextMenu"
-Cohesion: 0.08
-Nodes (18): GridColumnMenuItem, GridColumnMenuItem, COLUMNS, FILTERS, SORT_ASCENDING, SORT_DESCENDING, locator(), AccountClassActionsMenu (+10 more)
+### Community 45 - "org.openqa.selenium.By"
+Cohesion: 0.02
+Nodes (71): lombok.extern.slf4j.Slf4j, org.openqa.selenium.By, ModuleContainers, CommonButton, CommonButton, ACCEPT, ADD, CANCEL (+63 more)
 
-### Community 46 - "UserCredential"
+### Community 46 - "EditGeneralVoucher.java"
+Cohesion: 0.06
+Nodes (63): ApiPattern, com.gsl.validation.snapshot.RowMatchStrategy, com.tests.WebTest, ApiFlow, Retention, Target, FinVchDetDao, FinVchMainDao (+55 more)
+
+### Community 47 - "ApVoucherAdd"
 Cohesion: 0.05
-Nodes (111): com.gsl.pages.pagecomponent.Finance.Operations.ARVoucher.ARVoucherListFooter, com.gsl.pages.pagecomponent.Finance.Operations.ARVoucher.ARVoucherListGridHeader, com.gsl.utils.Selenium.ScreenshotMetadata, com.gsl.validation.snapshot.RowMatchStrategy, com.tests.WebTest, Direct Logout Bypass (Risk 1), Login Once Per Module Architecture, Navigation Caching (+103 more)
-
-### Community 47 - ".compare"
-Cohesion: 0.24
-Nodes (7): com.gsl.validation.snapshot.ColumnCheckResult, AuditComparator, ExpectedAuditChange, AuditChange, AuditOperation, ValidationFailure, AuditOperation
+Nodes (25): APVoucherTdsAndNetPayable, com.gsl.pages.pagecomponent.Finance.Operations.APVoucher.APVoucherDocumentInformation, com.gsl.pages.pagecomponent.Finance.Operations.APVoucher.APVoucherFooter, com.gsl.pages.pagecomponent.Finance.Operations.APVoucher.APVoucherTdsAndNetPayable, ApVoucherAdd, ApPaymentInformationPopup, APVoucherDocumentInformation, APVoucherFooter (+17 more)
 
 ### Community 48 - "ApVoucherScenarioType"
-Cohesion: 0.04
-Nodes (47): com.gsl.enums.CashBankType, com.gsl.enums.Finance.Operations.APVoucher.TdsApplicableAmountBehaviour, com.gsl.enums.Finance.Operations.APVoucher.TdsNatureMode, com.gsl.model.finance.TdsResolution, com.gsl.pages.Finance.Operations.ApVoucherAdd, com.gsl.testdata.Finance.Operations.Vouchers.APVoucher.DocumentInformation, com.gsl.testdata.Finance.Operations.Vouchers.APVoucher.TdsAndNetPayable, com.gsl.utils.dataprovider.fixture.finance.ApVoucherExecutionGroup (+39 more)
+Cohesion: 0.06
+Nodes (34): com.gsl.pages.Finance.Operations.ApVoucherAdd, ApVoucherFixtureFactory, ApVoucherScenarioType, ADVANCE_MULTI_SL_WITH_PAYMENT, ADVANCE_NO_TDS, ADVANCE_WITH_TDS, ADVANCE_WITH_TDS_NO_NATURE, ADVANCE_WITH_TDS_SINGLE_NATURE (+26 more)
 
-### Community 49 - "NetworkConfig"
-Cohesion: 0.22
-Nodes (5): Config.LoadPolicy, Config.Sources, DefaultValue, Key, NetworkConfig
+### Community 49 - "VoucherMainGridBase"
+Cohesion: 0.11
+Nodes (4): com.gsl.annotations.LogStep, Loc, SelectDocumentPopup, VoucherMainGridBase
 
 ### Community 50 - "PaymentReference"
 Cohesion: 0.07
 Nodes (13): PaymentDataProvider, Override, PaymentReference, PaymentReferenceFactory, PaymentReferenceFixture, PaymentReferenceGenerator, PaymentReferenceValidator, ReferenceMutator (+5 more)
 
-### Community 51 - "SummaryReportBuilder"
-Cohesion: 0.09
-Nodes (9): com.gsl.pages.enums.topmenucomponent.MainModuleType, Entry, java.util.concurrent.atomic.LongAdder, LongAdder, ShardKey, SuiteCircuitBreaker, PoolAttributionStats, ShardStats (+1 more)
+### Community 51 - ".onStart"
+Cohesion: 0.05
+Nodes (19): com.gsl.pages.enums.topmenucomponent.MainModuleType, ConcurrentLinkedQueue, Deprecated, java.util.concurrent.atomic.LongAdder, java.util.concurrent.ConcurrentLinkedQueue, LongAdder, org.testng.ISuite, org.testng.xml.XmlTest (+11 more)
 
 ### Community 52 - "GeneralVoucherExpenseIncomeDetail"
-Cohesion: 0.05
-Nodes (6): com.gsl.testdata.Finance.Operations.Vouchers.GeneralVoucher.SiteAllocation, DecimalFormat, AllocateSitesPopup, FillUiListener, GeneralVoucherExpenseIncomeDetail, Override
+Cohesion: 0.07
+Nodes (8): com.gsl.pages.Finance.Operations.Common.PaymentInformationPopup, DecimalFormat, SubLedgerRowIdentity, SubLedgerRowIdentity, VoucherSubLedgerInformationBase, GeneralVoucherExpenseIncomeDetail, Override, SubLedgerFillListener
 
 ### Community 53 - "PaymentSelectionType"
-Cohesion: 0.07
-Nodes (33): com.gsl.enums.Finance.Operations.APVoucher.DeductTdsClearConfirmAction, AdjustmentTypeConverter, Override, Override, PaymentModeConverter, Override, PaymentSelectionConverter, AdjustmentType (+25 more)
+Cohesion: 0.05
+Nodes (40): com.gsl.enums.Finance.Operations.APVoucher.DeductTdsClearConfirmAction, com.gsl.testdata.Finance.Operations.Vouchers.Common.VoucherPaymentInfo, AdjustmentTypeConverter, Override, Override, PaymentModeConverter, Override, PaymentSelectionConverter (+32 more)
 
 ### Community 54 - "DiagnosticsConfig"
 Cohesion: 0.11
@@ -847,39 +822,39 @@ Nodes (5): DiagnosticsConfig, Config.LoadPolicy, Config.Sources, DefaultValue, K
 
 ### Community 56 - "ItemOthers.java"
 Cohesion: 0.07
-Nodes (31): InventoryItemConverter, Override, Override, MaterialTypeConverter, Override, NegativeStockMethodConverter, buildErrorMessage(), fromExcel() (+23 more)
+Nodes (30): InventoryItemConverter, Override, Override, MaterialTypeConverter, Override, NegativeStockMethodConverter, buildErrorMessage(), fromExcel() (+22 more)
 
 ### Community 57 - "ItemInventoryTracking.java"
 Cohesion: 0.08
-Nodes (29): ExpiryManagementConverter, Override, InventoryManagementConverter, Override, Override, PricingManagementConverter, buildErrorMessage(), ExpiryManagementType (+21 more)
+Nodes (28): ExpiryManagementConverter, Override, InventoryManagementConverter, Override, Override, PricingManagementConverter, buildErrorMessage(), ExpiryManagementType (+20 more)
 
 ### Community 58 - ".logMethod"
-Cohesion: 0.23
-Nodes (5): org.aspectj.lang.annotation.Around, org.aspectj.lang.annotation.Aspect, org.aspectj.lang.ProceedingJoinPoint, AuditLoggingAspect, LoggingAspect
+Cohesion: 0.17
+Nodes (6): org.aspectj.lang.annotation.Around, org.aspectj.lang.annotation.Aspect, org.aspectj.lang.ProceedingJoinPoint, AuditLoggingAspect, LoggingAspect, ReportOnceTest
 
-### Community 59 - "ServiceInvoiceAdhocApiScenarioType"
+### Community 59 - "PreSuiteHealthCheck.java"
 Cohesion: 0.09
-Nodes (22): ServiceInvoiceAdhocApiScenarioType, CALCULATE_SERVICE_CHARGES_NEGATIVE_INVALID_VENDOR_SITE, CALCULATE_SERVICE_CHARGES_POSITIVE, CALCULATE_TDS_RATE_AND_AMOUNT_NEGATIVE_INVALID_VENDOR, CALCULATE_TDS_RATE_AND_AMOUNT_POSITIVE, CHECK_LEDGER_TAGGED_NEGATIVE_INVALID_GLCODE, CHECK_LEDGER_TAGGED_POSITIVE, CREATE_SERVICE_INVOICE_ADHOC_NEGATIVE_MISSING_MANDATORY_FIELDS (+14 more)
+Nodes (12): DbAvailability, DbDisabledException, NoDbValidation, API, SKIP, from(), TestDataSourceMode, API (+4 more)
 
 ### Community 60 - "ServiceInvoiceAdhocApiClient.java"
-Cohesion: 0.09
-Nodes (16): com.gsl.api.model.serviceinvoiceadhoc.AdmSchemeDocEntry, com.gsl.api.model.serviceinvoiceadhoc.AttachedFiles, com.gsl.api.model.serviceinvoiceadhoc.GetOtherDetailsResult, com.gsl.api.model.serviceinvoiceadhoc.OwnerSiteDetail, com.gsl.api.model.serviceinvoiceadhoc.SaveHeaderCharge, com.gsl.api.model.serviceinvoiceadhoc.ServiceChargeDetail, com.gsl.api.model.serviceinvoiceadhoc.ServiceInvoiceAdhocCreateRequest, com.gsl.api.model.serviceinvoiceadhoc.ServiceLookupResult (+8 more)
+Cohesion: 0.04
+Nodes (45): com.gsl.api.model.serviceinvoiceadhoc.AdmSchemeDocEntry, com.gsl.api.model.serviceinvoiceadhoc.AttachedFiles, com.gsl.api.model.serviceinvoiceadhoc.GetOtherDetailsResult, com.gsl.api.model.serviceinvoiceadhoc.OwnerSiteDetail, com.gsl.api.model.serviceinvoiceadhoc.SaveHeaderCharge, com.gsl.api.model.serviceinvoiceadhoc.ServiceChargeDetail, com.gsl.api.model.serviceinvoiceadhoc.ServiceInvoiceAdhocCreateRequest, com.gsl.api.model.serviceinvoiceadhoc.ServiceLookupResult (+37 more)
 
 ### Community 61 - "SelectDocumentVariant"
 Cohesion: 0.10
 Nodes (27): com.gsl.model.finance.AdmCls, SelectDocumentCombinations, AmountMode, FULL, MIX, PARTIAL, DateMode, BACK_DATED (+19 more)
 
 ### Community 62 - "UiStyleBaseline"
-Cohesion: 0.24
-Nodes (5): ComponentRow, Data, Resolved, SheetData, UiStyleBaseline
+Cohesion: 0.08
+Nodes (11): ComponentRow, Data, Kind, MISSING, NOT_CHECKED, VALUE, Resolved, SheetData (+3 more)
 
 ### Community 63 - "DocumentContext"
-Cohesion: 0.09
-Nodes (14): AuditSnapshotDao, DocumentContext, APVoucherEditChangeSets, APVoucherEditChangeSets, APVoucherRevertChangeSets, ARVoucherEditChangeSets, ARVoucherEditChangeSets, AuditFk (+6 more)
+Cohesion: 0.06
+Nodes (14): AuditSnapshotDao, DocumentContext, APVoucherDeleteChangeSets, APVoucherEditChangeSets, APVoucherRevertChangeSets, ARVoucherEditChangeSets, AuditFk, AUD2_FINCOSTTAG (+6 more)
 
 ### Community 64 - "BrowserConfig"
-Cohesion: 0.08
-Nodes (21): com.gsl.config.converter.StringToBrowserConverter, com.gsl.config.converter.StringToRunModeConverter, com.gsl.enums.RunMode, Config.ConverterClass, org.aeonbits.owner.Converter, BrowserConfig, Config.LoadPolicy, Config.Sources (+13 more)
+Cohesion: 0.16
+Nodes (9): com.gsl.config.converter.StringToBrowserConverter, com.gsl.config.converter.StringToRunModeConverter, com.gsl.enums.RunMode, Config.ConverterClass, BrowserConfig, Config.LoadPolicy, Config.Sources, DefaultValue (+1 more)
 
 ### Community 65 - "UdfValueBuilder.buildUdfValues"
 Cohesion: 0.25
@@ -890,124 +865,120 @@ Cohesion: 0.13
 Nodes (5): Config.LoadPolicy, Config.Sources, DefaultValue, Key, RemoteLogConfig
 
 ### Community 67 - "TableRule"
-Cohesion: 0.13
-Nodes (8): RowMatchStrategy, AuditChangeReconstructor, AuditChange, AuditOperation, VoucherPersistenceMapFactory, TableRule, TableSnapshot, VoucherPersistenceMap
+Cohesion: 0.08
+Nodes (15): RowMatchStrategy, AuditChangeReconstructor, AuditChange, AuditOperation, AuditComparator, ExpectedAuditChange, AuditChange, AuditOperation (+7 more)
 
 ### Community 68 - "SshLogFetcher"
-Cohesion: 0.31
-Nodes (6): LogFetchRequest, LogFetchResponse, Override, SSHClient, ParseResult, SshLogFetcher
+Cohesion: 0.26
+Nodes (7): LogFetchRequest, LogFetchResponse, Override, SSHClient, ParseResult, SshLogFetcher, LogParser
 
 ### Community 69 - "ChequeNumberStrategy"
 Cohesion: 0.10
 Nodes (16): java.security.SecureRandom, AlphaNumericChequeStrategy, Override, ChequeNumberStrategy, ChequeStrategyRotator, IndiaChequeStrategy, Override, UniqueChequeGenerator (+8 more)
 
 ### Community 70 - "com.gsl.testdata.dto.MergedFinanceArVoucherData"
-Cohesion: 0.08
-Nodes (21): com.gsl.pages.Finance.Operations.ArVoucherAdd, com.gsl.testdata.dto.MergedFinanceArVoucherData, com.gsl.testdata.Finance.Operations.Vouchers.ARVoucher.PaymentInformation, com.gsl.testdata.Finance.Operations.Vouchers.ARVoucher.SubLedgerInformation, com.gsl.testdata.MasterTestData, Deferred Logout, GridRelation, ArVoucherExtentDescriptionLogger (+13 more)
+Cohesion: 0.07
+Nodes (23): AmountMode, com.gsl.pages.Finance.Operations.ArVoucherAdd, com.gsl.testdata.dto.MergedFinanceArVoucherData, com.gsl.testdata.Finance.Operations.Vouchers.ARVoucher.DocumentInformation, com.gsl.testdata.Finance.Operations.Vouchers.ARVoucher.PaymentInformation, com.gsl.testdata.Finance.Operations.Vouchers.ARVoucher.SelectDocument, com.gsl.testdata.Finance.Operations.Vouchers.ARVoucher.SubLedgerInformation, GridRelation (+15 more)
 
 ### Community 71 - "NegativeValidation"
-Cohesion: 0.08
-Nodes (24): NegativeValidation, AMOUNT_EXCEEDS_PENDING, BLANK_CASHBANK, BLANK_CASHBANK_ADD_ROW, BLANK_MANDATORY_REFERENCE, BLANK_SUBLEDGER_AP, BLANK_SUBLEDGER_AR, DOC_AMOUNT_READ_ONLY (+16 more)
+Cohesion: 0.03
+Nodes (74): EditShape, PaymentInfoDateScenario, PaymentModeShape, GeneralVoucherOperationMode, GeneralVoucherOperationMode, CREATE, EDIT, REVERT (+66 more)
 
 ### Community 72 - "Override"
 Cohesion: 0.08
 Nodes (13): com.gsl.pages.enums.Finance.Operations.Common.CommonVoucherGridColumnHeader, com.gsl.pages.enums.Finance.Operations.Common.FinanceVoucherAddEditPageHeader, com.gsl.pages.enums.Finance.Operations.Common.FinanceVoucherListPageHeader, com.gsl.pages.enums.Finance.Operations.Common.IVoucherGridColumnHeader, excludesCommonColumn(), getSubLedgerColumnHeader(), Override, overrideCommonColumn() (+5 more)
 
 ### Community 73 - "ApiClient"
-Cohesion: 0.04
-Nodes (39): com.fasterxml.jackson.databind.ObjectMapper, com.gsl.api.model.apvoucher.ApVoucherCreateRequest, com.gsl.api.model.apvoucher.ApVoucherCreateResponse, com.gsl.api.model.apvoucher.ApVoucherRevertResponse, com.gsl.api.model.apvoucher.TdsSectionLookupResult, com.gsl.api.model.arvoucher.ArVoucherCreateRequest, com.gsl.api.model.arvoucher.ArVoucherCreateResponse, com.gsl.api.model.arvoucher.CashBankLedgerLookupResult (+31 more)
+Cohesion: 0.06
+Nodes (20): com.gsl.api.model.apvoucher.ApVoucherCreateRequest, com.gsl.api.model.apvoucher.ApVoucherCreateResponse, com.gsl.api.model.apvoucher.ApVoucherRevertResponse, com.gsl.api.model.apvoucher.TdsSectionLookupResult, com.gsl.api.model.arvoucher.ArVoucherCreateRequest, com.gsl.api.model.arvoucher.ArVoucherCreateResponse, com.gsl.api.model.arvoucher.DocNumberSchemeEntry, com.gsl.api.model.arvoucher.ReferenceSiteLookupResult (+12 more)
 
 ### Community 74 - ".getExecutionConfig"
 Cohesion: 0.13
 Nodes (7): org.openqa.selenium.Platform, ConcurrencyCap, TargetOsResolver, parse(), TargetOs, LINUX, WINDOWS
 
 ### Community 75 - ".diffAuditTable"
-Cohesion: 0.19
+Cohesion: 0.21
 Nodes (5): DiffEngine, AuditTableCheckResult, ColumnCheckResult, DiffResult, ValidationFailure
 
 ### Community 76 - "DocSchemeAdminApiClient"
-Cohesion: 0.16
-Nodes (8): com.fasterxml.jackson.databind.JsonNode, AccountingPeriod, DocSchemeAdminApiClient, NewScheme, SchemeRef, DocSchemeProvisioner, Result, Spec
+Cohesion: 0.09
+Nodes (12): com.fasterxml.jackson.databind.JsonNode, com.gsl.api.model.udf.UdfFieldMetadata, AccountingPeriod, DocSchemeAdminApiClient, SuppressWarnings, NewScheme, SchemeRef, DocSchemeProvisioner (+4 more)
 
-### Community 77 - "ArVoucherTemplateLoader.java"
-Cohesion: 0.05
-Nodes (28): com.gsl.database.dialect.DbDialect, com.gsl.enums.AdjustmentType, com.gsl.enums.PaymentSelectionType, com.gsl.testdata.Finance.Operations.Vouchers.ARVoucher.DocumentInformation, DbDialect, DbDialect, DbDialect, DbDialectFactory (+20 more)
+### Community 77 - "org.jdbi.v3.core.Jdbi"
+Cohesion: 0.06
+Nodes (28): com.gsl.database.dialect.DbDialect, DocumentSelectionResult, org.jdbi.v3.core.Jdbi, DbDialect, DbDialect, JdbiFactory, AdmClsQuery (external), AdmCmpQuery (+20 more)
 
 ### Community 78 - "AuditTrace"
-Cohesion: 0.13
-Nodes (11): AuditEvent, com.gsl.validation.snapshot.AuditSnapshotDao, AuditTrace, AuditAssertion, AuditRepository, AuditTriggerStateResolver, AuditTriggerStateResolver.TriggerStatus, DISABLED (+3 more)
+Cohesion: 0.17
+Nodes (6): AuditEvent, com.gsl.validation.snapshot.AuditSnapshotDao, AuditTrace, AuditAssertion, AuditRepository, ExcludedAuditColumnsResolver
 
-### Community 79 - ".accountGroupLifecycle"
-Cohesion: 0.18
-Nodes (3): StepAction, AccountGroupLifecycle, CreateAccountGroup
+### Community 79 - ".isElementPresent"
+Cohesion: 0.05
+Nodes (7): AccountGroupListPage, CategoryAdd, CategoryAdd, GoodsReceiveChallanGeneral, AccountGroupLifecycle, CreateAccountGroup, MergedReceiptData
 
 ### Community 80 - "CommonVoucherListColumn"
-Cohesion: 0.09
-Nodes (22): CommonVoucherListColumn, CASH_BANK_NAME, CHEQUE_LABEL, CREATED_BY, CREATED_ON, ENTRY_SOURCE, INSTRUMENT_DATE, INSTRUMENT_NO (+14 more)
+Cohesion: 0.03
+Nodes (98): APVoucherListColumn, APVoucherListColumn, BRS_DATE, ON_ACCOUNT, PAYMENT_AMT_CR, SL_NAME, SLID, columnIdXPath() (+90 more)
 
 ### Community 81 - "LogFormat"
-Cohesion: 0.22
+Cohesion: 0.24
 Nodes (11): LogFormat, Const, Override, LogFormat, FINANCE_API, ISO_SINGLE_TOKEN, LOG4NET, normalizeLevel() (+3 more)
 
-### Community 82 - "XlsxBook"
-Cohesion: 0.14
-Nodes (13): org.apache.poi.ss.usermodel.Cell, org.apache.poi.xssf.usermodel.XSSFCellStyle, org.apache.poi.xssf.usermodel.XSSFColor, org.apache.poi.xssf.usermodel.XSSFFont, Override, XlsxBook, Align, CENTER (+5 more)
+### Community 82 - "Align"
+Cohesion: 0.40
+Nodes (5): Align, CENTER, GENERAL, LEFT, RIGHT
 
 ### Community 83 - "ApVoucherTag"
-Cohesion: 0.12
+Cohesion: 0.13
 Nodes (15): ApVoucherTag, ADVANCE, ADVANCE_NO_TDS, ADVANCE_TDS, BACKDATE, BANK_GL, CASH_GL, DOC_FIFO (+7 more)
 
-### Community 84 - "ValidationRule"
-Cohesion: 0.09
-Nodes (25): java.lang.annotation.Retention, java.lang.annotation.Target, org.testng.annotations.Parameters, FrameworkValidation, RuleGroup, ALL, GROUP_1, GROUP_2 (+17 more)
-
-### Community 85 - "VoucherListPageBase"
-Cohesion: 0.11
-Nodes (4): com.gsl.utils.dataprovider.fixture.finance.DocumentSearchStrategy, Override, SuppressWarnings, VoucherListPageBase
+### Community 84 - "Observation"
+Cohesion: 0.16
+Nodes (6): GridCellLocator, UiValidationFailure, Observation, PickerUi, Snapshot, PickerAndCellLocatorTest
 
 ### Community 86 - "ArVoucherScenarioType"
-Cohesion: 0.09
-Nodes (17): com.gsl.utils.dataprovider.fixture.finance.ArVoucherExecutionGroup, ArVoucherFixtureFactory, ArVoucherFixtureOptions, SelectDocumentVariant, ArVoucherScenarioType, BOUND_AMOUNT_MIN_INVALID, BOUND_AMOUNT_MIN_VALID, DOC_NO_ADJUSTMENT (+9 more)
+Cohesion: 0.12
+Nodes (15): ArVoucherFixtureFactory, ArVoucherScenarioType, BOUND_AMOUNT_MIN_INVALID, BOUND_AMOUNT_MIN_VALID, DOC_NO_ADJUSTMENT, FIFO_SETOFF, NEG_BLANK_CASHBANK, NEG_BLANK_MANDATORY_REFERENCE (+7 more)
 
 ### Community 87 - "SshConnectionPool"
 Cohesion: 0.16
 Nodes (11): com.gsl.remote.model.Credentials, GenericObjectPool, net.schmizz.sshj.SSHClient, org.apache.commons.pool2.BasePooledObjectFactory, org.apache.commons.pool2.impl.GenericObjectPool, org.apache.commons.pool2.PooledObject, Holder, Override (+3 more)
 
-### Community 88 - "SkipException"
-Cohesion: 0.10
-Nodes (19): SkipException, ApVoucherEditScenarioType, DETAIL_AMOUNT_ADVANCE, DETAIL_AMOUNT_DOC_DECREASE_ADJUST_MORE, DETAIL_AMOUNT_DOC_DECREASE_UPDATE_PAYMENT, DETAIL_AMOUNT_DOC_INCREASE_WITHIN_PENDING, DETAIL_AMOUNT_DOC_OVER_PENDING_NEGATIVE, DETAIL_AMOUNT_DOCUMENT (+11 more)
+### Community 88 - ".selectOrBackfill"
+Cohesion: 0.14
+Nodes (8): com.gsl.utils.dataprovider.fixture.finance.ApVoucherTagState, ApVoucherTagState, TAGGED, UNTAGGED, ApVoucherTagStateClaimSupport, DbApVoucherEditDataSource, Override, Override
 
-### Community 89 - "GeneralVoucherFixtureOptions"
-Cohesion: 0.13
-Nodes (10): com.gsl.enums.Finance.Operations.GeneralVoucher.GlLineType, GeneralVoucherPaymentVariant, GeneralVoucherEditCombinationFilter, execute(), ScenarioType, DETAIL_LINE, HEADER_ONLY, PAYMENT_INFO (+2 more)
+### Community 89 - "PopupUi"
+Cohesion: 0.15
+Nodes (6): AdjustmentEntryUi, UiValidationFailure, Snapshot, PaymentPopupUi, UiValidationFailure, PopupUi
 
-### Community 90 - "UiComponentSection"
-Cohesion: 0.07
-Nodes (15): UiComponentSection, Override, UiComponentSection, AngularUiAdapter, Override, SuppressWarnings, ComponentState, ExtJsUiAdapter (+7 more)
+### Community 90 - "org.openqa.selenium.WebDriver"
+Cohesion: 0.05
+Nodes (41): com.gsl.browser.BrowserLogRecord, com.gsl.network.NetworkLogRecord, FrontendDiagnosticsInjector, FunctionalInterface, org.apache.logging.log4j.Logger, org.openqa.selenium.JavascriptExecutor, org.openqa.selenium.WebDriver, AngularFrontendInjector (+33 more)
 
 ### Community 91 - "FrontendPerformanceSection"
-Cohesion: 0.13
-Nodes (4): FrontendPerformanceSection, Contributor, Override, RootCauseAttributionSection
+Cohesion: 0.09
+Nodes (10): FrontendPerformanceSection, FrontendPerformanceSectionFactory, Classification, FRONTEND_RENDERING, MIXED, NETWORK, UNKNOWN, Contributor (+2 more)
 
 ### Community 92 - "AuditComparator.java"
-Cohesion: 0.09
-Nodes (26): com.gsl.validation.snapshot.ValidationFailure, AuditChange, AuditChange, AuditComparisonResult, AuditEvent, AuditEvent, AuditOperation, AuditOperation (+18 more)
+Cohesion: 0.11
+Nodes (20): com.gsl.validation.snapshot.ColumnCheckResult, com.gsl.validation.snapshot.ValidationFailure, AuditChange, AuditChange, AuditComparisonResult, AuditEvent, AuditEvent, AuditOperation (+12 more)
 
-### Community 94 - "GeneralVoucherExtentDescriptionLogger"
+### Community 94 - "com.gsl.testdata.Finance.Operations.Vouchers.GeneralVoucher.ExpenseIncomeDetail"
 Cohesion: 0.15
-Nodes (4): ChequeBankMatch, com.gsl.testdata.Finance.Operations.Vouchers.GeneralVoucher.ExpenseIncomeDetail, GeneralVoucherExtentDescriptionLogger, Override
+Nodes (9): com.gsl.testdata.Finance.Operations.Vouchers.GeneralVoucher.DetailLineEditTarget, com.gsl.testdata.Finance.Operations.Vouchers.GeneralVoucher.ExpenseIncomeDetail, com.gsl.testdata.Finance.Operations.Vouchers.GeneralVoucher.PaymentInfoEditTarget, com.gsl.testdata.Finance.Operations.Vouchers.GeneralVoucher.SiteAllocation, com.gsl.utils.dataprovider.fixture.finance.GeneralVoucherEditVariant, DbGeneralVoucherEditDataSource, AccountingPeriodCache, ExpenseIncomeDetail (+1 more)
 
 ### Community 95 - "TestEnvironment"
-Cohesion: 0.07
-Nodes (19): Override, EnvResolver, from(), TestEnvironment, CLONE_STAGING, FEATURE_01, FEATURE_02, FEATURE_03 (+11 more)
+Cohesion: 0.09
+Nodes (16): from(), TestEnvironment, CLONE_STAGING, FEATURE_01, FEATURE_02, FEATURE_03, FEATURE_04, FEATURE_05 (+8 more)
 
 ### Community 96 - "WaitConfig"
 Cohesion: 0.13
 Nodes (5): Config.LoadPolicy, Config.Sources, DefaultValue, Key, WaitConfig
 
-### Community 97 - "org.jdbi.v3.core.Jdbi"
-Cohesion: 0.04
-Nodes (39): com.gsl.enums.PeriodDomain, com.gsl.testdata.Finance.Operations.Vouchers.GeneralVoucher.DetailLineEditTarget, com.gsl.utils.dataprovider.fixture.finance.VoucherEditDateVariant, com.zaxxer.hikari.HikariDataSource, EditShape, org.jdbi.v3.core.Jdbi, PaymentInfoDateScenario, PaymentModeShape (+31 more)
+### Community 97 - "AccountingPeriodResolver"
+Cohesion: 0.09
+Nodes (14): com.gsl.enums.PeriodDomain, com.gsl.utils.dataprovider.fixture.finance.VoucherEditDateVariant, ReservedDocumentKeyAware, ReservedDocumentKeyAware, AccountingPeriodCache, MonthOuKey, YearOuKey, AccountingPeriodResolver (+6 more)
 
 ### Community 98 - "CustomMetricsSection"
 Cohesion: 0.22
@@ -1015,51 +986,59 @@ Nodes (3): CustomMetricsSection, Override, SuppressWarnings
 
 ### Community 99 - "PaymentInformationPopup"
 Cohesion: 0.12
-Nodes (4): Override, PaymentInformationPopup, Override, VoucherPaymentInfo
+Nodes (7): ArPaymentInformationPopup, Override, PaymentInformationPopup, UiFieldState, DISABLED, EDITABLE, READONLY
 
-### Community 101 - ".getJdbi"
+### Community 101 - "GeneralVoucherUiValidation"
+Cohesion: 0.26
+Nodes (5): GeneralVoucherUiValidation, ExpenseIncomeDetail, SiteAllocation, NetAmountExpectation, UserData
+
+### Community 102 - "GeneralVoucherAdd"
 Cohesion: 0.05
-Nodes (19): ConcurrentLinkedQueue, org.testng.annotations.DataProvider, VoucherEditFlowSteps, CapturedTag, DocSchemeVoucherCounter, Override, Override, Override (+11 more)
+Nodes (21): com.gsl.pages.Common.DocumentMessageBox, com.gsl.pages.enums.Finance.Operations.Common.PaymentPanelField, com.gsl.pages.Finance.Operations.Common.AllocateSitesPopup, com.gsl.pages.pagecomponent.Finance.Operations.GeneralVoucher.GeneralVoucherDocumentInformation, com.gsl.pages.pagecomponent.Finance.Operations.GeneralVoucher.GeneralVoucherFooter, com.gsl.testdata.Finance.Operations.Vouchers.GeneralVoucher.PaymentInformation, com.gsl.validation.snapshot.VoucherSnapshot, GeneralVoucherFooter (+13 more)
 
-### Community 102 - "FilledFormUiRecorder"
-Cohesion: 0.24
-Nodes (5): com.gsl.testdata.Finance.Operations.Vouchers.GeneralVoucher.PaymentInformation, FilledFormUiRecorder, DocumentInformation, Override, RowUiPlan
+### Community 103 - "ConcurrentResultManager"
+Cohesion: 0.13
+Nodes (3): org.testng.annotations.AfterClass, ConcurrentResultManager, BaseSetTwoTest
 
-### Community 104 - "TdsApplicableAmountFlow"
-Cohesion: 0.10
-Nodes (20): TdsApplicableAmountBusinessLogic, TdsApplicableAmountBusinessLogic, TdsAutoReleaseBusinessLogic, DocumentSelectionMode, DocumentSelectionMode enum (external), HYBRID, MIXED, POSITIVE (+12 more)
+### Community 104 - ".waitForExtJS"
+Cohesion: 0.05
+Nodes (16): TdsApplicableAmountBusinessLogic, TdsApplicableAmountBusinessLogic, TdsApplicableAmountBehaviour, fromString(), TdsApplicableAmountBehaviour, CLEAR_ERROR_THEN_PARTIAL_EDIT, GROSS_EQUALS_TDS, PARTIAL_EDIT (+8 more)
 
-### Community 105 - "ExpenseIncomeDetail"
-Cohesion: 0.11
-Nodes (8): com.gsl.testdata.Finance.Operations.Vouchers.GeneralVoucher.DocumentInformation, ExpenseIncomeDetailBase, ExpenseIncomeDetail, ExpectedChangeSet, ScopedRule, APVoucherDeleteChangeSets, GeneralVoucherDeleteChangeSets, GeneralVoucherEditChangeSets
+### Community 105 - "ExpectedChangeSet"
+Cohesion: 0.22
+Nodes (4): com.gsl.testdata.Finance.Operations.Vouchers.GeneralVoucher.DocumentInformation, ExpectedChangeSet, ScopedRule, GeneralVoucherEditChangeSets
 
 ### Community 106 - ".parseSheet"
-Cohesion: 0.23
-Nodes (7): Row, DataFormatter, Sheet, SheetResolution, UserCredentialLoader, UserPairDataSupplier, Workbook
+Cohesion: 0.06
+Nodes (27): OptionalColumnMerger Case Study, Utility Layering Convention, org.apache.poi.ss.usermodel.CellStyle, org.apache.poi.ss.usermodel.DataFormatter, org.apache.poi.ss.usermodel.IndexedColors, org.apache.poi.ss.usermodel.Row, org.apache.poi.ss.usermodel.Sheet, org.apache.poi.ss.usermodel.Workbook (+19 more)
 
 ### Community 107 - "com.gsl.enums.GlAccountType"
-Cohesion: 0.17
-Nodes (12): com.gsl.enums.GlAccountType, GlLineType, TYPE1_NONE, TYPE2_SITE_ONLY, TYPE3_SITE_AND_SUBLEDGER, GeneralVoucherCombinations, GeneralVoucherExecutionGroup, GeneralVoucherPaymentVariant (+4 more)
+Cohesion: 0.21
+Nodes (10): com.gsl.enums.GlAccountType, GlLineType, TYPE1_NONE, TYPE2_SITE_ONLY, TYPE3_SITE_AND_SUBLEDGER, GeneralVoucherCombinations, GeneralVoucherExecutionGroup, GeneralVoucherPaymentVariant (+2 more)
 
 ### Community 108 - "AutoQtyPopupType"
-Cohesion: 0.11
+Cohesion: 0.12
 Nodes (18): AutoQtyPopupConverter, Override, ChargeExtraTaxConverter, Override, AutoQtyPopupType, NO, YES, buildErrorMessage() (+10 more)
 
 ### Community 109 - "RootCauseCategory"
-Cohesion: 0.11
-Nodes (19): RootCauseCategory, APP_SAVE_REJECTED, ASSERTION_FAILURE, CLICK_INTERCEPTED, DB_VALIDATION_FAILURE, DOM_REBUILT, ELEMENT_NEVER_APPEARED, ENVIRONMENT (+11 more)
+Cohesion: 0.08
+Nodes (26): RootCause, RootCauseCategory, APP_SAVE_REJECTED, ASSERTION_FAILURE, CLICK_INTERCEPTED, DB_VALIDATION_FAILURE, DOM_REBUILT, ELEMENT_NEVER_APPEARED (+18 more)
 
-### Community 110 - ".enforce"
-Cohesion: 0.11
-Nodes (10): Selenium Chrome Standalone Service, BiDiViewportPinner, Override, CdpViewportPinner, Override, Override, OuterSizeViewportPinner, ViewportPinner (+2 more)
+### Community 110 - "ViewportEnforcer.java"
+Cohesion: 0.08
+Nodes (14): com.gsl.config.BrowserConfig, Selenium Chrome Standalone Service, JavascriptExecutor, BiDiViewportPinner, Override, CdpViewportPinner, Override, Override (+6 more)
 
-### Community 111 - "MergedInventoryItemData"
-Cohesion: 0.13
-Nodes (12): Converter, AtLeastOneMandatory, Retention, Target, Override, MergedInventoryItemData, ItemCategoryDescription, ItemGeneral (+4 more)
+### Community 111 - "RunMode"
+Cohesion: 0.10
+Nodes (16): org.aeonbits.owner.Converter, Override, StringToBrowserConverter, Override, StringToRunModeConverter, DriverFactory, MasterDriverFactory, ExecutionProviderRegistry (+8 more)
+
+### Community 112 - "AdminTopMenuComponent.java"
+Cohesion: 0.12
+Nodes (13): MainMenuType, FINANCE, ORGANIZATION, SECURITY, UTILITIES, AdminHomePage, AdminTopMenuComponent, SuppressWarnings (+5 more)
 
 ### Community 113 - "CoverageWorkbookTest"
-Cohesion: 0.13
-Nodes (3): TestTitle, CoverageCatalogFixtures, CoverageWorkbookTest
+Cohesion: 0.14
+Nodes (3): CoverageWorkbookSampleTest, CoverageCatalogFixtures, CoverageWorkbookTest
 
 ### Community 114 - "LabelEnum"
 Cohesion: 0.11
@@ -1070,60 +1049,76 @@ Cohesion: 0.07
 Nodes (18): CategoryLevel, CAT1, CAT2, CAT3, CAT4, CAT5, CAT6, field() (+10 more)
 
 ### Community 116 - "JdbiSqlLogger"
-Cohesion: 0.11
-Nodes (9): org.jdbi.v3.core.argument.Argument, org.jdbi.v3.core.statement.SqlLogger, org.jdbi.v3.core.statement.StatementContext, DataLoadScope, DbQueryBuffer, Logger, Override, JdbiSqlLogger (+1 more)
+Cohesion: 0.09
+Nodes (10): com.gsl.reports.contract.TestResultsRenderer, org.jdbi.v3.core.argument.Argument, org.jdbi.v3.core.statement.SqlLogger, org.jdbi.v3.core.statement.StatementContext, DataLoadScope, DbQueryBuffer, Logger, Override (+2 more)
 
 ### Community 117 - "LogEntry"
-Cohesion: 0.13
-Nodes (12): RemoteLogSection, Override, RemoteLogSection, HtmlLogFormatter, Override, LogFormatter, LogEntry, LogFetchResponse (+4 more)
+Cohesion: 0.09
+Nodes (18): LogFilter, RemoteLogSection, Override, RemoteLogSection, Override, KeywordTimeWindowFilter, LogFilter (interface), FunctionalInterface (+10 more)
 
 ### Community 118 - "jquery.min.js"
 Cohesion: 0.09
 Nodes (3): A(), qe(), Ze()
 
-### Community 119 - "MobileDriverData"
-Cohesion: 0.17
-Nodes (10): com.gsl.driver.MobileDriverData, AndroidManager, IOSManager, MobileDriverData, MobileDriverData, PlatformType, PlatformType, ANDROID (+2 more)
+### Community 119 - "AppiumProvider.java"
+Cohesion: 0.16
+Nodes (12): com.gsl.driver.MobileDriverData, AndroidManager, IOSManager, MobileDriverData, MobileDriverData, AppiumProvider, Override, PlatformType (+4 more)
+
+### Community 120 - "MergedFinanceArVoucherData"
+Cohesion: 0.12
+Nodes (10): InvoiceScoped, DocumentInformation, Override, PaymentInformation, ReferenceSitewiseFIFOsetoff, SelectDocument, MergedFinanceArVoucherData, Override (+2 more)
 
 ### Community 121 - "ISubModule"
-Cohesion: 0.17
-Nodes (6): org.testng.IMethodInstance, ISubModule, SubModuleResolver, Override, DeltaRecoveryRunner, ExtentReports
+Cohesion: 0.26
+Nodes (3): ISubModule, OperationsHomePage, OperationsSideMenuComponent
 
 ### Community 122 - "RemoteLogCollector"
 Cohesion: 0.19
 Nodes (8): com.gsl.diagnostics.section.ServerRole, LogParser, Override, RegexLogParser, Credentials, LogFetchRequest, LogFetchResponse, RemoteLogCollector
 
+### Community 123 - "IVoucherGridAction"
+Cohesion: 0.12
+Nodes (19): APVoucherActionsMenu, APVoucherActionsMenu, WORKBENCH, dbOperationShortcode(), Override, CommonVoucherActionsMenu, CommonVoucherActionsMenu, ADD (+11 more)
+
 ### Community 124 - "GeneralVoucherTag"
-Cohesion: 0.09
-Nodes (21): GeneralVoucherCombinationFilter, GeneralVoucherExecutionGroup, GeneralVoucherTag, ASSET, CREDIT_SIDE, DEBIT_SIDE, EXPENSE, INCOME (+13 more)
+Cohesion: 0.11
+Nodes (17): GeneralVoucherTag, ASSET, CREDIT_SIDE, DEBIT_SIDE, EXPENSE, INCOME, LIABILITY, PAYMENT_CASH (+9 more)
 
 ### Community 125 - "SetupMenuType"
-Cohesion: 0.13
-Nodes (16): getGroup(), getName(), getShortCode(), Override, SetupMenuType, ASSIGN_ORGANIZATION_SITE, CHARGE, FORMS (+8 more)
+Cohesion: 0.12
+Nodes (15): SetupMenuType, ASSIGN_ORGANIZATION_SITE, CHARGE, FORMS, MARGIN_RULE, MARGIN_RULE_ALLOCATION_SITE_WISE, MARGIN_RULE_ALLOCATION_VENDOR_WISE, PRICE_CHART (+7 more)
 
 ### Community 126 - "Product_DefintionMenuType"
-Cohesion: 0.10
-Nodes (21): Product_DefintionMenuType, ARTICLE, ATTRIBUTE, CATEGORY, CONVERSION_TYPE, EXCISE_TARIFF, GROUP, GST_ADDITIONAL_CESS (+13 more)
+Cohesion: 0.08
+Nodes (25): getGroup(), getName(), getShortCode(), Override, Product_DefintionMenuType, ARTICLE, ATTRIBUTE, CATEGORY (+17 more)
 
-### Community 128 - "PublicApiOAuth2Strategy"
-Cohesion: 0.29
-Nodes (4): ApiAuthStrategy, Override, PublicApiOAuth2Strategy, WebApiTokenAuthStrategy
+### Community 127 - "InventoryTopMenuComponent"
+Cohesion: 0.16
+Nodes (12): InventoryTopMenuComponent, LogisticsHomePage, LogisticsHomePage, OperationsSideMenuComponent, OperationsHomePage, OperationsSideMenuComponent, ProductDefinitionHomePage, ProductDefinitionHomePage (+4 more)
+
+### Community 128 - "WebApiTokenAuthStrategy.java"
+Cohesion: 0.20
+Nodes (5): ApiAuthStrategy, Override, PublicApiOAuth2Strategy, WebApiTokenAuthStrategy, TenantUtils
 
 ### Community 129 - "OperationsMenuType"
-Cohesion: 0.13
-Nodes (15): OperationsMenuType, CANCEL_PURCHASE_ORDER, CANCEL_SERVICE_ORDER, CREDIT_NOTE, DEBIT_NOTE, DN_CN_RECONCILIATION, PURCHASE_INVOICE, PURCHASE_ORDER (+7 more)
-
-### Community 131 - ".getBrowserConfig"
 Cohesion: 0.11
-Nodes (8): BrowserResolver, SuppressWarnings, Config.LoadPolicy, Config.Sources, DefaultValue, Key, ReportConfig, RuntimeProfileBuilder
+Nodes (19): getGroup(), getName(), getShortCode(), Override, OperationsMenuType, CANCEL_PURCHASE_ORDER, CANCEL_SERVICE_ORDER, CREDIT_NOTE (+11 more)
 
-### Community 132 - ".click"
-Cohesion: 0.02
-Nodes (24): AccountClassListPage, com.gsl.pages.Finance.Setup.AccountClassListPage, com.gsl.pages.Inventory.Product_Definition.ItemListPage, ItemListPage, lombok.extern.slf4j.Slf4j, TdsApplicableAmountFlow, CategoryAdd, CategoryAdd (+16 more)
+### Community 130 - "BrowserFingerprint"
+Cohesion: 0.11
+Nodes (5): com.gsl.diagnostics.DiagnosticSection, org.openqa.selenium.Capabilities, DriverCapabilitiesSection, Override, BrowserFingerprint
+
+### Community 131 - "Browser"
+Cohesion: 0.10
+Nodes (18): BrowserResolver, LocalDriverFactory, Override, LocalExecutionProvider, WebDriverData, WebDriverData, Browser, CHROME (+10 more)
+
+### Community 132 - "ItemAdd"
+Cohesion: 0.03
+Nodes (8): ItemAdd, ItemAddCategoryDescription, ItemAddFooter, ItemAddGeneral, ItemAddInventoryTracking, ItemAddOthers, ItemAddPOSBehaviour, ItemAddPricing
 
 ### Community 133 - "WinRmLogFetcher"
-Cohesion: 0.14
-Nodes (10): com.gsl.remote.filter.LogFilter, com.gsl.remote.parser.LogParser, LogFetcher, LogFetchRequest, LogFetchResponse, Override, ParseResult, WinRmLogFetcher (+2 more)
+Cohesion: 0.16
+Nodes (9): com.gsl.remote.filter.LogFilter, com.gsl.remote.parser.LogParser, LogFetcher, LogFetchRequest, LogFetchResponse, Override, ParseResult, WinRmLogFetcher (+1 more)
 
 ### Community 134 - "PaymentInfoLabel"
 Cohesion: 0.29
@@ -1133,77 +1128,81 @@ Nodes (5): PaymentInfoLabel, INSTRUMENT_DATE, INSTRUMENT_NO, PAYMENT_MODE, REFER
 Cohesion: 0.11
 Nodes (4): TdsNetPayableFieldAttribute, ARIA_VALUE_NOW, VoucherDocumentLabels, VoucherDocumentLabels
 
-### Community 136 - "ARVoucherMainGrid"
-Cohesion: 0.22
-Nodes (4): ARVoucherListFooter, ARVoucherListGridHeader, ARVoucherMainGrid, Override
+### Community 136 - "ArVoucherListPage.java"
+Cohesion: 0.13
+Nodes (12): ARVoucherListFooter, ARVoucherListGridHeader, com.gsl.pages.pagecomponent.Finance.Operations.ARVoucher.ARVoucherListFooter, com.gsl.pages.pagecomponent.Finance.Operations.ARVoucher.ARVoucherListGridHeader, ARVoucherRevertOutcome, ALREADY_UNPOSTED, CANNOT_REVERT_BRS_DONE, CANNOT_REVERT_MONTH_CLOSED (+4 more)
 
-### Community 137 - ".isElementPresent"
-Cohesion: 0.03
-Nodes (42): Page-Identity Verification, DashboardFactory, DashboardFactory, MainMenuType, FINANCE, ORGANIZATION, SECURITY, UTILITIES (+34 more)
+### Community 137 - "TopModuleMenuComponent"
+Cohesion: 0.07
+Nodes (23): Page-Identity Verification, DashboardFactory, DashboardFactory, DashboardTitle, FinanceHomePage, Override, FinanceTopMenuComponent, InventoryHomePage (+15 more)
 
 ### Community 138 - "WaitAnalysisSection"
-Cohesion: 0.20
-Nodes (4): Override, WaitAnalysisSection, WaitDurationBuffer, WaitRecord
+Cohesion: 0.17
+Nodes (7): WaitAnalysisSection, Override, WaitAnalysisSection, WaitDurationBuffer / WaitRecord, TestNG onTestStart-After-@BeforeMethod Ordering Rationale, WaitDurationBuffer, WaitRecord
 
 ### Community 139 - "testng-reports.js"
 Cohesion: 0.15
 Nodes (12): bullet_point.png (blue list-item bullet icon), collapseall.gif (collapse-all toolbar icon), failed.png (red X status icon), navigator-bullet.png (tree expander arrow icon), passed.png (green check status icon), skipped.png (yellow warning status icon), getHashForMethod(), getPanelName() (+4 more)
 
 ### Community 140 - "UiValidationReporter"
-Cohesion: 0.11
-Nodes (8): Status, FAIL, KNOWN_ISSUE, PASS, SKIP, Pattern, Node, UiValidationReporter
+Cohesion: 0.09
+Nodes (6): Pattern, Status, UiValidationFailure, Node, UiValidationReporter, UiKnownIssue
 
-### Community 141 - ".saveScreenshotWithMetadata"
-Cohesion: 0.25
-Nodes (3): ScreenshotMetadata, CurrentLocatorHolder, CurrentLocatorHolder
+### Community 141 - ".getDriver"
+Cohesion: 0.05
+Nodes (11): ScreenshotMetadata, By, PopupHandler, ActionUtils, Actions, CurrentLocatorHolder, CurrentLocatorHolder, ExtJsTreeUtils (+3 more)
 
-### Community 142 - "ReportConfigRenderer"
-Cohesion: 0.16
-Nodes (13): com.gsl.config.DataBaseConfig, com.gsl.config.ExcelDataConfig, com.gsl.reports.profile.BrowserConfig, com.gsl.reports.profile.DatabaseConfig, com.gsl.reports.profile.DiagnosticsConfig, com.gsl.reports.profile.ExecutionConfig, com.gsl.reports.profile.NetworkConfig, com.gsl.reports.profile.PerformanceConfig (+5 more)
+### Community 142 - ".getExtentTest"
+Cohesion: 0.17
+Nodes (12): com.gsl.config.AppLogPathsConfig, com.gsl.config.DataBaseConfig, com.gsl.config.ExcelDataConfig, com.gsl.reports.profile.BrowserConfig, com.gsl.reports.profile.DatabaseConfig, com.gsl.reports.profile.DiagnosticsConfig, com.gsl.reports.profile.ExecutionConfig, com.gsl.reports.profile.PerformanceConfig (+4 more)
 
 ### Community 143 - "EnvExcelPathConverter"
 Cohesion: 0.26
 Nodes (7): ConverterClass, EnvExcelPathConverter, ExcelDataConfig, Config.LoadPolicy, Config.Sources, DefaultValue, Key
 
 ### Community 144 - "LogCategory"
-Cohesion: 0.03
-Nodes (40): LogCategory, BUSINESS, CONTEXT_SWITCH, DATA_BACKFILL, DB, FIELD_ENTRY, FIELD_VALIDATION, FRAMEWORK (+32 more)
+Cohesion: 0.07
+Nodes (30): com.aventstack.extentreports.markuputils.Markup, com.gsl.enums.ReportSeverity, defaultSeverity(), LogCategory, BUSINESS, CONTEXT_SWITCH, DATA_BACKFILL, DB (+22 more)
 
-### Community 146 - "SshLogFetcher.java"
-Cohesion: 0.17
-Nodes (5): RemoteCommandException, LogFetcher (interface), LogFetcher, LogFileNameDateFilter, LogParser (interface)
+### Community 146 - "RemoteLogCollector.java"
+Cohesion: 0.22
+Nodes (5): com.gsl.remote.fetcher.LogFetcher, RemoteCommandException, LogFetcher (interface), LogFetcher, LogParser (interface)
 
-### Community 147 - "ActiveGroupFilters"
-Cohesion: 0.10
-Nodes (12): GeneralVoucherVariant, CoverageStats, RowState, DB_EXPANDED, FAIL, NOT_RUN, NOT_SELECTED, PASS (+4 more)
+### Community 147 - "RowState"
+Cohesion: 0.25
+Nodes (8): RowState, DB_EXPANDED, FAIL, NOT_RUN, NOT_SELECTED, PASS, SELECTED_NOT_RUN, SKIP
 
-### Community 148 - "com.gsl.testdata.dto.MergedFinanceGeneralVoucherData"
-Cohesion: 0.27
-Nodes (7): com.gsl.testdata.dto.MergedFinanceGeneralVoucherData, SiteAllocation, execute(), Override, loadData(), GeneralVoucherTemplateLoader, LiveGvDbRefs
+### Community 148 - "LiveGvDbRefs"
+Cohesion: 0.16
+Nodes (9): com.gsl.pages.Finance.Operations.GeneralVoucherAdd, SiteAllocation, execute(), execute(), Override, loadData(), GeneralVoucherTemplateLoader, GeneralVoucherPaymentVariant (+1 more)
 
 ### Community 149 - "DocumentReservationRegistry.tryReserve"
 Cohesion: 0.67
 Nodes (3): DocumentReservationRegistry.filterAndReserve, DocumentReservationRegistry.tryReserve, ReservedDocumentKeyAware.getReservedDocumentKey
 
 ### Community 150 - ".getNetworkConfig"
-Cohesion: 0.06
-Nodes (16): Network, org.openqa.selenium.bidi.module.Network, org.openqa.selenium.bidi.network.Header, PatternMatcherEngine, SeverityClassifier, BiDiNetworkCapture, Override, CdpNetworkCapture (+8 more)
+Cohesion: 0.08
+Nodes (12): Network, org.openqa.selenium.bidi.module.Network, org.openqa.selenium.bidi.network.Header, AdvancedJsLogger, PatternMatcherEngine, SeverityClassifier, BiDiNetworkCapture, Override (+4 more)
 
 ### Community 151 - "VoucherType"
 Cohesion: 0.16
 Nodes (10): VoucherType, AmountPair, expectedHeaderAmount(), fromCode(), Override, VoucherType, AP, AR (+2 more)
 
-### Community 153 - "AdjustmentMismatchPlan"
+### Community 152 - "UiElementType"
 Cohesion: 0.13
-Nodes (8): AdjustmentMismatchAction, ADJUST_MORE, NONE, UPDATE_PAYMENT_AMOUNT, AdjustmentMismatchPlan, Step, AdjustmentSpec, DocAmount
+Nodes (17): detect(), parse(), parseAll(), UiElementType, BUTTON, CHECKBOX, DATE_FIELD, DISPLAY_FIELD (+9 more)
 
-### Community 154 - "AppLogPathsConfig"
-Cohesion: 0.29
-Nodes (6): com.gsl.config.AppLogPathsConfig, org.aeonbits.owner.Config.DefaultValue, org.aeonbits.owner.Config.Key, AppLogPathsConfig, Config.LoadPolicy, Config.Sources
+### Community 153 - "ApVoucherEditPredicateFactory.java"
+Cohesion: 0.09
+Nodes (14): AdjustmentMismatchAction, ADJUST_MORE, NONE, UPDATE_PAYMENT_AMOUNT, SubLedgerRowIdentity, ApVoucherDetailLineEditTarget, EditShape, ADJUSTMENT_AMOUNT_CHANGE (+6 more)
+
+### Community 154 - ".getBrowserConfig"
+Cohesion: 0.14
+Nodes (7): org.aeonbits.owner.Config.DefaultValue, org.aeonbits.owner.Config.Key, AppLogPathsConfig, Config.LoadPolicy, Config.Sources, SuppressWarnings, RuntimeProfileBuilder
 
 ### Community 155 - "FrameworkConfig"
-Cohesion: 0.17
-Nodes (6): Config.LoadPolicy, Config.Sources, DefaultValue, Key, ConfigValidator, FrameworkConfig
+Cohesion: 0.16
+Nodes (6): ConfigValidator, FrameworkConfig, Config.LoadPolicy, Config.Sources, DefaultValue, Key
 
 ### Community 157 - "ReturnBehaviourType"
 Cohesion: 0.09
@@ -1213,109 +1212,121 @@ Nodes (22): Override, ReturnBehaviourConverter, Override, ValidityModeConverter,
 Cohesion: 0.16
 Nodes (13): getGroup(), getName(), getShortCode(), Override, OperationsMenuType, AUDIT_ENTRY, AUDIT_PLAN, BUNDLE (+5 more)
 
-### Community 161 - "SnapshotValidationReporter"
+### Community 160 - ".render"
 Cohesion: 0.11
-Nodes (11): AuditFieldCheckResult, AuditFieldShape, DELETE_ONLY, FULL, INSERT_ONLY, ROW_LEVEL, AuditTableCheckResult, ColumnCheckResult (+3 more)
+Nodes (3): com.gsl.diagnostics.RootCause, FailureSummaryRenderer, ValidationBuffer (external)
 
-### Community 163 - ".getExtentTest"
-Cohesion: 0.13
-Nodes (3): Override, ExtentReport, ShardKey
+### Community 161 - ".getJdbi"
+Cohesion: 0.09
+Nodes (12): AuditFieldCheckResult, AuditSnapshotDao, AuditFieldShape, DELETE_ONLY, FULL, INSERT_ONLY, ROW_LEVEL, AuditTableCheckResult (+4 more)
+
+### Community 163 - ".onTestStart"
+Cohesion: 0.05
+Nodes (14): ActiveGroupFilters, com.aventstack.extentreports.ExtentTest, Login Once Per Module Architecture, Session Reuse, org.testng.ISuiteListener, org.testng.ITestListener, Override, TestListener (+6 more)
 
 ### Community 164 - "PageStylingSpec.java"
 Cohesion: 0.25
 Nodes (4): PageStylingSpec, BREADCRUMB, READONLY_DISPLAY_FIELD, WINDOW_TITLE
 
 ### Community 165 - "ActualResultsLogger"
-Cohesion: 0.16
-Nodes (3): ActualResultsLogger, Tally, UiNode
+Cohesion: 0.12
+Nodes (5): ActualResultsHolder, com.gsl.reports.FoldableSectionRenderer.Status, ActualResultsLogger, Tally, UiNode
 
 ### Community 166 - "ChangeClassification"
 Cohesion: 0.25
 Nodes (8): ChangeClassification, AUDIT_CHANGE, CASCADE_CHANGE, IGNORED, KNOWN_ISSUE, SYSTEM_CHANGE, UNEXPECTED_CHANGE, USER_CHANGE
 
 ### Community 167 - "FinanceConfig"
-Cohesion: 0.18
-Nodes (5): FinanceConfig, Config.LoadPolicy, Config.Sources, DefaultValue, Key
+Cohesion: 0.06
+Nodes (15): VoucherDocSchemeSupport, FinanceConfig, Config.LoadPolicy, Config.Sources, DefaultValue, Key, ExhaustedDocSchemeBackfill, AdmDocSchemeCandidate (+7 more)
 
-### Community 170 - "MergedReceiptData"
-Cohesion: 0.15
-Nodes (5): Override, MergedReceiptData, ItemDetail, ReceiptHeader, ScanItemWithDetails
+### Community 168 - "Handover: Common UI validation (GV / AP / AR) + run stability"
+Cohesion: 0.12
+Nodes (16): 1. Goals (as set by the user), 2. Working rules agreed with the user, 3. Build and run, 4. Architecture of the UI-validation standard, 5. Stability fixes made this session (rounds 17-23), 6. Facts verified in the database (staging idealdb, 172.22.4.4), 7. Open items (not started), 8. Debugging tips that worked (+8 more)
+
+### Community 169 - "FoldableSectionRenderer"
+Cohesion: 0.13
+Nodes (7): DbGatheringExtentLogger, FoldableSectionRenderer, Status, FAIL, KNOWN_ISSUE, PASS, SKIP
+
+### Community 170 - "MasterTestData"
+Cohesion: 0.05
+Nodes (20): SetSelectionType, SELECT_SET, ItemBlock, ItemDetailsRow, Override, MergedReceiptData, ScanItemRow, SelectItemRow (+12 more)
 
 ### Community 171 - "FailureCategory"
 Cohesion: 0.22
 Nodes (8): Failure Classification, FailureCategory, BROWSER_FAILURE, ENVIRONMENT_FAILURE, NAVIGATION_FAILURE, SESSION_FAILURE, TEST_FAILURE, FailureClassifier
 
-### Community 172 - "WmsBaseScreen"
-Cohesion: 0.27
-Nodes (7): io.appium.java_client.AppiumDriver, WmsBaseScreen, By, WebDriverWait, WmsBaseScreen, WmsLoginScreen, WmsLoginScreen
+### Community 172 - "org.openqa.selenium.support.ui.WebDriverWait"
+Cohesion: 0.23
+Nodes (8): io.appium.java_client.AppiumDriver, org.openqa.selenium.support.ui.WebDriverWait, WmsBaseScreen, By, WebDriverWait, WmsBaseScreen, WmsLoginScreen, WmsLoginScreen
 
-### Community 173 - "PopupOutcome"
-Cohesion: 0.50
-Nodes (4): PopupOutcome, EXPECTED, MAYBE, UNEXPECTED
-
-### Community 174 - ".dataBackfill"
-Cohesion: 0.08
-Nodes (11): Override, VoucherDocSchemeSupport, ApVoucherArBackfillStrategy, Override, ApVoucherUntaggedBackfillStrategy, Override, ArVoucherApBackfillStrategy, Override (+3 more)
+### Community 173 - "PopupResult"
+Cohesion: 0.12
+Nodes (10): org.openqa.selenium.TimeoutException, PopupOutcome, EXPECTED, MAYBE, UNEXPECTED, LoaderStillInProgressException, LoaderStillInProgressException, UnexpectedPopupException (+2 more)
 
 ### Community 176 - "DataBaseConfig"
-Cohesion: 0.26
+Cohesion: 0.27
 Nodes (4): DataBaseConfig, Config.LoadPolicy, Config.Sources, Key
 
 ### Community 177 - "CombinedValidationError"
-Cohesion: 0.17
-Nodes (8): Area, CombinedValidationError, Kind, DATABASE, OTHER, SNAPSHOT, UI, CoverageWorkbookSampleTest
-
-### Community 178 - ".error"
-Cohesion: 0.18
-Nodes (4): com.aventstack.extentreports.ExtentReports, ConcurrentSyncManager, PreSuiteHealthCheck, BaseSetTwoTest
-
-### Community 179 - "FieldStyleSpec"
 Cohesion: 0.11
-Nodes (19): FieldStyleSpec, AMOUNT_VALUE_LABEL, BUTTON, DATE_INPUT, DISABLED_STATE, FIELD_LABEL, FOOTER_LIGHT_BUTTON, GRID_CELL_NUMERIC (+11 more)
+Nodes (10): Area, CombinedValidationError, Kind, DATABASE, OTHER, SNAPSHOT, UI, UiValidationFailure (+2 more)
+
+### Community 179 - "APVoucherDocumentInformation.java"
+Cohesion: 0.08
+Nodes (26): VoucherDocumentFormLabel, getFieldLabel(), Override, VoucherDocumentFormLabel, ON_ACCOUNT, ExtJsUtils, RadioFieldLabel, FieldStyleSpec (+18 more)
 
 ### Community 180 - "mvnw"
 Cohesion: 0.38
 Nodes (8): mvnw script, clean(), die(), exec_maven(), hash_string(), set_java_home(), trim(), verbose()
 
-### Community 181 - "GeneralVoucherAdd"
-Cohesion: 0.11
-Nodes (5): com.gsl.pages.pagecomponent.Finance.Operations.GeneralVoucher.GeneralVoucherFooter, GeneralVoucherFooter, GeneralVoucherAdd, Override, GeneralVoucherEditPredicateFactory
+### Community 181 - "com.gsl.validation.ui.UiValidationFailure"
+Cohesion: 0.06
+Nodes (17): com.gsl.enums.VoucherDomain, com.gsl.pages.enums.Finance.Operations.Common.FooterMode, com.gsl.pages.pagecomponent.Finance.Common.CashBankParent, com.gsl.pages.pagecomponent.Finance.Operations.Common.VoucherFooterBase, com.gsl.utils.ui.UiFieldState, com.gsl.validation.ui.UiValidationFailure, com.gsl.validation.ui.UiValidationLevel, Deferred Logout (+9 more)
 
 ### Community 182 - "ColumnRule"
-Cohesion: 0.08
-Nodes (27): Severity, ColumnRule, ColumnRuleEngine, ColumnCheckResult, compareOrdered(), ComparisonStrategy, CURRENT_TIMESTAMP_TOLERANCE, CURRENT_USER (+19 more)
+Cohesion: 0.15
+Nodes (12): Severity, ColumnRule, ColumnRuleEngine, ColumnCheckResult, compareOrdered(), evaluate(), evaluateExpectedDelta(), evaluateExpectedValue() (+4 more)
+
+### Community 183 - "SubModuleResolver.java"
+Cohesion: 0.18
+Nodes (12): getGroup(), getName(), getShortCode(), Override, getGroup(), getName(), getShortCode(), Override (+4 more)
 
 ### Community 184 - ".fillToCap"
-Cohesion: 0.17
+Cohesion: 0.13
 Nodes (10): DocSchemeFiller, FillLine, FillResult, PassOutcome, Status, ALREADY_FULL, FAIL, PASS (+2 more)
 
-### Community 185 - "LogAttachment.java"
-Cohesion: 0.20
-Nodes (7): DecisionEngine, JsErrorClassificationEngine, LogSeverity, CRITICAL, IGNORE, INFO, WARNING
+### Community 185 - "TestListener.java"
+Cohesion: 0.04
+Nodes (34): AdvancedLogFetcher, SuppressWarnings, BrowserLogRecord, Decision, FAIL, PASS, WARN, DecisionEngine (+26 more)
 
 ### Community 186 - "xe"
 Cohesion: 0.29
 Nodes (10): b(), ce(), le(), pe(), Re(), se(), Te(), ve() (+2 more)
 
 ### Community 187 - "CoverageResult"
-Cohesion: 0.14
-Nodes (8): com.gsl.utils.dataprovider.fixture.finance.CoverageRow, org.apache.poi.xssf.usermodel.XSSFWorkbook, CoverageResult, CoverageWorkbookBuilder, JoinResult, Matched, VoucherReportRows, CoverageCatalogTest
+Cohesion: 0.10
+Nodes (12): com.gsl.testdata.MasterTestData, com.gsl.utils.dataprovider.fixture.finance.CoverageRow, GeneralVoucherVariant, org.apache.poi.xssf.usermodel.XSSFWorkbook, CoverageResult, CoverageStats, CoverageWorkbookBuilder, JoinResult (+4 more)
+
+### Community 188 - "ActivePopupSection"
+Cohesion: 0.18
+Nodes (4): ActivePopupSection, ActivePopupSection, Override, PopupTrailBuffer
 
 ### Community 189 - "ExecutionConfig"
 Cohesion: 0.21
 Nodes (5): ExecutionConfig, Config.LoadPolicy, Config.Sources, DefaultValue, Key
 
-### Community 193 - "AdvancedExtentLogger"
+### Community 193 - "java.util.regex.Pattern"
 Cohesion: 0.20
-Nodes (4): com.gsl.diagnostics.DiagnosticSection, BrowserLogSection, Override, AdvancedExtentLogger
+Nodes (3): java.util.regex.Pattern, LogFileNameDateFilter, TestTitle
 
-### Community 194 - "XlsxWriter.java"
-Cohesion: 0.24
-Nodes (6): org.apache.poi.ss.usermodel.CellStyle, org.apache.poi.ss.usermodel.Sheet, org.apache.poi.ss.usermodel.Workbook, VoucherReportUtils.fmtAmount, XlsxSheet, XlsxWriter
+### Community 194 - "OperationsMenuType"
+Cohesion: 0.13
+Nodes (15): OperationsMenuType, APVOUCHER, ARAPJOURNAL, ARVOUCHER, BRS, CATEGORY, CREDITJOURNAL, DEBITJOURNAL (+7 more)
 
-### Community 195 - ".logout"
-Cohesion: 0.16
-Nodes (4): Override, LedgerMasterBackfillStrategy, Override, SubLedgerOthersBackfillStrategy
+### Community 195 - "com.gsl.enums.ApiPlatform"
+Cohesion: 0.07
+Nodes (16): com.gsl.enums.ApiPlatform, com.gsl.enums.TestExecution, ApiSessionBundle, ApiSessionManager, ApVoucherCreateResponse, ApVoucherApiValidator, Override, ApVoucherUntaggedBackfillStrategy (+8 more)
 
 ### Community 196 - "ChequeEdgeCase"
 Cohesion: 0.25
@@ -1325,93 +1336,89 @@ Nodes (3): ChequeEdgeCase, Override, ChequeEdgeCases
 Cohesion: 0.31
 Nodes (9): Bt(), l(), $e(), Ee(), l(), M(), R(), t() (+1 more)
 
-### Community 198 - "JsErrorCategory"
-Cohesion: 0.16
-Nodes (11): JsErrorCategory, ASYNC_CALLBACK_FAILURE, DOM_REFERENCE_FAILURE, EXTJS_COMPONENT_LIFECYCLE, NETWORK_RESPONSE_FAILURE, RACE_CONDITION, STORE_LOAD_FAILURE, UNKNOWN (+3 more)
+### Community 198 - "ComparisonStrategy"
+Cohesion: 0.13
+Nodes (15): ComparisonStrategy, CURRENT_TIMESTAMP_TOLERANCE, CURRENT_USER, EXACT, EXPECTED_CALCULATION, EXPECTED_DELTA, EXPECTED_VALUE, GREATER_THAN (+7 more)
 
 ### Community 199 - "DocumentMessageBox"
-Cohesion: 0.05
-Nodes (34): com.gsl.pages.Procurement.Operations.ReceiptsListPage, ReceiptsListPage, DocumentMessageBoxMessage, ADJUSTMENT_AMOUNT_MISMATCH_CONFIRMATION, AUTO_POST_SAME_USER_ALERT, AUTO_TDS_JOURNAL_PROMPT, DELETE_CONFIRMATION, DELETE_SUCCESS_RESULT (+26 more)
+Cohesion: 0.06
+Nodes (19): AccountClassListPage, com.gsl.pages.Finance.Setup.AccountClassListPage, com.gsl.pages.Inventory.Product_Definition.ItemListPage, ItemListPage, TdsAutoReleaseBusinessLogic, TdsAutoReleaseAction, CONTINUE, NO (+11 more)
 
 ### Community 200 - "ActionTrailSection"
 Cohesion: 0.36
 Nodes (3): ActionTrailSection, ActionTrailSection, Override
 
-### Community 201 - ".session"
-Cohesion: 0.11
-Nodes (5): DataFormatter, SessionLogger, ExportedExcelReader, TestDataUniqueifier, AccountClassLifecycle
-
 ### Community 202 - ".classify"
+Cohesion: 0.09
+Nodes (15): RootCauseInputs, JsErrorCategory, ASYNC_CALLBACK_FAILURE, DOM_REFERENCE_FAILURE, EXTJS_COMPONENT_LIFECYCLE, NETWORK_RESPONSE_FAILURE, RACE_CONDITION, STORE_LOAD_FAILURE (+7 more)
+
+### Community 203 - "com.gsl.enums.CashBankType"
+Cohesion: 0.11
+Nodes (10): com.gsl.enums.CashBankType, com.gsl.enums.Finance.Operations.APVoucher.TdsNatureMode, com.gsl.utils.dataprovider.fixture.finance.ApVoucherExecutionGroup, com.gsl.utils.dataprovider.fixture.finance.ApVoucherFixtureOptions, com.gsl.utils.dataprovider.fixture.finance.ApVoucherScenarioType, ApVoucherFixtureOptions, PaymentMode, DbApVoucherDataSource (+2 more)
+
+### Community 204 - "StepTimelineSection"
+Cohesion: 0.23
+Nodes (4): Override, StepTimelineSection, StepDurationBuffer, StepRecord
+
+### Community 205 - "AccountGroupContextMenu"
+Cohesion: 0.14
+Nodes (10): AccountGroupContextMenu, ADD, COLLAPSE_ALL, DELETE, EDIT_GROUP, EXPAND_ALL, GroupHierarchyType, DEPARTMENT (+2 more)
+
+### Community 206 - "LogisticsMenuType.java"
+Cohesion: 0.28
+Nodes (8): getGroup(), getName(), getShortCode(), Override, LogisticsMenuType, GATE_ENTRY, INCOMING_LR, OUTGOING_LR
+
+### Community 207 - "Javadoc pass progress"
 Cohesion: 0.17
-Nodes (4): RootCauseInputs, RootCause, RootCauseClassifier, RootCauseInputs
-
-### Community 203 - ".getFinanceConfig"
-Cohesion: 0.32
-Nodes (3): com.gsl.utils.dataprovider.fixture.finance.SelectDocumentVariant, Entry, WeightedSequenceBuilder
-
-### Community 204 - "PaymentPanelField"
-Cohesion: 0.18
-Nodes (10): captionSpan(), labelLocator(), PaymentPanelField, CHEQUE_LABEL, DRAWN_ON, INSTRUMENT_DATE, INSTRUMENT_NO, PAYMENT_MODE (+2 more)
-
-### Community 205 - "ItemSelectionType"
-Cohesion: 0.10
-Nodes (15): fromString(), ItemSelectionType, ALTERNATE_ORDER_ITEMS, COPY_CHALLAN, CREATE_ITEM, IMPORT_BARCODE, IMPORT_EXCEL, IMPORT_SET_BARCODE (+7 more)
-
-### Community 206 - "SubModuleResolver.java"
-Cohesion: 0.18
-Nodes (12): getGroup(), getName(), getShortCode(), Override, getGroup(), getName(), getShortCode(), Override (+4 more)
-
-### Community 207 - "FilterType"
-Cohesion: 0.15
-Nodes (13): ColumnDataType (external), defaultFilterType(), FilterMatchMode, FilterMatchMode, CONTAINS, EXACT, FilterType, FilterType (+5 more)
-
-### Community 208 - "ColumnDataType"
-Cohesion: 0.17
-Nodes (16): ColumnDataType, BOOLEAN, DATE, DECIMAL, ENUM_STATUS, INTEGER, STRING, GeneralVoucherListColumn (external ref) (+8 more)
+Nodes (11): Enums, Flagged for human review (TODO-confirm notes), Foundational, Javadoc pass progress, Model/API, New/drifted packages (discovered 2026-09-26 audit — not in original plan), Pages, Testdata (+3 more)
 
 ### Community 210 - "InventoryManagementSelectionOption"
 Cohesion: 0.33
 Nodes (4): InventoryManagementSelectionOption, BATCH_WISE, ITEM_WISE, SERIAL_WISE
 
 ### Community 211 - "WMSMenuType"
-Cohesion: 0.14
-Nodes (15): getGroup(), getName(), getShortCode(), Override, WMSMenuType, BIN_ADJUSTMENT, BIN_ASSORTMENT, BIN_COUNT (+7 more)
+Cohesion: 0.18
+Nodes (11): WMSMenuType, BIN_ADJUSTMENT, BIN_ASSORTMENT, BIN_COUNT, BIN_GROUP_MASTER, BIN_MASTER, CONFIRM_PICK_LIST, PICK_LIST (+3 more)
 
 ### Community 212 - "FooterMode"
 Cohesion: 0.25
 Nodes (5): FooterMode, ADD, EDIT_UNPOSTED, POSTED, of()
 
+### Community 213 - "EnvResolver"
+Cohesion: 0.12
+Nodes (3): EnvResolver, Secrets, EnvConfigTest
+
 ### Community 214 - "OSType"
-Cohesion: 0.17
+Cohesion: 0.16
 Nodes (5): OsDetector, Credentials, OSType, LINUX, WINDOWS
 
 ### Community 215 - "BrowserLogMode"
 Cohesion: 0.40
 Nodes (4): BrowserLogMode, AUDIT, SMART, STRICT
 
-### Community 216 - "ExtentLogger.java"
-Cohesion: 0.12
-Nodes (11): com.gsl.testdata.Finance.Operations.Vouchers.Common.VoucherSubLedgerRow, CashBankType, CashBankType, BANK, CASH, fromSrctype(), VoucherReportUtils, Indian Digit Grouping Workaround (DecimalFormat Single-Grouping-Size Limitation) (+3 more)
+### Community 216 - "GeneralVoucherPaymentVariant"
+Cohesion: 0.13
+Nodes (11): CashBankType, CashBankType, BANK, CASH, fromSrctype(), GeneralVoucherPaymentVariant, GeneralVoucherPaymentVariant, CASH (+3 more)
 
-### Community 217 - "ExtJsUtils"
-Cohesion: 0.18
-Nodes (7): VoucherDocumentFormLabel, getFieldLabel(), Override, VoucherDocumentFormLabel, ON_ACCOUNT, ExtJsUtils, RadioFieldLabel
+### Community 217 - ".load"
+Cohesion: 0.30
+Nodes (4): GeneralVoucherCombinationFilter, GeneralVoucherExecutionGroup, Override, Override
 
-### Community 218 - "BaseFrontendSection"
-Cohesion: 0.22
-Nodes (13): AngularPerformanceSection, BaseFrontendSection, ExtJsPerformanceSection, FrontendPerformanceSection, FrontendPerformanceSectionFactory, FrontendPerformanceSectionFactory, ReactPerformanceSection, RootCauseAttributionSection (+5 more)
+### Community 218 - "NoOpNetworkCapture"
+Cohesion: 0.29
+Nodes (3): NetworkServiceFactory, Override, NoOpNetworkCapture
 
-### Community 220 - "BrowserLogRecord"
-Cohesion: 0.17
-Nodes (7): BrowserLogRecord, Decision, FAIL, PASS, WARN, FunctionalImpactAnalyzer, LogAttachment
+### Community 219 - "AnnotationMethodInterceptor.java"
+Cohesion: 0.31
+Nodes (5): org.testng.IMethodInstance, org.testng.IMethodInterceptor, SubModuleResolver, AnnotationMethodInterceptor, Override
 
 ### Community 221 - "ft"
 Cohesion: 0.40
 Nodes (5): ct(), ft(), U(), ut(), X()
 
 ### Community 223 - "OrganizationMenuType"
-Cohesion: 0.15
-Nodes (14): getGroup(), getName(), getShortCode(), Override, OrganizationMenuType, ACCOUNTING_YEAR, CITY, FINANCE_MONTHS (+6 more)
+Cohesion: 0.20
+Nodes (10): OrganizationMenuType, ACCOUNTING_YEAR, CITY, FINANCE_MONTHS, GST_STATE, GSTIN, INVENTORY_MONTHS, ORGANIZATION_GROUP (+2 more)
 
 ### Community 224 - "ExecutionType"
 Cohesion: 0.50
@@ -1426,72 +1433,64 @@ Cohesion: 0.22
 Nodes (8): OnAccountMode, OnAccountMode, ADVANCE, DOCUMENT, from(), OnAccountValues, NO, YES
 
 ### Community 229 - "SetupMenuType"
-Cohesion: 0.13
-Nodes (15): SetupMenuType, ACCOUNTCLASS, ACCOUNTGROUP, CHEQUEBOOK, FINANCIALBUDGET, LEDGER, NARRATION, OPENINGLEDGER (+7 more)
+Cohesion: 0.11
+Nodes (19): getGroup(), getName(), getShortCode(), Override, SetupMenuType, ACCOUNTCLASS, ACCOUNTGROUP, CHEQUEBOOK (+11 more)
 
-### Community 230 - ".record"
-Cohesion: 0.31
-Nodes (3): Fragment, Fragment, StepSummaryBuffer
+### Community 231 - "PostgresDialect"
+Cohesion: 0.38
+Nodes (3): DbDialect, Override, PostgresDialect
 
-### Community 231 - ".buildJson"
-Cohesion: 0.27
-Nodes (5): com.gsl.browser.BrowserLogRecord, com.gsl.network.NetworkLogRecord, FunctionalInterface, JsErrorJsonExporter, StringSupplier
+### Community 259 - "SetupSideMenuComponent"
+Cohesion: 0.33
+Nodes (4): SetupHomePage, SetupSideMenuComponent, SetupHomePage, SetupSideMenuComponent
 
-### Community 273 - ".switchTo"
-Cohesion: 0.23
-Nodes (3): com.gsl.enums.PlatformType, com.gsl.enums.TestExecution, ContextOrchestrator
-
-### Community 275 - ".js"
+### Community 277 - "CoverageRow"
 Cohesion: 0.20
-Nodes (7): FrontendDiagnosticsInjector, AngularFrontendInjector, Override, ExtJsFrontendInjector, Override, Override, ReactFrontendInjector
+Nodes (3): CoverageCatalog, CoverageRow, CoverageCatalogTest
 
-### Community 276 - ".perf"
-Cohesion: 0.15
-Nodes (5): SuppressWarnings, SuppressWarnings, SuppressWarnings, SuppressWarnings, PerformanceLogger
-
-### Community 278 - "CommonButton"
-Cohesion: 0.20
-Nodes (10): CommonButton, ACCEPT, ADD, CANCEL, CONTINUE, NO, OK, PROCEED (+2 more)
+### Community 278 - "Windows Grid readiness"
+Cohesion: 0.33
+Nodes (5): Checklist to enable later, Known risks, What already exists in code, Why it is not enabled, Windows Grid readiness
 
 ### Community 279 - "FlakySummarySection"
-Cohesion: 0.09
-Nodes (11): FlakySummarySection, FlakySummarySection, Override, StepTimelineSection, Override, StepTimelineSection, Override, RetryHistoryBuffer (+3 more)
-
-### Community 280 - "GlAccountType"
-Cohesion: 0.18
-Nodes (9): GlAccountType, fromCode(), GlAccountType, ASSET, EXPENSE, INCOME, LIABILITY, ExpenseIncomeDetailBase (+1 more)
-
-### Community 283 - "PaymentInfoDateScenario"
 Cohesion: 0.15
-Nodes (11): PaymentModeShape, CHEQUE_TO_NEFT, NEFT_TO_CHEQUE, SAME_MODE_NEW_INSTRUMENT, expectedRejection(), PaymentInfoDateScenario, CHEQUE_FUTURE_DATE_CR_ACCEPTED, CHEQUE_FUTURE_DATE_DR_ACCEPTED (+3 more)
+Nodes (5): FlakySummarySection, Override, Override, RetryHistoryBuffer, RetryRecord
 
-### Community 284 - "TransferOutCreateResponse"
-Cohesion: 0.09
-Nodes (9): TransferOutApiClient, TransferOutDataSetup, TransferOutCreateRequest, TransferOutCreateResponse, TransferOutLineItem, ApiResponseValidator, ApVoucherApiValidator, ArVoucherApiValidator (+1 more)
-
-### Community 285 - "com.gsl.enums.Browser"
-Cohesion: 0.22
-Nodes (7): com.gsl.enums.Browser, ExecutionProvider, SeleniumGridProvider, DockerGridProvider, Override, Override, SeleniumGridProvider
-
-### Community 286 - "DocSchemeSiteUpdateBodyTest"
-Cohesion: 0.32
-Nodes (3): SuppressWarnings, DocSchemeSiteUpdateBodyTest, SuppressWarnings
-
-### Community 288 - "ChequeInstrumentResolver"
-Cohesion: 0.26
-Nodes (6): ChequeBankMatch, DIFFERENT_BANK, SAME_BANK, UNKNOWN, ChequeInstrumentResolver, ChequeResolution
-
-### Community 289 - "ApVoucherExtentDescriptionLogger"
+### Community 280 - "GlLineType.java"
 Cohesion: 0.12
-Nodes (4): ApVoucherExtentDescriptionLogger, Override, Override, PaymentInformation
+Nodes (10): fromFlags(), GlAccountType, fromCode(), GlAccountType, ASSET, EXPENSE, INCOME, LIABILITY (+2 more)
+
+### Community 284 - "ApiException.java"
+Cohesion: 0.06
+Nodes (19): com.gsl.api.model.common.SimpleResultResponse, com.gsl.api.model.ledger.AccountGroupTreeNode, com.gsl.api.model.ledger.LedgerCreateRequest, com.gsl.api.model.ledger.LedgerCreationOutcome, com.gsl.api.model.ledger.SiteLookupResult, com.gsl.api.model.subledgerothers.SubledgerClassLookupResult, com.gsl.api.model.subledgerothers.SubLedgerOthersCreateRequest, com.gsl.api.model.subledgerothers.SubLedgerOthersCreationOutcome (+11 more)
+
+### Community 285 - "SeleniumGridProvider.java"
+Cohesion: 0.18
+Nodes (8): com.gsl.enums.Browser, ExecutionProvider, org.openqa.selenium.remote.AbstractDriverOptions, SeleniumGridProvider, DockerGridProvider, Override, Override, SeleniumGridProvider
+
+### Community 286 - ".resolveTriggerStatus"
+Cohesion: 0.40
+Nodes (5): AuditTriggerStateResolver, AuditTriggerStateResolver.TriggerStatus, DISABLED, ENABLED, UNKNOWN
+
+### Community 289 - "APVoucherSubLedgerInformation"
+Cohesion: 0.08
+Nodes (7): com.gsl.enums.Finance.Operations.APVoucher.OnAccountMode, APVoucherSubLedgerInformation, ApPaymentInformationPopup, Override, RowEntry, SubLedgerRowStepRegistry, PaymentInformation
+
+### Community 292 - "Comment-Tag Convention (Better Comments)"
+Cohesion: 0.40
+Nodes (4): Comment-Tag Convention (Better Comments), IDE setup, The rule, What NOT to tag
 
 ### Community 295 - "GeneralVoucherScenarioType"
-Cohesion: 0.20
+Cohesion: 0.19
 Nodes (10): GeneralVoucherScenarioType, MIXED_TYPES, NEG_CASH_POST_DATED, NEG_DOC_SCHEME_EXHAUSTED, NEG_SITE_ALLOCATION_CROSS_OU, NEG_SITE_ALLOCATION_PENDING, NEG_SITE_NOT_ALLOCATED, NEG_SUBLEDGER_REQUIRED (+2 more)
 
-### Community 299 - "ARVoucherListColumn"
-Cohesion: 0.24
-Nodes (11): ARVoucherListColumn, ARVoucherListColumn, BRS_DATE, RECEIPT_AMT_DR, SL_NAME, SLID, columnIdXPath(), dataType() (+3 more)
+### Community 296 - "SubLedgerGridButtonLabel"
+Cohesion: 0.40
+Nodes (5): SubLedgerGridButtonLabel, ADJUST, CALC_AMOUNT, CHEQUE_RTGS, SITE
+
+### Community 299 - "Procurement/Setup/SetupMenuType.java"
+Cohesion: 0.60
+Nodes (4): getGroup(), getName(), getShortCode(), Override
 
 ### Community 300 - "ButtonText"
 Cohesion: 0.22
@@ -1499,43 +1498,43 @@ Nodes (9): ButtonText, CLOSE, I_WILL_ADJUST_MORE, IGNORE_AND_PROCEED, OK_GO_AHEA
 
 ### Community 301 - "NetworkLogRecord"
 Cohesion: 0.06
-Nodes (24): NetworkLogSection, Override, NetworkLogSection, HarFileGenerator, NetworkJsErrorCorrelator, NetworkLogRecord, NetworkLogType, FAILED (+16 more)
+Nodes (23): com.fasterxml.jackson.databind.ObjectMapper, NetworkLogSection, Override, NetworkLogSection, HarFileGenerator, NetworkJsErrorCorrelator, NetworkLogAttachment, NetworkLogRecord (+15 more)
 
 ### Community 302 - "BackfillStepLabel"
 Cohesion: 0.17
 Nodes (11): BackfillStepLabel, BackfillStepLabel, CREATE_AP_VOUCHER, CREATE_AR_VOUCHER, CREATE_DC, CREATE_GRC, CREATE_ITEM, CREATE_SERVICE_INVOICE_ADHOC (+3 more)
 
-### Community 313 - ".record"
-Cohesion: 0.14
-Nodes (3): ResultCollector, Pending, ScreenshotPolicy
-
-### Community 314 - "PopupType"
-Cohesion: 0.07
-Nodes (24): DeductTdsClearConfirmAction, DeductTdsClearConfirmAction, CANCEL, PROCEED, fromString(), OnAccountClearConfirmAction, fromString(), OnAccountClearConfirmAction (+16 more)
+### Community 314 - "DocumentMessageBoxMessage"
+Cohesion: 0.05
+Nodes (39): DeductTdsClearConfirmAction, DeductTdsClearConfirmAction, CANCEL, PROCEED, fromString(), OnAccountClearConfirmAction, fromString(), OnAccountClearConfirmAction (+31 more)
 
 ### Community 318 - "VoucherReleaseStatus.java"
 Cohesion: 0.22
 Nodes (7): fromCode(), Override, toString(), VoucherReleaseStatus, NEVER_POSTED, POSTED, UNPOSTED
 
-### Community 321 - ".debug"
-Cohesion: 0.15
-Nodes (7): OptionalColumnMerger Case Study, Utility Layering Convention, DocumentInformation, Override, ExcelGeneralVoucherDataSource, Override, OptionalColumnMerger
+### Community 321 - ".sendKeys"
+Cohesion: 0.05
+Nodes (11): com.gsl.testdata.Finance.Operations.Vouchers.APVoucher.DocumentInformation, CashBankParent, CashBankPopup, Loc, APVoucherDocumentInformation, ARVoucherDocumentInformation, ARVoucherSubLedgerInformation, Override (+3 more)
 
-### Community 322 - "ApVoucherListPage"
-Cohesion: 0.07
-Nodes (19): APVoucherListFooter, APVoucherListGridHeader, com.gsl.pages.enums.Finance.Operations.GeneralVoucher.GeneralVoucherRevertOutcome, com.gsl.pages.pagecomponent.Finance.Operations.APVoucher.APVoucherListFooter, com.gsl.pages.pagecomponent.Finance.Operations.APVoucher.APVoucherListGridHeader, APVoucherRevertOutcome, ALREADY_UNPOSTED, CANNOT_REVERT_BRS_DONE (+11 more)
+### Community 322 - "com.gsl.utils.dataprovider.fixture.finance.DocumentSearchStrategy"
+Cohesion: 0.09
+Nodes (15): APVoucherListFooter, APVoucherListGridHeader, com.gsl.pages.enums.Finance.Operations.GeneralVoucher.GeneralVoucherRevertOutcome, com.gsl.pages.pagecomponent.Finance.Operations.APVoucher.APVoucherListFooter, com.gsl.pages.pagecomponent.Finance.Operations.APVoucher.APVoucherListGridHeader, com.gsl.utils.dataprovider.fixture.finance.DocumentSearchStrategy, APVoucherRevertOutcome, ALREADY_UNPOSTED (+7 more)
 
-### Community 323 - "IVoucherListColumn"
-Cohesion: 0.22
-Nodes (10): IVoucherListColumn, ContraVoucherListColumn, columnIdXPath(), ContraVoucherListColumn, dataType(), headerText(), Override, mandatory() (+2 more)
+### Community 324 - "UiValidationFailure"
+Cohesion: 0.06
+Nodes (16): java.util.regex.Matcher, org.openqa.selenium.WebElement, GeneralVoucherDocumentInformation, FieldStateProbe, Signals, Override, Status, FAIL (+8 more)
 
-### Community 326 - "VoucherDocumentHeader"
-Cohesion: 0.20
-Nodes (5): VoucherDocumentHeader, VoucherDocumentHeader, DocumentInformation, DocumentInformationBase (GeneralVoucher), DocumentInformationBase
+### Community 326 - "VoucherReportData"
+Cohesion: 0.09
+Nodes (8): VoucherReportData, VoucherDocumentHeader, VoucherDocumentHeader, DocumentInformation, DocumentInformationBase (GeneralVoucher), DocumentInformationBase, VoucherScenarioType, VoucherScenarioType
 
 ### Community 328 - "DocPartialKind"
 Cohesion: 0.22
 Nodes (9): DocPartialKind, ADJUST_MORE_FIFO, ADJUST_MORE_REFSITE_FIFO, ADJUST_MORE_SELECT_DOC, ADJUST_MORE_THEN_UPDATE, MULTI_DOC_UPDATE, OVER_PENDING, PER_DOC_LESS_THAN_PENDING (+1 more)
+
+### Community 329 - "NegativeValidationSteps"
+Cohesion: 0.11
+Nodes (13): Centralizing Negative-Validation Assertion Steps Fixes GV's Missing Stop: Marker, forDomain(), PostSaveDialogHandler, AP, AR, GV, PaymentInfoCheckWarning, AP_VOUCHER (+5 more)
 
 ### Community 330 - "FinanceVoucherAddEditPageHeader"
 Cohesion: 0.25
@@ -1549,6 +1548,10 @@ Nodes (9): ChangeExpectation, DELETE, IGNORE, INSERT, MANDATORY, MUST_CHANGE, MU
 Cohesion: 0.10
 Nodes (17): Kind, org.apache.poi.ss.util.CellRangeAddress, org.apache.poi.xssf.usermodel.XSSFChart, org.apache.poi.xssf.usermodel.XSSFPivotTable, Series, XlsxCharts, Kind, DATETIME (+9 more)
 
+### Community 334 - "UI validation: one common stage for every voucher"
+Cohesion: 0.50
+Nodes (3): Entry points, Rules, UI validation: one common stage for every voucher
+
 ### Community 336 - "ArVoucherExecutionGroup"
 Cohesion: 0.33
 Nodes (6): ArVoucherExecutionGroup, ArVoucherExecutionGroup, MANDATORY, REGRESSION_PHASE1, REGRESSION_PHASE2, REGRESSION_PHASE3
@@ -1557,159 +1560,81 @@ Nodes (6): ArVoucherExecutionGroup, ArVoucherExecutionGroup, MANDATORY, REGRESSI
 Cohesion: 0.33
 Nodes (6): VoucherEditDateVariant, CROSS_YEAR_INVALID, FIRST_DAY, FUTURE_DATE, LAST_DAY, RANDOM_MID
 
+### Community 338 - "GridColumnKind.java"
+Cohesion: 0.50
+Nodes (3): GridColumnKind, DEFAULT, USER
+
 ### Community 339 - "TdsNameQuery"
-Cohesion: 0.16
-Nodes (16): FinTdsExceptionDao, FinTdsExceptionDao, FinTdsTypeDao, FinTdsTypeDao, TdsNameQuery, TdsNameQuery, TdsNatureMode, TdsNatureMode (+8 more)
+Cohesion: 0.15
+Nodes (17): FinTdsExceptionDao, FinTdsExceptionDao, FinTdsTypeDao, FinTdsTypeDao, TdsNameQuery, TdsNameQuery, TdsNatureMode, TdsNatureMode (+9 more)
 
 ### Community 340 - "FinanceSaveHeaderType.java"
 Cohesion: 0.33
 Nodes (3): FinanceSaveHeaderType, RESULT, SUCCESS
 
-### Community 342 - "PostSaveDialogHandler"
-Cohesion: 0.22
-Nodes (7): forDomain(), PostSaveDialogHandler, AP, AR, GV, VoucherScenarioType, VoucherScenarioType
+### Community 351 - "com.gsl.testdata.dto.MergedFinanceGeneralVoucherData"
+Cohesion: 0.06
+Nodes (21): com.gsl.api.core.ApiSessionBundle, com.gsl.enums.Finance.Operations.GeneralVoucher.GlLineType, com.gsl.model.finance.FinGl, com.gsl.testdata.dto.MergedFinanceGeneralVoucherData, com.gsl.utils.dataprovider.fixture.LiveGvDbRefs, GeneralVoucherPaymentVariant, FinGlSiteDao, FinGlSite (+13 more)
 
-### Community 343 - "ExcelSheetReader.java"
-Cohesion: 0.32
-Nodes (4): org.apache.poi.ss.usermodel.DataFormatter, org.apache.poi.ss.usermodel.Row, ExcelSheetReader, DataFormatter
-
-### Community 344 - "XlsxFill"
-Cohesion: 0.29
-Nodes (7): org.apache.poi.ss.usermodel.IndexedColors, XlsxFill, AMBER, BLUE, GREEN, GREY, RED
-
-### Community 347 - "CreateGeneralVoucherNegativeBoundary.java"
-Cohesion: 0.20
-Nodes (5): com.gsl.annotations.ApiFlow, com.gsl.utils.dataprovider.fixture.finance.GeneralVoucherPaymentVariant, GlAccountType, fromFlags(), CreateGeneralVoucherNegativeBoundary
-
-### Community 348 - "ReportSeverity"
-Cohesion: 0.25
-Nodes (7): RootCause, ReportSeverity, CRITICAL, HIGH, LOW, MEDIUM, TRACE
-
-### Community 351 - ".loadFreshForScenario"
-Cohesion: 0.18
-Nodes (7): com.gsl.model.finance.FinGl, com.gsl.model.finance.FinSlGl, com.gsl.utils.dataprovider.fixture.finance.GeneralVoucherTag, com.gsl.utils.dataprovider.fixture.finance.GeneralVoucherVariant, DbGeneralVoucherDataSource, GlAccountType, OwnerSiteRef
-
-### Community 358 - "CommonVoucherListColumn"
-Cohesion: 0.43
-Nodes (7): CommonVoucherListColumn, columnIdXPath(), dataType(), headerText(), Override, mandatory(), resolveFor()
-
-### Community 362 - "PaymentInfoCheckWarning"
-Cohesion: 0.29
-Nodes (5): PaymentInfoCheckWarning, AP_VOUCHER, AR_VOUCHER, GV_VOUCHER, NegativeValidationSteps
+### Community 357 - "GeneralVoucherApiClient"
+Cohesion: 0.05
+Nodes (27): com.gsl.api.model.apvoucher.ApVoucherAttachment, com.gsl.api.model.arvoucher.CashBankLedgerLookupResult, com.sun.net.httpserver.HttpServer, org.testng.annotations.BeforeClass, ResolvedGlRow, GeneralVoucherApiClient, OwnerSiteChoice, Site (+19 more)
 
 ### Community 367 - "DocumentSearchStrategy"
 Cohesion: 0.29
 Nodes (7): DocumentSearchStrategy's Deliberate Fixture-to-Pages Layering Exception, DocumentSearchStrategy, attempt(), DocumentSearchStrategy, EXACT_MATCH, PAGE_BY_PAGE, PARTIAL_MATCH
 
-### Community 368 - "VoucherExtentDescriptionLogger"
-Cohesion: 0.10
-Nodes (3): VoucherExtentDescriptionLogger, VoucherReportUtils, VoucherSelectDocRow
-
-### Community 370 - "dto/MergedReceiptData.java"
-Cohesion: 0.43
-Nodes (3): ItemBlock, Override, MergedReceiptData
-
-### Community 371 - "AccountClassLifecycleRow"
-Cohesion: 0.38
-Nodes (3): AccountClassLifecycleRow, AccountClassDbContextBuilder, AccountClassDbContext
-
-### Community 372 - "KeywordTimeWindowFilter"
-Cohesion: 0.13
-Nodes (10): LogFilter, Override, KeywordTimeWindowFilter, LogFilter (interface), FunctionalInterface, LogFilter, CaptureMode, ALWAYS (+2 more)
-
-### Community 373 - "APVoucherListColumn"
-Cohesion: 0.53
-Nodes (6): APVoucherListColumn, columnIdXPath(), dataType(), headerText(), Override, mandatory()
-
-### Community 375 - "APVoucherListColumn"
-Cohesion: 0.33
-Nodes (6): APVoucherListColumn, BRS_DATE, ON_ACCOUNT, PAYMENT_AMT_CR, SL_NAME, SLID
-
-### Community 381 - "GeneralVoucherPredicateFactory"
-Cohesion: 0.17
-Nodes (6): com.gsl.pages.Finance.Operations.GeneralVoucherAdd, com.gsl.validation.snapshot.VoucherSnapshot, GeneralVoucherDocumentInformation, GeneralVoucherPredicateFactory, DocumentInformation, PaymentInformation
+### Community 368 - "GeneralVoucherExtentDescriptionLogger"
+Cohesion: 0.05
+Nodes (9): ChequeBankMatch, ApVoucherExtentDescriptionLogger, Override, GeneralVoucherDescriptionBuilder, PaymentInfoDiff, GeneralVoucherExtentDescriptionLogger, Override, VoucherExtentDescriptionLogger (+1 more)
 
 ### Community 382 - "InvGrp.java"
 Cohesion: 0.50
 Nodes (3): InvGrp (deprecated model), InvGrp, Deprecated
 
-### Community 386 - ".badge"
-Cohesion: 0.21
-Nodes (5): Status, FAIL, KNOWN_ISSUE, PASS, SKIP
-
 ### Community 389 - "AddAccountClassFieldLabel"
 Cohesion: 0.40
 Nodes (3): AddAccountClassFieldLabel, CLASS_NAME, CLASS_TYPE
 
-### Community 415 - "FinanceVoucherListPageHeader"
+### Community 416 - "EditShape"
 Cohesion: 0.40
-Nodes (5): FinanceVoucherListPageHeader, AP, AR, CONTRA, GV
-
-### Community 416 - "DetailLineEditTarget"
-Cohesion: 0.33
-Nodes (6): DetailLineEditTarget, EditShape, ADD_NEW_LINE, GL_TYPE_TRANSITION, IN_PLACE, SITE_SPLIT_ONLY
+Nodes (5): EditShape, ADD_NEW_LINE, GL_TYPE_TRANSITION, IN_PLACE, SITE_SPLIT_ONLY
 
 ### Community 417 - "ApVoucherExecutionGroup"
 Cohesion: 0.40
 Nodes (5): ApVoucherExecutionGroup, MANDATORY, REGRESSION_PHASE1, REGRESSION_PHASE2, REGRESSION_PHASE3
-
-### Community 418 - "Finance/Setup/SetupMenuType.java"
-Cohesion: 0.60
-Nodes (4): getGroup(), getName(), getShortCode(), Override
-
-### Community 419 - "Product_DefintionMenuType.java"
-Cohesion: 0.60
-Nodes (4): getGroup(), getName(), getShortCode(), Override
-
-### Community 420 - "Procurement/Operations/OperationsMenuType.java"
-Cohesion: 0.60
-Nodes (4): getGroup(), getName(), getShortCode(), Override
-
-### Community 422 - "HeaderFieldScope"
-Cohesion: 0.40
-Nodes (5): HeaderFieldScope, ALL, DATE_ONLY, REFERENCE_ONLY, REMARKS_ONLY
 
 ### Community 423 - "GeneralVoucherExecutionGroup"
 Cohesion: 0.40
 Nodes (5): GeneralVoucherExecutionGroup, MANDATORY, REGRESSION_PHASE1, REGRESSION_PHASE2, REGRESSION_PHASE3
 
 ### Community 424 - "GeneralVoucherListPage"
-Cohesion: 0.25
-Nodes (8): com.gsl.pages.pagecomponent.Finance.Operations.GeneralVoucher.GeneralVoucherListFooter, com.gsl.pages.pagecomponent.Finance.Operations.GeneralVoucher.GeneralVoucherListGridHeader, com.gsl.pages.pagecomponent.Finance.Operations.GeneralVoucher.GeneralVoucherMainGrid, GeneralVoucherListFooter, GeneralVoucherListGridHeader, GeneralVoucherMainGrid, GeneralVoucherListPage, GridColumnMenuSmokeVerification
+Cohesion: 0.18
+Nodes (9): com.gsl.pages.pagecomponent.Finance.Operations.GeneralVoucher.GeneralVoucherListFooter, com.gsl.pages.pagecomponent.Finance.Operations.GeneralVoucher.GeneralVoucherListGridHeader, com.gsl.pages.pagecomponent.Finance.Operations.GeneralVoucher.GeneralVoucherMainGrid, GeneralVoucherListFooter, GeneralVoucherListGridHeader, GeneralVoucherMainGrid, GeneralVoucherListPage, Override (+1 more)
 
-### Community 426 - "GeneralVoucherPaymentVariant"
-Cohesion: 0.40
-Nodes (5): GeneralVoucherPaymentVariant, CASH, CHEQUE, NEFT_RTGS, NONE
-
-### Community 434 - "GeneralVoucherOperationMode"
-Cohesion: 0.50
-Nodes (4): GeneralVoucherOperationMode, CREATE, EDIT, REVERT
-
-### Community 439 - ".getIgnoreCase"
-Cohesion: 0.12
-Nodes (6): AmountPair, Builder, RowExpectation, GeneralVoucherCreateChangeSets, GeneralVoucherRevertChangeSets, VoucherEditChangeSets
-
-### Community 440 - "Kind"
-Cohesion: 0.50
-Nodes (4): Kind, MISSING, NOT_CHECKED, VALUE
+### Community 439 - "VoucherSnapshot"
+Cohesion: 0.14
+Nodes (6): AmountPair, Builder, RowExpectation, GeneralVoucherCreateChangeSets, VoucherEditChangeSets, VoucherSnapshot
 
 ## Ambiguous Edges - Review These
+- `DocumentPopup.java` → `VoucherDocumentInformationBase.java`  [AMBIGUOUS]
+  src/main/java/com/gsl/pages/pagecomponent/Finance/Operations/Common/VoucherDocumentInformationBase.java · relation: references
+- `VoucherDocumentInformationBase.java` → `LoaderStillInProgressException`  [AMBIGUOUS]
+  src/main/java/com/gsl/exceptions/LoaderStillInProgressException.java · relation: references
+- `GeneralVoucherExpenseIncomeDetail.java` → `DetailLineEditTarget`  [AMBIGUOUS]
+  src/main/java/com/gsl/testdata/Finance/Operations/Vouchers/GeneralVoucher/DetailLineEditTarget.java · relation: references
+- `MergedFinApVoucherDataSupplier` → `MergedAccountClassLifecycleDataSupplier`  [AMBIGUOUS]
+  src/main/java/com/gsl/utils/dataprovider/MergedAccountClassLifecycleDataSupplier.java · relation: references
 - `LedgerCreationOutcome` → `SubLedgerOthersCreationOutcome`  [AMBIGUOUS]
   src/main/java/com/gsl/api/model/subledgerothers/SubLedgerOthersCreationOutcome.java · relation: conceptually_related_to
-- `ItemSelectionTypeEnumMapper` → `SetSelectionType`  [AMBIGUOUS]
-  src/main/java/com/gsl/pages/enums/Procurement/Operations/GoodsReceiveChallanItemSelectionType/ItemSelectionTypeEnumMapper.java · relation: references
-- `MergedAccountClassLifecycleDataSupplier` → `MergedFinApVoucherDataSupplier`  [AMBIGUOUS]
-  src/main/java/com/gsl/utils/dataprovider/MergedAccountClassLifecycleDataSupplier.java · relation: references
 - `DataSourceRouter` → `BackfillStrategy`  [AMBIGUOUS]
   src/main/java/com/gsl/database/BackfillStrategy.java · relation: references
-- `LoaderStillInProgressException` → `VoucherDocumentInformationBase.java`  [AMBIGUOUS]
-  src/main/java/com/gsl/exceptions/LoaderStillInProgressException.java · relation: references
-- `VoucherScenarioType` → `SelectDocumentVariant.java`  [AMBIGUOUS]
-  src/main/java/com/gsl/utils/dataprovider/fixture/finance/VoucherScenarioType.java · relation: conceptually_related_to
-- `VoucherReportData (external ref)` → `ExpenseIncomeDetail.java`  [AMBIGUOUS]
-  src/main/java/com/gsl/testdata/Finance/Operations/Vouchers/GeneralVoucher/ExpenseIncomeDetail.java · relation: references
+- `ItemSelectionTypeEnumMapper` → `SetSelectionType`  [AMBIGUOUS]
+  src/main/java/com/gsl/pages/enums/Procurement/Operations/GoodsReceiveChallanItemSelectionType/ItemSelectionTypeEnumMapper.java · relation: references
 - `PaymentInfoCheckWarning` → `ApPaymentInformationPopup.java`  [AMBIGUOUS]
   src/main/java/com/gsl/pages/Finance/Operations/Common/PaymentInfoCheckWarning.java · relation: conceptually_related_to
+- `VoucherReportData (external ref)` → `ExpenseIncomeDetail.java`  [AMBIGUOUS]
+  src/main/java/com/gsl/testdata/Finance/Operations/Vouchers/GeneralVoucher/ExpenseIncomeDetail.java · relation: references
 - `AngularPerformanceSection` → `AngularFrontendInjector.java`  [AMBIGUOUS]
   src/main/java/com/gsl/diagnostics/section/frontend/angular/AngularPerformanceSection.java · relation: shares_data_with
 - `AngularPerformanceSection` → `RootCauseAttributionSection`  [AMBIGUOUS]
@@ -1720,10 +1645,8 @@ Nodes (4): Kind, MISSING, NOT_CHECKED, VALUE
   src/main/java/com/gsl/diagnostics/section/frontend/react/ReactPerformanceSection.java · relation: shares_data_with
 - `ReactPerformanceSection` → `RootCauseAttributionSection`  [AMBIGUOUS]
   src/main/java/com/gsl/diagnostics/section/frontend/react/ReactPerformanceSection.java · relation: calls
-- `DetailLineEditTarget` → `GeneralVoucherExpenseIncomeDetail.java`  [AMBIGUOUS]
-  src/main/java/com/gsl/testdata/Finance/Operations/Vouchers/GeneralVoucher/DetailLineEditTarget.java · relation: references
-- `DocumentPopup.java` → `VoucherDocumentInformationBase.java`  [AMBIGUOUS]
-  src/main/java/com/gsl/pages/pagecomponent/Finance/Operations/Common/VoucherDocumentInformationBase.java · relation: references
+- `VoucherScenarioType` → `SelectDocumentVariant.java`  [AMBIGUOUS]
+  src/main/java/com/gsl/utils/dataprovider/fixture/finance/VoucherScenarioType.java · relation: conceptually_related_to
 - `MasterDriverFactory.java` → `RemoteDriverFactory.java`  [AMBIGUOUS]
   src/main/java/com/gsl/driver/RemoteDriverFactory.java · relation: references
 - `GeneralVoucherEditRevertBackfillStrategy.java` → `EditGeneralVoucher`  [AMBIGUOUS]
@@ -1734,24 +1657,24 @@ Nodes (4): Kind, MISSING, NOT_CHECKED, VALUE
   src/main/java/com/gsl/testdata/Finance/Operations/Vouchers/GeneralVoucher/ExpenseIncomeDetail.java · relation: references
 
 ## Knowledge Gaps
-- **1098 isolated node(s):** `org.example:SeleniumFramework`, `ALREADY_FULL`, `PASS`, `WARN`, `FAIL` (+1093 more)
-  These have ≤1 connection - possible missing edges or undocumented components. (Counts symbols only; 2172 node(s) total have ≤1 connection when file, concept and rationale nodes are included.)
-- **187 thin communities (<3 nodes) omitted from report** — run `graphify query` to explore isolated nodes.
+- **1155 isolated node(s):** `Foundational`, `Model/API`, `Enums`, `Validation / Reports`, `Utils (domain)` (+1150 more)
+  These have ≤1 connection - possible missing edges or undocumented components. (Counts symbols only; 2278 node(s) total have ≤1 connection when file, concept and rationale nodes are included.)
+- **170 thin communities (<3 nodes) omitted from report** — run `graphify query` to explore isolated nodes.
 
 ## Suggested Questions
 _Questions this graph is uniquely positioned to answer:_
 
+- **What is the exact relationship between `DocumentPopup.java` and `VoucherDocumentInformationBase.java`?**
+  _Edge tagged AMBIGUOUS (relation: references) - confidence is low._
+- **What is the exact relationship between `VoucherDocumentInformationBase.java` and `LoaderStillInProgressException`?**
+  _Edge tagged AMBIGUOUS (relation: references) - confidence is low._
+- **What is the exact relationship between `GeneralVoucherExpenseIncomeDetail.java` and `DetailLineEditTarget`?**
+  _Edge tagged AMBIGUOUS (relation: references) - confidence is low._
+- **What is the exact relationship between `MergedFinApVoucherDataSupplier` and `MergedAccountClassLifecycleDataSupplier`?**
+  _Edge tagged AMBIGUOUS (relation: references) - confidence is low._
 - **What is the exact relationship between `LedgerCreationOutcome` and `SubLedgerOthersCreationOutcome`?**
   _Edge tagged AMBIGUOUS (relation: conceptually_related_to) - confidence is low._
-- **What is the exact relationship between `ItemSelectionTypeEnumMapper` and `SetSelectionType`?**
-  _Edge tagged AMBIGUOUS (relation: references) - confidence is low._
-- **What is the exact relationship between `MergedAccountClassLifecycleDataSupplier` and `MergedFinApVoucherDataSupplier`?**
-  _Edge tagged AMBIGUOUS (relation: references) - confidence is low._
 - **What is the exact relationship between `DataSourceRouter` and `BackfillStrategy`?**
   _Edge tagged AMBIGUOUS (relation: references) - confidence is low._
-- **What is the exact relationship between `LoaderStillInProgressException` and `VoucherDocumentInformationBase.java`?**
-  _Edge tagged AMBIGUOUS (relation: references) - confidence is low._
-- **What is the exact relationship between `VoucherScenarioType` and `SelectDocumentVariant.java`?**
-  _Edge tagged AMBIGUOUS (relation: conceptually_related_to) - confidence is low._
-- **What is the exact relationship between `VoucherReportData (external ref)` and `ExpenseIncomeDetail.java`?**
+- **What is the exact relationship between `ItemSelectionTypeEnumMapper` and `SetSelectionType`?**
   _Edge tagged AMBIGUOUS (relation: references) - confidence is low._
