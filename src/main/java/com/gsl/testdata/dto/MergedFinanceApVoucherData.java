@@ -246,6 +246,22 @@ public class MergedFinanceApVoucherData
     // all remaining methods (isNeedsPaymentInfoWarning, builder, etc.) normally.
     @Override public DocumentInformation      getDocumentInformation()      { return documentInformation; }
     @Override public List<SubLedgerInformation> getSubLedgerInformationList() { return subLedgerInformationList; }
+
+    /**
+     * Amount the SAVED voucher's row must carry. Equals the row's {@code amountDr} except when an adjustment-mismatch
+     * plan ran on a single-row voucher: then the app's "Update payment amount" / "I will adjust more" decides it and
+     * {@link #expectedPaymentAmount} holds the result. The UI fill still types {@code amountDr} (it creates the mismatch).
+     */
+    public BigDecimal expectedSavedAmountDr(SubLedgerInformation line) {
+        return chooseSavedAmount(line == null ? null : line.getAmountDr(), expectedPaymentAmount,
+                adjustmentMismatchPlan != null,
+                subLedgerInformationList == null ? 0 : subLedgerInformationList.size());
+    }
+
+    /** Pure rule behind {@link #expectedSavedAmountDr} (unit-tested). */
+    public static BigDecimal chooseSavedAmount(BigDecimal lineAmount, BigDecimal planAmount, boolean planApplies, int rows) {
+        return planApplies && planAmount != null && rows == 1 ? planAmount : lineAmount;
+    }
     @Override public List<SelectDocument>       getSelectDocumentList()       { return selectDocumentList; }
     @Override public List<PaymentInformation>   getPaymentInformationList()   { return paymentInformationList; }
 

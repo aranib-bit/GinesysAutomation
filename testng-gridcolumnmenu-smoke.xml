@@ -1,0 +1,32 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE suite SYSTEM "http://testng.org/testng-1.0.dtd">
+<!--
+  Throwaway smoke spike for GridColumnMenu — confirms the live-DOM locators (hover → trigger →
+  menu, sort/filter/show-hide/mandatory-guard) actually work against the real app before any
+  real voucher test depends on them (e.g. selectDocumentFast's filter tiers). Runs against
+  General Voucher's list grid. Not part of the standard regression suite — delete (or promote
+  pieces of it into a real test) once the mechanism is proven end-to-end.
+
+  Run: mvn clean test -Pgridcolumnmenu-smoke
+  (see the "gridcolumnmenu-smoke" profile in pom.xml)
+-->
+<suite name="GridColumnMenu Smoke Verification" parallel="none" data-provider-thread-count="1">
+
+    <listeners>
+        <listener class-name="com.gsl.listeners.RetryAnnotationTransformer"/>
+        <listener class-name="com.gsl.listeners.TestListener"/>
+        <listener class-name="com.gsl.listeners.SuiteDataLoader"/>
+        <listener class-name="com.gsl.listeners.AnnotationMethodInterceptor"/>
+    </listeners>
+
+    <test name="GridColumnMenu Smoke">
+        <classes>
+            <class name="com.tests.Finance.Operations.Vouchers.GridColumnMenuSmokeVerification">
+                <methods>
+                    <include name="gridColumnMenuSmoke"/>
+                </methods>
+            </class>
+        </classes>
+    </test>
+
+</suite>

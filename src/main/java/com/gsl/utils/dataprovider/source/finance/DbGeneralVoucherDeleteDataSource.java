@@ -129,7 +129,7 @@ public class DbGeneralVoucherDeleteDataSource implements TestDataSource<MergedFi
      * thrown) if no closed-period candidate exists — no sensible backfill for "manufacture a
      * document in a closed accounting period".
      */
-    private static Optional<MergedFinanceGeneralVoucherData> resolveClosedPeriodNegativeCandidate(
+    static Optional<MergedFinanceGeneralVoucherData> resolveClosedPeriodNegativeCandidate(
             Jdbi jdbi, Set<Long> claimedThisRun) {
 
         List<String> gatheringLog = new ArrayList<>();

@@ -1,6 +1,7 @@
 package com.gsl.utils.dataprovider;
 
 import com.gsl.config.ConfigFactory;
+import com.gsl.enums.TestDataSourceMode;
 import com.gsl.testdata.dto.MergedFinanceApVoucherData;
 import com.gsl.utils.Log;
 import com.gsl.utils.dataprovider.source.TestDataSource;
@@ -70,6 +71,13 @@ public class MergedFinApVoucherDataSupplier {
     @DataSupplier(name = "FinanceApVoucherData", flatMap = true, runInParallel = true)
     public StreamEx<Object[]> dataSupplier(Method method, ITestContext context) {
         String source = ConfigFactory.getConfig().testDataSource();
+        TestDataSourceMode sourceMode = TestDataSourceMode.from(source);
+        if (sourceMode == TestDataSourceMode.API) {
+            String msg = "[DataSupplier] testdata.source=API is not supported for AP vouchers yet - API data sources exist only for General Voucher. "
+                    + "Use testdata.source=EXCEL (or DB when db.available=yes) for this suite.";
+            Log.error(msg);
+            throw new IllegalStateException(msg);
+        }
         Log.info("[DataSupplier] testdata.source={}, method={}", source, method.getName());
 
         // Read apv.group and apv.tag from TestNG XML <parameter> — used as fallback when
@@ -78,7 +86,7 @@ public class MergedFinApVoucherDataSupplier {
         String xmlTagParam   = context.getCurrentXmlTest().getParameter("apv.tag");
 
         TestDataSource<MergedFinanceApVoucherData> loader =
-                "DB".equalsIgnoreCase(source)
+                sourceMode == TestDataSourceMode.DB
                         ? switch (method.getName()) {
                             case "revertApVoucher" -> new DbApVoucherRevertDataSource(xmlGroupParam, xmlTagParam);
                             case "deleteApVoucher" -> new DbApVoucherDeleteDataSource(xmlGroupParam);

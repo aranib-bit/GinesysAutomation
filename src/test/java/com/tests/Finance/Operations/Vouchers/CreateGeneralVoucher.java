@@ -21,7 +21,7 @@ import com.gsl.testdata.dto.MergedFinanceGeneralVoucherData;
 import com.gsl.utils.Log;
 import com.gsl.utils.NavigationUtils;
 import com.gsl.utils.dataprovider.MergedFinGeneralVoucherDataSupplier;
-import com.gsl.utils.dataprovider.source.finance.DbGeneralVoucherDataSource;
+import com.gsl.utils.dataprovider.source.finance.GeneralVoucherLazyLoader;
 import com.gsl.utils.ui.UiFieldState;
 import com.gsl.validation.ui.UiValidationLevel;
 import com.tests.WebTest;
@@ -70,7 +70,7 @@ public class CreateGeneralVoucher extends WebTest {
     public void createGeneralVoucher(UserCredential user, MergedFinanceGeneralVoucherData data) {
         Log.info("Create General Voucher (ledger-type combination matrix) from UI");
         runVoucherCreationFlow(data,
-                d -> DbGeneralVoucherDataSource.loadFreshForScenario(d, "createGeneralVoucher"));
+                d -> GeneralVoucherLazyLoader.forScenario(d, "createGeneralVoucher"));
     }
 
     /**
@@ -89,7 +89,7 @@ public class CreateGeneralVoucher extends WebTest {
     public void createGeneralVoucherMixedTypes(UserCredential user, MergedFinanceGeneralVoucherData data) {
         Log.info("Create General Voucher (multiple ledger types mixed in one voucher) from UI");
         runVoucherCreationFlow(data,
-                d -> DbGeneralVoucherDataSource.loadFreshForMixedTypes(d, "createGeneralVoucherMixedTypes"));
+                d -> GeneralVoucherLazyLoader.forMixedTypes(d, "createGeneralVoucherMixedTypes"));
     }
 
     /**
@@ -170,8 +170,8 @@ public class CreateGeneralVoucher extends WebTest {
 
         // Deferred: a UI defect is reported (and the test fails) at "Finalize save assertions", AFTER
         // Save, Database Validation and Snapshot Validation have all run — never instead of them.
-        StepExecutor.step("UI Validation", () ->
-                addRef[0].validateUiContractDeferred(UiValidationLevel.CONTRACT, UiFieldState.EDITABLE, false));
+        StepExecutor.step("Capture blank-form UI state", () ->
+                addRef[0].validateUiContractBeforeFill(UiValidationLevel.CONTRACT, UiFieldState.EDITABLE, false));
 
         // ── Delegate fill/save/verify/logout to the scenario behaviour ────────────
         // (GeneralVoucherPredicateFactory.POSITIVE_CREATE_BEHAVIOR — see VoucherScenarioType unification)

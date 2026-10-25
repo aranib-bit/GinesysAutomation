@@ -62,6 +62,7 @@ public class ApVoucherAdd implements CashBankParent, VerifiablePage {
      *  Voucher No. field read-back: {@code APVoucherDocumentInformation} has no
      *  {@code getSavedDocumentNo()}-style getter today (GV-only addition). */
     public void verifyEditFormFullyLoaded(String expectedVoucherNo) {
+        uiStage().expectingVoucherNo(expectedVoucherNo);
         WaitUtils.waitForExtMask("Open Voucher for Edit");
         String actualTitle = PageHeaderUtils.getWindowTitleText();
         boolean titleOk = actualTitle != null
@@ -90,22 +91,48 @@ public class ApVoucherAdd implements CashBankParent, VerifiablePage {
      *  syncing its ARIA mirror; {@code UiComponentValidator#validateFieldState} now checks both,
      *  not a genuine AP business difference after all. */
     public void validateUiContract(UiValidationLevel level, UiFieldState state, boolean isEditMode) {
-        List<UiValidationFailure> failures = new ArrayList<>();
+        uiStage().blankForm(level, state, isEditMode).finish();
+    }
 
-        failures.addAll(apVoucherDocumentInformation.validateDocumentInformationSectionHeaderUi(level));
-        failures.addAll(apVoucherDocumentInformation.validateOwnerSiteUi(level, isEditMode, true));
-        failures.addAll(apVoucherDocumentInformation.validateCashBankUi(level, state, true));
-        failures.addAll(apVoucherDocumentInformation.validateDateUi(level, state, true));
-        failures.addAll(apVoucherDocumentInformation.validateRemarksUi(level, state, isEditMode, false));
-        failures.addAll(apVoucherDocumentInformation.validateOnAccountUi(level));
+    /** Same sweep but FAILs are parked for the flow's final assertion instead of throwing. */
+    public void validateUiContractDeferred(UiValidationLevel level, UiFieldState state, boolean isEditMode) {
+        uiStage().blankForm(level, state, isEditMode).finishDeferred();
+    }
 
-        failures.addAll(apVoucherSubLedgerInformation.validateSubLedgerGridHeaderUi(level));
-        failures.addAll(apVoucherSubLedgerInformation.validateReferenceSiteGridHeaderUi(level));
+    /** Blank-form sweep BEFORE a business fill: held, then reported together with the after-fill results
+     *  by {@link #endFillUiDeferred} as ONE "UI Full Validation Details". */
+    public void validateUiContractBeforeFill(UiValidationLevel level, UiFieldState state, boolean isEditMode) {
+        uiStage().blankForm(level, state, isEditMode).holdForFill();
+    }
 
-        boolean saveExpectedEnabled = state == UiFieldState.EDITABLE;
-        failures.addAll(apVoucherFooter.validateSaveButtonUi(level, saveExpectedEnabled));
+    private com.gsl.validation.ui.voucher.VoucherUiValidationStage uiStage;
 
-        UiValidationReporter.renderAndAssert(failures);
+    /** The common reporting stage for this voucher — see {@code VoucherUiValidationStage}. One instance
+     *  per page so the "before fill" snapshots taken by the blank-form sweep are still there for
+     *  {@link #validateAfterFillDeferred}. */
+    public com.gsl.validation.ui.voucher.VoucherUiValidationStage uiStage() {
+        if (uiStage == null) {
+            uiStage = com.gsl.validation.ui.voucher.VoucherUiValidationStage.forSpec(
+                    new com.gsl.validation.ui.voucher.ApVoucherUiSpec(apVoucherDocumentInformation, apVoucherFooter, apVoucherSubLedgerInformation));
+        }
+        return uiStage;
+    }
+
+    /** Starts observing the sub-ledger fill that follows (each row, its Adjustment Entry / Payment Information
+     *  popups and the footer after the row are validated while they exist). Pair with {@link #endFillUiDeferred}. */
+    public void beginFillUi(UiValidationLevel level) {
+        uiStage().beginFill(level);
+    }
+
+    /** Ends the observation and renders everything as ONE deferred (soft) "UI Validation" result. */
+    public void endFillUiDeferred(UiValidationLevel level) {
+        uiStage().endFill(level).finishDeferred();
+    }
+
+    /** After the fill, before Save: Document Information before/after, grid footer before/after (Record Count
+     *  grows by {@code rowsFilled}), each filled row identified by its business keys. Deferred (soft). */
+    public void validateAfterFillDeferred(UiValidationLevel level, int rowsFilled) {
+        uiStage().afterFill(level, rowsFilled).finishDeferred();
     }
 
     // ── Public API ────────────────────────────────────────────────────────────

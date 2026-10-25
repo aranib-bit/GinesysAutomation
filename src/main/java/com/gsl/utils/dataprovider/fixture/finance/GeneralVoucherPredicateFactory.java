@@ -85,7 +85,7 @@ public final class GeneralVoucherPredicateFactory {
             // single consolidated Summary box, with payment info as the last entry.
             // UI validation of the REAL fill (deferred - never stops Save / DB / snapshot validation):
             // the page observes this fill, checking each row once filled and each popup while it is
-            // already open; "UI Validation — After Fill" below renders the result.
+            // already open; "UI Validation" below renders the result.
             page.beginFilledFormUi(data, com.gsl.validation.ui.UiValidationLevel.CONTRACT);
 
             StepExecutor.step("Fill Expense/Income Detail", () -> {
@@ -123,7 +123,7 @@ public final class GeneralVoucherPredicateFactory {
                 StepExecutor.renderSummaryAsChildNode("Fill Expense/Income Detail");
             });
 
-            StepExecutor.step("UI Validation — After Fill", page::endFilledFormUiDeferred);
+            StepExecutor.step("UI Validation", page::endFilledFormUiDeferred);
 
             // Fails fast, naming the still-open Net Amount, instead of clicking a Save button
             // ExtJS has silently greyed out and cascading into an opaque messagebox-1001-msg

@@ -140,7 +140,11 @@ public class GeneralVoucherAdd implements CashBankParent, VerifiablePage {
      *         check doesn't pass
      * @throws AssertionError if any of the 3 font-style checks mismatch
      */
+    /** Voucher number of the Edit form that was opened - compared with the read-only Voucher No. display. */
+    private String openedVoucherNo;
+
     public void verifyEditFormFullyLoaded(String expectedVoucherNo) {
+        this.openedVoucherNo = expectedVoucherNo;
         WaitUtils.waitForExtMask("Open Voucher for Edit");
 
         String actualTitle = PageHeaderUtils.getWindowTitleText();
@@ -344,7 +348,7 @@ public class GeneralVoucherAdd implements CashBankParent, VerifiablePage {
      *  shown only for an Unposted document). */
     public void validateUiContract(UiValidationLevel level, UiFieldState state, boolean isEditMode,
             int gridRowIndexToCheck, FooterMode footerMode) {
-        validateUiContract(level, state, isEditMode, gridRowIndexToCheck, footerMode, false);
+        validateUiContract(level, state, isEditMode, gridRowIndexToCheck, footerMode, false, false);
     }
 
     /** As {@link #validateUiContract(UiValidationLevel, UiFieldState, boolean)} but DEFERRED: the
@@ -353,24 +357,47 @@ public class GeneralVoucherAdd implements CashBankParent, VerifiablePage {
      *  {@code VoucherSaveFlowSteps.finalizeAsserts} (Create) or {@code UiFailureCollector
      *  .assertNoPending()} to report them. */
     public void validateUiContractDeferred(UiValidationLevel level, UiFieldState state, boolean isEditMode) {
-        validateUiContract(level, state, isEditMode, 0, FooterMode.of(isEditMode), true);
+        validateUiContract(level, state, isEditMode, 0, FooterMode.of(isEditMode), true, false);
+    }
+
+    /** Blank-form sweep taken BEFORE a business fill: results are HELD (not rendered) and merged into the single
+     *  report that {@link #endFilledFormUiDeferred} renders after the fill. The grid row is left to the fill
+     *  observer's per-row "Before fill" node, so rows are not duplicated. */
+    public void validateUiContractBeforeFill(UiValidationLevel level, UiFieldState state, boolean isEditMode) {
+        validateUiContract(level, state, isEditMode, 0, FooterMode.of(isEditMode), true, true);
     }
 
     private void validateUiContract(UiValidationLevel level, UiFieldState state, boolean isEditMode,
-            int gridRowIndexToCheck, FooterMode footerMode, boolean deferred) {
+            int gridRowIndexToCheck, FooterMode footerMode, boolean deferred, boolean beforeFill) {
         List<UiValidationFailure> failures = new ArrayList<>();
 
         failures.addAll(UiValidationScope.node(FormSection.DOCUMENT_INFORMATION.title(), () -> {
             List<UiValidationFailure> doc = new ArrayList<>();
             doc.addAll(generalVoucherDocumentInformation.validateDocumentInformationSectionHeaderUi(level));
             doc.addAll(sectionState(FormSection.DOCUMENT_INFORMATION));
-            doc.addAll(generalVoucherDocumentInformation.validateOwnerSiteUi(level, isEditMode, true));
-            doc.addAll(generalVoucherDocumentInformation.validateCashBankUi(level, state, true));
-            doc.addAll(generalVoucherDocumentInformation.validateDateUi(level, state, true));
-            doc.addAll(generalVoucherDocumentInformation.validateRemarksUi(level, state, isEditMode, false));
-            doc.addAll(generalVoucherDocumentInformation.validateBalanceUi(level, isEditMode));
-            doc.addAll(generalVoucherDocumentInformation.validateNetAmountUi(level, isEditMode));
-            doc.addAll(generalVoucherDocumentInformation.validateNetAmountLabelUi(level));
+            // Same sub-section grouping as VoucherUiValidationStage (the common stage AP/AR use).
+            doc.addAll(UiValidationScope.node("Voucher No.", () ->
+                    generalVoucherDocumentInformation.validateVoucherNoUi(level, isEditMode, true, openedVoucherNo)));
+            doc.addAll(UiValidationScope.node("Reference Details", () ->
+                    generalVoucherDocumentInformation.validateReferenceUi(level, isEditMode ? UiFieldState.EDITABLE : state, false)));
+            doc.addAll(UiValidationScope.node("Owner Site Details", () ->
+                    generalVoucherDocumentInformation.validateOwnerSiteUi(level, isEditMode, true)));
+            doc.addAll(UiValidationScope.node("Cash/Bank Details", () -> {
+                List<UiValidationFailure> r = new ArrayList<>();
+                r.addAll(generalVoucherDocumentInformation.validateCashBankUi(level, state, true));
+                r.addAll(generalVoucherDocumentInformation.validateBalanceUi(level, isEditMode));
+                return r;
+            }));
+            doc.addAll(UiValidationScope.node("Date Details", () ->
+                    generalVoucherDocumentInformation.validateDateUi(level, state, true)));
+            doc.addAll(UiValidationScope.node("Remarks", () ->
+                    generalVoucherDocumentInformation.validateRemarksUi(level, state, isEditMode, false)));
+            doc.addAll(UiValidationScope.node("Net Amount", () -> {
+                List<UiValidationFailure> r = new ArrayList<>();
+                r.addAll(generalVoucherDocumentInformation.validateNetAmountUi(level, isEditMode));
+                r.addAll(generalVoucherDocumentInformation.validateNetAmountLabelUi(level));
+                return r;
+            }));
             return doc;
         }));
 
@@ -380,11 +407,14 @@ public class GeneralVoucherAdd implements CashBankParent, VerifiablePage {
                     EXPENSE_INCOME_SECTION_HEADER, "SECTION_HEADER_EXPENSE_INCOME_DETAIL",
                     FormSection.EXPENSE_INCOME_DETAIL.title(), level));
             grid.addAll(sectionState(FormSection.EXPENSE_INCOME_DETAIL));
-            grid.addAll(generalVoucherExpenseIncomeDetail.validateExpenseIncomeGridUi(gridRowIndexToCheck, level));
+            grid.addAll(beforeFill
+                    ? generalVoucherExpenseIncomeDetail.validateGridHeaderAndToolbarUi(level)
+                    : generalVoucherExpenseIncomeDetail.validateExpenseIncomeGridUi(gridRowIndexToCheck, level));
             // Grid footer: label text only here — this generic sweep doesn't know the expected
             // sums (see validateAddFormFlowUi for the value checks before/after each row).
-            grid.addAll(UiValidationScope.node("Grid footer",
-                    () -> generalVoucherExpenseIncomeDetail.validateGridFooterUi()));
+            grid.addAll(UiValidationScope.node("Grid footer", () -> beforeFill
+                    ? UiValidationScope.node("Before fill", () -> generalVoucherExpenseIncomeDetail.validateGridFooterUi())
+                    : generalVoucherExpenseIncomeDetail.validateGridFooterUi()));
             return grid;
         }));
 
@@ -408,7 +438,9 @@ public class GeneralVoucherAdd implements CashBankParent, VerifiablePage {
             return footer;
         }));
 
-        if (deferred) {
+        if (beforeFill) {
+            UiValidationReporter.holdForFill(failures);
+        } else if (deferred) {
             UiValidationReporter.renderDeferred(failures);
         } else {
             UiValidationReporter.renderAndAssert(failures);
@@ -447,17 +479,36 @@ public class GeneralVoucherAdd implements CashBankParent, VerifiablePage {
             doc.addAll(sectionState(FormSection.DOCUMENT_INFORMATION));
             doc.addAll(UiValidationScope.node("Before Cash/Bank selection", () -> {
                 List<UiValidationFailure> before = new ArrayList<>();
-                before.addAll(generalVoucherDocumentInformation.validateOwnerSiteUi(level, false, true));
-                before.addAll(generalVoucherDocumentInformation.validateCashBankUi(level, editable, true));
-                before.addAll(generalVoucherDocumentInformation.validateDateUi(level, editable, true));
-                before.addAll(generalVoucherDocumentInformation.validateRemarksUi(level, editable, false, false));
-                before.addAll(generalVoucherDocumentInformation.validateBalanceUi(level, false));
-                before.addAll(generalVoucherDocumentInformation.validateNetAmountLabelUi(level));
-                before.addAll(generalVoucherDocumentInformation.validateNetAmountUi(level, false));
+                before.addAll(UiValidationScope.node("Voucher No.", () ->
+                        generalVoucherDocumentInformation.validateVoucherNoUi(level, false, true)));
+                before.addAll(UiValidationScope.node("Reference Details", () ->
+                        generalVoucherDocumentInformation.validateReferenceUi(level, editable, false)));
+                before.addAll(UiValidationScope.node("Owner Site Details", () ->
+                        generalVoucherDocumentInformation.validateOwnerSiteUi(level, false, true)));
+                before.addAll(UiValidationScope.node("Cash/Bank Details", () -> {
+                    List<UiValidationFailure> r = new ArrayList<>(
+                            generalVoucherDocumentInformation.validateCashBankUi(level, editable, true));
+                    r.addAll(generalVoucherDocumentInformation.validateBalanceUi(level, false));
+                    return r;
+                }));
+                before.addAll(UiValidationScope.node("Date Details", () ->
+                        generalVoucherDocumentInformation.validateDateUi(level, editable, true)));
+                before.addAll(UiValidationScope.node("Remarks", () ->
+                        generalVoucherDocumentInformation.validateRemarksUi(level, editable, false, false)));
+                before.addAll(UiValidationScope.node("Net Amount", () -> {
+                    List<UiValidationFailure> r = new ArrayList<>(
+                            generalVoucherDocumentInformation.validateNetAmountLabelUi(level));
+                    r.addAll(generalVoucherDocumentInformation.validateNetAmountUi(level, false));
+                    return r;
+                }));
                 return before;
             }));
             return doc;
         }));
+        final java.util.Map<String, com.gsl.validation.ui.UiComponentValidator.FieldSnapshot> headerBefore =
+                generalVoucherDocumentInformation.captureFieldSnapshots();
+        final java.util.Map<String, String> footerBlank = new com.gsl.validation.ui.voucher.VoucherGridChrome(
+                VoucherDomain.GV).readFooter();
         failures.addAll(UiValidationScope.node(FormSection.PAYMENT_INFORMATION.title(), () -> {
             List<UiValidationFailure> pay = new ArrayList<>(sectionState(FormSection.PAYMENT_INFORMATION));
             pay.addAll(UiValidationScope.node("Blank form",
@@ -478,12 +529,26 @@ public class GeneralVoucherAdd implements CashBankParent, VerifiablePage {
         fillDocumentHeader(new DocumentInformation(null, null, java.time.LocalDate.now(), null, cashBank, null));
         failures.addAll(UiValidationScope.node(FormSection.DOCUMENT_INFORMATION.title(), () -> UiValidationScope.node(
                 "After Cash/Bank selection", () -> {
+                    // Same sub-section shape as "Before Cash/Bank selection": Cash/Bank (with its Balance) and Remarks.
                     List<UiValidationFailure> after = new ArrayList<>();
-                    after.addAll(generalVoucherDocumentInformation.validateCashBankUi(level, editable, true));
-                    after.addAll(generalVoucherDocumentInformation.validateRemarksUi(level, editable, true, false));
-                    after.addAll(generalVoucherDocumentInformation.validateBalanceUi(level, true));
+                    after.addAll(UiValidationScope.node("Cash/Bank Details", () -> {
+                        List<UiValidationFailure> r = new ArrayList<>(
+                                generalVoucherDocumentInformation.validateCashBankUi(level, editable, true));
+                        r.addAll(generalVoucherDocumentInformation.validateBalanceUi(level, true));
+                        return r;
+                    }));
+                    after.addAll(UiValidationScope.node("Remarks", () ->
+                            generalVoucherDocumentInformation.validateRemarksUi(level, editable, true, false)));
                     return after;
                 })));
+        final java.util.Map<String, com.gsl.validation.ui.UiComponentValidator.FieldSnapshot> headerAfter =
+                generalVoucherDocumentInformation.captureFieldSnapshots();
+        failures.addAll(UiValidationScope.node(FormSection.DOCUMENT_INFORMATION.title(), () -> UiValidationScope.node(
+                "Before / after Cash/Bank selection",
+                () -> generalVoucherDocumentInformation.validateFieldsBeforeAfterUi(headerBefore, headerAfter))));
+        final com.gsl.validation.ui.voucher.VoucherGridChrome footerChrome =
+                new com.gsl.validation.ui.voucher.VoucherGridChrome(VoucherDomain.GV);
+        final java.util.Map<String, String>[] footerPrev = new java.util.Map[]{footerBlank};
 
         // Phase C — rows, one at a time, with running-total checkpoints
         java.math.BigDecimal sumDr = java.math.BigDecimal.ZERO;
@@ -512,6 +577,13 @@ public class GeneralVoucherAdd implements CashBankParent, VerifiablePage {
                 grid.addAll(UiValidationScope.node("Grid footer", () -> UiValidationScope.node("After fill",
                         () -> generalVoucherExpenseIncomeDetail.validateGridFooterUi(
                                 checkpoint, rowIndex + 1, dr, cr))));
+                // Record Count delta (+1) against the footer after the previous row, per row.
+                final java.util.Map<String, String> now = footerChrome.readFooter();
+                final java.util.Map<String, String> prev = footerPrev[0];
+                grid.addAll(UiValidationScope.node("Grid footer", () -> UiValidationScope.node(
+                        "Change " + checkpoint, () -> footerChrome.validateFooterChange(
+                                "row " + (rowIndex + 1) + " added", prev, now, 1, null))));
+                footerPrev[0] = now;
                 return grid;
             }));
         }
@@ -586,6 +658,12 @@ public class GeneralVoucherAdd implements CashBankParent, VerifiablePage {
         }
 
         @Override
+        public void beforeRowFilled(int i, ExpenseIncomeDetail row) {
+            underRow(i, () -> UiValidationScope.node("Before fill", () -> UiValidationScope.node("Cells and row buttons",
+                    () -> generalVoucherExpenseIncomeDetail.validateRowCellsUi(i, null, level))));
+        }
+
+        @Override
         public void afterRowFilled(int i, ExpenseIncomeDetail row) {
             GeneralVoucherExpenseIncomeDetail.RowUiPlan plan = plan(i);
             if (row.getExpenseDr() != null) dr = dr.add(row.getExpenseDr());
@@ -595,9 +673,13 @@ public class GeneralVoucherAdd implements CashBankParent, VerifiablePage {
             final String checkpoint = "after Row " + (i + 1);
             final int n = i + 1;
 
+            for (com.gsl.validation.ui.PickerUi.Observation o : generalVoucherExpenseIncomeDetail.drainPickerObservations(i)) {
+                underRow(i, () -> UiValidationScope.node(o.label(), () -> com.gsl.validation.ui.PickerUi.validate(o)));
+            }
             underRow(i, () -> {
-                List<UiValidationFailure> f = new ArrayList<>(UiValidationScope.node("Cells and row buttons",
-                        () -> generalVoucherExpenseIncomeDetail.validateRowCellsUi(i, plan, level)));
+                List<UiValidationFailure> f = new ArrayList<>(UiValidationScope.node("After fill",
+                        () -> UiValidationScope.node("Cells and row buttons",
+                                () -> generalVoucherExpenseIncomeDetail.validateRowCellsUi(i, plan, level))));
                 if (!plan.hasSite()) {
                     f.addAll(UiComponentValidator.skip("ALLOCATE_SITES_ROW_" + n, "applicability",
                             "not applicable (no Site on this row)", "not applicable"));
@@ -654,7 +736,7 @@ public class GeneralVoucherAdd implements CashBankParent, VerifiablePage {
         public void afterPaymentSubmitted(int paymentRow, PaymentInformation payment) {
             generalVoucherExpenseIncomeDetail.selectRow(paymentRow);
             underRow(paymentRow, () -> UiValidationScope.node(paymentHeader(payment), () ->
-                    UiValidationScope.node("Static panel (Row " + (paymentRow + 1) + " selected)",
+                    UiValidationScope.node("Payment Information section · after selecting Row " + (paymentRow + 1),
                             () -> generalVoucherExpenseIncomeDetail.validatePaymentPanelUi(payment, level))));
         }
     }

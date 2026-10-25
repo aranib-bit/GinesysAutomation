@@ -707,7 +707,7 @@ public final class ActualResultsLogger {
             if (isAp && row instanceof SubLedgerInformation) {
                 SubLedgerInformation sl = (SubLedgerInformation) row;
                 String adjType = sl.getAdjustmentType() != null ? sl.getAdjustmentType().displayLabel() : "—";
-                String amount  = VoucherReportUtils.fmtAmount(sl.getAmountDr());
+                String amount  = VoucherReportUtils.fmtAmount(((MergedFinanceApVoucherData) td).expectedSavedAmountDr(sl));
                 String key     = (sl.getId() != null && !sl.getId().isBlank()) ? sl.getId() : sl.getSubLedger();
                 String tdsInfo = uiTdsInfoMap.containsKey(key) ? ns(uiTdsInfoMap.get(key)) : "—";
                 String uiTds   = deductMap.containsKey(key) ? ns(deductMap.get(key)) : NOT_REACHED;
@@ -1088,11 +1088,17 @@ public final class ActualResultsLogger {
     /** @param leafLabel {@code true} inside the nested tree, where the path is already shown by the
      *         enclosing nodes — the label then omits the "Row N / ..." prefix. */
     private static String uiContractRow(UiValidationFailure f, boolean leafLabel) {
+        return uiContractRow(f, leafLabel, false);
+    }
+
+    /** @param propertyOnly the component is shown by a group heading row, so the Field cell is just the property */
+    private static String uiContractRow(UiValidationFailure f, boolean leafLabel, boolean propertyOnly) {
         // A known issue keeps its real expected/actual and shows its note under the actual value.
         String actualHtml = UiValidationReporter.colorAwareValue(f.property(), f.actual())
                 + (f.isKnownIssue()
                 ? "<div style='font-size:11px;color:#E65100;margin-top:2px'>" + esc(f.note()) + "</div>" : "");
-        return rowHtml(leafLabel ? UiValidationReporter.leafLabel(f) : UiValidationReporter.fieldLabel(f),
+        return rowHtml(propertyOnly ? "↳ " + UiValidationReporter.propertyLabel(f)
+                        : leafLabel ? UiValidationReporter.leafLabel(f) : UiValidationReporter.fieldLabel(f),
                 UiValidationReporter.colorAwareValue(f.property(), f.expected()),
                 actualHtml,
                 f.expected(), f.actual(), UiValidationReporter.toRendererStatus(f.status()));
@@ -1131,9 +1137,19 @@ public final class ActualResultsLogger {
         StringBuilder sb = new StringBuilder();
         sb.append(FoldableSectionRenderer.sectionOpen("open", "rs-sub", "",
                 FoldableSectionRenderer.headerLabel(ICO_DOC, "UI checks by section / row", 6)));
-        root.children.values().forEach(top -> renderUiNode(sb, top, 0));
+        UiValidationReporter.orderNodes(root.children.values(), n -> n.name, true)
+                .forEach(top -> renderUiNode(sb, top, 0));
         sb.append(FoldableSectionRenderer.sectionClose());
         return sb.toString();
+    }
+
+    private static final java.util.Set<String> STYLE_PROPERTIES = java.util.Set.of(
+            "font-size", "font-family", "font-weight", "color", "background-color", "border-color");
+
+    /** A computed-style row of an ordinary field (section-header styles are never folded away). */
+    private static boolean isPlainStyleRow(UiValidationFailure f) {
+        String c = f.component() == null ? "" : f.component().toUpperCase();
+        return STYLE_PROPERTIES.contains(f.property()) && !c.startsWith("SECTION_HEADER_");
     }
 
     private static void renderUiNode(StringBuilder sb, UiNode node, int depth) {
@@ -1148,9 +1164,10 @@ public final class ActualResultsLogger {
                 + (skip > 0 ? ", " + skip + " skipped" : "");
         Status roll = fail > 0 ? Status.FAIL : known > 0 ? Status.KNOWN_ISSUE : checked == 0 ? Status.SKIP : Status.PASS;
 
-        String header = "<span style='display:flex;align-items:center;gap:8px;width:100%;padding-left:" + (depth * 14) + "px'>"
-                + "<span style='flex:1 1 auto;min-width:0;font-weight:500;text-transform:none;letter-spacing:0'>"
-                + esc(node.name) + "</span>"
+        String header = "<span style='display:flex;align-items:center;gap:8px;width:100%'>"
+                + "<span style='flex:1 1 auto;min-width:0;display:flex;align-items:center;gap:8px;overflow:hidden;"
+                + "font-weight:500;text-transform:none;letter-spacing:0'>"
+                + UiValidationReporter.titleWithChips(node.name) + "</span>"
                 + "<span style='font-size:11px;color:#64748B;white-space:nowrap'>" + esc(counts) + "</span>"
                 + badge(roll) + "</span>";
         // Open only where something needs attention; green branches stay collapsed.
@@ -1158,10 +1175,40 @@ public final class ActualResultsLogger {
         if (!node.direct.isEmpty()) {
             sb.append(tableOpen());
             sb.append(headerRow("Field", "Expected (test input)", "Actual (UI)", "Status"));
-            for (UiValidationFailure f : node.direct) sb.append(uiContractRow(f, true));
+            // One bold heading row per component, then only the property name per row — the component
+            // name is never repeated (same grouping as UiValidationReporter's own tree).
+            // Passing style rows (font / colour of every field) are summarised as ONE line per node - the
+            // full evidence stays in "UI Full Validation Details". Style rows that fail / skip / are known
+            // issues stay visible, and section-header colours are always listed (explicit user request).
+            List<UiValidationFailure> shown = new ArrayList<>();
+            int passedStyle = 0;
+            for (UiValidationFailure f : node.direct) {
+                if (isPlainStyleRow(f) && f.isPass()) { passedStyle++; } else { shown.add(f); }
+            }
+            for (java.util.Map.Entry<String, List<UiValidationFailure>> g
+                    : UiValidationReporter.groupByComponent(shown).entrySet()) {
+                sb.append("<tr style='background:#F8FAFC'><td colspan='4' style='").append(TD_BASE)
+                  .append(";color:#1E293B;font-weight:600'>")
+                  .append(esc(UiValidationReporter.displayName(g.getKey())))
+                  .append(" <span style='font-weight:400;font-size:11px;color:#64748B'>&nbsp;")
+                  .append(esc(UiValidationReporter.groupCounts(g.getValue()))).append("</span></td></tr>");
+                for (UiValidationFailure f : g.getValue()) sb.append(uiContractRow(f, true, true));
+            }
+            if (passedStyle > 0) {
+                sb.append(rowHtml("Style properties (" + passedStyle + ")", "per baseline",
+                        "all match - see UI Full Validation Details", "per baseline", "match", Status.PASS));
+            }
             sb.append("</tbody>").append(TABLE_CLOSE);
         }
-        node.children.values().forEach(c -> renderUiNode(sb, c, depth + 1));
+        // Children sit in an indented, guide-lined block so the hierarchy is visible from position alone
+        // (same treatment as the "UI Full Validation Details" tree).
+        if (!node.children.isEmpty()) {
+            sb.append("<div style='margin-left:14px;padding-left:8px;border-left:2px solid "
+                    + (depth >= 2 ? "#E2E8F0" : "#CBD5E1") + "'>");
+            UiValidationReporter.orderNodes(node.children.values(), n -> n.name, false)
+                    .forEach(c -> renderUiNode(sb, c, depth + 1));
+            sb.append("</div>");
+        }
         sb.append(FoldableSectionRenderer.sectionClose());
     }
 

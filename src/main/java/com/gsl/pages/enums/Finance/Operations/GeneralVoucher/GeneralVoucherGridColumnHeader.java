@@ -48,6 +48,13 @@ public enum GeneralVoucherGridColumnHeader implements IVoucherGridColumnHeader {
         this.numeric = numeric;
     }
 
+    /** Ledger Narration is declared with {@code itemId: 'ledgerNarrationCode'} (proven live on GV, see
+     *  {@code GridCellLocator}); every other column is addressed by its header id. */
+    @Override
+    public String itemId() {
+        return name().equals("LEDGER_NARRATION") ? "ledgerNarrationCode" : null;
+    }
+
     @Override
     public String columnIdXPath() {
         return "//span[normalize-space()='" + headerText

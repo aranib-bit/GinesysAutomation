@@ -99,6 +99,39 @@ public final class UiComponentValidator {
         results.add(new UiValidationFailure(component, property, expected, actual, status));
     }
 
+    /** First match of {@code by} that Selenium reports as displayed. A label or field can exist several times on a
+     *  form with all but one copy permanently hidden (e.g. three "Voucher No.:" on an Edit form); waiting on the
+     *  first DOM match - what a plain visibility wait does - then times out on a hidden copy. Deliberately NOT
+     *  viewport-bound: an element that is displayed but scrolled out of view (the Payment Information panel
+     *  below the grid) is still "visible" here, as it is for every other check. */
+    private static WebElement visible(By by) {
+        long seconds = com.gsl.config.ConfigFactory.getConfig().timeout();
+        org.openqa.selenium.support.ui.WebDriverWait wait = new org.openqa.selenium.support.ui.WebDriverWait(
+                com.gsl.driver.DriverManager.getDriver(), java.time.Duration.ofSeconds(seconds),
+                java.time.Duration.ofMillis(com.gsl.config.ConfigFactory.getWaitConfig().pollingMillis()));
+        try {
+            return wait.until(d -> firstMatch(d.findElements(by), UiComponentValidator::isDisplayedSafely));
+        } catch (org.openqa.selenium.TimeoutException e) {
+            throw new org.openqa.selenium.NoSuchElementException("No displayed element for " + by + " within " + seconds + "s", e);
+        }
+    }
+
+    private static boolean isDisplayedSafely(WebElement el) {
+        try {
+            return el.isDisplayed();
+        } catch (org.openqa.selenium.StaleElementReferenceException e) {
+            return false;
+        }
+    }
+
+    /** First item satisfying {@code displayed}, or {@code null}. Pure logic, unit-tested. */
+    public static <T> T firstMatch(List<T> items, java.util.function.Predicate<T> displayed) {
+        for (T item : items) {
+            if (displayed.test(item)) return item;
+        }
+        return null;
+    }
+
     // ── Resilience plumbing ───────────────────────────────────────────────
     //
     // Every public method below resolves at least one locator via WaitUtils, which THROWS
@@ -131,7 +164,7 @@ public final class UiComponentValidator {
             String expectedText, FieldStyleSpec spec, UiValidationLevel level) {
         return guarded(componentName, () -> {
             List<UiValidationFailure> failures = new ArrayList<>();
-            WebElement label = WaitUtils.untilVisible(labelLocator);
+            WebElement label = visible(labelLocator);
             String actualText = SeleniumUtils.getAttribute(label, "textContent", componentName + "_LABEL");
             checkText(failures, componentName, "label text", expectedText, actualText);
             if (level == UiValidationLevel.CONTRACT) {
@@ -149,13 +182,14 @@ public final class UiComponentValidator {
             boolean expectedRequired, UiValidationLevel level) {
         return guarded(componentName, () -> {
             List<UiValidationFailure> failures = new ArrayList<>();
-            boolean present = SeleniumUtils.isElementPresent(markerLocator, 2);
+            boolean present = quickPresent(markerLocator);
             UiValidationFailure.Status presenceStatus = present == expectedRequired
                     ? UiValidationFailure.Status.PASS : UiValidationFailure.Status.FAIL;
-            failures.add(new UiValidationFailure(componentName + "_UI_MANDATORY", "mandatory marker present",
-                    String.valueOf(expectedRequired), String.valueOf(present), presenceStatus));
+            failures.add(new UiValidationFailure(componentName + "_UI_MANDATORY", "mandatory",
+                    expectedRequired ? "Mandatory (*)" : "Non-mandatory", present ? "Mandatory (*)" : "Non-mandatory",
+                    presenceStatus));
             if (present && level == UiValidationLevel.CONTRACT) {
-                failures.addAll(checkStyle(WaitUtils.untilVisible(markerLocator),
+                failures.addAll(checkStyle(visible(markerLocator),
                         componentName + "_UI_MANDATORY", FieldStyleSpec.REQUIRED_MARKER));
             }
             return failures;
@@ -175,7 +209,7 @@ public final class UiComponentValidator {
             boolean expectedOpen) {
         String component = "SECTION_" + section.key();
         return guarded(component, () -> {
-            WebElement icon = WaitUtils.untilVisible(section.chevronLocator(scopeXpath));
+            WebElement icon = visible(section.chevronLocator(scopeXpath));
             String cls = SeleniumUtils.getAttribute(icon, "class", component + "_CHEVRON");
             String actual = cls != null && cls.contains(FormSection.CHEVRON_OPEN_CLASS) ? "OPEN"
                     : cls != null && cls.contains(FormSection.CHEVRON_CLOSED_CLASS) ? "CLOSED"
@@ -184,6 +218,26 @@ public final class UiComponentValidator {
             return List.of(new UiValidationFailure(component, "section state", expected, actual,
                     expected.equals(actual) ? UiValidationFailure.Status.PASS : UiValidationFailure.Status.FAIL));
         });
+    }
+
+    /** Current section state as text ("OPEN" / "CLOSED" / "UNKNOWN (...)" / "NOT PRESENT") without asserting. */
+    public static String readSectionState(FormSection section, String scopeXpath) {
+        try {
+            if (!quickPresent(section.chevronLocator(scopeXpath))) return "NOT PRESENT";
+            WebElement icon = visible(section.chevronLocator(scopeXpath));
+            String cls = icon.getAttribute("class");
+            return cls != null && cls.contains(FormSection.CHEVRON_OPEN_CLASS) ? "OPEN"
+                    : cls != null && cls.contains(FormSection.CHEVRON_CLOSED_CLASS) ? "CLOSED"
+                    : "UNKNOWN (" + cls + ")";
+        } catch (RuntimeException e) {
+            return "NOT PRESENT";
+        }
+    }
+
+    /** Records (does not assert) a section's state — PASS informational row, state shown in the node badge. */
+    public static List<UiValidationFailure> recordSectionState(FormSection section, String scopeXpath) {
+        return List.of(new UiValidationFailure("SECTION_" + section.key(), "section state", "(recorded)",
+                readSectionState(section, scopeXpath), UiValidationFailure.Status.PASS));
     }
 
     // ── Skip / value helpers ─────────────────────────────────────────────
@@ -200,7 +254,7 @@ public final class UiComponentValidator {
             String expectedAmount, FieldStyleSpec spec, UiFieldState state, UiValidationLevel level) {
         return guarded(componentName, () -> {
             List<UiValidationFailure> failures = new ArrayList<>();
-            WebElement el = WaitUtils.untilVisible(locator);
+            WebElement el = visible(locator);
             String actual = SeleniumUtils.getAttribute(el, "value", componentName + "_VALUE_ATTR");
             if (actual == null || actual.isBlank()) {
                 actual = SeleniumUtils.getAttribute(el, "textContent", componentName + "_VALUE");
@@ -219,7 +273,7 @@ public final class UiComponentValidator {
     public static List<UiValidationFailure> validateValue(By locator, String componentName, String expectedText) {
         return guarded(componentName, () -> {
             List<UiValidationFailure> failures = new ArrayList<>();
-            WebElement el = WaitUtils.untilVisible(locator);
+            WebElement el = visible(locator);
             String actual = SeleniumUtils.getAttribute(el, "textContent", componentName + "_VALUE");
             if (actual == null || actual.isBlank()) {
                 actual = SeleniumUtils.getAttribute(el, "value", componentName + "_VALUE_ATTR");
@@ -246,19 +300,16 @@ public final class UiComponentValidator {
             UiFieldState expectedState) {
         return guarded(componentName, () -> {
             List<UiValidationFailure> failures = new ArrayList<>();
-            WebElement input = WaitUtils.untilVisible(inputLocator);
-            String ariaDisabled = SeleniumUtils.getAttribute(input, "aria-disabled", componentName + "_ARIA_DISABLED");
-            String ariaReadonly = SeleniumUtils.getAttribute(input, "aria-readonly", componentName + "_ARIA_READONLY");
-            String nativeDisabled = SeleniumUtils.getAttribute(input, "disabled", componentName + "_DISABLED");
-            boolean disabled = "true".equalsIgnoreCase(ariaDisabled) || nativeDisabled != null;
-            boolean readonly = "true".equalsIgnoreCase(ariaReadonly);
-            UiFieldState actualState = disabled ? UiFieldState.DISABLED
-                    : readonly ? UiFieldState.READONLY
-                    : UiFieldState.EDITABLE;
-            UiValidationFailure.Status stateStatus = actualState == expectedState
-                    ? UiValidationFailure.Status.PASS : UiValidationFailure.Status.FAIL;
+            WebElement input = visible(inputLocator);
+            FieldStateProbe.Signals signals = FieldStateProbe.read(input);
+            UiFieldState actualState = FieldStateProbe.decide(signals);
             failures.add(new UiValidationFailure(componentName, "field state",
-                    expectedState.name(), actualState.name(), stateStatus));
+                    expectedState.name(), actualState.name(),
+                    actualState == expectedState ? UiValidationFailure.Status.PASS : UiValidationFailure.Status.FAIL));
+            // The raw signals stay visible: the app's ARIA mirror is unreliable (see FieldStateProbe), so a
+            // disagreement between ARIA and the native state is shown, never silently resolved.
+            failures.add(new UiValidationFailure(componentName, "field state signals", "(recorded)",
+                    signals.describe(), UiValidationFailure.Status.PASS));
             return failures;
         });
     }
@@ -268,16 +319,10 @@ public final class UiComponentValidator {
      *  Cash/Bank Balance before and after Cash/Bank selection). */
     public static List<UiValidationFailure> validateNotEditable(By inputLocator, String componentName) {
         return guarded(componentName, () -> {
-            WebElement input = WaitUtils.untilVisible(inputLocator);
-            String ariaDisabled = SeleniumUtils.getAttribute(input, "aria-disabled", componentName + "_ARIA_DISABLED");
-            String ariaReadonly = SeleniumUtils.getAttribute(input, "aria-readonly", componentName + "_ARIA_READONLY");
-            String nativeDisabled = SeleniumUtils.getAttribute(input, "disabled", componentName + "_DISABLED");
-            String nativeReadonly = SeleniumUtils.getAttribute(input, "readonly", componentName + "_READONLY");
-            boolean disabled = "true".equalsIgnoreCase(ariaDisabled) || nativeDisabled != null;
-            boolean readonly = "true".equalsIgnoreCase(ariaReadonly) || nativeReadonly != null;
-            String actual = disabled ? "DISABLED" : readonly ? "READONLY" : "EDITABLE";
+            UiFieldState actual = FieldStateProbe.state(visible(inputLocator));
             return List.of(new UiValidationFailure(componentName, "field state", "NOT EDITABLE (disabled/readonly)",
-                    actual, "EDITABLE".equals(actual) ? UiValidationFailure.Status.FAIL : UiValidationFailure.Status.PASS));
+                    actual.name(), actual == UiFieldState.EDITABLE
+                            ? UiValidationFailure.Status.FAIL : UiValidationFailure.Status.PASS));
         });
     }
 
@@ -291,7 +336,7 @@ public final class UiComponentValidator {
             FieldStyleSpec spec, UiFieldState expectedState, UiValidationLevel level) {
         if (level != UiValidationLevel.CONTRACT) return List.of();
         return guarded(componentName,
-                () -> checkStyle(WaitUtils.untilVisible(inputLocator), componentName, spec, expectedState));
+                () -> checkStyle(visible(inputLocator), componentName, spec, expectedState));
     }
 
     // ── Composite: label + required marker + input style + input state ──
@@ -307,6 +352,7 @@ public final class UiComponentValidator {
         List<UiValidationFailure> failures = new ArrayList<>();
         failures.addAll(validateLabel(labelLocator, componentName, expectedLabelText, FieldStyleSpec.FIELD_LABEL, level));
         failures.addAll(validateRequiredMarker(markerLocator, componentName, expectedRequired, level));
+        failures.addAll(validateElementTypeBaselined(inputLocator, componentName));
         failures.addAll(validateInputStyle(inputLocator, componentName, inputSpec, expectedState, level));
         failures.addAll(validateFieldState(inputLocator, componentName, expectedState));
         return failures;
@@ -326,7 +372,7 @@ public final class UiComponentValidator {
             String expectedText, boolean expectedEnabled, FieldStyleSpec spec, UiValidationLevel level) {
         return guarded(componentName, () -> {
             List<UiValidationFailure> failures = new ArrayList<>();
-            WebElement button = WaitUtils.untilVisible(buttonLocator);
+            WebElement button = visible(buttonLocator);
             String actualText = SeleniumUtils.getAttribute(button, "textContent", componentName + "_TEXT");
             checkText(failures, componentName, "button text", expectedText, actualText);
 
@@ -344,6 +390,40 @@ public final class UiComponentValidator {
         });
     }
 
+    /** A button that may or may not exist for a voucher: absent → SKIP "not present"; present → element
+     *  type, text, enabled state (asserted only when the baseline's {@code EnabledAfterFill} says
+     *  ENABLED/DISABLED, otherwise recorded) and, at CONTRACT level, style against {@code spec}. */
+    public static List<UiValidationFailure> validateButtonIfPresent(By buttonLocator, String componentName,
+            String expectedText, FieldStyleSpec spec, UiValidationLevel level) {
+        if (!quickPresent(buttonLocator)) {
+            return skip(componentName, "element presence", "validated if present", "not present");
+        }
+        return guarded(componentName, () -> {
+            List<UiValidationFailure> failures = new ArrayList<>();
+            WebElement button = visible(buttonLocator);
+            failures.addAll(validateElementTypeBaselined(buttonLocator, componentName));
+            failures.add(new UiValidationFailure(componentName, "element presence", "present", "present",
+                    UiValidationFailure.Status.PASS));
+            checkText(failures, componentName, "button text", expectedText,
+                    SeleniumUtils.getAttribute(button, "textContent", componentName + "_TEXT"));
+            String ariaDisabled = SeleniumUtils.getAttribute(button, "aria-disabled", componentName + "_ARIA_DISABLED");
+            String nativeDisabled = SeleniumUtils.getAttribute(button, "disabled", componentName + "_DISABLED");
+            boolean enabled = !"true".equalsIgnoreCase(ariaDisabled) && nativeDisabled == null;
+            String raw = UiStyleBaseline.attribute(componentName, UiStyleBaseline.ENABLED_AFTER_FILL);
+            if (raw != null) {
+                boolean expectEnabled = raw.trim().equalsIgnoreCase("ENABLED") || raw.trim().equalsIgnoreCase("EDITABLE");
+                failures.add(new UiValidationFailure(componentName, "enabled state",
+                        String.valueOf(expectEnabled), String.valueOf(enabled),
+                        enabled == expectEnabled ? UiValidationFailure.Status.PASS : UiValidationFailure.Status.FAIL));
+            } else {
+                failures.add(new UiValidationFailure(componentName, "enabled state", "(recorded)",
+                        String.valueOf(enabled), UiValidationFailure.Status.PASS));
+            }
+            if (level == UiValidationLevel.CONTRACT) failures.addAll(checkStyle(button, componentName, spec));
+            return failures;
+        });
+    }
+
     /** Icon-only button (toolbar buttons have no text): presence, and — when
      *  {@code expectedEnabled} is non-null — enabled state ({@code aria-disabled}/native
      *  {@code disabled}/{@code x-btn-disabled}). {@code null} skips the state check (e.g. Delete Row,
@@ -352,7 +432,7 @@ public final class UiComponentValidator {
             Boolean expectedEnabled) {
         return guarded(componentName, () -> {
             List<UiValidationFailure> failures = new ArrayList<>();
-            WebElement button = WaitUtils.untilVisible(buttonLocator);
+            WebElement button = visible(buttonLocator);
             failures.add(new UiValidationFailure(componentName, "element presence", "present", "present",
                     UiValidationFailure.Status.PASS));
             if (expectedEnabled != null) {
@@ -376,7 +456,7 @@ public final class UiComponentValidator {
             String expectedText, UiValidationLevel level) {
         return guarded(componentName, () -> {
             List<UiValidationFailure> failures = new ArrayList<>();
-            WebElement header = WaitUtils.untilVisible(headerLocator);
+            WebElement header = visible(headerLocator);
             String actualText = SeleniumUtils.getAttribute(header, "textContent", componentName + "_TEXT");
             checkText(failures, componentName, "section header text", expectedText, actualText);
             if (level == UiValidationLevel.CONTRACT) {
@@ -392,7 +472,7 @@ public final class UiComponentValidator {
             String expectedText, UiValidationLevel level) {
         return guarded(componentName, () -> {
             List<UiValidationFailure> failures = new ArrayList<>();
-            WebElement status = WaitUtils.untilVisible(statusLocator);
+            WebElement status = visible(statusLocator);
             String actualText = SeleniumUtils.getAttribute(status, "textContent", componentName + "_TEXT");
             checkText(failures, componentName, "status text", expectedText, actualText);
             if (level == UiValidationLevel.CONTRACT) {
@@ -445,7 +525,7 @@ public final class UiComponentValidator {
             FieldStyleSpec spec, UiFieldState state, UiValidationLevel level) {
         if (level != UiValidationLevel.CONTRACT) return List.of();
         return guarded(componentName,
-                () -> checkStyle(WaitUtils.untilVisible(valueLocator), componentName, spec, state));
+                () -> checkStyle(visible(valueLocator), componentName, spec, state));
     }
 
     // ── Grid header / cell ───────────────────────────────────────────────
@@ -454,7 +534,7 @@ public final class UiComponentValidator {
             String expectedText, UiValidationLevel level) {
         return guarded(componentName, () -> {
             List<UiValidationFailure> failures = new ArrayList<>();
-            WebElement header = WaitUtils.untilVisible(headerLocator);
+            WebElement header = visible(headerLocator);
             String actualText = SeleniumUtils.getAttribute(header, "textContent", componentName + "_TEXT");
             // A header container's textContent can include ExtJS's visually-hidden screen-reader text
             // ("Cell value has been edited"); prefer the header's own title span when present.
@@ -475,7 +555,7 @@ public final class UiComponentValidator {
             boolean numeric, UiValidationLevel level) {
         if (level != UiValidationLevel.CONTRACT) return List.of();
         return guarded(componentName, () -> {
-            WebElement cell = WaitUtils.untilVisible(cellLocator);
+            WebElement cell = visible(cellLocator);
             return checkStyle(cell, componentName, numeric ? FieldStyleSpec.GRID_CELL_NUMERIC : FieldStyleSpec.GRID_CELL_TEXT);
         });
     }
@@ -487,7 +567,7 @@ public final class UiComponentValidator {
             boolean numeric, String expectedValue, UiValidationLevel level) {
         return guarded(componentName, () -> {
             List<UiValidationFailure> failures = new ArrayList<>();
-            WebElement cell = WaitUtils.untilVisible(cellLocator);
+            WebElement cell = visible(cellLocator);
             if (expectedValue != null) {
                 String actual = SeleniumUtils.getAttribute(cell, "textContent", componentName + "_VALUE");
                 boolean match = numeric ? numericEquals(expectedValue, actual)
@@ -546,6 +626,338 @@ public final class UiComponentValidator {
         } catch (RuntimeException e) {
             return false;
         }
+    }
+
+    // ── Element type ─────────────────────────────────────────────────────
+
+    /** Reads tag, input type and a class string for type detection. The trigger classes (date picker,
+     *  combo arrow, lookup picker) live on SIBLING elements of the input inside its field container, so
+     *  the container's descendants and the component ids are folded into synthetic tokens. */
+    private static final String ELEMENT_INFO_JS =
+            "var e=arguments[0];var a=e.closest('.x-field,.x-btn,.x-grid,.x-boundlist,.x-form-item');"
+            + "var c=(e.className||'')+' '+(a?a.className:'');"
+            + "var ids=((e.id||'')+' '+(a?a.id:'')+' '+(e.getAttribute('data-componentid')||'')).toLowerCase();"
+            + "if(a){"
+            + "if(a.querySelector('.x-form-date-trigger'))c+=' x-form-date-trigger';"
+            + "if(a.querySelector('.x-form-arrow-trigger'))c+=' x-form-arrow-trigger';"
+            + "if(a.querySelector('.x-form-search-trigger'))c+=' search-trigger';"
+            + "if(a.querySelector('.x-form-spinner-up'))c+=' x-form-type-number';}"
+            + "if(ids.indexOf('datefield')>=0)c+=' x-form-date-trigger';"
+            + "if(ids.indexOf('picklist')>=0)c+=' search-trigger';"
+            + "if(ids.indexOf('combo')>=0)c+=' x-form-arrow-trigger';"
+            + "return (e.tagName||'')+'|'+(e.getAttribute('type')||'')+'|'+c;";
+
+    /** Detects the control type of the element at {@code locator} (see {@link UiElementType#detect}). */
+    public static UiElementType detectElementType(WebElement element) {
+        String[] info = String.valueOf(com.gsl.utils.Selenium.JavascriptExecutorUtils.executeScript(ELEMENT_INFO_JS, element))
+                .split("\\|", 3);
+        return UiElementType.detect(info[0], info.length > 1 ? info[1] : "", info.length > 2 ? info[2] : "");
+    }
+
+    /** One "element type" row: expected (from the baseline) vs the type detected from the DOM.
+     *  {@code expected == null} records nothing (not baselined). */
+    public static List<UiValidationFailure> validateElementType(By locator, String componentName, UiElementType expected) {
+        return expected == null ? List.of() : validateElementType(locator, componentName, List.of(expected));
+    }
+
+    /** Passes when the detected type is any of {@code allowed} (e.g. "Text Field or Dropdown"). */
+    public static List<UiValidationFailure> validateElementType(By locator, String componentName,
+            List<UiElementType> allowed) {
+        if (allowed == null || allowed.isEmpty()) return List.of();
+        return guarded(componentName, () -> {
+            UiElementType actual = detectElementType(visible(locator));
+            String expectedText = allowed.stream().map(UiElementType::label).collect(java.util.stream.Collectors.joining(" or "));
+            return List.of(new UiValidationFailure(componentName, "element type", expectedText, actual.label(),
+                    allowed.contains(actual) ? UiValidationFailure.Status.PASS : UiValidationFailure.Status.FAIL));
+        });
+    }
+
+    /** Element-type row driven by the Excel baseline ({@code ElementType} column of the component's row).
+     *  Not baselined → a visible SKIP that still shows the type detected from the DOM, so the first
+     *  live run tells the maintainer exactly what to enter in the workbook. */
+    public static List<UiValidationFailure> validateElementTypeBaselined(By locator, String componentName) {
+        List<UiElementType> expected;
+        try {
+            expected = UiElementType.parseAll(UiStyleBaseline.attribute(componentName, UiStyleBaseline.ELEMENT_TYPE));
+        } catch (IllegalArgumentException e) {
+            return List.of(new UiValidationFailure(componentName, "element type", e.getMessage(), "invalid baseline"));
+        }
+        if (!expected.isEmpty()) return validateElementType(locator, componentName, expected);
+        return guarded(componentName, () -> skip(componentName, "element type", "defined in Excel (ElementType)",
+                "not baselined — detected: " + detectElementType(visible(locator)).label()));
+    }
+
+    // ── Baselined field (popups and any field whose expectations live in the workbook) ─────────
+
+    /** Observed text/value of an input or display element, trimmed ({@code ""} when absent). */
+    public static String readValue(By locator) {
+        try {
+            if (!quickPresent(locator)) return "";
+            WebElement el = visible(locator);
+            String v = el.getAttribute("value");
+            if (v == null || v.isBlank()) v = el.getAttribute("textContent");
+            return v == null ? "" : norm(v);
+        } catch (RuntimeException e) {
+            return "";
+        }
+    }
+
+    /**
+     * The full property set of one field whose expectations come from the workbook: label text + style,
+     * element type, mandatory marker, field state, value and input style. Every check the workbook does
+     * not (yet) define is a visible SKIP / "recorded" row that shows the observed value, so the first live
+     * run tells the maintainer exactly what to enter. Absent field -> one SKIP "not displayed".
+     *
+     * @param stateKey baseline column for the expected state ({@code UiStyleBaseline.ENABLED_BEFORE_FILL} /
+     *                 {@code ENABLED_AFTER_FILL}), {@code null} to only record it
+     */
+    public static List<UiValidationFailure> validateFieldBaselined(String component, By labelLocator, String labelText,
+            By markerLocator, By inputLocator, FieldStyleSpec spec, String stateKey, UiValidationLevel level) {
+        if (!quickPresent(inputLocator)) {
+            return skip(component, "element presence", "validated if shown", "not displayed");
+        }
+        List<UiValidationFailure> f = new ArrayList<>();
+        f.addAll(validateLabel(labelLocator, component, labelText, FieldStyleSpec.FIELD_LABEL, level));
+        f.addAll(validateElementTypeBaselined(inputLocator, component));
+
+        String mandatory = UiStyleBaseline.attribute(component, UiStyleBaseline.MANDATORY);
+        boolean marked = quickPresent(markerLocator);
+        if (mandatory != null) {
+            String m = mandatory.trim().toLowerCase(java.util.Locale.ROOT);
+            boolean expected = m.equals("yes") || m.equals("true") || m.equals("y") || m.equals("mandatory");
+            f.add(new UiValidationFailure(component, "mandatory", expected ? "Mandatory (*)" : "Non-mandatory",
+                    marked ? "Mandatory (*)" : "Non-mandatory",
+                    marked == expected ? UiValidationFailure.Status.PASS : UiValidationFailure.Status.FAIL));
+        } else {
+            f.addAll(skip(component, "mandatory", "defined in Excel (Mandatory)",
+                    "not baselined - observed: " + (marked ? "Mandatory (*)" : "Non-mandatory")));
+        }
+
+        FieldSnapshot snap = captureField(inputLocator);
+        UiFieldState expectedState = stateKey == null ? null : baselineState(component, stateKey);
+        if (expectedState != null) {
+            f.add(new UiValidationFailure(component, "field state", expectedState.name(), snap.stateText(),
+                    snap.state() == expectedState ? UiValidationFailure.Status.PASS : UiValidationFailure.Status.FAIL));
+        } else {
+            f.add(new UiValidationFailure(component, "field state", "(recorded)", snap.stateText(),
+                    UiValidationFailure.Status.PASS));
+        }
+        f.add(new UiValidationFailure(component, "value", "(recorded)", snap.valueText(), UiValidationFailure.Status.PASS));
+        if (level == UiValidationLevel.CONTRACT && spec != null) {
+            f.addAll(validateInputStyle(inputLocator, component, spec,
+                    expectedState == null ? snap.state() : expectedState, level));
+        }
+        return f;
+    }
+
+    /** A value that must equal {@code expected} (trimmed, case-insensitive); one PASS/FAIL row. */
+    public static List<UiValidationFailure> validateEquals(String component, String property, String expected, String actual) {
+        boolean ok = norm(expected).equalsIgnoreCase(norm(actual));
+        return List.of(new UiValidationFailure(component, property, expected, actual,
+                ok ? UiValidationFailure.Status.PASS : UiValidationFailure.Status.FAIL));
+    }
+
+    /** Thousands-separated number with 2 decimals and an optional Cr/Dr suffix, e.g. {@code 780,142.00 Cr}. */
+    private static final java.util.regex.Pattern BALANCE_FORMAT =
+            java.util.regex.Pattern.compile("^-?\\d{1,3}(,\\d{3})*(\\.\\d{2})?(\\s?(Cr|Dr))?$");
+
+    public static List<UiValidationFailure> validateBalanceFormat(String component, String actual) {
+        boolean ok = actual != null && BALANCE_FORMAT.matcher(norm(actual)).matches();
+        return List.of(new UiValidationFailure(component, "value format",
+                "number, thousands commas, 2 decimals, optional Cr/Dr", actual == null || actual.isBlank() ? "(empty)" : actual,
+                ok ? UiValidationFailure.Status.PASS : UiValidationFailure.Status.FAIL));
+    }
+
+    // ── Before / after field state ───────────────────────────────────────
+
+    /** What a field looked like at one checkpoint. */
+    public record FieldSnapshot(boolean present, UiFieldState state, String value) {
+        static FieldSnapshot absent() { return new FieldSnapshot(false, null, null); }
+        public String stateText() { return !present ? "NOT PRESENT" : state.name(); }
+        public String valueText() { return !present ? "NOT PRESENT" : (value == null || value.isBlank() ? "(empty)" : value); }
+    }
+
+    /** Reads presence, enabled/read-only state and value without failing when the field is absent. */
+    public static FieldSnapshot captureField(By locator) {
+        if (!quickPresent(locator)) return FieldSnapshot.absent();
+        try {
+            WebElement el = visible(locator);
+            UiFieldState state = FieldStateProbe.state(el);
+            String value = el.getAttribute("value");
+            if (value == null || value.isBlank()) value = el.getAttribute("textContent");
+            return new FieldSnapshot(true, state, value == null ? "" : norm(value));
+        } catch (RuntimeException e) {
+            return FieldSnapshot.absent();
+        }
+    }
+
+    /**
+     * Before/after report rows for one field: state before / after (vs expected, when given), whether
+     * the state changed (vs whether it was expected to), and value before / after / changed.
+     *
+     * @param expectedBefore state expected at the first checkpoint, or null (not checked)
+     * @param expectedAfter  state expected after filling, or null (not checked)
+     * @param expectValueChange true/false when the value must/must not change; null = informational only
+     * @param expectedAfterValue exact value expected after filling, or null
+     */
+    public static List<UiValidationFailure> validateFieldBeforeAfter(String componentName,
+            FieldSnapshot before, FieldSnapshot after, UiFieldState expectedBefore, UiFieldState expectedAfter,
+            Boolean expectValueChange, String expectedAfterValue) {
+        return validateFieldBeforeAfter(componentName, "fill", before, after, expectedBefore, expectedAfter,
+                expectValueChange, expectedAfterValue);
+    }
+
+    /** As above; {@code action} names what happened between the checkpoints ("fill", "line selection"). */
+    public static List<UiValidationFailure> validateFieldBeforeAfter(String componentName, String action,
+            FieldSnapshot before, FieldSnapshot after, UiFieldState expectedBefore, UiFieldState expectedAfter,
+            Boolean expectValueChange, String expectedAfterValue) {
+        List<UiValidationFailure> r = new ArrayList<>();
+        if (!before.present() || !after.present()) {
+            r.add(new UiValidationFailure(componentName, "element presence", "present at both checkpoints",
+                    "before: " + before.stateText() + ", after: " + after.stateText()));
+            return r;
+        }
+        if (expectedBefore != null) {
+            r.add(new UiValidationFailure(componentName, "state before " + action, expectedBefore.name(), before.stateText(),
+                    before.state() == expectedBefore ? UiValidationFailure.Status.PASS : UiValidationFailure.Status.FAIL));
+        }
+        if (expectedAfter != null) {
+            r.add(new UiValidationFailure(componentName, "state after " + action, expectedAfter.name(), after.stateText(),
+                    after.state() == expectedAfter ? UiValidationFailure.Status.PASS : UiValidationFailure.Status.FAIL));
+        }
+        boolean stateChanged = before.state() != after.state();
+        if (expectedBefore != null && expectedAfter != null) {
+            boolean expectChange = expectedBefore != expectedAfter;
+            r.add(new UiValidationFailure(componentName, "state change on " + action,
+                    expectChange ? "changes " + expectedBefore + " → " + expectedAfter : "unchanged (" + expectedBefore + ")",
+                    stateChanged ? "changed " + before.stateText() + " → " + after.stateText() : "unchanged (" + after.stateText() + ")",
+                    stateChanged == expectChange ? UiValidationFailure.Status.PASS : UiValidationFailure.Status.FAIL));
+        }
+        r.add(new UiValidationFailure(componentName, "value before " + action, "(recorded)", before.valueText(),
+                UiValidationFailure.Status.PASS));
+        if (expectedAfterValue != null) {
+            r.add(new UiValidationFailure(componentName, "value after " + action, expectedAfterValue, after.valueText(),
+                    norm(expectedAfterValue).equalsIgnoreCase(norm(after.value()))
+                            ? UiValidationFailure.Status.PASS : UiValidationFailure.Status.FAIL));
+        } else {
+            r.add(new UiValidationFailure(componentName, "value after " + action, "(recorded)", after.valueText(),
+                    UiValidationFailure.Status.PASS));
+        }
+        if (expectValueChange != null) {
+            boolean changed = !norm(before.value()).equals(norm(after.value()));
+            r.add(new UiValidationFailure(componentName, "value change on " + action,
+                    expectValueChange ? "changes" : "unchanged", changed ? "changed" : "unchanged",
+                    changed == expectValueChange ? UiValidationFailure.Status.PASS : UiValidationFailure.Status.FAIL));
+        }
+        return r;
+    }
+
+    /** {@link #validateFieldBeforeAfter} with the expected before/after states taken from the Excel
+     *  baseline ({@code EnabledBeforeFill} / {@code EnabledAfterFill}: EDITABLE, READONLY, DISABLED;
+     *  blank = not asserted, just recorded). */
+    public static List<UiValidationFailure> validateFieldBeforeAfterBaselined(String componentName,
+            FieldSnapshot before, FieldSnapshot after, Boolean expectValueChange, String expectedAfterValue) {
+        return validateFieldBeforeAfterBaselined(componentName, "fill", before, after, expectValueChange, expectedAfterValue);
+    }
+
+    public static List<UiValidationFailure> validateFieldBeforeAfterBaselined(String componentName, String action,
+            FieldSnapshot before, FieldSnapshot after, Boolean expectValueChange, String expectedAfterValue) {
+        return validateFieldBeforeAfter(componentName, action, before, after,
+                baselineState(componentName, UiStyleBaseline.ENABLED_BEFORE_FILL),
+                baselineState(componentName, UiStyleBaseline.ENABLED_AFTER_FILL),
+                expectValueChange, expectedAfterValue);
+    }
+
+    /** Expected field state from the baseline column {@code key}, or null when not baselined. */
+    public static UiFieldState baselineStateOf(String component, String key) {
+        return baselineState(component, key);
+    }
+
+    private static UiFieldState baselineState(String component, String key) {
+        String raw = UiStyleBaseline.attribute(component, key);
+        if (raw == null) return null;
+        String v = raw.trim().toUpperCase(java.util.Locale.ROOT);
+        return switch (v) {
+            case "ENABLED", "EDITABLE" -> UiFieldState.EDITABLE;
+            case "DISABLED" -> UiFieldState.DISABLED;
+            case "READONLY", "READ-ONLY", "READ_ONLY" -> UiFieldState.READONLY;
+            default -> throw new IllegalArgumentException("Unknown " + key + " '" + raw + "' for " + component + " in baseline");
+        };
+    }
+
+    // ── Grid column mandatory / non-mandatory ───────────────────────────
+
+    /** The header must show the required marker ({@code *} in its text, or a descendant whose class
+     *  contains required/mandatory) exactly when {@code expectedMandatory}. Reports "mandatory" /
+     *  "non-mandatory" so a reader sees the column classification, not a boolean. */
+    public static List<UiValidationFailure> validateGridColumnMandatory(By headerLocator, String componentName,
+            boolean expectedMandatory) {
+        return guarded(componentName, () -> {
+            WebElement header = visible(headerLocator);
+            Object marked = com.gsl.utils.Selenium.JavascriptExecutorUtils.executeScript(
+                    "var h=arguments[0];return (h.textContent||'').indexOf('*')>=0"
+                            + "||!!h.querySelector('[class*=required],[class*=mandatory]');", header);
+            boolean actual = Boolean.TRUE.equals(marked);
+            return List.of(new UiValidationFailure(componentName, "mandatory",
+                    expectedMandatory ? "Mandatory (*)" : "Non-mandatory", actual ? "Mandatory (*)" : "Non-mandatory",
+                    actual == expectedMandatory ? UiValidationFailure.Status.PASS : UiValidationFailure.Status.FAIL));
+        });
+    }
+
+    /** Mandatory check whose expectation comes from the baseline's {@code Mandatory} column
+     *  (Yes/No/true/false); not baselined → SKIP showing the observed classification. */
+    public static List<UiValidationFailure> validateGridColumnMandatoryBaselined(By headerLocator, String componentName) {
+        String raw = UiStyleBaseline.attribute(componentName, UiStyleBaseline.MANDATORY);
+        if (raw != null) {
+            String v = raw.trim().toLowerCase(java.util.Locale.ROOT);
+            return validateGridColumnMandatory(headerLocator, componentName,
+                    v.equals("yes") || v.equals("true") || v.equals("y") || v.equals("mandatory"));
+        }
+        return guarded(componentName, () -> {
+            Object marked = com.gsl.utils.Selenium.JavascriptExecutorUtils.executeScript(
+                    "var h=arguments[0];return (h.textContent||'').indexOf('*')>=0"
+                            + "||!!h.querySelector('[class*=required],[class*=mandatory]');",
+                    visible(headerLocator));
+            return skip(componentName, "mandatory", "defined in Excel (Mandatory)",
+                    "not baselined — observed: " + (Boolean.TRUE.equals(marked) ? "Mandatory (*)" : "Non-mandatory"));
+        });
+    }
+
+    // ── Section state across an action ──────────────────────────────────
+
+    /** Section state recorded at two points around an action: initial, final, and whether it changed
+     *  as expected. {@code expectedInitialOpen}/{@code expectedFinalOpen} state the business rule. */
+    public static List<UiValidationFailure> validateSectionStateChange(String sectionKey, String action,
+            String actualInitial, boolean expectedInitialOpen, String actualFinal, boolean expectedFinalOpen) {
+        String component = "SECTION_" + sectionKey;
+        String ei = expectedInitialOpen ? "OPEN" : "CLOSED";
+        String ef = expectedFinalOpen ? "OPEN" : "CLOSED";
+        List<UiValidationFailure> r = new ArrayList<>();
+        r.add(new UiValidationFailure(component, "section state before " + action, ei, actualInitial,
+                ei.equals(actualInitial) ? UiValidationFailure.Status.PASS : UiValidationFailure.Status.FAIL));
+        r.add(new UiValidationFailure(component, "section state after " + action, ef, actualFinal,
+                ef.equals(actualFinal) ? UiValidationFailure.Status.PASS : UiValidationFailure.Status.FAIL));
+        return r;
+    }
+
+    // ── Count pair (Record Count / Total Count) ─────────────────────────
+
+    /** Before/after numeric count with the expected delta ("Record Count: 0 → 1, expected +1"). */
+    public static List<UiValidationFailure> validateCountPair(String componentName, String label,
+            Integer before, Integer after, int expectedDelta) {
+        if (before == null || after == null) {
+            return List.of(new UiValidationFailure(componentName, label + " change",
+                    (expectedDelta >= 0 ? "+" : "") + expectedDelta, "could not read (before=" + before + ", after=" + after + ")"));
+        }
+        int actualDelta = after - before;
+        return List.of(new UiValidationFailure(componentName, label + " change",
+                before + " → " + (before + expectedDelta) + " (" + (expectedDelta >= 0 ? "+" : "") + expectedDelta + ")",
+                before + " → " + after + " (" + (actualDelta >= 0 ? "+" : "") + actualDelta + ")",
+                actualDelta == expectedDelta ? UiValidationFailure.Status.PASS : UiValidationFailure.Status.FAIL));
+    }
+
+    public static boolean numericEqualsPublic(String expected, String actual) {
+        return numericEquals(expected, actual);
     }
 
     static boolean numericEquals(String expected, String actual) {

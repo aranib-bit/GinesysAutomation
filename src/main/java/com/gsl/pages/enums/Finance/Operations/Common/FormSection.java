@@ -18,6 +18,7 @@ public enum FormSection {
     DOCUMENT_INFORMATION("Document Information"),
     EXPENSE_INCOME_DETAIL("Expense/Income Detail"),
     SUB_LEDGER_INFORMATION("Sub Ledger Information"),
+    ADJUSTMENT_INFORMATION("Adjustment Information"),
     PAYMENT_INFORMATION("Payment Information"),
     ALLOCATE_SITES_QUICK_SITE_ALLOCATE("Quick Site Allocate"),
     ALLOCATE_SITES_ALLOCATED_SITES("Allocated Site(s)"),

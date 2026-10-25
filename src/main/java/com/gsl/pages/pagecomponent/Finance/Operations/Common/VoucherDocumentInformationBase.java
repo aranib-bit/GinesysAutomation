@@ -1,6 +1,7 @@
 package com.gsl.pages.pagecomponent.Finance.Operations.Common;
 
 import com.gsl.pages.enums.Finance.Operations.Common.FormSection;
+import com.gsl.config.ConfigFactory;
 import com.gsl.driver.DriverManager;
 import com.gsl.enums.VoucherDomain;
 import com.gsl.enums.WaitType;
@@ -93,6 +94,8 @@ public abstract class VoucherDocumentInformationBase {
         this.cashBankLabelText = domain.getLabelCashBank();
         this.dateLabelText     = domain.getLabelDate();
         this.remarksLabelText  = domain.getLabelRemarks();
+        this.voucherNoLabelText = domain.getLabelVoucherNo();
+        this.referenceLabelText = domain.getLabelReference();
     }
 
     private static By byLabel(String label, String widgetXPath) {
@@ -219,9 +222,93 @@ public abstract class VoucherDocumentInformationBase {
         SeleniumUtils.fillAndVerifyCommit("REMARKS", remarksValue,
                 () -> {
                     SeleniumUtils.sendKeys(remarks, WaitType.CLICKABLE, remarksValue, "REMARKS");
+                    settleTypedRemarks(remarksValue);
                     handleNarrationTextPopup(remarksValue);
                 },
                 () -> SeleniumUtils.getAttribute(remarks, "value", "REMARKS"));
+    }
+
+    /**
+     * Makes sure the Remarks input still holds exactly {@code remarksValue} once the narration
+     * combo's per-keystroke query traffic has gone idle — BEFORE {@link #handleNarrationTextPopup}
+     * presses Tab and commits whatever is in the input. Confirmed live (FIN-GV-EDIT-HEADER-02, run
+     * 20261012_142236; HEADER-01, run 20261008_121133): with a slow query the input read back
+     * 'Synergizeebsite', then 'Syner', then 'S' — characters lost mid-typing and a late response
+     * overwriting the input — and Tab committed the damaged value each time. Retypes (native
+     * clear + sendKeys) while the value is wrong; logs a read-only probe of the combo's config
+     * and loading state the first time it is, so the mechanism is visible in the logs. Never
+     * throws: {@code fillAndVerifyCommit}'s readback stays the outer guard.
+     */
+    private void settleTypedRemarks(String remarksValue) {
+        int maxAttempts = ConfigFactory.getWaitConfig().comboTypeSettleMaxAttempts();
+        long recheckMs = ConfigFactory.getWaitConfig().selectDocStabilityRecheckDelayMs();
+        boolean probed = false;
+        for (int attempt = 1; attempt <= maxAttempts; attempt++) {
+            JavascriptExecutorUtils.waitForExtJS();
+            boolean held = SeleniumUtils.actAndConfirmStable(() -> {},
+                    () -> holdsTypedText(readRemarksQuietly(), remarksValue), recheckMs, 1, "REMARKS_TYPED_VALUE");
+            if (held) {
+                if (attempt > 1) {
+                    ReportLogger.fieldEntry("REMARKS held '" + remarksValue + "' after retype " + (attempt - 1));
+                }
+                return;
+            }
+            if (!probed) {
+                Log.warn("[VoucherDocumentInformationBase] REMARKS shows '{}' after typing '{}' and "
+                        + "query idle — combo state: {}", readRemarksQuietly(), remarksValue, probeRemarksCombo());
+                probed = true;
+            }
+            if (attempt < maxAttempts) {
+                Log.warn("[VoucherDocumentInformationBase] REMARKS typed value lost (attempt {}/{}) — retyping",
+                        attempt, maxAttempts);
+                SeleniumUtils.sendKeys(remarks, WaitType.CLICKABLE, remarksValue, "REMARKS");
+            }
+        }
+        Log.warn("[VoucherDocumentInformationBase] REMARKS still not holding '{}' after {} type attempts "
+                + "(shows '{}') — continuing to commit; the commit readback decides", remarksValue,
+                maxAttempts, readRemarksQuietly());
+    }
+
+    /** A typeAhead completion may append a suffix after the typed text (the popup branch handles
+     *  that) — only lost or overwritten typed characters count as "not held". */
+    private static boolean holdsTypedText(String actual, String typed) {
+        return actual != null && actual.startsWith(typed);
+    }
+
+    private String readRemarksQuietly() {
+        try {
+            return DriverManager.getDriver().findElement(remarks).getAttribute("value");
+        } catch (RuntimeException e) {
+            return null;
+        }
+    }
+
+    /** Read-only snapshot of the Remarks combo component (no state is changed). */
+    private String probeRemarksCombo() {
+        try {
+            WebElement input = DriverManager.getDriver().findElement(remarks);
+            Object result = ((org.openqa.selenium.JavascriptExecutor) DriverManager.getDriver()).executeScript(
+                    "try {"
+                    // The input's own id isn't always '<cmp>-inputEl' (live: plain 'narration'),
+                    // so resolve the owning component from the DOM node instead.
+                    + " var el = arguments[0];"
+                    + " var c = window.Ext && ((Ext.Component.from && Ext.Component.from(el))"
+                    + "   || (Ext.Component.fromElement && Ext.Component.fromElement(el))"
+                    + "   || Ext.getCmp((el.id || '').replace(/-inputEl$/, '')));"
+                    + " if (!c) return 'component not found for ' + el.id;"
+                    + " var s = c.getStore ? c.getStore() : null;"
+                    + " return JSON.stringify({xtype: c.xtype, queryMode: c.queryMode, minChars: c.minChars,"
+                    + "  queryDelay: c.queryDelay, typeAhead: c.typeAhead, selectOnTab: c.selectOnTab,"
+                    + "  forceSelection: c.forceSelection, autoSelect: c.autoSelect,"
+                    + "  rawValue: c.getRawValue ? c.getRawValue() : null, lastQuery: c.lastQuery,"
+                    + "  storeLoading: s ? !!s.isLoading() : null, storeCount: s ? s.getCount() : null,"
+                    + "  ajaxLoading: Ext.Ajax ? Ext.Ajax.isLoading() : null,"
+                    + "  pickerVisible: c.picker ? c.picker.isVisible() : false});"
+                    + "} catch (e) { return 'probe-error: ' + e.message; }", input);
+            return String.valueOf(result);
+        } catch (RuntimeException e) {
+            return "probe-unavailable: " + e.getClass().getSimpleName();
+        }
     }
 
     /**
@@ -412,5 +499,87 @@ public abstract class VoucherDocumentInformationBase {
     public List<UiValidationFailure> validateRemarksUi(UiValidationLevel level, UiFieldState state,
             boolean isEditMode, boolean required) {
         return validateRemarksUi(level, isEditMode ? state : UiFieldState.DISABLED, required);
+    }
+
+    // ── Voucher No. / Reference (common to every voucher) ───────────────────────────────────
+
+    private String voucherNoLabelText;
+    private String referenceLabelText;
+
+    /** Voucher No.: label + element type + state. On Add it is the scheme picker (EDITABLE); on Edit the
+     *  saved number is a read-only display. */
+    public List<UiValidationFailure> validateVoucherNoUi(UiValidationLevel level, boolean isEditMode, boolean required) {
+        return validateVoucherNoUi(level, isEditMode, required, null);
+    }
+
+    /**
+     * As above; on Edit {@code expectedSavedNo} (the voucher that was opened) is compared with the number the
+     * read-only display shows. An Edit form carries THREE "Voucher No.:" elements - two permanently hidden (lookup
+     * combo, manual-scheme textfield) and the visible read-only display - so every lookup here resolves to the
+     * first displayed one (see {@code UiComponentValidator}). The saved number is a read-only display, so it shows
+     * no required marker and is reported as {@code VOUCHER_NO_SAVED} (its own baseline rows).
+     */
+    public List<UiValidationFailure> validateVoucherNoUi(UiValidationLevel level, boolean isEditMode, boolean required,
+            String expectedSavedNo) {
+        String label = voucherNoLabelText;
+        if (!isEditMode) {
+            return UiComponentValidator.validateField("VOUCHER_NO",
+                    labelLocator(label), label, requiredMarkerLocator(label), required,
+                    docScheme, FieldStyleSpec.LOOKUP_INPUT, UiFieldState.EDITABLE, level);
+        }
+        By display = By.xpath("//span[contains(@class,'x-form-item-label-text') and normalize-space()='" + label
+                + "']/ancestor::div[contains(@class,'x-form-item')]//*[contains(@id,'-inputEl')]");
+        List<UiValidationFailure> r = new java.util.ArrayList<>(UiComponentValidator.validateLabel(
+                labelLocator(label), "VOUCHER_NO_SAVED", label, FieldStyleSpec.FIELD_LABEL, level));
+        r.addAll(UiComponentValidator.validateRequiredMarker(requiredMarkerLocator(label), "VOUCHER_NO_SAVED", false, level));
+        r.addAll(UiComponentValidator.validateElementTypeBaselined(display, "VOUCHER_NO_SAVED"));
+        r.addAll(UiComponentValidator.validateNotEditable(display, "VOUCHER_NO_SAVED"));
+        String shown = UiComponentValidator.readValue(display);
+        r.addAll(expectedSavedNo == null
+                ? List.of(new UiValidationFailure("VOUCHER_NO_SAVED", "value", "(recorded)", shown.isEmpty() ? "(empty)" : shown,
+                        UiValidationFailure.Status.PASS))
+                : UiComponentValidator.validateEquals("VOUCHER_NO_SAVED", "value (opened voucher)", expectedSavedNo, shown));
+        r.addAll(UiComponentValidator.validateInputStyle(display, "VOUCHER_NO_SAVED", FieldStyleSpec.READONLY_AMOUNT,
+                UiFieldState.READONLY, level));
+        return r;
+    }
+
+    /** Reference: label + required marker + element type + style + state (a free-text field, EDITABLE on Add). */
+    public List<UiValidationFailure> validateReferenceUi(UiValidationLevel level, UiFieldState state, boolean required) {
+        String label = referenceLabelText;
+        return UiComponentValidator.validateField("REFERENCE",
+                labelLocator(label), label, requiredMarkerLocator(label), required,
+                reference, FieldStyleSpec.TEXT_INPUT, state, level);
+    }
+
+    /** Snapshot of every Document Information field's state/value — call once before and once after the
+     *  header is filled, then pass both to {@link #validateFieldsBeforeAfterUi}. */
+    public java.util.Map<String, UiComponentValidator.FieldSnapshot> captureFieldSnapshots() {
+        java.util.Map<String, UiComponentValidator.FieldSnapshot> m = new java.util.LinkedHashMap<>();
+        m.put("VOUCHER_NO", UiComponentValidator.captureField(docScheme));
+        m.put("REFERENCE", UiComponentValidator.captureField(reference));
+        m.put("OWNER_SITE", UiComponentValidator.captureField(ownerSiteDisplay));
+        m.put("CASH_BANK", UiComponentValidator.captureField(cashBankDisplay));
+        m.put("DATE", UiComponentValidator.captureField(documentDate));
+        m.put("REMARKS", UiComponentValidator.captureField(remarks));
+        return m;
+    }
+
+    /** Before/after rows for each captured field. Expected states come from the Excel baseline
+     *  ({@code EnabledBeforeFill}/{@code EnabledAfterFill}); values are recorded either way. */
+    public List<UiValidationFailure> validateFieldsBeforeAfterUi(
+            java.util.Map<String, UiComponentValidator.FieldSnapshot> before,
+            java.util.Map<String, UiComponentValidator.FieldSnapshot> after) {
+        List<UiValidationFailure> r = new java.util.ArrayList<>();
+        for (java.util.Map.Entry<String, UiComponentValidator.FieldSnapshot> e : before.entrySet()) {
+            UiComponentValidator.FieldSnapshot a = after.get(e.getKey());
+            if (a == null) continue;
+            if (!e.getValue().present() && !a.present()) {
+                r.addAll(UiComponentValidator.skip(e.getKey(), "element presence", "validated if shown", "not displayed"));
+                continue;
+            }
+            r.addAll(UiComponentValidator.validateFieldBeforeAfterBaselined(e.getKey(), e.getValue(), a, null, null));
+        }
+        return r;
     }
 }

@@ -82,11 +82,6 @@ public interface BrowserConfig extends Config {
     @Key("viewport.enforcer.enabled")
     Boolean viewportEnforcerEnabled();
 
-    /** Network-capture transport (e.g. CDP) used for browser-log/network diagnostics. */
-    @Key("network.mode")
-    @DefaultValue("CDP")
-    String networkMode();
-
     /** Selenium Grid hub URL. */
     @Key("grid.url")
     @DefaultValue("http://localhost:4444/wd/hub")

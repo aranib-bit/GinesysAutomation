@@ -43,6 +43,11 @@ public class LoginPage {
         static final By BTN_SKIP = By.xpath("//span[contains(@class,'x-btn-inner') and normalize-space()='Skip']");
     }
 
+    /** The login form's username field - what a fresh browser must show once the app has rendered. */
+    public static By usernameField() {
+        return Loc.TXTBOX_USERNAME;
+    }
+
     // OK_BUTTON  → CommonButton.OK.locator()
     // BTN_CONCURRENT_SESSION_YES → CommonButton.YES.scopedLocator(...)
 

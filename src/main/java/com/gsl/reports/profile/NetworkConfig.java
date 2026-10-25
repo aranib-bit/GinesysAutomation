@@ -11,8 +11,8 @@ import lombok.Data;
  * {@code ReportConfigRenderer#renderNetworkSection}).
  *
  * <p>Almost a 1:1 mirror of {@link com.gsl.config.NetworkConfig}'s own capture/browser-log
- * fields — the one exception is {@code networkMode}, which instead comes from
- * {@link com.gsl.config.BrowserConfig#networkMode()}.
+ * fields — the one exception is {@code networkMode}, which is the capture protocol that applies to
+ * the configured browser (CDP for Chromium, BiDi for Firefox), not a configured value.
  */
 @Data
 @Builder

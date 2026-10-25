@@ -95,8 +95,8 @@ public class CreateApVoucher extends WebTest {
         // ── Step 3: Open Add form ─────────────────────────────────────────────────
         StepExecutor.step("Open Add Form", () -> addRef[0] = listRef[0].clickAdd());
 
-        StepExecutor.step("UI Validation", () ->
-                addRef[0].validateUiContract(UiValidationLevel.CONTRACT, UiFieldState.EDITABLE, false));
+        StepExecutor.step("Capture blank-form UI state", () ->
+                addRef[0].validateUiContractBeforeFill(UiValidationLevel.CONTRACT, UiFieldState.EDITABLE, false));
 
         // ── Delegate fill/save/verify/logout to the scenario behaviour ────────────
         // (ApVoucherScenarioType.ADVANCE_POSITIVE_BEHAVIOR — see VoucherScenarioType unification)
@@ -169,8 +169,8 @@ public class CreateApVoucher extends WebTest {
         // ── Step 3: Open Add form ─────────────────────────────────────────────────
         StepExecutor.step("Open Add Form", () -> addRef[0] = listRef[0].clickAdd());
 
-        StepExecutor.step("UI Validation", () ->
-                addRef[0].validateUiContract(UiValidationLevel.CONTRACT, UiFieldState.EDITABLE, false));
+        StepExecutor.step("Capture blank-form UI state", () ->
+                addRef[0].validateUiContractBeforeFill(UiValidationLevel.CONTRACT, UiFieldState.EDITABLE, false));
 
         // ── Delegate fill/save/verify/logout to the scenario behaviour ────────────
         // (ApVoucherScenarioType.DOC_POSITIVE_BEHAVIOR — see VoucherScenarioType unification)
@@ -236,8 +236,8 @@ public class CreateApVoucher extends WebTest {
 
         StepExecutor.step("Open Add Form", () -> addRef[0] = listRef[0].clickAdd());
 
-        StepExecutor.step("UI Validation", () ->
-                addRef[0].validateUiContract(UiValidationLevel.CONTRACT, UiFieldState.EDITABLE, false));
+        StepExecutor.step("Capture blank-form UI state", () ->
+                addRef[0].validateUiContractBeforeFill(UiValidationLevel.CONTRACT, UiFieldState.EDITABLE, false));
 
         boolean ok = testData.getScenarioType().execute(testData, addRef[0]);
         org.testng.Assert.assertTrue(ok,
@@ -322,8 +322,8 @@ public class CreateApVoucher extends WebTest {
                         : " | expect: successful save"));
         });
 
-        StepExecutor.step("UI Validation", () ->
-                addRef[0].validateUiContract(UiValidationLevel.CONTRACT, UiFieldState.EDITABLE, false));
+        StepExecutor.step("Capture blank-form UI state", () ->
+                addRef[0].validateUiContractBeforeFill(UiValidationLevel.CONTRACT, UiFieldState.EDITABLE, false));
 
         // ── Delegate fill/save/verify/logout to the scenario behaviour ────────────
         boolean ok = testData.getScenarioType().execute(testData, addRef[0]);

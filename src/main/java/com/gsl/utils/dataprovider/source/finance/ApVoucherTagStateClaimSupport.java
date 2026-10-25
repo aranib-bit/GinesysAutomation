@@ -90,10 +90,10 @@ public final class ApVoucherTagStateClaimSupport {
         if (tagState == ApVoucherTagState.TAGGED) {
             return new ApVoucherTaggedBackfillStrategy();
         }
-        String loginName = ConfigFactory.getConfig().username();
+        String loginName = SupplierUser.username();
         long ecode = jdbi.onDemand(HrEmpDao.class).findEcodeByAbbre(loginName)
                 .orElseThrow(() -> new IllegalStateException(
-                        "No hrdemp record found for login user: '" + loginName + "'. Check appusername in config.properties."));
+                        "No hrdemp record found for login user: '" + loginName + "'. The login comes from UsersList.xlsx."));
         List<Long> siteCodes = jdbi.onDemand(HrEmpOuDao.class).findSiteCodesByEcode(ecode);
         if (siteCodes.isEmpty()) {
             throw new IllegalStateException("User '" + loginName + "' (ecode=" + ecode + ") has no site assignments in hrdemp_ou.");

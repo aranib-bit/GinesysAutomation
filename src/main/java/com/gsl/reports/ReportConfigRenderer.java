@@ -258,6 +258,8 @@ public final class ReportConfigRenderer {
         String[][] table = {
                 {"Field", "Value"},
                 {"Test Data Source",     nullSafe(td.getSource())},
+                {"DB Available (db.available)", nullSafe(td.getDbAvailable())},
+                {"Validation without DB (validation.nodb.mode)", nullSafe(td.getValidationNoDbMode())},
                 {"Master Test Data",     nullSafe(td.getMasterTestData())},
                 {"Receipts Data",        nullSafe(td.getReceiptsData())},
                 {"Inventory Group Data", nullSafe(td.getInventoryGroupData())},

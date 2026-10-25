@@ -206,7 +206,7 @@ public class ExcelGeneralVoucherDataSource implements TestDataSource<MergedFinan
     private static Optional<String> resolveOwnerSite(Jdbi jdbi) {
         try {
             UserCredential threadUser = DriverManager.getCurrentUser();
-            String loginName = threadUser != null ? threadUser.username() : ConfigFactory.getConfig().username();
+            String loginName = threadUser != null ? threadUser.username() : com.gsl.utils.dataprovider.source.finance.SupplierUser.username();
             Long ecode = jdbi.onDemand(HrEmpDao.class).findEcodeByAbbre(loginName).orElse(null);
             if (ecode == null) return Optional.empty();
 

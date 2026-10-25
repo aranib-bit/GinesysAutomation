@@ -277,6 +277,36 @@ public class SeleniumUtils {
         }
     }
 
+    /**
+     * Waits (up to {@code visibleTimeoutSeconds}) for {@code by} to be visible, then double-clicks
+     * it via {@link ActionUtils#doubleClick(By)} — both re-resolved fresh from the locator on every
+     * attempt, retrying up to {@value #STALE_RETRY_MAX_ATTEMPTS} times on
+     * {@link StaleElementReferenceException}. The double-click counterpart of
+     * {@link #clickWithStaleRetry}, for a target an ExtJS grid reload can replace between lookup
+     * and action.
+     */
+    public static void doubleClickWithStaleRetry(By by, long visibleTimeoutSeconds, String elementName) {
+        for (int attempt = 1; attempt <= STALE_RETRY_MAX_ATTEMPTS; attempt++) {
+            try {
+                WaitUtils.webDriverWait(visibleTimeoutSeconds)
+                        .until(org.openqa.selenium.support.ui.ExpectedConditions.visibilityOfElementLocated(by));
+                ActionUtils.doubleClick(by);
+                return;
+            } catch (StaleElementReferenceException e) {
+                if (attempt >= STALE_RETRY_MAX_ATTEMPTS) {
+                    Log.error("[STALE-RETRY] '{}' still stale after {} attempts. Giving up.", elementName, attempt);
+                    throw e;
+                }
+                Log.warn("[STALE-RETRY] DoubleClick on '{}' hit a stale element — attempt {}/{}. Re-resolving and retrying…",
+                        elementName, attempt, STALE_RETRY_MAX_ATTEMPTS);
+                ExtentLogger.warning(String.format(
+                        "[Stale-Element Retry %d/%d] DoubleClick on '%s' hit a stale element (likely an ExtJS re-render) — re-resolving",
+                        attempt, STALE_RETRY_MAX_ATTEMPTS, elementName));
+                JavascriptExecutorUtils.waitForExtJS();
+            }
+        }
+    }
+
     /** {@link #sendKeys(By, WaitType, String, String)}, retrying up to {@value #STALE_RETRY_MAX_ATTEMPTS} times on {@link StaleElementReferenceException}. */
     public static void sendKeysWithStaleRetry(By by, WaitType waitType, String value, String elementName) {
         for (int attempt = 1; attempt <= STALE_RETRY_MAX_ATTEMPTS; attempt++) {
@@ -457,6 +487,16 @@ public class SeleniumUtils {
      * @param logTag             label used in step logging and the eventual failure message
      */
     public static void clickBoundlistOptionAcrossPages(String boundlistRootXpath, By option, String logTag) {
+        clickBoundlistOptionAcrossPages(boundlistRootXpath, option, logTag, () -> {});
+    }
+
+    /**
+     * Same as {@link #clickBoundlistOptionAcrossPages(String, By, String)}; {@code beforeClick} runs at the moment
+     * the option has been found (the filtered list is rendered, on the page that holds it) and just before it is
+     * clicked - e.g. to read the list for UI validation. It must not change the page.
+     */
+    public static void clickBoundlistOptionAcrossPages(String boundlistRootXpath, By option, String logTag,
+            Runnable beforeClick) {
         By nextPageEnabled = By.xpath(boundlistRootXpath
                 + "//span[contains(@class,'x-tbar-page-next')]/ancestor::a[1][@aria-disabled='false']");
         By nextPageDisabled = By.xpath(boundlistRootXpath
@@ -464,8 +504,10 @@ public class SeleniumUtils {
 
         int perPageProbeSeconds = 2;
         int maxPages = 50;
+        boolean reExpanded = false;
         for (int page = 1; page <= maxPages; page++) {
             if (isElementPresent(option, perPageProbeSeconds)) {
+                beforeClick.run();
                 click(option, WaitType.CLICKABLE, logTag);
                 return;
             }
@@ -478,6 +520,7 @@ public class SeleniumUtils {
             // re-polled) before concluding the option isn't on this page at all.
             if (actAndConfirmStable(() -> {}, () -> isElementPresent(option, perPageProbeSeconds),
                     perPageProbeSeconds * 1000L, 2, logTag)) {
+                beforeClick.run();
                 click(option, WaitType.CLICKABLE, logTag);
                 return;
             }
@@ -486,16 +529,75 @@ public class SeleniumUtils {
                 JavascriptExecutorUtils.waitForExtJS();
                 continue;
             }
+            // ExtJS can COLLAPSE the picker (display:none) after typing while the filtered list already holds the
+            // option - confirmed in captured HTML for GV's GL combo (run 20261007_170055) and AR's Sub Ledger combo
+            // (run 20261009_142905: row in the list, list hidden, focused input aria-expanded=false). Re-expand
+            // once with the standard ALT+DOWN and search page 1 again.
+            if (!reExpanded && page == 1 && reExpandCollapsedPicker(boundlistRootXpath, logTag)) {
+                reExpanded = true;
+                page = 0;
+                continue;
+            }
             boolean confirmedLastPage = isElementPresent(nextPageDisabled, 1);
             throw new NoSuchElementException("[SeleniumUtils] " + logTag + ": option not found on page "
                     + page + ", and Next Page is not enabled — "
                     + (confirmedLastPage
                         ? "reached the last page without a match."
                         : "the boundlist/paging toolbar did not render as expected.")
-                    + " Locator: " + option);
+                    + " Locator: " + option + " | " + pickerDiagnostics());
         }
         throw new NoSuchElementException("[SeleniumUtils] " + logTag + ": exceeded " + maxPages
                 + " pages without finding " + option);
+    }
+
+    /** True when the picker should be re-expanded: no list is shown and the focused combobox reports it closed. */
+    public static boolean shouldReExpandPicker(boolean listShown, String activeRole, String ariaExpanded) {
+        return !listShown && "combobox".equalsIgnoreCase(activeRole) && "false".equalsIgnoreCase(ariaExpanded);
+    }
+
+    /** Sends ALT+DOWN to the focused combobox when its picker collapsed; returns whether it did. Never throws. */
+    private static boolean reExpandCollapsedPicker(String boundlistRootXpath, String logTag) {
+        try {
+            boolean listShown = DriverManager.getDriver().findElements(By.xpath(boundlistRootXpath)).stream()
+                    .anyMatch(e -> {
+                        try {
+                            return e.isDisplayed();
+                        } catch (RuntimeException ex) {
+                            return false;
+                        }
+                    });
+            WebElement active = DriverManager.getDriver().switchTo().activeElement();
+            if (!shouldReExpandPicker(listShown, active.getAttribute("role"), active.getAttribute("aria-expanded"))) {
+                return false;
+            }
+            new org.openqa.selenium.interactions.Actions(DriverManager.getDriver())
+                    .keyDown(Keys.ALT).sendKeys(Keys.ARROW_DOWN).keyUp(Keys.ALT).perform();
+            JavascriptExecutorUtils.waitForExtJS();
+            ReportLogger.uiAction("[" + logTag + "] list collapsed after typing - re-expanded (ALT+DOWN)");
+            return true;
+        } catch (RuntimeException e) {
+            Log.warn("[SeleniumUtils] {}: picker re-expand check failed: {}", logTag, e.getMessage());
+            return false;
+        }
+    }
+
+    /** What the page showed when a picker option could not be selected - diagnostics only, never throws. */
+    public static String pickerDiagnostics() {
+        try {
+            Object r = JavascriptExecutorUtils.executeScript(
+                    "var pk=Array.from(document.querySelectorAll('.x-boundlist-floating'));"
+                            + "var shown=pk.filter(function(p){return p.style.display!=='none'&&p.offsetParent!==null;}).length;"
+                            + "var a=document.activeElement;var own=null;"
+                            + "if(a&&a.id){own=document.getElementById(a.id.replace(/-inputEl$/,'')+'-picker');}"
+                            + "var items=[];(own?[own]:pk).forEach(function(p){p.querySelectorAll('.x-boundlist-item').forEach(function(i){"
+                            + "if(items.length<8)items.push((i.textContent||'').trim().replace(/\\s+/g,' ').substring(0,60));});});"
+                            + "return 'pickers='+pk.length+', shown='+shown+', focused='+(a?a.id:'none')"
+                            + "+' aria-expanded='+(a?a.getAttribute('aria-expanded'):'')+' value='+(a?a.value:'')"
+                            + "+', focused picker display='+(own?own.style.display:'(none)')+', items='+JSON.stringify(items);");
+            return "Picker state: " + r;
+        } catch (RuntimeException ex) {
+            return "Picker state unavailable: " + ex.getMessage();
+        }
     }
 
     /**

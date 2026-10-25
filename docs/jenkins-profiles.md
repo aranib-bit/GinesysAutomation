@@ -26,3 +26,12 @@ Suites: `testng-regression-arvoucher-phase{1,2,3}.xml` (AR only), `testng-regres
 `testng-regression-generalvoucher-phase{1,2,3}.xml`.
 
 Local run: `mvn clean test -Par-regression-phase1 -Denv=clone-staging -Dbrowser=firefox`
+
+## qaprod (no database)
+`ENV_NAME=qaprod` has `db.available=no` and `testdata.source=EXCEL`: no database connection is ever attempted
+(`DatabaseManager` refuses), and DB-derived validation is replaced by API/audit validation
+(`validation.nodb.mode=API`, or `SKIP`). Profiles whose data sources or validators still need the database
+(the `*-mandatory` / `*-regression-*` DB-mode suites) fail fast with "DB disabled by config" until the API
+data sources and validators of the DB-optional plan are in place; run only UI/API-capable profiles there.
+`api.tenant.active` in `env/qaprod/api.properties` must be filled in (it is `CHANGE_ME` on purpose) and
+`env/qaprod/data/UsersList.xlsx` must hold the real qaprod users.

@@ -48,16 +48,39 @@ public final class LogArchiver {
     };
 
     private static final Map<String, Long> runStartOffsets = new HashMap<>();
+    private static long runStartMillis;
 
     /** Records each live log file's current size — call once, at the true start of a run
      *  ({@code TestListener#onStart(ISuite)}), before this run writes a single line. */
     public static void markRunStart() {
         Path logsDir = Paths.get(System.getProperty("user.dir"), "logs");
         runStartOffsets.clear();
+        runStartMillis = System.currentTimeMillis();
         for (String fileName : LOG_FILE_NAMES) {
             Path source = logsDir.resolve(fileName);
             long size = Files.isRegularFile(source) ? source.toFile().length() : 0L;
             runStartOffsets.put(fileName, size);
+        }
+    }
+
+    /**
+     * Log4j2 size rollover moves older parts of a log into {@code <name>-<date>-<n>.log.gz}; the live file then holds
+     * only the tail. Every rolled part written since the run started belongs to this run, so it goes into the zip
+     * under {@code rolled/} (unchanged, still gzipped).
+     */
+    private static void addRolledFiles(ZipOutputStream zos, Path logsDir) {
+        if (runStartMillis <= 0 || !Files.isDirectory(logsDir)) return;
+        try (java.util.stream.Stream<Path> files = Files.list(logsDir)) {
+            for (Path p : files.filter(f -> f.getFileName().toString().endsWith(".log.gz"))
+                    .filter(f -> f.toFile().lastModified() >= runStartMillis)
+                    .sorted(java.util.Comparator.comparingLong(f -> f.toFile().lastModified()))
+                    .toList()) {
+                zos.putNextEntry(new ZipEntry("rolled/" + p.getFileName()));
+                Files.copy(p, zos);
+                zos.closeEntry();
+            }
+        } catch (IOException e) {
+            Log.warn("[LogArchiver] Rolled log files not added — {}", e.getMessage());
         }
     }
 
@@ -90,12 +113,14 @@ public final class LogArchiver {
                     }
                     zos.closeEntry();
                 }
+                addRolledFiles(zos, logsDir);
             }
             Log.info("[LogArchiver] Archived this run's logs to {}", zipPath);
         } catch (IOException e) {
             Log.warn("[LogArchiver] Failed to archive run logs to {} — {}", zipPath, e.getMessage());
         } finally {
             runStartOffsets.clear();
+            runStartMillis = 0;
         }
     }
 }

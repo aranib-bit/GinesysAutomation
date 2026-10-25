@@ -137,6 +137,9 @@ public class ArVoucherUiValidation extends WebTest {
             listRef[0] = addRef[0].close().clickYes(ArVoucherListPage::new);
             ReportLogger.business("Add form closed (discarded), returned to list");
         });
+
+        // UI validation is soft: every check above ran and was reported; fail the test once, here.
+        StepExecutor.step("Finalize UI assertions", com.gsl.validation.ui.UiFailureCollector::assertNoPending);
     }
 
     @FrameworkAnnotation(value = TestAuthor.ARANI, module = MainModuleType.FINANCE, subModule = "FinanceArVoucher", operation = AppOperation.NONE)
@@ -177,5 +180,8 @@ public class ArVoucherUiValidation extends WebTest {
             listRef[0] = editRef[0].close().clickYes(ArVoucherListPage::new);
             ReportLogger.business("Edit form closed (discarded), returned to list");
         });
+
+        // UI validation is soft: every check above ran and was reported; fail the test once, here.
+        StepExecutor.step("Finalize UI assertions", com.gsl.validation.ui.UiFailureCollector::assertNoPending);
     }
 }

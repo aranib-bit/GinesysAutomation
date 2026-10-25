@@ -85,7 +85,7 @@ public class VoucherDocumentContextResolver {
         AuditStateSummary auditState = AuditStateSummary.resolveFor(persistenceMap);
 
         UserCredential threadUser = DriverManager.getCurrentUser();
-        String currentUsername = threadUser != null ? threadUser.username() : ConfigFactory.getConfig().username();
+        String currentUsername = threadUser != null ? threadUser.username() : com.gsl.utils.dataprovider.source.finance.SupplierUser.username();
 
         return DocumentContext.builder()
                 .voucherNo(voucherNo)

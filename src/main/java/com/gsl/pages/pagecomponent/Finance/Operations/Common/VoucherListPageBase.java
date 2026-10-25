@@ -242,12 +242,16 @@ public abstract class VoucherListPageBase<
 
     /** Starts the double-click cascade at {@code startingStrategy} instead of the top. */
     public TAddPage doubleClickToEditFast(String documentNumber, DocumentSearchStrategy startingStrategy) {
+        // Both filter tiers verify the form actually opened (reopen = double-click the same,
+        // still-filtered row again) — the same guard doubleClickToEdit's page-by-page tier always
+        // had. Without it a swallowed double-click (FIN-GV-EDIT-PAYMENT-01, runs 20261008_121133/
+        // 125423, 20261012_142236) went unnoticed until a later step's 30s window-title wait.
         if (startingStrategy.ordinal() <= DocumentSearchStrategy.EXACT_MATCH.ordinal()) {
             boolean foundExact = StepExecutor.call("Open via Exact-Match Filter (double-click)", () ->
                     GridColumnMenu.filterByExactMatch(CommonVoucherListColumn.VOUCHER_NO, documentNumber)
-                            && mainGrid.doubleClickRowIfPresentOnCurrentPage(documentNumber));
+                            && doubleClickAsTierAttempt(documentNumber, "Exact-Match"));
             if (foundExact) {
-                return newAddPage();
+                return verifiedEditPageAfterDoubleClick(documentNumber);
             }
             clearFilterAndRefreshList();
         }
@@ -255,9 +259,9 @@ public abstract class VoucherListPageBase<
         if (startingStrategy.ordinal() <= DocumentSearchStrategy.PARTIAL_MATCH.ordinal()) {
             boolean foundPartial = StepExecutor.call("Open via Partial-Match Filter (double-click)", () ->
                     GridColumnMenu.filterByContains(CommonVoucherListColumn.VOUCHER_NO, documentNumber)
-                            && mainGrid.doubleClickRowIfPresentOnCurrentPage(documentNumber));
+                            && doubleClickAsTierAttempt(documentNumber, "Partial-Match"));
             if (foundPartial) {
-                return newAddPage();
+                return verifiedEditPageAfterDoubleClick(documentNumber);
             }
             clearFilterAndRefreshList();
         }
@@ -265,6 +269,30 @@ public abstract class VoucherListPageBase<
         resetToFirstPageIfEnabled();
         return StepExecutor.call("Open via Page-by-Page Traversal (double-click)",
                 () -> doubleClickToEdit(documentNumber));
+    }
+
+    /** One filter tier's double-click: a row that keeps going stale or vanishes while the grid
+     *  re-renders is a miss for THIS tier (returns {@code false} so the cascade moves on to the
+     *  next one), not a failure of the whole open-for-edit step. */
+    private boolean doubleClickAsTierAttempt(String documentNumber, String tierLabel) {
+        try {
+            return mainGrid.doubleClickRowIfPresentOnCurrentPage(documentNumber);
+        } catch (org.openqa.selenium.StaleElementReferenceException
+                 | org.openqa.selenium.NoSuchElementException e) {
+            ExtentLogger.warningCategorizedWithScreenshot(LogCategory.UI_ACTION,
+                    com.gsl.enums.ReportSeverity.HIGH,
+                    tierLabel + " double-click on '" + documentNumber + "' hit " + e.getClass().getSimpleName()
+                            + " — treating as a miss for this tier and falling through to the next one");
+            Log.warn("VoucherListPageBase: {} double-click on '{}' hit {} — falling through",
+                    tierLabel, documentNumber, e.getClass().getSimpleName());
+            return false;
+        }
+    }
+
+    private TAddPage verifiedEditPageAfterDoubleClick(String documentNumber) {
+        TAddPage page = newAddPage();
+        verifyFormOpened(page, "Edit", () -> mainGrid.doubleClickRowIfPresentOnCurrentPage(documentNumber));
+        return page;
     }
 
     @LogStep("Search Voucher by Document Number")

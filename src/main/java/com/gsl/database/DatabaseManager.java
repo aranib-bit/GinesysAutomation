@@ -115,16 +115,22 @@ public class DatabaseManager {
 
     /** Returns the shared {@link Jdbi} instance, initializing the connection pool on first call. */
     public static Jdbi getJdbi() {
+        DbAvailability.requireAvailable("DatabaseManager.getJdbi()");
         return Holder.JDBI;
     }
 
     /** Returns the shared {@link HikariDataSource}, initializing the connection pool on first call. */
     public static HikariDataSource getDataSource() {
+        DbAvailability.requireAvailable("DatabaseManager.getDataSource()");
         return Holder.DATA_SOURCE;
     }
 
-    /** Closes the shared connection pool if open. Intended for suite-level teardown; safe to call more than once. */
+    /** Closes the shared connection pool if open. Intended for suite-level teardown; safe to call more than once.
+     *  A no-op when {@code db.available=no} (the pool was never created, and must not be created just to close it). */
     public static void close() {
+        if (!DbAvailability.isAvailable()) {
+            return;
+        }
         if (Holder.DATA_SOURCE != null && !Holder.DATA_SOURCE.isClosed()) {
             Holder.DATA_SOURCE.close();
             System.out.println("Database connection closed.");

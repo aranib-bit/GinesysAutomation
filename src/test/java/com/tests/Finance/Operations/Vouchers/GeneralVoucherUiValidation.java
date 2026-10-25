@@ -190,13 +190,18 @@ public class GeneralVoucherUiValidation extends WebTest {
             listRef[0] = addRef[0].close().clickYes(GeneralVoucherListPage::new);
             ReportLogger.business("Add form closed (discarded), returned to list");
         });
+
+        // UI validation is soft: every check above ran and was reported; fail the test once, here.
+        StepExecutor.step("Finalize UI assertions", com.gsl.validation.ui.UiFailureCollector::assertNoPending);
     }
 
     // ── Full phased Add-form flow: blank → Cash/Bank → rows with Allocate Sites / Payment ──────
 
     /** Cash/Bank selected between the blank-form and row phases — a real, already-proven value
      *  from this repo's own GeneralVoucher.xlsx (same sourcing as the Net Amount test below). */
-    private static final String UI_FLOW_CASH_BANK = "HDFC Bank";
+    /** Replaced after login by a GL / Bank ledger that exists for the logged-in user (see resolveTestData). */
+    private static final String GL_PLACEHOLDER = "(resolved after login)";
+    private static final String PROVEN_TYPE1_GL = "Advance Income Tax";
 
     /** Three rows so every applicability shape appears in one report:
      *  <ol>
@@ -210,38 +215,10 @@ public class GeneralVoucherUiValidation extends WebTest {
      *  no hard-coded environment-specific names. */
     @DataProvider(name = "GeneralVoucherUiFullFlowData")
     public Object[][] fullFlowUiData() {
-        var jdbi = DatabaseManager.getJdbi();
-        com.gsl.database.dao.finance.FinGlDao glDao = jdbi.onDemand(com.gsl.database.dao.finance.FinGlDao.class);
-        List<com.gsl.model.finance.FinGl> type2 = glDao.findByTypeAndApplicability("E", "N", "Y");
-        if (type2.isEmpty()) type2 = glDao.findByTypeAndApplicability("I", "N", "Y");
-        if (type2.isEmpty()) {
-            throw new SkipException("[GeneralVoucherUiValidation] No Site-only (slapp=N, costapp=Y) "
-                    + "expense/income GL found — cannot build the Allocate Sites row.");
-        }
-        com.gsl.model.finance.FinGl siteGl = type2.get(0);
-        com.gsl.database.dao.adm.AdmSiteDao siteDao = jdbi.onDemand(com.gsl.database.dao.adm.AdmSiteDao.class);
-        List<String> siteNames = jdbi.onDemand(com.gsl.database.dao.finance.FinGlSiteDao.class)
-                .findByGlcode(siteGl.getGlcode()).stream()
-                .map(s -> siteDao.findByCode(s.getAdmsiteCode()))
-                .filter(java.util.Objects::nonNull)
-                .map(com.gsl.model.adm.AdmSite::getName)
-                .distinct().limit(2).toList();
-        if (siteNames.isEmpty()) {
-            throw new SkipException("[GeneralVoucherUiValidation] GL '" + siteGl.getGlname()
-                    + "' has no configured sites in fingl_site — cannot build the Allocate Sites row.");
-        }
+        // Row 2 (Site-only GL + its Allocate Sites rows) is resolved AFTER login by
+        // resolveUserData(...): which sites the picker offers depends on the logged-in user (assigned sites,
+        // same Organizational Unit as the owner site), which no data provider can know.
         String row2 = "2";
-        BigDecimal half = siteNames.size() == 2 ? new BigDecimal("1.00") : new BigDecimal("2.00");
-        List<com.gsl.testdata.Finance.Operations.Vouchers.GeneralVoucher.SiteAllocation> allocations =
-                siteNames.stream().map(n -> {
-                    var a = new com.gsl.testdata.Finance.Operations.Vouchers.GeneralVoucher.SiteAllocation();
-                    a.setTestCaseID("FIN-GV-UI-ADD-FLOW");
-                    a.setLineNo(row2);
-                    a.setSiteName(n);
-                    a.setAmount(half);
-                    return a;
-                }).toList();
-
         com.gsl.testdata.Finance.Operations.Vouchers.GeneralVoucher.PaymentInformation payment =
                 new com.gsl.testdata.Finance.Operations.Vouchers.GeneralVoucher.PaymentInformation(
                         "FIN-GV-UI-ADD-FLOW", "CASHBANK", com.gsl.enums.PaymentSelectionType.NEFT_RTGS,
@@ -250,18 +227,66 @@ public class GeneralVoucherUiValidation extends WebTest {
 
         List<com.gsl.pages.pagecomponent.Finance.Operations.GeneralVoucher.GeneralVoucherExpenseIncomeDetail.RowUiPlan> plans = List.of(
                 new com.gsl.pages.pagecomponent.Finance.Operations.GeneralVoucher.GeneralVoucherExpenseIncomeDetail.RowUiPlan(
-                        new ExpenseIncomeDetail("FIN-GV-UI-ADD-FLOW", "1", "Advance Income Tax", null, null,
+                        new ExpenseIncomeDetail("FIN-GV-UI-ADD-FLOW", "1", GL_PLACEHOLDER, null, null,
                                 "UI validation — row 1", "No", new BigDecimal("100"), null),
                         List.of(), payment, false),
+                siteOnlyRowPlaceholder(row2, null),
                 new com.gsl.pages.pagecomponent.Finance.Operations.GeneralVoucher.GeneralVoucherExpenseIncomeDetail.RowUiPlan(
-                        new ExpenseIncomeDetail("FIN-GV-UI-ADD-FLOW", row2, siteGl.getGlname(), null, null,
-                                "UI validation — row 2", "No", new BigDecimal("2"), null),
-                        allocations, null, false),
-                new com.gsl.pages.pagecomponent.Finance.Operations.GeneralVoucher.GeneralVoucherExpenseIncomeDetail.RowUiPlan(
-                        new ExpenseIncomeDetail("FIN-GV-UI-ADD-FLOW", "3", "Advance Income Tax", null, null,
+                        new ExpenseIncomeDetail("FIN-GV-UI-ADD-FLOW", "3", GL_PLACEHOLDER, null, null,
                                 "UI validation — row 3", "No", null, new BigDecimal("50")),
                         List.of(), null, false));
         return new Object[][]{{plans}};
+    }
+
+    /** The row with its placeholder GL swapped for {@code gl}; any other row is returned unchanged. */
+    private static ExpenseIncomeDetail withGl(ExpenseIncomeDetail r, String gl) {
+        if (!GL_PLACEHOLDER.equals(r.getGeneralLedger())) return r;
+        return new ExpenseIncomeDetail(r.getTestCaseID(), r.getLineNo(), gl, r.getSubLedger(), r.getSubLedgerId(),
+                r.getLedgerNarration(), r.getIsReversal(), r.getExpenseDr(), r.getIncomeCr());
+    }
+
+    /** Test data that depends on WHO is logged in, resolved from the DB after login. */
+    private record UserData(String cashBank,
+            List<com.gsl.pages.pagecomponent.Finance.Operations.GeneralVoucher.GeneralVoucherExpenseIncomeDetail.RowUiPlan> plans) {}
+
+    private static com.gsl.pages.pagecomponent.Finance.Operations.GeneralVoucher.GeneralVoucherExpenseIncomeDetail.RowUiPlan
+            siteOnlyRowPlaceholder(String lineNo, Object unused) {
+        return siteOnlyRow(lineNo, "(resolved after login)", List.of());
+    }
+
+    private static com.gsl.pages.pagecomponent.Finance.Operations.GeneralVoucher.GeneralVoucherExpenseIncomeDetail.RowUiPlan
+            siteOnlyRow(String lineNo, String glName, List<com.gsl.testdata.Finance.Operations.Vouchers.GeneralVoucher.SiteAllocation> allocations) {
+        return new com.gsl.pages.pagecomponent.Finance.Operations.GeneralVoucher.GeneralVoucherExpenseIncomeDetail.RowUiPlan(
+                new ExpenseIncomeDetail("FIN-GV-UI-ADD-FLOW", lineNo, glName, null, null,
+                        "UI validation — row 2", "No", new BigDecimal("2"), null),
+                allocations, null, false);
+    }
+
+    /** Resolves everything that depends on the logged-in user: the Type1 GL and Bank ledger, and the Site-only
+     *  GL with sites the Allocate Sites picker offers this user. */
+    private static UserData resolveUserData(List<com.gsl.pages.pagecomponent.Finance.Operations.GeneralVoucher.GeneralVoucherExpenseIncomeDetail.RowUiPlan> plans) {
+        var type1 = com.gsl.utils.dataprovider.source.finance.DbGeneralVoucherDataSource
+                .resolveType1GlAndBankForCurrentUser(PROVEN_TYPE1_GL);
+        type1.narrative().forEach(ReportLogger::business);
+        var resolved = com.gsl.utils.dataprovider.source.finance.DbGeneralVoucherDataSource.resolveSiteOnlyGlForCurrentUser(2);
+        resolved.narrative().forEach(ReportLogger::business);
+        BigDecimal each = resolved.siteNames().size() == 2 ? new BigDecimal("1.00") : new BigDecimal("2.00");
+        List<com.gsl.testdata.Finance.Operations.Vouchers.GeneralVoucher.SiteAllocation> allocations =
+                resolved.siteNames().stream().map(n -> {
+                    var a = new com.gsl.testdata.Finance.Operations.Vouchers.GeneralVoucher.SiteAllocation();
+                    a.setTestCaseID("FIN-GV-UI-ADD-FLOW");
+                    a.setLineNo("2");
+                    a.setSiteName(n);
+                    a.setAmount(each);
+                    return a;
+                }).toList();
+        List<com.gsl.pages.pagecomponent.Finance.Operations.GeneralVoucher.GeneralVoucherExpenseIncomeDetail.RowUiPlan> out = new java.util.ArrayList<>();
+        for (int i = 0; i < plans.size(); i++) {
+            com.gsl.pages.pagecomponent.Finance.Operations.GeneralVoucher.GeneralVoucherExpenseIncomeDetail.RowUiPlan p = plans.get(i);
+            out.add(i == 1 ? siteOnlyRow("2", resolved.glName(), allocations)
+                    : new com.gsl.pages.pagecomponent.Finance.Operations.GeneralVoucher.GeneralVoucherExpenseIncomeDetail.RowUiPlan(withGl(p.row(), type1.glName()), p.allocations(), p.payment(), p.paymentDebit()));
+        }
+        return new UserData(type1.cashBankName(), out);
     }
 
     @FrameworkAnnotation(value = TestAuthor.ARANI, module = MainModuleType.FINANCE, subModule = "FinanceGenVoucher", operation = AppOperation.NONE)
@@ -284,6 +309,9 @@ public class GeneralVoucherUiValidation extends WebTest {
             ReportLogger.business("Logged in as: " + u.username());
         });
 
+        final UserData[] userData = new UserData[1];
+        StepExecutor.step("Resolve test data for this user", () -> userData[0] = resolveUserData(plans));
+
         StepExecutor.step("Open Finance → General Voucher List", () -> listRef[0] =
                 NavigationUtils.navigateToFinanceSideMenu(
                         homeRef[0], MainMenuType.OPERATIONS, OperationsMenuType.CATEGORY,
@@ -292,12 +320,15 @@ public class GeneralVoucherUiValidation extends WebTest {
         StepExecutor.step("Open Add Form", () -> addRef[0] = listRef[0].clickAdd());
 
         StepExecutor.step("UI Validation", () ->
-                addRef[0].validateAddFormFlowUi(CONTRACT, UI_FLOW_CASH_BANK, plans));
+                addRef[0].validateAddFormFlowUi(CONTRACT, userData[0].cashBank(), userData[0].plans()));
 
         StepExecutor.step("Close Add Form (discard)", () -> {
             listRef[0] = addRef[0].close().clickYes(GeneralVoucherListPage::new);
             ReportLogger.business("Add form closed (discarded), returned to list");
         });
+
+        // UI validation is soft: every check above ran and was reported; fail the test once, here.
+        StepExecutor.step("Finalize UI assertions", com.gsl.validation.ui.UiFailureCollector::assertNoPending);
     }
 
     @FrameworkAnnotation(value = TestAuthor.ARANI, module = MainModuleType.FINANCE, subModule = "FinanceGenVoucher", operation = AppOperation.NONE)
@@ -338,6 +369,9 @@ public class GeneralVoucherUiValidation extends WebTest {
             listRef[0] = editRef[0].close().clickYes(GeneralVoucherListPage::new);
             ReportLogger.business("Edit form closed (discarded), returned to list");
         });
+
+        // UI validation is soft: every check above ran and was reported; fail the test once, here.
+        StepExecutor.step("Finalize UI assertions", com.gsl.validation.ui.UiFailureCollector::assertNoPending);
     }
 
     /** One expected Net Amount reading after a given row has been added — {@code amount} is the
@@ -375,7 +409,7 @@ public class GeneralVoucherUiValidation extends WebTest {
     }
 
     private static ExpenseIncomeDetail typeOneNoneRow(String lineNo, BigDecimal expenseDr, BigDecimal incomeCr) {
-        return new ExpenseIncomeDetail("FIN-GV-UI-NET-AMOUNT", lineNo, "Advance Income Tax", null, null,
+        return new ExpenseIncomeDetail("FIN-GV-UI-NET-AMOUNT", lineNo, GL_PLACEHOLDER, null, null,
                 "UI validation — Net Amount computation", "No", expenseDr, incomeCr);
     }
 
@@ -398,6 +432,15 @@ public class GeneralVoucherUiValidation extends WebTest {
             ReportLogger.business("Logged in as: " + u.username());
         });
 
+        final String[] glAndBank = new String[2];
+        StepExecutor.step("Resolve GL and Bank ledger for this user", () -> {
+            var t1 = com.gsl.utils.dataprovider.source.finance.DbGeneralVoucherDataSource
+                    .resolveType1GlAndBankForCurrentUser(PROVEN_TYPE1_GL);
+            t1.narrative().forEach(ReportLogger::business);
+            glAndBank[0] = t1.glName();
+            glAndBank[1] = t1.cashBankName();
+        });
+
         StepExecutor.step("Open Finance → General Voucher List", () -> listRef[0] =
                 NavigationUtils.navigateToFinanceSideMenu(
                         homeRef[0], MainMenuType.OPERATIONS, OperationsMenuType.CATEGORY,
@@ -412,7 +455,7 @@ public class GeneralVoucherUiValidation extends WebTest {
         // "Advance Income Tax" for the GL, not a DB lookup (this test class deliberately bypasses
         // the heavier DB-resolution pipeline — see this class's own Javadoc).
         StepExecutor.step("Fill Cash/Bank", () -> addRef[0].fillDocumentHeader(
-                new DocumentInformation(null, null, LocalDate.now(), null, "HDFC Bank", null)));
+                new DocumentInformation(null, null, LocalDate.now(), null, glAndBank[1], null)));
 
         SoftAssertions soft = new SoftAssertions();
 
@@ -423,7 +466,7 @@ public class GeneralVoucherUiValidation extends WebTest {
 
         for (int i = 0; i < rows.size(); i++) {
             final int rowIndex = i;
-            ExpenseIncomeDetail row = rows.get(i);
+            ExpenseIncomeDetail row = withGl(rows.get(i), glAndBank[0]);
             NetAmountExpectation expected = expectedAfterEachRow.get(i);
             StepExecutor.step("Add Row " + (rowIndex + 1) + " and Verify Net Amount", () -> {
                 addRef[0].fillTypeOneNoneRow(rowIndex, row);

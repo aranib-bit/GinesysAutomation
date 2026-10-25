@@ -277,10 +277,48 @@ public class GeneralVoucherExpenseIncomeDetail extends VoucherSubLedgerInformati
         /** The popup is fully filled and still open (OK not yet clicked). */
         default void afterPaymentFilled(int rowIndex, PaymentInformationPopup popup, PaymentInformation payment) {}
         default void afterPaymentSubmitted(int rowIndex, PaymentInformation payment) {}
+        /** The row exists and is still blank (nothing typed yet). */
+        default void beforeRowFilled(int rowIndex, ExpenseIncomeDetail row) {}
         default void afterRowFilled(int rowIndex, ExpenseIncomeDetail row) {}
     }
 
     private FillUiListener fillUiListener;
+
+    // ── Picker (floating grid) snapshots for UI validation ──────────────────────────────────────
+    private boolean pickerCapture;
+    private final java.util.Map<Integer, java.util.LinkedHashMap<String, com.gsl.validation.ui.PickerUi.Observation>>
+            pickerObservations = new java.util.HashMap<>();
+
+    /** Turns picker snapshots on for flows that validate UI without a {@link FillUiListener} (the phased UI flow). */
+    public void setPickerCapture(boolean on) {
+        this.pickerCapture = on;
+    }
+
+    @Override
+    protected boolean capturingPickers() {
+        return pickerCapture || fillUiListener != null || super.capturingPickers();
+    }
+
+    /** Returns and forgets what the GL / Sub Ledger pickers of a row showed (last attempt per picker). */
+    @Override
+    public List<com.gsl.validation.ui.PickerUi.Observation> drainPickerObservations(int rowIndex) {
+        java.util.LinkedHashMap<String, com.gsl.validation.ui.PickerUi.Observation> m = pickerObservations.remove(rowIndex);
+        return m == null ? List.of() : new ArrayList<>(m.values());
+    }
+
+    private static final List<String> GL_PICKER_COLUMNS =
+            List.of("Name", "Abbreviation", "Group", "Site Applicable", "Sub Ledger Appl.");
+    private static final List<String> SL_PICKER_COLUMNS = List.of("Name", "Id", "Class Name");
+
+    /** Applicability the GL picker must show for the row's GL type (Type1 No/No, Type2 Yes/No, Type3 Yes/Yes). */
+    private static java.util.Map<String, String> glApplicability(GlLineType type) {
+        if (type == null) return java.util.Map.of();
+        return switch (type) {
+            case TYPE1_NONE -> java.util.Map.of("Site Applicable", "No", "Sub Ledger Appl.", "No");
+            case TYPE2_SITE_ONLY -> java.util.Map.of("Site Applicable", "Yes", "Sub Ledger Appl.", "No");
+            case TYPE3_SITE_AND_SUBLEDGER -> java.util.Map.of("Site Applicable", "Yes", "Sub Ledger Appl.", "Yes");
+        };
+    }
 
     /** Installs (or, with {@code null}, removes) the fill observer — see {@link FillUiListener}. */
     public void setFillUiListener(FillUiListener listener) {
@@ -362,6 +400,7 @@ public class GeneralVoucherExpenseIncomeDetail extends VoucherSubLedgerInformati
                     + " | Amount: " + (amount == null ? "—" : amount);
             ExtentTest rowNode = StepExecutor.group(rowLabel);
 
+            notifyUi(l -> l.beforeRowFilled(rowIndex, row));
             StepExecutor.stepUnder(rowNode, "Fill GL / Narration / Reversal / Amount",
                     () -> fillRowBasicFields(rowIndex, row));
 
@@ -469,7 +508,7 @@ public class GeneralVoucherExpenseIncomeDetail extends VoucherSubLedgerInformati
      * {@link #clickSiteButtonExpectingBlock(int)}.
      */
     public GeneralVoucherExpenseIncomeDetail fillRowBasicFields(int rowIndex, ExpenseIncomeDetail row) {
-        setGeneralLedger(rowIndex, row.getGeneralLedger());
+        setGeneralLedger(rowIndex, row.getGeneralLedger(), glApplicability(row.getResolvedGlType()));
         setLedgerNarration(rowIndex, row.getLedgerNarration());
         setIsReversal(rowIndex, row.isReversalYes());
         if (row.isDebit()) {
@@ -756,7 +795,7 @@ public class GeneralVoucherExpenseIncomeDetail extends VoucherSubLedgerInformati
         }
     }
 
-    private void setGeneralLedger(int rowIndex, String generalLedger) {
+    private void setGeneralLedger(int rowIndex, String generalLedger, java.util.Map<String, String> expectedGlCells) {
         // Equals-guard, same idiom as setSubLedger below — an unedited row's GL already shows the
         // target value (e.g. a detail-line edit that only changes amount/narration, not GL), so
         // without this check every such row unconditionally re-opened the combo and re-selected
@@ -772,6 +811,8 @@ public class GeneralVoucherExpenseIncomeDetail extends VoucherSubLedgerInformati
 
         SeleniumUtils.fillAndVerifyCommit("GV_GENERAL_LEDGER_ROW_" + rowIndex, generalLedger, () -> {
             openCellForEdit(rowCellByPosition(rowIndex, "General ledger"), "GV_GL_CELL_ROW_" + rowIndex);
+            com.gsl.validation.ui.PickerUi.Snapshot pickerBefore =
+                    capturingPickers() ? com.gsl.validation.ui.PickerUi.snapshot() : null;
 
             SeleniumUtils.clear(ACTIVE_EDITOR_INPUT, "GV_GL_COMBO");
             SeleniumUtils.sendKeys(ACTIVE_EDITOR_INPUT, WaitType.VISIBLE, generalLedger, "GV_GL_COMBO");
@@ -783,12 +824,43 @@ public class GeneralVoucherExpenseIncomeDetail extends VoucherSubLedgerInformati
             // 20260903_100559, FIN-GV-EDIT-DETAIL-02: "Page 1 of 4" with Next Page enabled while
             // the old single-page wait below timed out at 30s). See
             // SeleniumUtils.clickBoundlistOptionAcrossPages's own Javadoc.
+            // A picker that collapsed after typing is re-expanded by clickBoundlistOptionAcrossPages itself (shared
+            // with AR/AP and GV's Sub Ledger picker).
             By option = gridBoundlistOption(generalLedger, null);
-            SeleniumUtils.clickBoundlistOptionAcrossPages(BOUNDLIST_ROOT, option, "GV_GL_OPTION_" + generalLedger);
+            final com.gsl.validation.ui.PickerUi.Snapshot[] pickerAfter = {com.gsl.validation.ui.PickerUi.Snapshot.none()};
+            try {
+                SeleniumUtils.clickBoundlistOptionAcrossPages(BOUNDLIST_ROOT, option, "GV_GL_OPTION_" + generalLedger,
+                        () -> { if (capturingPickers()) pickerAfter[0] = com.gsl.validation.ui.PickerUi.snapshot(); });
+            } catch (org.openqa.selenium.NoSuchElementException e) {
+                throw new org.openqa.selenium.NoSuchElementException(e.getMessage() + " | " + boundlistDiagnostics(generalLedger), e);
+            }
+            if (capturingPickers()) {
+                pickerObservations.computeIfAbsent(rowIndex, k -> new java.util.LinkedHashMap<>()).put("GL",
+                        new com.gsl.validation.ui.PickerUi.Observation("General Ledger picker", GL_PICKER_COLUMNS,
+                                generalLedger, generalLedger, null, expectedGlCells, pickerBefore, pickerAfter[0]));
+            }
             ReportLogger.fieldEntry(generalLedger + " selected from dropdown");
             JavascriptExecutorUtils.waitForExtJS();
             JavascriptExecutorUtils.waitForPageLoad();
         }, () -> getGeneralLedger(rowIndex));
+    }
+
+    /** What the page showed when the GL option could not be selected: the combo's picker visibility, the items it
+     *  holds and the typed text - so the next occurrence is explained instead of just "not found". */
+    private String boundlistDiagnostics(String typed) {
+        try {
+            Object r = JavascriptExecutorUtils.executeScript(
+                    "var pk=Array.from(document.querySelectorAll('.x-boundlist-floating'));"
+                            + "var shown=pk.filter(function(p){return p.style.display!=='none'&&p.offsetParent!==null;});"
+                            + "var items=[];pk.forEach(function(p){p.querySelectorAll('.x-boundlist-item').forEach(function(i){"
+                            + "if(items.length<8)items.push((i.textContent||'').trim().replace(/\\s+/g,' ').substring(0,40));});});"
+                            + "var ed=document.querySelector('.x-editor input, .x-grid-editor input');"
+                            + "return 'pickers='+pk.length+', visible='+shown.length+', items='+JSON.stringify(items)"
+                            + "+', editorText='+(ed?ed.value:'(no editor)');");
+            return "Diagnostics (typed '" + typed + "'): " + r;
+        } catch (RuntimeException ex) {
+            return "Diagnostics unavailable: " + ex.getMessage();
+        }
     }
 
     private void setSubLedger(int rowIndex, String subLedger, String subLedgerId) {
@@ -822,6 +894,8 @@ public class GeneralVoucherExpenseIncomeDetail extends VoucherSubLedgerInformati
 
         SeleniumUtils.fillAndVerifyCommit("GV_SUB_LEDGER_ROW_" + rowIndex, subLedger, () -> {
             openCellForEdit(rowCellByPosition(rowIndex, "Sub Ledger"), "GV_SL_CELL_ROW_" + rowIndex);
+            com.gsl.validation.ui.PickerUi.Snapshot pickerBefore =
+                    capturingPickers() ? com.gsl.validation.ui.PickerUi.snapshot() : null;
 
             SeleniumUtils.clear(ACTIVE_EDITOR_INPUT, "GV_SL_COMBO");
             SeleniumUtils.sendKeys(ACTIVE_EDITOR_INPUT, WaitType.VISIBLE, subLedger, "GV_SL_COMBO");
@@ -832,7 +906,15 @@ public class GeneralVoucherExpenseIncomeDetail extends VoucherSubLedgerInformati
             // only an extra column predicate, never a different element shape. Same cross-page
             // reasoning as setGeneralLedger above — this picker is the identical paged widget.
             By option = gridBoundlistOption(subLedger, subLedgerId);
-            SeleniumUtils.clickBoundlistOptionAcrossPages(BOUNDLIST_ROOT, option, "GV_SL_OPTION_" + subLedger);
+            final com.gsl.validation.ui.PickerUi.Snapshot[] pickerAfter = {com.gsl.validation.ui.PickerUi.Snapshot.none()};
+            SeleniumUtils.clickBoundlistOptionAcrossPages(BOUNDLIST_ROOT, option, "GV_SL_OPTION_" + subLedger,
+                    () -> { if (capturingPickers()) pickerAfter[0] = com.gsl.validation.ui.PickerUi.snapshot(); });
+            if (capturingPickers()) {
+                pickerObservations.computeIfAbsent(rowIndex, k -> new java.util.LinkedHashMap<>()).put("SL",
+                        new com.gsl.validation.ui.PickerUi.Observation("Sub Ledger picker", SL_PICKER_COLUMNS,
+                                subLedger, subLedger, subLedgerId == null || subLedgerId.isBlank() ? null : subLedgerId,
+                                java.util.Map.of(), pickerBefore, pickerAfter[0]));
+            }
             ReportLogger.fieldEntry(subLedger + " selected from dropdown");
             JavascriptExecutorUtils.waitForExtJS();
             JavascriptExecutorUtils.waitForPageLoad();
@@ -1121,13 +1203,7 @@ public class GeneralVoucherExpenseIncomeDetail extends VoucherSubLedgerInformati
      *                         match on the header id alone
      */
     private static By rowCellByPosition(int rowIndex, String headerText, String explicitColumnId) {
-        String colId = "//span[normalize-space()='" + headerText + "']"
-                + "/ancestor::div[contains(concat(' ', normalize-space(@class), ' '), ' x-column-header ')][1]/@id";
-        String predicate = "@data-columnid=" + colId;
-        if (explicitColumnId != null && !explicitColumnId.isBlank()) {
-            predicate = "(" + predicate + " or @data-columnid='" + explicitColumnId + "')";
-        }
-        return By.xpath("//table[@data-recordindex='" + rowIndex + "']//td[" + predicate + "]");
+        return By.xpath(com.gsl.utils.Selenium.GridCellLocator.tdXpath("", rowIndex, headerText, explicitColumnId));
     }
 
     // ── UI-contract validation — Expense/Income Detail grid ─────────────────────────────────────
@@ -1184,8 +1260,10 @@ public class GeneralVoucherExpenseIncomeDetail extends VoucherSubLedgerInformati
      *  and toolbar plus one already-filled row's cells, style only. */
     public List<UiValidationFailure> validateExpenseIncomeGridUi(int rowIndex, UiValidationLevel level) {
         List<UiValidationFailure> failures = new ArrayList<>(validateGridHeaderAndToolbarUi(level));
-        failures.addAll(UiValidationScope.node(rowTitleFromGrid(rowIndex), () ->
-                UiValidationScope.node("Cells and row buttons", () -> validateRowCellsUi(rowIndex, null, level))));
+        String title = rowTitleFromGrid(rowIndex);
+        String stage = title.endsWith("not yet filled") ? "Before fill" : "After fill";
+        failures.addAll(UiValidationScope.node(title, () -> UiValidationScope.node(stage, () ->
+                UiValidationScope.node("Cells and row buttons", () -> validateRowCellsUi(rowIndex, null, level)))));
         return failures;
     }
 
@@ -1197,7 +1275,7 @@ public class GeneralVoucherExpenseIncomeDetail extends VoucherSubLedgerInformati
         try {
             String gl = cleanCell(getGeneralLedger(rowIndex));
             if (gl.isEmpty()) {
-                return title + " (blank)";   // nothing filled yet: no GL / SL / amount fragments to show
+                return title + " · not yet filled";   // nothing filled yet: no GL / SL / amount fragments to show
             }
             String sl = cleanCell(getSubLedger(rowIndex));
             BigDecimal dr = getExpenseAmount(rowIndex);
@@ -1230,6 +1308,9 @@ public class GeneralVoucherExpenseIncomeDetail extends VoucherSubLedgerInformati
                 failures.addAll(col.kind() == GridColumnKind.USER
                         ? UiComponentValidator.validateGridHeaderOptional(col.headerLocator(), name, col.headerText(), level)
                         : UiComponentValidator.validateGridHeader(col.headerLocator(), name, col.headerText(), level));
+                if (col.kind() == GridColumnKind.DEFAULT || UiComponentValidator.quickPresent(col.headerLocator())) {
+                    failures.addAll(UiComponentValidator.validateGridColumnMandatoryBaselined(col.headerLocator(), name));
+                }
             }
             failures.addAll(validateGridToolbarUi(deleteRowExpectedEnabled));
             return failures;
@@ -1283,21 +1364,35 @@ public class GeneralVoucherExpenseIncomeDetail extends VoucherSubLedgerInformati
      */
     public List<UiValidationFailure> fillAndValidateRowUi(int rowIndex, RowUiPlan plan, UiValidationLevel level) {
         ExpenseIncomeDetail row = plan.row();
+        setPickerCapture(true);   // the GL / Sub Ledger pickers of this row are reported with it
         if (rowIndex > 0) {
             clickAddRowButton();
             JavascriptExecutorUtils.waitForExtJS();
         } else {
             WaitUtils.waitForExtMask("Fill row 1 — grid ready");
         }
+        // Blank row first (style/state only - nothing typed yet), so the report shows the row before AND after fill.
+        List<UiValidationFailure> beforeFill = UiValidationScope.node(rowNodeLabel(rowIndex, plan), () ->
+                UiValidationScope.node("Before fill", () ->
+                        UiValidationScope.node("Cells and row buttons", () -> validateRowCellsUi(rowIndex, null, level))));
         fillRowBasicFields(rowIndex, row);
         boolean hasSl = row.getSubLedger() != null && !row.getSubLedger().isBlank();
         if (hasSl) {
             setSubLedger(rowIndex, row.getSubLedger(), row.getSubLedgerId());
         }
 
+        List<UiValidationFailure> afterFill = UiValidationScope.node(rowNodeLabel(rowIndex, plan), () -> {
+            List<UiValidationFailure> r = new ArrayList<>();
+            for (com.gsl.validation.ui.PickerUi.Observation o : drainPickerObservations(rowIndex)) {
+                r.addAll(UiValidationScope.node(o.label(), () -> com.gsl.validation.ui.PickerUi.validate(o)));
+            }
+            r.addAll(UiValidationScope.node("After fill", () ->
+                    UiValidationScope.node("Cells and row buttons", () -> validateRowCellsUi(rowIndex, plan, level))));
+            return r;
+        });
         return UiValidationScope.node(rowNodeLabel(rowIndex, plan), () -> {
-            List<UiValidationFailure> failures = new ArrayList<>();
-            failures.addAll(UiValidationScope.node("Cells and row buttons", () -> validateRowCellsUi(rowIndex, plan, level)));
+            List<UiValidationFailure> failures = new ArrayList<>(beforeFill);
+            failures.addAll(afterFill);
             failures.addAll(validateRowAllocateSitesUi(rowIndex, plan, hasSl, level));
             failures.addAll(validateRowPaymentUi(rowIndex, plan, level));
             return failures;
@@ -1383,7 +1478,7 @@ public class GeneralVoucherExpenseIncomeDetail extends VoucherSubLedgerInformati
             // Select the row (click its General ledger cell), then validate the Payment Information
             // section below the grid: it shows the selected row's payment.
             selectRow(rowIndex);
-            failures.addAll(UiValidationScope.node("Static panel (Row " + (rowIndex + 1) + " selected)",
+            failures.addAll(UiValidationScope.node("Payment Information section · after selecting Row " + (rowIndex + 1),
                     () -> validatePaymentPanelUi(payment, level)));
             return failures;
         });
@@ -1504,6 +1599,10 @@ public class GeneralVoucherExpenseIncomeDetail extends VoucherSubLedgerInformati
     /** Label-only footer check — used by the generic {@code validateUiContract} sweep (Create/Edit
      *  business flows), where the expected sums are not known to the validator. */
     public List<UiValidationFailure> validateGridFooterUi() {
-        return validateGridFooterUi(null, null, null, null);
+        // Records every footer field's label AND current value (never label-only), so the sweep still
+        // shows Record Count / totals; the expected sums are checked by the phased flow / after-fill step.
+        com.gsl.validation.ui.voucher.VoucherGridChrome chrome =
+                new com.gsl.validation.ui.voucher.VoucherGridChrome(VoucherDomain.GV);
+        return chrome.validateFooter("current", chrome.readFooter());
     }
 }

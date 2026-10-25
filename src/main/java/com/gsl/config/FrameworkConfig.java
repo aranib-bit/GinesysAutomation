@@ -31,10 +31,23 @@ public interface FrameworkConfig extends Config {
     /** Max time (seconds) allowed for an item-scan/lookup operation before timing out. */
     long itemscanmaxtimeout();
 
-    /** EXCEL | DB — selects which DataSource implementation loads test data. */
+    /** EXCEL | DB | API — where scenario data comes from. See {@link com.gsl.enums.TestDataSourceMode}. */
     @Key("testdata.source")
     @DefaultValue("EXCEL")
     String testDataSource();
+
+    /** yes | no — whether the database may be used in this environment at all (explicit, never probed).
+     *  {@code yes} keeps today's behaviour; {@code no} makes every DB call fail fast with
+     *  {@code DbAvailability.DbDisabledException}. See {@link com.gsl.database.DbAvailability}. */
+    @Key("db.available")
+    @DefaultValue("yes")
+    String dbAvailable();
+
+    /** API | SKIP — with {@code db.available=no}: run the API/audit equivalents of DB validation (default)
+     *  or skip DB-derived validation (reported SKIPPED, never passed). */
+    @Key("validation.nodb.mode")
+    @DefaultValue("API")
+    String validationNoDbMode();
 
     /** App login username used in DB mode (must match hrdemp.abbre in the database). */
     @Key("appusername")

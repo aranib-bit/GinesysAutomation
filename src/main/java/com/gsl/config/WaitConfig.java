@@ -133,6 +133,18 @@ public interface WaitConfig extends Config {
     @DefaultValue("3")
     int selectDocMaxSelectAttempts();
 
+    /**
+     * Max type-then-settle attempts for a query-backed combo's typed text (e.g. the Remarks
+     * narration combo) BEFORE it is committed with Tab — each attempt waits for the combo's own
+     * query traffic to go idle and the input to hold the typed text on two gap-separated reads
+     * ({@link #selectDocStabilityRecheckDelayMs()}), retyping if a late query response overwrote
+     * it. Confirmed live (FIN-GV-EDIT-HEADER-02, run 20261012_142236): Tab committed a truncated
+     * value ('Synergizeebsite' → 'Syner' → 'S') typed while that query was in flight.
+     */
+    @Key("combo.type.settle.max.attempts")
+    @DefaultValue("3")
+    int comboTypeSettleMaxAttempts();
+
     /** Max retries for a click blocked by a transient overlay before giving up. */
     @Key("click.overlay.retry.max")
     @DefaultValue("3")

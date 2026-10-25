@@ -63,3 +63,13 @@ OLD\ LOGS\ AND\ REPORTS/**/*
 ### Environment selection / secrets (see EnvResolver, Secrets) ###
 /env.local
 src/test/resources/env/*/secrets.local.properties
+
+### Local tooling / generated (not for sharing) ###
+.idea/dataSources/
+.idea/dataSources.*
+.codex/
+*.log
+graphify-out/converted/
+graphify-out/cache/
+graphify-out/.graphify_labels.json.sig
+test-output/

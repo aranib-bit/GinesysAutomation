@@ -59,6 +59,7 @@ public final class UiFailureCollector {
     /** Throws one error listing the pending UI failures (and clears them); no-op when none. Use at a
      *  flow's end when there is no DB/snapshot area to combine with. */
     public static void assertNoPending() {
+        UiValidationReporter.flushHeld();
         if (!hasPending()) return;
         List<UiValidationFailure> pending = pending();
         clear();

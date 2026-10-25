@@ -119,12 +119,25 @@ public final class RuntimeProfileBuilder {
                 .build();
     }
 
+    /** Capture protocol that applies to the configured browser (informational — the real choice is made from the driver's capabilities). */
+    private static String detectedProtocolLabel() {
+        try {
+            return switch (com.gsl.config.BrowserResolver.current()) {
+                case FIREFOX -> "BiDi (Firefox)";
+                case CHROME, EDGE -> "CDP (Chromium)";
+                default -> "n/a";
+            };
+        } catch (RuntimeException e) {
+            return "n/a";
+        }
+    }
+
     /** Builds the Network &amp; Browser Logging section from {@code NetworkConfig}/{@code BrowserConfig}. */
     private static NetworkConfig buildNetwork() {
         com.gsl.config.NetworkConfig nc = ConfigFactory.getNetworkConfig();
         com.gsl.config.BrowserConfig bc = ConfigFactory.getBrowserConfig();
         return NetworkConfig.builder()
-                .networkMode(bc.networkMode())
+                .networkMode(detectedProtocolLabel())
                 .enabled(nc.enableNetworkLogs())
                 .captureFailedOnly(nc.networkCaptureFailedOnly())
                 .captureHeaders(nc.networkCaptureHeaders())
@@ -208,6 +221,8 @@ public final class RuntimeProfileBuilder {
     private static TestDataConfig buildTestData(FrameworkConfig fw, ExcelDataConfig ex) {
         return TestDataConfig.builder()
                 .source(fw.testDataSource())
+                .dbAvailable(fw.dbAvailable())
+                .validationNoDbMode(fw.validationNoDbMode())
                 .masterTestData(ex.MasterTestData())
                 .receiptsData(ex.receiptsPath())
                 .inventoryGroupData(ex.inventorygroupPath())

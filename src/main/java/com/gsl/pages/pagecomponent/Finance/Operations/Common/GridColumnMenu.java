@@ -567,6 +567,16 @@ public final class GridColumnMenu {
         // stronger check here too, since committing this filter triggers the same kind of
         // grid-body reload/loader.
         WaitUtils.waitForExtMask(column.headerText() + "_" + mode + "_FILTER_COMMIT");
+        // The mask wait above can return before the reload mask ever appears (confirmed live,
+        // runs 20261008_121133/125423/20261012_142236: isGenuineMaskVisible=false, pollsUsed=0,
+        // ~6ms after Enter, and the "_after_filter_committed" screenshot still showed the
+        // unfiltered "1 - 50 of 4064" grid in every GV Edit test). A caller that then resolves
+        // the target row is acting on the pre-filter DOM the reload is about to replace — the
+        // root cause of FIN-GV-EDIT-PAYMENT-01 (double-click swallowed) and -DETAIL-01 (stale
+        // row). Wait for the grid to actually show the filtered result before returning.
+        if (!waitForFilterToSettle(column, mode, value)) {
+            return false;
+        }
         // No closeAnyOpenMenu() here (removed 2026-08-28) — it sent Escape to the still-focused
         // filter input, which reverted the just-committed value (confirmed live, run
         // 20260828_145219: typing succeeded, Enter was sent, yet the row count never moved at
@@ -582,6 +592,93 @@ public final class GridColumnMenu {
         // isn't proven yet — still useful evidence if a new bug turns up there.
         ExtentLogger.passWithScreenshot(column.headerText() + "_" + mode + "_after_filter_committed");
         return true;
+    }
+
+    /**
+     * {@code true} once every rendered cell of {@code column} in the grid matches {@code value}
+     * under {@code mode} (or the grid is empty), confirmed again after a real gap so the keyup
+     * reload followed by the Enter reload can't be mistaken for a settled state. Pure DOM reads:
+     * the column's header {@code id} is the {@code data-columnid} its body cells carry (confirmed
+     * from the run 20261012_142236 DOM capture: header {@code gridcolumn-1136}, cells
+     * {@code data-columnid="gridcolumn-1136"}).
+     *
+     * <p>On a grid that never settles, records diagnostics and returns {@code false}, so the
+     * caller's cascade falls through to its next strategy instead of acting on stale rows. If the
+     * header id itself can't be resolved, the check can't run — logs that and returns {@code true}
+     * (the previous behavior), leaving the caller's own row-presence check as the safety net.
+     */
+    private static boolean waitForFilterToSettle(IVoucherListColumn column, FilterMatchMode mode, String value) {
+        String label = column.headerText() + "_" + mode + "_FILTER_SETTLE";
+        String columnId = visibleHeaderId(column);
+        if (columnId == null) {
+            Log.warn("[GridColumnMenu] {}: could not resolve the visible header id for '{}' — "
+                    + "skipping the filter-settle check", label, column.headerText());
+            return true;
+        }
+        By nonMatchingCells = nonMatchingCells(columnId, mode, value);
+        long started = System.currentTimeMillis();
+        try {
+            WaitUtils.webDriverWait(ConfigFactory.getWaitConfig().interactionWaitSeconds())
+                    .ignoring(StaleElementReferenceException.class)
+                    .until(d -> d.findElements(nonMatchingCells).isEmpty());
+        } catch (org.openqa.selenium.TimeoutException e) {
+            return reportFilterNotSettled(label, nonMatchingCells, started);
+        }
+        boolean stable = SeleniumUtils.actAndConfirmStable(() -> {},
+                () -> DriverManager.getDriver().findElements(nonMatchingCells).isEmpty(),
+                ConfigFactory.getWaitConfig().selectDocStabilityRecheckDelayMs(),
+                ConfigFactory.getWaitConfig().selectDocMaxSelectAttempts(), label);
+        if (!stable) {
+            return reportFilterNotSettled(label, nonMatchingCells, started);
+        }
+        Log.info("[GridColumnMenu] {}: grid settled on the filtered result after {}ms",
+                label, System.currentTimeMillis() - started);
+        return true;
+    }
+
+    private static boolean reportFilterNotSettled(String label, By nonMatchingCells, long started) {
+        int remaining = DriverManager.getDriver().findElements(nonMatchingCells).size();
+        String diagnostics = JavascriptExecutorUtils.getGridDiagnostics();
+        Log.warn("[GridColumnMenu] {}: grid did not settle on the filtered result after {}ms — {} "
+                        + "non-matching row(s) still rendered; grid={}",
+                label, System.currentTimeMillis() - started, remaining, diagnostics);
+        ExtentLogger.warningCategorizedWithScreenshot(com.gsl.enums.LogCategory.UI_ACTION,
+                com.gsl.enums.ReportSeverity.HIGH,
+                label + ": grid did not settle on the filtered result (" + remaining
+                        + " non-matching row(s) still rendered) — treating as a filter miss. grid=" + diagnostics);
+        return false;
+    }
+
+    /** The {@code id} of {@code column}'s currently displayed header div, or {@code null}. */
+    private static String visibleHeaderId(IVoucherListColumn column) {
+        for (WebElement header : DriverManager.getDriver().findElements(headerDiv(column))) {
+            try {
+                if (header.isDisplayed()) {
+                    String id = header.getAttribute("id");
+                    if (id != null && !id.isBlank()) return id;
+                }
+            } catch (StaleElementReferenceException ignored) {
+                // re-rendered mid-scan — the next candidate (or the caller's fallback) covers it
+            }
+        }
+        return null;
+    }
+
+    /** Body cells of the column whose text does NOT match {@code value} — case-insensitive, like
+     *  the ExtJS string filter itself. */
+    private static By nonMatchingCells(String columnId, FilterMatchMode mode, String value) {
+        String cellText = "translate(normalize-space(.),'ABCDEFGHIJKLMNOPQRSTUVWXYZ','abcdefghijklmnopqrstuvwxyz')";
+        String expected = xpathLiteral(value.trim().toLowerCase(java.util.Locale.ROOT));
+        String matches = mode == FilterMatchMode.EXACT
+                ? cellText + "=" + expected
+                : "contains(" + cellText + "," + expected + ")";
+        return By.xpath("//td[@data-columnid='" + columnId + "'][not(" + matches + ")]");
+    }
+
+    private static String xpathLiteral(String s) {
+        if (!s.contains("'")) return "'" + s + "'";
+        if (!s.contains("\"")) return "\"" + s + "\"";
+        return "concat('" + s.replace("'", "',\"'\",'") + "')";
     }
 
     /**

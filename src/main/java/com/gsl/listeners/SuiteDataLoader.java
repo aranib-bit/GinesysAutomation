@@ -86,7 +86,7 @@ public class SuiteDataLoader implements ISuiteListener {
         ConfigValidator.validate();
 
         String source = ConfigFactory.getConfig().testDataSource();
-        if (!"DB".equalsIgnoreCase(source)) {
+        if (com.gsl.enums.TestDataSourceMode.from(source) != com.gsl.enums.TestDataSourceMode.DB) {
             Log.info("[SuiteDataLoader] testdata.source='{}' — skipping DB queue load.", source);
             return;
         }

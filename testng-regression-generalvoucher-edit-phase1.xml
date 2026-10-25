@@ -1,0 +1,27 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE suite SYSTEM "http://testng.org/testng-1.0.dtd">
+<!--
+    General Voucher Edit REGRESSION_PHASE1 Suite — the REGRESSION_PHASE1-tagged EditGeneralVoucher
+    rows only (gv.edit.group=REGRESSION_PHASE1, 4 scenarios per GeneralVoucherEditExecutionGroup's
+    javadoc), standalone from the Mandatory Edit suite and the Create/Revert suites. DB-mode only
+    (testdata.source=DB) — ExcelGeneralVoucherEditDataSource has no group filtering.
+
+    Run: mvn clean test -Pregression-generalvoucher-edit-phase1
+-->
+<suite name="General Voucher Edit — Regression Phase 1 Suite" parallel="none" data-provider-thread-count="4">
+
+    <listeners>
+        <listener class-name="com.gsl.listeners.RetryAnnotationTransformer"/>
+        <listener class-name="com.gsl.listeners.TestListener"/>
+        <listener class-name="com.gsl.listeners.SuiteDataLoader"/>
+        <listener class-name="com.gsl.listeners.AnnotationMethodInterceptor"/>
+    </listeners>
+
+    <test name="General Voucher Edit — Regression Phase 1" parallel="methods" thread-count="2">
+        <parameter name="gv.edit.group" value="REGRESSION_PHASE1"/>
+        <classes>
+            <class name="com.tests.Finance.Operations.Vouchers.EditGeneralVoucher"/>
+        </classes>
+    </test>
+
+</suite>

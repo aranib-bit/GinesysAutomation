@@ -29,7 +29,8 @@ def pickDefaultProfile(jobName) {
 def allowedEnvs() {
     return ['staging', 'clone-staging',
             'feature-01', 'feature-02', 'feature-03', 'feature-04',
-            'feature-05', 'feature-06', 'feature-07', 'feature-08']
+            'feature-05', 'feature-06', 'feature-07', 'feature-08',
+            'qaprod']
 }
 def allowedBrowsers() {
     return ['chrome', 'firefox', 'edge']
@@ -68,7 +69,7 @@ def gridIndexFor(envName) {
     def known = ['staging', 'clone-staging',
                  'feature-01', 'feature-02', 'feature-03', 'feature-04',
                  'feature-05', 'feature-06', 'feature-07', 'feature-08',
-                 'mnt-01', 'oracle-staging', 'oracle-mnt', 'prod-staging']
+                 'mnt-01', 'oracle-staging', 'oracle-mnt', 'qaprod']
     def idx = known.indexOf(envName)
     if (idx < 0) {
         error "Unknown environment '${envName}'. Valid environments: ${known.join(', ')}."
@@ -105,13 +106,15 @@ pipeline {
             description: 'Maven profile / suite to run (mandatory, regression phase1/2/3, or *-ui). Allowed list: allowedProfiles() in the Jenkinsfile'
         )
         // Dropdowns: the first item is the preselected one. Names are folders under
-        // src/test/resources/env/ — add mnt-01, oracle-staging, oracle-mnt, prod-staging here once their
-        // folders exist (gridIndexFor above already knows them).
+        // src/test/resources/env/ — add mnt-01, oracle-staging, oracle-mnt here once their folders exist
+        // (gridIndexFor above already knows them). qaprod has NO database (db.available=no): run only
+        // profiles whose tests work without DB access (see docs/jenkins-profiles.md).
         choice(
             name: 'ENV_NAME',
             choices: ['staging', 'clone-staging',
                       'feature-01', 'feature-02', 'feature-03', 'feature-04',
-                      'feature-05', 'feature-06', 'feature-07', 'feature-08'],
+                      'feature-05', 'feature-06', 'feature-07', 'feature-08',
+                      'qaprod'],
             description: 'Target environment (src/test/resources/env/<name>)'
         )
         choice(

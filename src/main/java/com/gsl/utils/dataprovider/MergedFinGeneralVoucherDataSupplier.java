@@ -3,10 +3,14 @@ package com.gsl.utils.dataprovider;
 import com.aventstack.extentreports.ExtentTest;
 import com.gsl.annotations.TestCaseId;
 import com.gsl.config.ConfigFactory;
+import com.gsl.enums.TestDataSourceMode;
 import com.gsl.reports.ExtentReport;
 import com.gsl.testdata.dto.MergedFinanceGeneralVoucherData;
 import com.gsl.utils.Log;
 import com.gsl.utils.dataprovider.source.TestDataSource;
+import com.gsl.utils.dataprovider.source.finance.ApiGeneralVoucherDataSource;
+import com.gsl.utils.dataprovider.source.finance.ApiGeneralVoucherDeleteDataSource;
+import com.gsl.utils.dataprovider.source.finance.ApiGeneralVoucherRevertDataSource;
 import com.gsl.utils.dataprovider.source.finance.DbGeneralVoucherDataSource;
 import com.gsl.utils.dataprovider.source.finance.DbGeneralVoucherDeleteDataSource;
 import com.gsl.utils.dataprovider.source.finance.DbGeneralVoucherEditDataSource;
@@ -87,6 +91,7 @@ public class MergedFinGeneralVoucherDataSupplier {
     @DataSupplier(name = "FinanceGeneralVoucherData", flatMap = true, runInParallel = false)
     public StreamEx<Object[]> dataSupplier(Method method, ITestContext context) {
         String source = ConfigFactory.getConfig().testDataSource();
+        TestDataSourceMode sourceMode = TestDataSourceMode.from(source);
         try {
             Log.info("[DataSupplier] testdata.source={}, method={}", source, method.getName());
 
@@ -100,8 +105,18 @@ public class MergedFinGeneralVoucherDataSupplier {
             // GeneralVoucherEditExecutionGroup's Javadoc.
             String xmlEditGroupParam = context.getCurrentXmlTest().getParameter("gv.edit.group");
 
+            if (sourceMode == TestDataSourceMode.API && !isApiSupported(method.getName())) {
+                throw new org.testng.SkipException("testdata.source=API is not implemented yet for '" + method.getName()
+                        + "' (Create, Mixed, Revert and Delete are supported; the Edit API source is the next work package).");
+            }
             TestDataSource<MergedFinanceGeneralVoucherData> loader =
-                    "DB".equalsIgnoreCase(source)
+                    sourceMode == TestDataSourceMode.API
+                            ? switch (method.getName()) {
+                                case "revertGeneralVoucher" -> new ApiGeneralVoucherRevertDataSource(xmlGroupParam, xmlTagParam);
+                                case "deleteGeneralVoucher" -> new ApiGeneralVoucherDeleteDataSource();
+                                default -> new ApiGeneralVoucherDataSource(xmlGroupParam, xmlTagParam);
+                              }
+                    : sourceMode == TestDataSourceMode.DB
                             ? switch (method.getName()) {
                                 case "revertGeneralVoucher" -> new DbGeneralVoucherRevertDataSource(xmlGroupParam, xmlTagParam);
                                 case "editGeneralVoucherHeader", "editGeneralVoucherDetailLine",
@@ -188,6 +203,12 @@ public class MergedFinGeneralVoucherDataSupplier {
             reportDataSupplierFailure(method.getName(), msg);
             throw new org.testng.SkipException(msg);
         }
+    }
+
+    /** Methods that already have an API data source. */
+    private static boolean isApiSupported(String methodName) {
+        return "createGeneralVoucher".equals(methodName) || "createGeneralVoucherMixedTypes".equals(methodName)
+                || "revertGeneralVoucher".equals(methodName) || "deleteGeneralVoucher".equals(methodName);
     }
 
     /**

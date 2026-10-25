@@ -90,7 +90,7 @@ public final class Driver {
         String appUrl = ConfigFactory.getConfig().url();
         long navStartMs = System.currentTimeMillis();
         ReportLogger.framework("[Driver.initDriver] Starting navigation to {}...", appUrl);
-        DriverManager.getDriver().get(appUrl);
+        navigateToApp(appUrl);
         ReportLogger.framework("[Driver.initDriver] Navigation completed in {}ms",
                 System.currentTimeMillis() - navStartMs);
 
@@ -105,6 +105,68 @@ public final class Driver {
         ReportLogger.framework("[Driver.initDriver] Network capture started in {}ms",
                 System.currentTimeMillis() - networkStartMs);
         NetworkCaptureManager.set(capture);
+    }
+
+    /**
+     * Opens the application, bounded by {@code pageload.timeout.seconds} (wait.properties) - a value that was never
+     * applied to the driver. Without it, a first load whose page never finished (run 20261009_134343: "Starting
+     * navigation" at 13:47:44, no "completed") blocked {@code get()} until the WebDriver HTTP read timeout (180 s)
+     * and failed with a bare {@code java.util.concurrent.TimeoutException}, killing the new session and skipping its
+     * test. Now the load stops at the configured limit, the page state is logged, and the app is loaded once more in
+     * the same browser; a second timeout is thrown as before. The browser's previous page-load timeout is restored
+     * afterwards, so no other navigation changes behaviour.
+     */
+    private static void navigateToApp(String appUrl) {
+        WebDriver driver = DriverManager.getDriver();
+        java.time.Duration previous = null;
+        long limit = ConfigFactory.getWaitConfig().pageLoadTimeoutSeconds();
+        try {
+            previous = driver.manage().timeouts().getPageLoadTimeout();
+            driver.manage().timeouts().pageLoadTimeout(java.time.Duration.ofSeconds(limit));
+        } catch (RuntimeException e) {
+            Log.warn("[Driver.initDriver] Could not apply the page-load timeout: {}", e.getMessage());
+        }
+        try {
+            try {
+                driver.get(appUrl);
+            } catch (org.openqa.selenium.TimeoutException first) {
+                ReportLogger.frameworkWarn("[Driver.initDriver] App did not finish loading within {}s ({}) - loading it once more",
+                        limit, pageState(driver));
+                driver.get(appUrl);
+                ReportLogger.framework("[Driver.initDriver] App loaded on the second attempt ({})", pageState(driver));
+            }
+            // A loaded page is not a rendered app: run 20261009_164937 (FIN-AP-ADD-DOC-04) got readyState=complete
+            // after the reload, but the login form never appeared (hung renderer) and the test died at login. Check
+            // it here, within the same bound, so SessionPool's cold-start path replaces the browser instead.
+            try {
+                new org.openqa.selenium.support.ui.WebDriverWait(driver, java.time.Duration.ofSeconds(limit))
+                        .until(org.openqa.selenium.support.ui.ExpectedConditions.presenceOfElementLocated(
+                                com.gsl.pages.LoginPage.usernameField()));
+            } catch (org.openqa.selenium.TimeoutException notRendered) {
+                throw new org.openqa.selenium.TimeoutException("[Driver.initDriver] App page loaded but the login form"
+                        + " did not appear within " + limit + "s (" + pageState(driver) + ")", notRendered);
+            }
+        } finally {
+            if (previous != null) {
+                try {
+                    driver.manage().timeouts().pageLoadTimeout(previous);
+                } catch (RuntimeException ignored) {
+                    // restoring is best effort
+                }
+            }
+        }
+    }
+
+    /** document.readyState and the number of resources still loading - diagnostics only, never throws. */
+    private static String pageState(WebDriver driver) {
+        try {
+            Object r = ((org.openqa.selenium.JavascriptExecutor) driver).executeScript(
+                    "var p=performance.getEntriesByType('resource').filter(function(e){return !e.responseEnd;}).length;"
+                            + "return 'readyState=' + document.readyState + ', resources still loading=' + p;");
+            return String.valueOf(r);
+        } catch (RuntimeException e) {
+            return "page state unreadable: " + e.getClass().getSimpleName();
+        }
     }
 
     /** Stops network capture and quits/unloads the current thread's WebDriver, if one exists. No-op otherwise. */

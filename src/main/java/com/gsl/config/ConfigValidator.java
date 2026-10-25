@@ -1,5 +1,7 @@
 package com.gsl.config;
 
+import com.gsl.database.DbAvailability;
+import com.gsl.enums.TestDataSourceMode;
 import com.gsl.enums.TestEnvironment;
 import com.gsl.utils.Log;
 
@@ -7,7 +9,6 @@ import java.net.URI;
 
 import java.util.ArrayList;
 import java.util.List;
-import java.util.Set;
 
 /**
  * Validates module-scoped config at suite start. Fails fast on fatal misconfigurations
@@ -16,8 +17,6 @@ import java.util.Set;
  * Wired into SuiteDataLoader.onStart() after validateUserPoolAgainstThreadCount().
  */
 public final class ConfigValidator {
-
-    private static final Set<String> VALID_DATA_SOURCES = Set.of("EXCEL", "DB");
 
     private ConfigValidator() {}
 
@@ -34,20 +33,73 @@ public final class ConfigValidator {
         ApiConfig api = ConfigFactory.getApiConfig();
 
         requireFilled(fatals, where, "url", core.url());
-        requireFilled(fatals, where, "appusername", core.username());
-        requireFilled(fatals, where, "apppassword", core.password());
-        requireFilled(fatals, where, "databasehost", db.databaseHost());
-        requireFilled(fatals, where, "databasename", db.databasename());
-        requireFilled(fatals, where, "databaseusername", db.databaseUsername());
-        requireFilled(fatals, where, "databasepassword", db.databasePassword());
+        // appusername / apppassword are obsolete: logins come from UsersList.xlsx (UserPool).
+        boolean dbAvailable = dbAvailableOrRecordFatal(core, fatals);
+        if (dbAvailable) {
+            requireFilled(fatals, where, "databasehost", db.databaseHost());
+            requireFilled(fatals, where, "databasename", db.databasename());
+            requireFilled(fatals, where, "databaseusername", db.databaseUsername());
+            requireFilled(fatals, where, "databasepassword", db.databasePassword());
+        } else if (!isBlank(db.databaseHost()) || !isBlank(db.databasename())) {
+            Log.warn("[ConfigValidator] {}: database values are present but db.available=no — they are ignored", where);
+        }
         requireFilled(fatals, where, "webapi.baseuri", api.webApiBaseUri());
         requireFilled(fatals, where, "api.tenant.active", api.activeTenant());
 
         expectHost(fatals, where, "url", core.url(), env.expectedUiHost());
         expectHost(fatals, where, "webapi.baseuri", api.webApiBaseUri(), env.expectedUiHost());
         expectHost(fatals, where, "webapi.financeApiBaseUri", api.financeApiBaseUri(), env.expectedUiHost());
-        expectEquals(fatals, where, "databasehost", db.databaseHost(), env.expectedDbHost());
-        expectEquals(fatals, where, "databasename", db.databasename(), env.expectedDbName());
+        if (dbAvailable) {
+            expectEquals(fatals, where, "databasehost", db.databaseHost(), env.expectedDbHost());
+            expectEquals(fatals, where, "databasename", db.databasename(), env.expectedDbName());
+        }
+    }
+
+    private static boolean isBlank(String v) {
+        return v == null || v.isBlank();
+    }
+
+    /** Parses {@code db.available}; an invalid value is reported by {@link #checkDataSourceRules} and treated as {@code yes} here so the other checks still run. */
+    private static boolean dbAvailableOrRecordFatal(FrameworkConfig core, List<String> fatals) {
+        try {
+            return DbAvailability.parseFlag(core.dbAvailable());
+        } catch (IllegalArgumentException e) {
+            return true;
+        }
+    }
+
+    /**
+     * The data-source / DB-availability rules, free of config reads so they can be unit-tested:
+     * {@code testdata.source} must be EXCEL, DB or API; {@code db.available} must be yes/no;
+     * {@code validation.nodb.mode} must be API or SKIP; and {@code testdata.source=DB} cannot be
+     * combined with {@code db.available=no} (collecting data from the DB needs the DB).
+     *
+     * @return the fatal messages (empty when the combination is valid)
+     */
+    public static List<String> checkDataSourceRules(String testDataSource, String dbAvailableRaw, String noDbModeRaw) {
+        List<String> fatals = new ArrayList<>();
+        TestDataSourceMode mode = null;
+        try {
+            mode = TestDataSourceMode.from(testDataSource);
+        } catch (IllegalArgumentException e) {
+            fatals.add(e.getMessage());
+        }
+        Boolean dbAvailable = null;
+        try {
+            dbAvailable = DbAvailability.parseFlag(dbAvailableRaw);
+        } catch (IllegalArgumentException e) {
+            fatals.add(e.getMessage());
+        }
+        try {
+            DbAvailability.parseNoDbMode(noDbModeRaw);
+        } catch (IllegalArgumentException e) {
+            fatals.add(e.getMessage());
+        }
+        if (mode == TestDataSourceMode.DB && Boolean.FALSE.equals(dbAvailable)) {
+            fatals.add("testdata.source=DB cannot be combined with db.available=no — collecting scenario data from the "
+                    + "database needs the database. Use testdata.source=EXCEL (or API) for an environment without DB access.");
+        }
+        return fatals;
     }
 
     private static void requireFilled(List<String> fatals, String where, String key, String value) {
@@ -105,10 +157,7 @@ public final class ConfigValidator {
             fatals.add("url is blank — set 'url' in config.properties");
         }
 
-        String source = core.testDataSource();
-        if (source == null || !VALID_DATA_SOURCES.contains(source.toUpperCase())) {
-            fatals.add("testdata.source='" + source + "' is invalid — expected EXCEL or DB");
-        }
+        fatals.addAll(checkDataSourceRules(core.testDataSource(), core.dbAvailable(), core.validationNoDbMode()));
 
         // ── Execution ─────────────────────────────────────────────────────────
         if (exec.threadCount() < 1) {

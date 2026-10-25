@@ -124,7 +124,7 @@ public class DbApVoucherDataSource implements TestDataSource<MergedFinanceApVouc
      */
     @Override
     public List<MergedFinanceApVoucherData> load(String testMethodName) {
-        String loginName = ConfigFactory.getConfig().username();
+        String loginName = SupplierUser.username();
 
         ApVoucherExecutionGroup activeGroup = resolveActiveGroup();
         Set<ApVoucherTag>       activeTags  = resolveActiveTags();
@@ -406,12 +406,12 @@ public class DbApVoucherDataSource implements TestDataSource<MergedFinanceApVouc
         com.gsl.testdata.UserCredential threadUser = com.gsl.driver.DriverManager.getCurrentUser();
         String loginName = (threadUser != null)
                 ? threadUser.username()
-                : ConfigFactory.getConfig().username();
+                : SupplierUser.username();
         HrEmpDao hrEmpDao = jdbi.onDemand(HrEmpDao.class);
         long ecode = hrEmpDao.findEcodeByAbbre(loginName)
                 .orElseThrow(() -> new IllegalStateException(
                         "No hrdemp record found for login user: '" + loginName +
-                        "'. Check appusername in config.properties."));
+                        "'. The login comes from UsersList.xlsx."));
 
         // 2. Site codes and OU codes for the user
         HrEmpOuDao hrOuDao = jdbi.onDemand(HrEmpOuDao.class);
@@ -940,7 +940,7 @@ public class DbApVoucherDataSource implements TestDataSource<MergedFinanceApVouc
         long ecode = hrEmpDao.findEcodeByAbbre(loginName)
                 .orElseThrow(() -> new IllegalStateException(
                         "No hrdemp record found for login user: '" + loginName +
-                        "'. Check appusername in config.properties."));
+                        "'. The login comes from UsersList.xlsx."));
         HrEmpOuDao hrOuDao = jdbi.onDemand(HrEmpOuDao.class);
         return hrOuDao.findOuCodesByEcode(ecode);
     }

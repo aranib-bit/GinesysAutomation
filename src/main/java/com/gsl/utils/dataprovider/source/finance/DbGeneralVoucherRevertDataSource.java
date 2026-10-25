@@ -346,7 +346,7 @@ public class DbGeneralVoucherRevertDataSource implements TestDataSource<MergedFi
      * {@link GeneralVoucherApiBackfillStrategy}, so a genuine shortfall here just skips the
      * negative scenario rather than failing the whole {@link #load} call.
      */
-    private static Optional<MergedFinanceGeneralVoucherData> resolveClosedPeriodNegativeCandidate(
+    static Optional<MergedFinanceGeneralVoucherData> resolveClosedPeriodNegativeCandidate(
             Jdbi jdbi, Set<Long> claimedThisRun) {
 
         // Finding B (Round 12 continued): no second findByVoucherCode — reuse the header

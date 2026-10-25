@@ -147,6 +147,7 @@ public final class VoucherSaveFlowSteps {
     public static void finalizeAsserts(VoucherSaveCtx ctx, Runnable afterAsserted) {
         StepExecutor.step("Finalize save assertions", () -> {
             List<CombinedValidationError.Area> areas = new ArrayList<>();
+            com.gsl.validation.ui.UiValidationReporter.flushHeld();
             if (UiFailureCollector.hasPending()) {
                 areas.add(CombinedValidationError.uiArea(UiFailureCollector.pending()));
                 UiFailureCollector.clear();

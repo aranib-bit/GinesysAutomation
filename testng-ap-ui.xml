@@ -1,0 +1,31 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE suite SYSTEM "http://testng.org/testng-1.0.dtd">
+<!--
+    AP Voucher UI-Contract Validation Suite — runs ApVoucherUiValidation's two methods
+    (validateAddFormUiContract, validateEditFormUiContract) with no group filtering.
+
+    Every FieldStyleSpec property is currently a placeholder sentinel (see FieldStyleSpec's own
+    Javadoc), so every property-level soft-assert failure here is EXPECTED on first run.
+
+    validateEditFormUiContract supports both testdata.source=DB and =EXCEL (Excel mode reads
+    ApEditVoucherInfo's "Existing Voucher No." column directly — see EditApVoucher's own Javadoc
+    for the placeholder-replacement requirement on that sheet).
+
+    Run: mvn clean test -Pap-ui
+-->
+<suite name="AP Voucher UI Validation Suite" parallel="none" data-provider-thread-count="4">
+
+    <listeners>
+        <listener class-name="com.gsl.listeners.RetryAnnotationTransformer"/>
+        <listener class-name="com.gsl.listeners.TestListener"/>
+        <listener class-name="com.gsl.listeners.SuiteDataLoader"/>
+        <listener class-name="com.gsl.listeners.AnnotationMethodInterceptor"/>
+    </listeners>
+
+    <test name="AP Voucher UI Validation" parallel="methods" thread-count="2">
+        <classes>
+            <class name="com.tests.Finance.Operations.Vouchers.ApVoucherUiValidation"/>
+        </classes>
+    </test>
+
+</suite>

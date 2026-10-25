@@ -17,7 +17,7 @@ public enum FinanceApiPattern implements ApiPattern {
 
     AR_VOUCHER      ("AR Voucher",      List.of("Finance/api/vouchers/ar")),
     AP_VOUCHER      ("AP Voucher",      List.of("Finance/api/vouchers/ap")),
-    GENERAL_VOUCHER ("General Voucher", List.of("Finance/api/vouchers/gv")); // ← confirm path
+    GENERAL_VOUCHER ("General Voucher", List.of("Finance/api/vouchers/general", "Finance/api/vouchers/generalvouchers"));
 
     private final String       displayName;
     private final List<String> urlPatterns;

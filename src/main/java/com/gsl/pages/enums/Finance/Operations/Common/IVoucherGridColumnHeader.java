@@ -23,6 +23,12 @@ public interface IVoucherGridColumnHeader {
         return GridColumnKind.DEFAULT;
     }
 
+    /** The column's configured ExtJS {@code itemId} when it has one (its cells then carry it as
+     *  {@code data-columnid} instead of the header id), else {@code null}. See {@code GridCellLocator}. */
+    default String itemId() {
+        return null;
+    }
+
     /** Whether body cells of this column hold numbers (amount-style) rather than text. */
     default boolean numeric() {
         return false;

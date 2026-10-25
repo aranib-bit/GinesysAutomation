@@ -24,7 +24,7 @@ public enum TestEnvironment {
     MNT_01("mnt-01", null, "10.16.16.65", "MAINTENANCE01"),
     ORACLE_STAGING("oracle-staging", "qam-18", null, null),
     ORACLE_MNT("oracle-mnt", "erp-qa-mnt", "ERP-QA-MNT", "GINESYS"),
-    PROD_STAGING("prod-staging", "qaprod.ginesys.cloud", null, null);
+    QAPROD("qaprod", "qaprod.ginesys.cloud", null, null);
 
     private final String folder;
     private final String uiHost;

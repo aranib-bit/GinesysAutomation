@@ -63,6 +63,19 @@ public final class UiStyleBaseline {
             "fontsize", FONT_SIZE, "fontfamily", FONT_FAMILY, "fontweight", FONT_WEIGHT,
             "color", COLOR, "backgroundcolor", BACKGROUND, "bordercolor", BORDER);
 
+    /** Behaviour attributes (non-style) a component row may carry, keyed as the {@code attribute(...)} callers name them. */
+    public static final String ELEMENT_TYPE = "element-type";
+    public static final String MANDATORY = "mandatory";
+    public static final String ENABLED_BEFORE_FILL = "enabled-before-fill";
+    public static final String ENABLED_AFTER_FILL = "enabled-after-fill";
+    /** Heading text shown for the component in the report ("Cash/Bank" instead of "Cash Bank"). */
+    public static final String DISPLAY_NAME = "display-name";
+
+    private static final Map<String, String> ATTRIBUTE_HEADERS = Map.of(
+            ELEMENT_TYPE, "ElementType", MANDATORY, "Mandatory",
+            ENABLED_BEFORE_FILL, "EnabledBeforeFill", ENABLED_AFTER_FILL, "EnabledAfterFill",
+            DISPLAY_NAME, "DisplayName");
+
     private static final String COMMON = "Common";
 
     private record ComponentRow(Pattern pattern, int literalLength, Map<String, String> cells) {}
@@ -132,6 +145,30 @@ public final class UiStyleBaseline {
         return Resolved.MISSING;
     }
 
+    /**
+     * A behaviour attribute (e.g. {@link #ELEMENT_TYPE}, {@link #MANDATORY}) for {@code component}:
+     * current-voucher sheet Component row, then Common Component row, first non-blank wins.
+     * Returns {@code null} when nothing is baselined or the cell is {@code -} ("not checked").
+     */
+    public static String attribute(String component, String key) {
+        Data d = data();
+        if (!d.loaded() || component == null) return null;
+        List<String> order = new ArrayList<>(2);
+        String voucher = UiStyleScope.sheetName();
+        if (voucher != null && d.sheets().containsKey(voucher)) order.add(voucher);
+        order.add(COMMON);
+        for (String sheetName : order) {
+            SheetData sheet = d.sheets().get(sheetName);
+            if (sheet == null) continue;
+            for (ComponentRow row : matching(sheet, component)) {
+                String cell = row.cells().get(key);
+                if (cell == null || cell.isEmpty()) continue;
+                return "-".equals(cell) ? null : cell;
+            }
+        }
+        return null;
+    }
+
     /** Component rows of {@code sheet} matching {@code component}, most specific (longest literal part) first. */
     private static List<ComponentRow> matching(SheetData sheet, String component) {
         List<ComponentRow> hits = new ArrayList<>();
@@ -195,6 +232,9 @@ public final class UiStyleBaseline {
                 for (Map.Entry<String, String> header : PROPERTY_BY_HEADER.entrySet()) {
                     String value = row.getOrDefault(headerName(header.getKey()), "").trim();
                     cells.put(header.getValue(), value);
+                }
+                for (Map.Entry<String, String> attr : ATTRIBUTE_HEADERS.entrySet()) {
+                    cells.put(attr.getKey(), row.getOrDefault(attr.getValue(), "").trim());
                 }
                 String specName = row.getOrDefault("Spec", "").trim();
                 String componentName = row.getOrDefault("Component", "").trim();

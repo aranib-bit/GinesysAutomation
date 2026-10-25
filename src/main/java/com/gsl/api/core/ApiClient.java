@@ -81,6 +81,64 @@ public abstract class ApiClient {
         return response.as(responseType);
     }
 
+    /** GET {@code endpoint} with query params, validate the response, and deserialize it into {@code responseType}. */
+    protected <T> T get(String endpoint, Map<String, Object> queryParams, Class<T> responseType) {
+        return getRaw(endpoint, queryParams).as(responseType);
+    }
+
+    /** PUT {@code body} to {@code endpoint}, validate the response, and return the raw {@link Response} (no deserialization). */
+    protected Response putRaw(String endpoint, Object body) {
+        long start = System.currentTimeMillis();
+        Response response = fresh().body(body).put(endpoint);
+        ApiCallReportLogger.logCall("PUT", endpoint, body, response, System.currentTimeMillis() - start);
+        validateResponse(response, endpoint);
+        return response;
+    }
+
+    /** {@link #putRaw(String, Object)} with query params attached. */
+    protected Response putRaw(String endpoint, Object body, Map<String, Object> queryParams) {
+        long start = System.currentTimeMillis();
+        Response response = fresh().queryParams(queryParams).body(body).put(endpoint);
+        ApiCallReportLogger.logCall("PUT", endpoint, body, response, System.currentTimeMillis() - start);
+        validateResponse(response, endpoint);
+        return response;
+    }
+
+    /** {@link #getRawExpectFailure(String)} counterpart for PUT — see that method's javadoc. */
+    protected Response putRawExpectFailure(String endpoint, Object body) {
+        long start = System.currentTimeMillis();
+        Response response = fresh().body(body).put(endpoint);
+        ApiCallReportLogger.logCall("PUT", endpoint, body, response, System.currentTimeMillis() - start);
+        return response;
+    }
+
+    /**
+     * DELETE with a JSON body (the Finance voucher delete endpoints take
+     * {@code {"empCode":..,"connectedOUCode":..,"voucherCodes":[..]}}), validate the response and
+     * deserialize it into {@code responseType}. Same {@code fresh()} request and
+     * {@link ApiCallReportLogger} instrumentation as the other verbs.
+     */
+    protected <T> T delete(String endpoint, Object body, Class<T> responseType) {
+        return deleteRaw(endpoint, body).as(responseType);
+    }
+
+    /** DELETE {@code body} to {@code endpoint}, validate the response, and return the raw {@link Response}. */
+    protected Response deleteRaw(String endpoint, Object body) {
+        long start = System.currentTimeMillis();
+        Response response = fresh().body(body).delete(endpoint);
+        ApiCallReportLogger.logCall("DELETE", endpoint, body, response, System.currentTimeMillis() - start);
+        validateResponse(response, endpoint);
+        return response;
+    }
+
+    /** {@link #getRawExpectFailure(String)} counterpart for DELETE — see that method's javadoc. */
+    protected Response deleteRawExpectFailure(String endpoint, Object body) {
+        long start = System.currentTimeMillis();
+        Response response = fresh().body(body).delete(endpoint);
+        ApiCallReportLogger.logCall("DELETE", endpoint, body, response, System.currentTimeMillis() - start);
+        return response;
+    }
+
     /** POST {@code body} to {@code endpoint}, validate the response, and return the raw {@link Response} (no deserialization). */
     protected Response postRaw(String endpoint, Object body) {
         long start = System.currentTimeMillis();

@@ -52,10 +52,11 @@ public final class GeneralVoucherApiBackfillStrategy implements BackfillStrategy
                         "[GeneralVoucherApiBackfillStrategy] Creating record {}/{} — accountType={}",
                         i + 1, neededQuantity, accountType);
 
-                // ownerSiteCode/ouCode/empCode are left as placeholders (0) — createGeneralVoucherWithDefaults
-                // throws UnsupportedOperationException before using them; see its Javadoc.
+                // ownerSiteCode/ouCode <= 0 means "use the logged-in user's first OS-OO-CM site and its OU";
+                // empCode is the logged-in user's code from the API session.
+                long empCode = Long.parseLong(session.getUserId());
                 GeneralVoucherCreateResponse response = StepExecutor.call("Create General Voucher via API",
-                        () -> session.getGeneralVoucherApiClient().createGeneralVoucherWithDefaults(accountType, 0, 0, 0));
+                        () -> session.getGeneralVoucherApiClient().createGeneralVoucherWithDefaults(accountType, 0, 0, empCode));
 
                 StepExecutor.call("Verify General Voucher Landed Posted in DB", () -> {
                     verifyLandedPosted(response);

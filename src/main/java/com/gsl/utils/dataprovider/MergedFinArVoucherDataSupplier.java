@@ -1,6 +1,7 @@
 package com.gsl.utils.dataprovider;
 
 import com.gsl.config.ConfigFactory;
+import com.gsl.enums.TestDataSourceMode;
 import com.gsl.testdata.dto.MergedFinanceArVoucherData;
 import com.gsl.utils.Log;
 import com.gsl.utils.dataprovider.source.TestDataSource;
@@ -56,6 +57,13 @@ public class MergedFinArVoucherDataSupplier {
     @DataSupplier(name = "FinanceArVoucherData", flatMap = true, runInParallel = true)
     public StreamEx<Object[]> dataSupplier(Method method, ITestContext context) {
         String source = ConfigFactory.getConfig().testDataSource();
+        TestDataSourceMode sourceMode = TestDataSourceMode.from(source);
+        if (sourceMode == TestDataSourceMode.API) {
+            String msg = "[DataSupplier] testdata.source=API is not supported for AR vouchers yet - API data sources exist only for General Voucher. "
+                    + "Use testdata.source=EXCEL (or DB when db.available=yes) for this suite.";
+            Log.error(msg);
+            throw new IllegalStateException(msg);
+        }
         Log.info("[DataSupplier] testdata.source={}, method={}", source, method.getName());
 
         // Read arv.group from TestNG XML <parameter> — used as fallback when the system
@@ -63,7 +71,7 @@ public class MergedFinArVoucherDataSupplier {
         String xmlGroupParam = context.getCurrentXmlTest().getParameter("arv.group");
 
         TestDataSource<MergedFinanceArVoucherData> loader =
-                "DB".equalsIgnoreCase(source)
+                sourceMode == TestDataSourceMode.DB
                         ? switch (method.getName()) {
                             case "editArVoucher"   -> new DbArVoucherEditDataSource();
                             case "deleteArVoucher" -> new DbArVoucherDeleteDataSource();

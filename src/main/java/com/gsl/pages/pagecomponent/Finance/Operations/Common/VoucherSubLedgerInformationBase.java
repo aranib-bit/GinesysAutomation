@@ -125,6 +125,31 @@ public abstract class VoucherSubLedgerInformationBase implements AdjustmentEntry
                 slId == null ? null : slId.trim());
     }
 
+    /**
+     * Report label identifying grid row {@code rowNumber} (1-based) uniquely by its business keys —
+     * {@code Sub Ledger: <name> · Reference Site: <site>} (Reference Site omitted where the voucher has no
+     * such column, e.g. AR; Sub Ledger Id appended when shown) — so a report row is never just "Row N".
+     * A row that cannot be read yet (blank / not rendered) reads {@code "not yet filled"}.
+     */
+    public String rowIdentityLabel(int rowNumber) {
+        try {
+            SubLedgerRowIdentity id = readRowIdentity(rowNumber);
+            StringBuilder sb = new StringBuilder();
+            if (id.getSubLedgerName() != null && !id.getSubLedgerName().isBlank()) {
+                sb.append("Sub Ledger: ").append(id.getSubLedgerName());
+            }
+            if (id.getReferenceSite() != null && !id.getReferenceSite().isBlank()) {
+                sb.append(sb.length() > 0 ? " · " : "").append("Reference Site: ").append(id.getReferenceSite());
+            }
+            if (id.getSlId() != null && !id.getSlId().isBlank()) {
+                sb.append(sb.length() > 0 ? " · " : "").append("Sub Ledger Id: ").append(id.getSlId());
+            }
+            return sb.length() == 0 ? "not yet filled" : sb.toString();
+        } catch (RuntimeException e) {
+            return "not yet filled";
+        }
+    }
+
     protected PaymentInformationPopup clickPaymentButton(String subLedger, String referenceSite, String slid) {
         String xpath = (slIdColumnAvailable && slid != null && !slid.isBlank())
                 ? String.format(PAYMENT_BUTTON_TEMPLATE_WITH_SLID, subLedger, referenceSite, slid)
@@ -146,6 +171,51 @@ public abstract class VoucherSubLedgerInformationBase implements AdjustmentEntry
     }
 
     protected abstract PaymentInformationPopup createPaymentPopup();
+
+    // ── UI observer of the business fill (see SubLedgerFillListener) ─────────────────────────
+
+    private com.gsl.validation.ui.voucher.SubLedgerFillListener fillUiListener;
+
+    /** Installs (or, with {@code null}, removes) the observer the fill code announces its progress to. */
+    public void setSubLedgerFillListener(com.gsl.validation.ui.voucher.SubLedgerFillListener listener) {
+        this.fillUiListener = listener;
+    }
+
+    /** Calls the observer if one is installed; a failure inside it is logged and never breaks the fill. */
+    protected final void notifyFill(java.util.function.Consumer<com.gsl.validation.ui.voucher.SubLedgerFillListener> call) {
+        if (fillUiListener == null) return;
+        try {
+            call.accept(fillUiListener);
+        } catch (RuntimeException e) {
+            com.gsl.utils.Log.warn("[SubLedgerFillListener] UI validation hook skipped: {}", e.toString());
+        }
+    }
+
+    // ── Picker (floating grid) snapshots for UI validation ─────────────────────────────────────
+
+    private final java.util.Map<Integer, java.util.List<com.gsl.validation.ui.PickerUi.Observation>> pickerObservations =
+            new java.util.HashMap<>();
+
+    /** True while a UI observer is installed - snapshots are taken only then (no cost for plain business runs). */
+    protected boolean capturingPickers() {
+        return fillUiListener != null;
+    }
+
+    /** Stores what one picker showed before and after typing, for the row's UI checks. */
+    protected final void recordPicker(int rowIndex, com.gsl.validation.ui.PickerUi.Observation observation) {
+        pickerObservations.computeIfAbsent(rowIndex, k -> new java.util.ArrayList<>()).add(observation);
+    }
+
+    /** Returns and forgets the picker observations of a row (taken by the UI recorder once the row is filled). */
+    public java.util.List<com.gsl.validation.ui.PickerUi.Observation> drainPickerObservations(int rowIndex) {
+        java.util.List<com.gsl.validation.ui.PickerUi.Observation> out = pickerObservations.remove(rowIndex);
+        return out == null ? java.util.List.of() : out;
+    }
+
+    /** Header texts of this voucher's Sub-Ledger picker, in order (confirmed per voucher from live screenshots). */
+    protected java.util.List<String> subLedgerPickerColumns() {
+        return java.util.List.of("Name", "Id", "Class Name");
+    }
 
     // ── UI-contract validation — grid header ─────────────────────────────────────────────────
     //

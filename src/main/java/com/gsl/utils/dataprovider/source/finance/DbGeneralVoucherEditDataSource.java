@@ -894,7 +894,7 @@ public class DbGeneralVoucherEditDataSource implements TestDataSource<MergedFina
                 .collect(Collectors.toList());
 
         UserCredential threadUser = DriverManager.getCurrentUser();
-        String loginName = threadUser != null ? threadUser.username() : ConfigFactory.getConfig().username();
+        String loginName = threadUser != null ? threadUser.username() : SupplierUser.username();
         long ecode = jdbi.onDemand(HrEmpDao.class).findEcodeByAbbre(loginName)
                 .orElseThrow(() -> new IllegalStateException(
                         "[DbGeneralVoucherEditDataSource] No hrdemp record found for login user: '" + loginName + "'."));

@@ -266,6 +266,7 @@ public class APVoucherSubLedgerInformation extends VoucherSubLedgerInformationBa
                 }
                 Log.debug("Row {} | SL={} | AmtDr={}", idx, sl.getSubLedger(), sl.getAmountDr());
             });
+            notifyFill(l -> l.onRowFilled(idx));
 
             if (mode == OnAccountMode.ADVANCE && sl.getDeductTds() != null && !sl.getDeductTds().trim().isEmpty()) {
                 final String deductTds = sl.getDeductTds().trim();
@@ -332,6 +333,7 @@ public class APVoucherSubLedgerInformation extends VoucherSubLedgerInformationBa
 
             SubLedgerRowStepRegistry.stepUnderRow(rowKey, "Adjust — Type: " + adjType, () -> {
                 AdjustmentEntry adjustmentEntry = openAdjustmentEntry(row.getSubLedger(), refSite, slId);
+                notifyFill(l -> l.onAdjustmentOpened(idx, adjType));
                 String lineNo = row.getLineNo();
 
                 // Shared extraction: Create, Edit restore and "I will adjust more" all drive the
@@ -351,6 +353,7 @@ public class APVoucherSubLedgerInformation extends VoucherSubLedgerInformationBa
                             .forEach(r -> spec.referenceSite(r.getReferenceSiteName()));
                 }
                 AdjustmentFlowSteps.applyAdjustment(adjustmentEntry, spec.build());
+                notifyFill(l -> l.onAdjustmentApplied(idx, adjType));
 
                 // Legacy scenarios (no plan): plain OK, exactly as before. The amount-mismatch
                 // Confirmation is only scripted when a scenario asks for it via
@@ -370,7 +373,7 @@ public class APVoucherSubLedgerInformation extends VoucherSubLedgerInformationBa
      * {@code fillSubLedgerRowsForDocument}, which ALSO re-fills the row's name/amount/reference-
      * site fields from scratch. For re-tagging (or changing the adjustment on) an
      * already-populated, already-saved Edit-mode row, only the adjustment itself needs touching —
-     * this method is the "click Adjust + open the menu" half on its own, with no other field
+     * this method is the "click Adjust" half on its own (the menu is opened by applyAdjustment), with no other field
      * interaction attached. Callers resolve {@code subLedgerName}/{@code referenceSite}/
      * {@code slId} via {@link #readRowIdentity(int)} rather than test data, since an Edit flow has
      * no test-data-supplied row identity to locate the row by.
@@ -411,9 +414,8 @@ public class APVoucherSubLedgerInformation extends VoucherSubLedgerInformationBa
     private AdjustmentEntry openAdjustmentEntry(String subLedgerName,
                                                  String referenceSite, String slid) {
         clickAdjust(subLedgerName, referenceSite, slid);
-        AdjustmentEntry entry = new AdjustmentEntry(this);
-        entry.openAdjustedDocumentMenu();
-        return entry;
+        // The Adjusted Document menu is opened by AdjustmentFlowSteps.applyAdjustment right before its option is used.
+        return new AdjustmentEntry(this);
     }
 
     private void setSubLedgerName(String subledgerName, String id, String referenceSite, int rowIndex) {
@@ -447,6 +449,9 @@ public class APVoucherSubLedgerInformation extends VoucherSubLedgerInformationBa
 
         // Type the name into the real combo input — the app's remote query filters the
         // grid-style picker (Name | Id | Class Name columns) as we type.
+        // UI validation (read only): what the Sub-Ledger picker shows before and after typing.
+        com.gsl.validation.ui.PickerUi.Snapshot pickerBefore =
+                capturingPickers() ? com.gsl.validation.ui.PickerUi.snapshot() : null;
         By comboInput = By.id(inputId);
         SeleniumUtils.clear(comboInput, "SL_COMBO_INPUT");
         SeleniumUtils.sendKeys(comboInput, WaitType.VISIBLE, subledgerName, "SL_COMBO_INPUT");
@@ -462,8 +467,17 @@ public class APVoucherSubLedgerInformation extends VoucherSubLedgerInformationBa
         // search returning rows across a real First/Previous/Next/Last toolbar). See
         // SeleniumUtils.clickBoundlistOptionAcrossPages's own Javadoc.
         By option = subLedgerPickerRow(subledgerName, id);
+        // The filtered list is read when the fill has found the option (it renders after a debounce, so not
+        // right after typing) - see SeleniumUtils.clickBoundlistOptionAcrossPages(..., beforeClick).
+        final com.gsl.validation.ui.PickerUi.Snapshot[] pickerAfter = {com.gsl.validation.ui.PickerUi.Snapshot.none()};
         SeleniumUtils.clickBoundlistOptionAcrossPages(
-                "//div[contains(@class,'x-boundlist-floating')]", option, "SL_OPTION_" + subledgerName);
+                "//div[contains(@class,'x-boundlist-floating')]", option, "SL_OPTION_" + subledgerName,
+                () -> { if (capturingPickers()) pickerAfter[0] = com.gsl.validation.ui.PickerUi.snapshot(); });
+        if (capturingPickers()) {
+            recordPicker(rowIndex, new com.gsl.validation.ui.PickerUi.Observation("Sub Ledger picker",
+                    subLedgerPickerColumns(), subledgerName, subledgerName, id == null || id.isBlank() ? null : id,
+                    java.util.Map.of(), pickerBefore, pickerAfter[0]));
+        }
         ReportLogger.fieldEntry(subledgerName + " selected from dropdown");
         // Let the application's combo select handler run its GL + TDS-applicability evaluation.
         JavascriptExecutorUtils.waitForExtJS();
@@ -775,7 +789,11 @@ public class APVoucherSubLedgerInformation extends VoucherSubLedgerInformationBa
             final String refSite = subLedger.getReferenceSite() != null ? subLedger.getReferenceSite() : "";
             final String slid    = subLedger.getId()            != null ? subLedger.getId()            : "";
             SubLedgerRowStepRegistry.stepUnderRow(lineNo, "Payment — " + effectiveType.label(), () -> {
-                clickPaymentButton(subLedger.getSubLedger(), refSite, slid).fillAndSubmit(payment);
+                final int rowIdx = subLedgerList.indexOf(subLedger);
+                final PaymentInformationPopup popup = clickPaymentButton(subLedger.getSubLedger(), refSite, slid);
+                notifyFill(l -> l.onPaymentOpened(rowIdx, popup));
+                popup.onBeforeSubmit(() -> notifyFill(l -> l.onPaymentFilled(rowIdx, popup, payment)));
+                popup.fillAndSubmit(payment);
                 JavascriptExecutorUtils.waitForExtJS();
                 com.gsl.reports.ActualResultsHolder.get().getUiPaymentInfoPopupMap().put(slKey, true);
             });

@@ -304,7 +304,76 @@ public class AdjustmentEntry {
         System.out.println("EDITORLABEL"+editorLabel);
         SeleniumUtils.clear(cellInput, editorLabel);
         SeleniumUtils.sendKeys(cellInput, WaitType.CLICKABLE, amount, editorLabel);
+        // Commit the edit like a user (Tab - same idiom as GV's narration edit). Left open, the value only lands when
+        // OK is clicked, so anything reading the popup before that (amounts, UI checks) sees the old state.
+        SeleniumUtils.pressTab(cellInput, editorLabel);
+        JavascriptExecutorUtils.waitForExtJS();
+        final java.math.BigDecimal want = new java.math.BigDecimal(amount.replace(",", "").trim());
+        try {
+            WaitUtils.fluentWaitBuilder()
+                    .withMessage("Adjusted Amount cell of " + documentNumber + " to show " + amount)
+                    .until(d -> {
+                        try {
+                            String shown = d.findElement(cellDiv).getText().replace(",", "").trim();
+                            return !shown.isEmpty() && new java.math.BigDecimal(shown).compareTo(want) == 0;
+                        } catch (RuntimeException e) {
+                            return false;
+                        }
+                    });
+        } catch (TimeoutException e) {
+            String shown;
+            try {
+                shown = DriverManager.getDriver().findElement(cellDiv).getText();
+            } catch (RuntimeException ex) {
+                shown = "(cell not readable)";
+            }
+            ReportLogger.business("[Adjustment] Adjusted Amount for " + documentNumber + " typed " + amount
+                    + " but the cell shows '" + shown + "' after Tab (edit not committed yet)");
+            // A different, committed amount means the app refused the typed one (e.g. it is more than the
+            // document's pending - run 20261009_152746: typed 20.00, kept 10.00). Continuing only ends in an
+            // unanswered mismatch Confirmation and an unrelated blocked click minutes later, so stop here.
+            java.math.BigDecimal kept = parseAmount(shown);
+            if (kept != null && kept.compareTo(want) != 0) {
+                throw new IllegalStateException("[Adjustment] Test data conflict on " + documentNumber
+                        + ": typed Adjusted Amount " + amount + " but the app kept " + shown.trim()
+                        + " (document Pending Amount in the popup: " + pendingAmountShown(documentNumber)
+                        + "; v_pending_adj now: " + dbPendingShown(documentNumber)
+                        + ").The document's pending amount is lower than the test data expected - most likely"
+                        + " already adjusted by another voucher.");
+            }
+        }
         return this;
+    }
+
+    private static java.math.BigDecimal parseAmount(String text) {
+        try {
+            String t = text == null ? "" : text.replace(",", "").trim();
+            return t.isEmpty() ? null : new java.math.BigDecimal(t);
+        } catch (NumberFormatException e) {
+            return null;
+        }
+    }
+
+    /** The document's pending in the database right now, for diagnostics only - never throws. */
+    private static String dbPendingShown(String documentNumber) {
+        try {
+            return com.gsl.database.query.PendingAdjQuery.livePendingForDiagnostics(
+                    com.gsl.database.DatabaseManager.getJdbi(), documentNumber);
+        } catch (RuntimeException e) {
+            return "unavailable (" + e.getClass().getSimpleName() + ")";
+        }
+    }
+
+    /** The document row's Pending Amount cell, for diagnostics only - never throws. */
+    private static String pendingAmountShown(String documentNumber) {
+        try {
+            return DriverManager.getDriver().findElements(
+                            By.xpath(String.format(Loc.PENDING_AMOUNT_BY_DOC_XPATH, documentNumber)))
+                    .stream().map(e -> e.getText().trim()).filter(t -> !t.isEmpty()).findFirst()
+                    .orElse("(not readable)");
+        } catch (RuntimeException e) {
+            return "(not readable)";
+        }
     }
 
 

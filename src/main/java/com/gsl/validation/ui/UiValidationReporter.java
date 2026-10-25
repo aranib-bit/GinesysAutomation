@@ -4,7 +4,6 @@ import com.gsl.pages.enums.Finance.Operations.Common.FormSection;
 import com.gsl.reports.ActualResultsHolder;
 import com.gsl.reports.ExtentLogger;
 import com.gsl.reports.FoldableSectionRenderer;
-import org.assertj.core.api.SoftAssertions;
 
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
@@ -51,6 +50,10 @@ public final class UiValidationReporter {
             + ".uv-root details[open]>summary.uv::before{content:'\\25BE'}"
             + ".uv-root .rs-tbl th{text-transform:none;letter-spacing:0;word-break:keep-all}"
             + ".uv-root .rs-tbl th:last-child{text-align:right!important}"
+            + ".uv-root .uv-kids{margin-left:14px;padding-left:8px;border-left:2px solid #CBD5E1}"
+            + ".uv-root .uv-kids .uv-kids .uv-kids{border-left-color:#E2E8F0}"
+            + ".uv-root .uv-title{display:flex;align-items:center;gap:8px;min-width:0;overflow:hidden}"
+            + ".uv-root .uv-title .t{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-weight:500}"
             + ".uv-root .uv-chips{display:flex;gap:6px;flex-wrap:wrap;padding:4px 12px 6px 28px;background:#F8FAFC}"
             + ".uv-root .uv-chip{font-size:11px;padding:1px 8px;border-radius:99px;white-space:nowrap;word-break:keep-all;overflow-wrap:normal;flex:none;background:#E6F1FB;color:#0C447C}"
             + ".uv-root .uv-chip.n{background:#F0F7FF;color:#5B84B1}"
@@ -63,30 +66,68 @@ public final class UiValidationReporter {
 
     /** Renders the "UI Validation" step-tree (must be called from inside a
      *  {@code StepExecutor.step("UI Validation", ...)} lambda — the child nodes this creates land
-     *  under whatever step is currently active), deposits {@code results} into the Actual Results
-     *  holder, then soft-asserts the FAIL entries only — throws if any, same blocking behavior
-     *  every {@code validateUiContract(...)} caller already relies on. */
+     *  under whatever step is currently active) and parks the FAIL entries in {@link UiFailureCollector}.
+     *
+     *  <p><b>UI validation is ALWAYS soft.</b> This method deliberately never throws: a UI defect must
+     *  not stop Save / DB validation / snapshot validation. The flow's single final assertion
+     *  ({@code VoucherSaveFlowSteps#finalizeAsserts} for business flows, {@link UiFailureCollector#assertNoPending}
+     *  for UI-only tests) reports the parked failures together with any DB failure. The name is kept so
+     *  existing callers stay safe without edits; new code should call {@link #renderDeferred} directly.
+     *  {@code UiSoftAssertGuardTest} fails the build if anything else soft-asserts UI results. */
     public static void renderAndAssert(List<UiValidationFailure> results) {
-        renderStepTree(results);
-        ActualResultsHolder.get().setUiValidationResults(results);
-        SoftAssertions soft = new SoftAssertions();
-        results.stream().filter(UiValidationFailure::isFail).forEach(r -> soft.fail(r.toString()));
-        soft.assertAll();
+        renderDeferred(results);
     }
 
-    /** As {@link #renderAndAssert} but does NOT throw: the report nodes and Actual Results rows are
+    /** Renders the report nodes; the Actual Results rows are
      *  produced identically, and the FAIL entries are parked in {@link UiFailureCollector} so the
      *  flow's later steps (Save, DB validation, snapshot validation) still run. The collector is
      *  asserted once at the flow's final assertion point, combined with any DB/snapshot failure.
      *  Results are APPENDED to the Actual Results holder across several calls (checkpoints). */
     public static void renderDeferred(List<UiValidationFailure> results) {
+        List<UiValidationFailure> held = drainHeld();
+        List<UiValidationFailure> merged = new ArrayList<>(held);
+        merged.addAll(results);
+        renderAndRecord(merged);
+        UiFailureCollector.addAll(results);   // held results were parked in the collector when they were held
+    }
+
+    private static void renderAndRecord(List<UiValidationFailure> results) {
         renderStepTree(results);
         List<UiValidationFailure> all = new ArrayList<>();
         List<UiValidationFailure> prior = ActualResultsHolder.get().getUiValidationResults();
         if (prior != null) all.addAll(prior);
         all.addAll(results);
         ActualResultsHolder.get().setUiValidationResults(all);
+    }
+
+    private static final ThreadLocal<List<UiValidationFailure>> HELD = ThreadLocal.withInitial(ArrayList::new);
+
+    /**
+     * Holds pre-fill results so the Create flow reports ONE consolidated tree: the next {@link #renderDeferred}
+     * prepends them. Failures are parked in {@link UiFailureCollector} immediately, so nothing is lost if the
+     * flow dies before the rendering step ({@link #flushHeld} then still shows them).
+     */
+    public static void holdForFill(List<UiValidationFailure> results) {
+        HELD.get().addAll(results);
         UiFailureCollector.addAll(results);
+    }
+
+    /** Returns and clears the held results (package-visible for tests). */
+    static List<UiValidationFailure> drainHeld() {
+        List<UiValidationFailure> held = new ArrayList<>(HELD.get());
+        HELD.get().clear();
+        return held;
+    }
+
+    /** Renders anything still held (flow ended before the consolidated render); no-op otherwise. */
+    public static void flushHeld() {
+        List<UiValidationFailure> held = drainHeld();
+        if (!held.isEmpty()) renderAndRecord(held);
+    }
+
+    /** Drops held results (per-test reset). */
+    public static void clearHeld() {
+        HELD.get().clear();
     }
 
     // ── Step tree ──────────────────────────────────────────────────────────────────────────
@@ -157,8 +198,30 @@ public final class UiValidationReporter {
             n.direct.add(r);
         }
         StringBuilder sb = new StringBuilder();
-        root.children.values().forEach(top -> renderNode(sb, top, 0));
+        orderNodes(root.children.values(), n -> n.name, true).forEach(top -> renderNode(sb, top, 0));
         return sb.toString();
+    }
+
+    /**
+     * Display order for sibling report nodes, shared by both report trees. Results are produced in the order the
+     * flow runs its checks (e.g. the blank grid footer before any row exists), so layout is decided here, not by
+     * emission order: top-level sections run Document Information, the grid section, Payment Information, Page
+     * Footer; inside any node a "Grid footer" comes last. Everything else keeps first-appearance order (stable sort).
+     */
+    public static <T> List<T> orderNodes(java.util.Collection<T> nodes, java.util.function.Function<T, String> name,
+            boolean topLevel) {
+        List<T> ordered = new ArrayList<>(nodes);
+        ordered.sort(java.util.Comparator.comparingInt(n -> nodeRank(name.apply(n), topLevel)));
+        return ordered;
+    }
+
+    private static int nodeRank(String rawName, boolean topLevel) {
+        String n = rawName == null ? "" : rawName.toLowerCase(java.util.Locale.ROOT);
+        if (!topLevel) return n.startsWith("grid footer") ? 1 : 0;
+        if (n.contains("document information")) return 0;
+        if (n.contains("payment information")) return 2;
+        if (n.contains("page footer")) return 3;
+        return 1; // grid section (Expense/Income Detail, Sub Ledger Information, ...)
     }
 
     /** One collapsed {@code <details>} per node: fixed-column header, then this node's own table
@@ -180,38 +243,46 @@ public final class UiValidationReporter {
                 : checked == 0 ? FoldableSectionRenderer.badge(FoldableSectionRenderer.Status.SKIP)
                 : FoldableSectionRenderer.badge(FoldableSectionRenderer.Status.PASS);
 
-        java.util.regex.Matcher tags = ROW_TAGS.matcher(node.name);
-        boolean hasTags = tags.matches();
-        String title = hasTags ? tags.group(1) : node.name;
-
         String headerHtml = "<span style='" + HEADER_GRID + "'>"
-                + "<span title='" + esc(node.name).replace("'", "&#39;") + "' style='display:flex;align-items:center;min-width:0;padding-left:" + (depth * 16)
-                + "px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-weight:500;"
-                + (depth == 0 ? "text-transform:uppercase;letter-spacing:.04em;" : "") + "'>"
-                + esc(title) + "</span>"
+                + "<span title='" + esc(node.name).replace("'", "&#39;") + "' class='uv-title'"
+                + (depth == 0 ? " style='text-transform:uppercase;letter-spacing:.04em'" : "") + ">"
+                + titleWithChips(node.name)
+                + "</span>"
                 + "<span style='text-align:right;font-size:11px;color:#64748B;white-space:nowrap'>" + esc(counts) + "</span>"
                 + "<span style='text-align:center'>" + stateBadge(node) + "</span>"
                 + "<span style='text-align:right'>" + resultBadge + "</span>"
                 + "</span>";
 
         sb.append(FoldableSectionRenderer.sectionOpen("", "rs-sub uv", "", headerHtml));
-        if (hasTags) {
-            sb.append("<div class='uv-chips'>");
-            java.util.regex.Matcher one = ONE_TAG.matcher(tags.group(2));
-            while (one.find()) {
-                sb.append(chip(one.group(1) + ": " + one.group(2), "yes".equals(one.group(2))));
-            }
-            sb.append("</div>");
-        }
         if (!node.direct.isEmpty()) {
             sb.append(FoldableSectionRenderer.tableHtml(toTable(node.direct), TABLE_WIDTHS));
         }
-        node.children.values().forEach(c -> renderNode(sb, c, depth + 1));
+        // Children render inside an indented, guide-lined block: header bar, table and deeper children of a
+        // child all move together, so the hierarchy is readable from position alone.
+        if (!node.children.isEmpty()) {
+            sb.append("<div class='uv-kids'>");
+            orderNodes(node.children.values(), n -> n.name, false).forEach(c -> renderNode(sb, c, depth + 1));
+            sb.append("</div>");
+        }
         sb.append(FoldableSectionRenderer.sectionClose());
     }
 
+    /** Escaped node title; trailing " · Sub Ledger: yes · Site: no · Payment: yes" tags become inline chips in the
+     *  SAME header line (used by both report trees). */
+    public static String titleWithChips(String name) {
+        java.util.regex.Matcher tags = ROW_TAGS.matcher(name);
+        if (!tags.matches()) return "<span class='t'>" + esc(name) + "</span>";
+        StringBuilder sb = new StringBuilder("<span class='t'>" + esc(tags.group(1)) + "</span>");
+        java.util.regex.Matcher one = ONE_TAG.matcher(tags.group(2));
+        while (one.find()) {
+            sb.append(chip(one.group(1) + ": " + one.group(2), "yes".equals(one.group(2))));
+        }
+        return sb.toString();
+    }
+
     private static String chip(String text, boolean active) {
-        return "<span class='uv-chip" + (active ? "" : " n") + "'>" + esc(text) + "</span>";
+        return "<span class='uv-chip" + (active ? "" : " n") + "' style='flex:none;font-size:11px;padding:1px 8px;border-radius:99px;"
+                + "white-space:nowrap;background:" + (active ? "#E6F1FB;color:#0C447C" : "#F0F7FF;color:#5B84B1") + "'>" + esc(text) + "</span>";
     }
 
     /** OPEN/CLOSED badge from this node's own "section state" result (empty when it has none). */
@@ -244,6 +315,13 @@ public final class UiValidationReporter {
         }
         if (c.startsWith("SECTION_PAYMENT_INFORMATION")) {
             return List.of(FormSection.PAYMENT_INFORMATION.title());
+        }
+        if (c.startsWith("SECTION_SUB_LEDGER") || c.startsWith("SECTION_HEADER_SUB_LEDGER")
+                || c.startsWith("SUB_LEDGER_")) {
+            return List.of(FormSection.SUB_LEDGER_INFORMATION.title());
+        }
+        if (c.startsWith("SECTION_ADJUSTMENT") || c.startsWith("ADJUSTMENT_INFORMATION")) {
+            return List.of("Adjustment Information");
         }
         if (c.startsWith("GRID_FOOTER_") || c.startsWith("GV_GRID_FOOTER_")) {
             return List.of("Grid Footer");
@@ -344,24 +422,41 @@ public final class UiValidationReporter {
                 + "</div>";
     }
 
+    /** One group per component: a bold component heading row (name shown once, with the group's
+     *  checked/failed counts), then one row per property — so a component with seven style
+     *  properties is not repeated seven times. */
     private static String[][] toTable(List<UiValidationFailure> results) {
-        String[][] table = new String[results.size() + 1][];
-        table[0] = HEADER;
-        for (int i = 0; i < results.size(); i++) {
-            UiValidationFailure f = results.get(i);
-            String actualCell = colorAwareValue(f.property(), f.actual());
-            if (f.isKnownIssue()) {
-                actualCell += "<div style='font-size:11px;margin-top:2px'>" + esc(f.note()) + "</div>";
+        // Group by component, ordered by first appearance (a field's label/input/state checks are
+        // emitted interleaved with its marker/style checks, so grouping must not need adjacency).
+        Map<String, List<UiValidationFailure>> groups = groupByComponent(results);
+        List<String[]> rows = new ArrayList<>();
+        rows.add(HEADER);
+        for (Map.Entry<String, List<UiValidationFailure>> g : groups.entrySet()) {
+            rows.add(groupHeadingRow(displayName(g.getKey()), g.getValue()));
+            for (UiValidationFailure f : g.getValue()) {
+                String actualCell = colorAwareValue(f.property(), f.actual());
+                if (f.isKnownIssue()) {
+                    actualCell += "<div style='font-size:11px;margin-top:2px'>" + esc(f.note()) + "</div>";
+                }
+                String[] row = new String[]{
+                        "<span style='padding-left:14px;color:#64748B'>&#8627;</span>", esc(propertyLabel(f)),
+                        colorAwareValue(f.property(), f.expected()),
+                        actualCell,
+                        "<div style='text-align:right;white-space:nowrap;word-break:keep-all'>" + FoldableSectionRenderer.badge(toRendererStatus(f.status())) + "</div>"
+                };
+                rows.add(f.isKnownIssue() ? amber(row) : row);
             }
-            String[] row = new String[]{
-                    esc(humanize(f.component())), esc(f.property()),
-                    colorAwareValue(f.property(), f.expected()),
-                    actualCell,
-                    "<div style='text-align:right;white-space:nowrap;word-break:keep-all'>" + FoldableSectionRenderer.badge(toRendererStatus(f.status())) + "</div>"
-            };
-            table[i + 1] = f.isKnownIssue() ? amber(row) : row;
         }
-        return table;
+        return rows.toArray(new String[0][]);
+    }
+
+    private static String[] groupHeadingRow(String name, List<UiValidationFailure> group) {
+        long fail = group.stream().filter(UiValidationFailure::isFail).count();
+        long skip = group.stream().filter(UiValidationFailure::isSkip).count();
+        String counts = (group.size() - skip) + " checked, " + fail + " failed" + (skip > 0 ? ", " + skip + " skipped" : "");
+        return new String[]{
+                "<b style='color:#1E293B'>" + esc(name) + "</b>",
+                "<span style='font-size:11px;color:#64748B'>" + esc(counts) + "</span>", "", "", ""};
     }
 
     // ── Actual Results merge support ──────────────────────────────────────────────────────
@@ -398,6 +493,68 @@ public final class UiValidationReporter {
     /** Label without the path prefix — for views that already show the path as enclosing nodes. */
     public static String leafLabel(UiValidationFailure f) {
         return humanize(f.component()) + " — " + f.property();
+    }
+
+    /**
+     * Results grouped per FIELD, ordered by first appearance: a field's label and required-marker results
+     * ({@code X_LABEL}, {@code X_UI_MANDATORY}) fold into the group of {@code X} when {@code X} is also present, so
+     * one field = one group (as in the model sample) instead of three. {@link #propertyLabel} keeps the folded rows
+     * distinguishable ("label font-size", "required marker color").
+     */
+    public static Map<String, List<UiValidationFailure>> groupByComponent(List<UiValidationFailure> results) {
+        java.util.Set<String> present = new java.util.HashSet<>();
+        for (UiValidationFailure f : results) present.add(f.component());
+        Map<String, List<UiValidationFailure>> groups = new LinkedHashMap<>();
+        for (UiValidationFailure f : results) {
+            groups.computeIfAbsent(groupKey(f.component(), present), k -> new ArrayList<>()).add(f);
+        }
+        return groups;
+    }
+
+    private static String groupKey(String component, java.util.Set<String> present) {
+        for (String suffix : new String[]{"_UI_MANDATORY", "_LABEL"}) {
+            if (component.endsWith(suffix)) {
+                String base = component.substring(0, component.length() - suffix.length());
+                if (present.contains(base)) return groupKey(base, present);
+            }
+        }
+        return component;
+    }
+
+    /** Property text for a row inside its (possibly folded) group. */
+    public static String propertyLabel(UiValidationFailure f) {
+        String c = f.component() == null ? "" : f.component();
+        String p = f.property();
+        if (c.endsWith("_UI_MANDATORY")) {
+            return "mandatory".equals(p) ? p : "required marker " + p;
+        }
+        if (c.endsWith("_LABEL") && !"label text".equals(p) && !p.startsWith("label ")) {
+            return "label " + p;
+        }
+        return p;
+    }
+
+    /** Group heading: the baseline workbook's {@code DisplayName} for the component, else the humanised name. */
+    public static String displayName(String component) {
+        try {
+            String d = UiStyleBaseline.attribute(component, UiStyleBaseline.DISPLAY_NAME);
+            if (d != null && !d.isBlank()) return d;
+        } catch (RuntimeException ignored) {
+            // baseline unavailable - fall back to the humanised name
+        }
+        return humanize(component);
+    }
+
+    /** Group heading text for a component (workbook DisplayName, else humanised). */
+    public static String humanizeComponent(String component) {
+        return displayName(component);
+    }
+
+    /** "3 checked, 1 failed, 1 skipped" for one group of results. */
+    public static String groupCounts(List<UiValidationFailure> group) {
+        long fail = group.stream().filter(UiValidationFailure::isFail).count();
+        long skip = group.stream().filter(UiValidationFailure::isSkip).count();
+        return (group.size() - skip) + " checked, " + fail + " failed" + (skip > 0 ? ", " + skip + " skipped" : "");
     }
 
     private static String humanize(String component) {

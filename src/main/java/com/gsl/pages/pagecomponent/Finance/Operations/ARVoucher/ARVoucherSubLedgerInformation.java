@@ -112,6 +112,7 @@ public class ARVoucherSubLedgerInformation extends VoucherSubLedgerInformationBa
                 }
                 Log.debug("Row {} | SL={} | Amt={}", idx, sl.getSubLedger(), sl.getAmountCr());
             });
+            notifyFill(l -> l.onRowFilled(idx));
         }
 
         if (includeRetry) {
@@ -162,12 +163,13 @@ public class ARVoucherSubLedgerInformation extends VoucherSubLedgerInformationBa
 
             SubLedgerRowStepRegistry.stepUnderRow(rowKey, "Adjust — Type: " + adjType, () -> {
                 AdjustmentEntry adjustmentEntry = openAdjustmentEntry(row.getSubLedger(), refSite, slId);
+                notifyFill(l -> l.onAdjustmentOpened(idx, adjType));
                 boolean needsConfirmation = data.getGridRelation() == SelectDocumentVariant.GridRelation.GREATER
                         || data.getGridRelation() == SelectDocumentVariant.GridRelation.LESS;
                 Log.debug("AdjType: {} | GridRelation: {} | needsConfirmation: {}", adjType, data.getGridRelation(), needsConfirmation);
 
                 if (adjType == AdjustmentType.SELECT_DOCUMENT) {
-                    SelectDocumentPopup popup = adjustmentEntry.selectDocument();
+                    SelectDocumentPopup popup = adjustmentEntry.openAdjustedDocumentMenu().selectDocument();
                     String lineNo = row.getLineNo();
                     List<SelectDocument> docs = data.getSelectDocumentList().stream()
                             .filter(d -> lineNo != null && lineNo.equalsIgnoreCase(d.getLineNo()))
@@ -196,6 +198,7 @@ public class ARVoucherSubLedgerInformation extends VoucherSubLedgerInformationBa
                                     doc.getDocumentNumber(), excelAmount.toPlainString());
                         }
                     }
+                    notifyFill(l -> l.onAdjustmentApplied(idx, adjType));
                     if (needsConfirmation) {
                         adjustmentEntry.clickOKExpectingConfirmation().clickProceedAnyway();
                     } else {
@@ -211,7 +214,8 @@ public class ARVoucherSubLedgerInformation extends VoucherSubLedgerInformationBa
                             .filter(r -> lineNo != null && lineNo.equalsIgnoreCase(r.getLineNo()))
                             .collect(Collectors.toList());
 
-                    ReferenceSiteWiseFIFOPopup fifoPopup = adjustmentEntry.openReferenceSiteWiseFIFOPopup();
+                    ReferenceSiteWiseFIFOPopup fifoPopup =
+                            adjustmentEntry.openAdjustedDocumentMenu().openReferenceSiteWiseFIFOPopup();
                     for (int i = 0; i < refSites.size(); i++) {
                         ReferenceSitewiseFIFOsetoff rs = refSites.get(i);
                         ExtentLogger.info("[FIFO] Reference Site: " + rs.getReferenceSiteName()
@@ -230,6 +234,7 @@ public class ARVoucherSubLedgerInformation extends VoucherSubLedgerInformationBa
                             + " | Adjusted: " + snapshot.getAdjustedAmount()
                             + " | Pending: " + snapshot.getPendingToAdjust());
 
+                    notifyFill(l -> l.onAdjustmentApplied(idx, adjType));
                     if (needsConfirmation) {
                         adjustmentEntry.clickOKExpectingConfirmation().clickProceedAnyway();
                     } else {
@@ -237,10 +242,12 @@ public class ARVoucherSubLedgerInformation extends VoucherSubLedgerInformationBa
                     }
 
                 } else if (adjType == AdjustmentType.FIFO_SETOFF) {
+                    adjustmentEntry.openAdjustedDocumentMenu().fifoSetOff();
+                    notifyFill(l -> l.onAdjustmentApplied(idx, adjType));
                     if (needsConfirmation) {
-                        adjustmentEntry.fifoSetOff().clickOKExpectingConfirmation().clickProceedAnyway();
+                        adjustmentEntry.clickOKExpectingConfirmation().clickProceedAnyway();
                     } else {
-                        adjustmentEntry.fifoSetOff().clickOK();
+                        adjustmentEntry.clickOK();
                     }
                 }
             });
@@ -259,9 +266,16 @@ public class ARVoucherSubLedgerInformation extends VoucherSubLedgerInformationBa
     private AdjustmentEntry openAdjustmentEntry(String subLedgerName,
                                                  String referenceSite, String slid) {
         clickAdjust(subLedgerName, referenceSite, slid);
-        AdjustmentEntry entry = new AdjustmentEntry(this);
-        entry.openAdjustedDocumentMenu();
-        return entry;
+        // The Adjusted Document "•••" menu is opened right before its option is used, not here: the popup's
+        // before-fill UI checks run in between and the floating menu closes meanwhile (run 20261009_164937,
+        // FIN-AR-ADD-DOC-03: "Select Document" not interactable 15 s after the menu opened).
+        return new AdjustmentEntry(this);
+    }
+
+    /** AR's Sub-Ledger picker has an extra Ledger column (confirmed live, user screenshot 2026-10-09). */
+    @Override
+    protected java.util.List<String> subLedgerPickerColumns() {
+        return java.util.List.of("Name", "Id", "Ledger", "Class Name");
     }
 
     private void setSubLedgerName(String subledgerName, String id, String referenceSite, int rowIndex) {
@@ -283,6 +297,9 @@ public class ARVoucherSubLedgerInformation extends VoucherSubLedgerInformationBa
                     + " for '" + subledgerName + "'");
         }
 
+        // UI validation (read only): what the Sub-Ledger picker shows before and after typing.
+        com.gsl.validation.ui.PickerUi.Snapshot pickerBefore =
+                capturingPickers() ? com.gsl.validation.ui.PickerUi.snapshot() : null;
         By comboInput = By.id(inputId);
         SeleniumUtils.clear(comboInput, "SL_COMBO_INPUT");
         SeleniumUtils.sendKeys(comboInput, WaitType.VISIBLE, subledgerName, "SL_COMBO_INPUT");
@@ -295,8 +312,17 @@ public class ARVoucherSubLedgerInformation extends VoucherSubLedgerInformationBa
         // search returning rows across a real First/Previous/Next/Last toolbar). See
         // SeleniumUtils.clickBoundlistOptionAcrossPages's own Javadoc.
         By option = subLedgerPickerRow(subledgerName, id);
+        // The filtered list is read when the fill has found the option (it renders after a debounce, so not
+        // right after typing) - see SeleniumUtils.clickBoundlistOptionAcrossPages(..., beforeClick).
+        final com.gsl.validation.ui.PickerUi.Snapshot[] pickerAfter = {com.gsl.validation.ui.PickerUi.Snapshot.none()};
         SeleniumUtils.clickBoundlistOptionAcrossPages(
-                "//div[contains(@class,'x-boundlist-floating')]", option, "SL_OPTION_" + subledgerName);
+                "//div[contains(@class,'x-boundlist-floating')]", option, "SL_OPTION_" + subledgerName,
+                () -> { if (capturingPickers()) pickerAfter[0] = com.gsl.validation.ui.PickerUi.snapshot(); });
+        if (capturingPickers()) {
+            recordPicker(rowIndex, new com.gsl.validation.ui.PickerUi.Observation("Sub Ledger picker",
+                    subLedgerPickerColumns(), subledgerName, subledgerName, id == null || id.isBlank() ? null : id,
+                    java.util.Map.of(), pickerBefore, pickerAfter[0]));
+        }
         ReportLogger.fieldEntry(subledgerName + " selected from dropdown");
         JavascriptExecutorUtils.waitForExtJS();
         JavascriptExecutorUtils.waitForPageLoad();
@@ -438,8 +464,12 @@ public class ARVoucherSubLedgerInformation extends VoucherSubLedgerInformationBa
             final String refSite = subLedger.getReferenceSite() != null ? subLedger.getReferenceSite() : "";
             final String slid    = subLedger.getId()            != null ? subLedger.getId()            : "";
             SubLedgerRowStepRegistry.stepUnderRow(lineNo, "Payment — " + effectiveType.label(), () -> {
-                clickPaymentButton(subLedger.getSubLedger(), refSite, slid)
-                        .fillAndSubmit(payment);
+                final int rowIdx = subLedgerList.indexOf(subLedger);
+                final com.gsl.pages.Finance.Operations.Common.PaymentInformationPopup popup =
+                        clickPaymentButton(subLedger.getSubLedger(), refSite, slid);
+                notifyFill(l -> l.onPaymentOpened(rowIdx, popup));
+                popup.onBeforeSubmit(() -> notifyFill(l -> l.onPaymentFilled(rowIdx, popup, payment)));
+                popup.fillAndSubmit(payment);
                 JavascriptExecutorUtils.waitForExtJS();
                 com.gsl.reports.ActualResultsHolder.get().getUiPaymentInfoPopupMap().put(slKey, true);
             });

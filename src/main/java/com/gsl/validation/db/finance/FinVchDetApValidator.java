@@ -295,7 +295,12 @@ public class FinVchDetApValidator {
     private void validateSubLedgerLine(SoftAssertions soft, SubLedgerInformation line,
                                         List<FinVchDet> rows, long vchcode,
                                         MergedFinanceApVoucherData data) {
-        BigDecimal dr = line.getAmountDr();  // AP: Debit amount (gross)
+        // AP: Debit amount (gross) - or, after an adjustment-mismatch plan, the amount the app saved.
+        BigDecimal dr = data.expectedSavedAmountDr(line);
+        if (dr != null && line.getAmountDr() != null && dr.compareTo(line.getAmountDr()) != 0) {
+            ReportLogger.db("[Level 2] Mismatch plan: expecting saved damount=" + dr + " (row typed "
+                    + line.getAmountDr() + ")");
+        }
         if (dr == null) return;
 
         // For Advance vouchers with TDS, the DB stores Net Payable (gross − TDS), not the gross amount.

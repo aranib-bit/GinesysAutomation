@@ -8,6 +8,7 @@ import com.gsl.config.ConfigFactory;
 import com.gsl.config.DataBaseConfig;
 import com.gsl.config.ExcelDataConfig;
 import com.gsl.database.DatabaseManager;
+import com.gsl.database.DbAvailability;
 import com.gsl.driver.MasterDriverFactory;
 import com.gsl.driver.ViewportEnforcer;
 import com.gsl.enums.Browser;
@@ -51,7 +52,8 @@ public final class PreSuiteHealthCheck {
      * report's Environment panel (setSystemInfo) — NOT as test nodes, so the Tests
      * passed/failed count is unaffected.
      *
-     * DB connectivity is always checked (used for data validation in every run).
+     * DB connectivity is checked when {@code db.available=yes} (the default); with {@code no} it is
+     * not used and the check passes with a "not used" note.
      * Excel file existence is additionally checked when testdata.source=EXCEL.
      *
      * Returns true if all checks pass; false if any check fails.
@@ -215,6 +217,15 @@ public final class PreSuiteHealthCheck {
      *  {@code Exception}) since {@code DatabaseManager}'s static initializer can fail with an
      *  {@link ExceptionInInitializerError}. */
     private static boolean checkDatabase(ExtentReports extent) {
+        extent.setSystemInfo("DB Available (db.available)", DbAvailability.isAvailable() ? "yes" : "no");
+        if (!DbAvailability.isAvailable()) {
+            // Configured as "no DB access": nothing to connect to, and nothing here may touch the DB.
+            String mode = DbAvailability.noDbValidation().name();
+            extent.setSystemInfo("Health Check: Database",
+                    "NOT USED — db.available=no (configured); DB-derived validation: " + mode);
+            Log.info("[HealthCheck] Database: not used (db.available=no) — DB-derived validation: {}", mode);
+            return true;
+        }
         DataBaseConfig db = ConfigFactory.getDataBaseConfig();
 
         extent.setSystemInfo("DB Type",     db.databaseType());

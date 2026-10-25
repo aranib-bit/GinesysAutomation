@@ -29,12 +29,16 @@ public final class AdjustmentFlowSteps {
     private AdjustmentFlowSteps() {}
 
     /**
-     * Applies {@code spec} inside an Adjustment Entry whose "Adjusted Document" menu is already
-     * open (see {@code openAdjustmentEntry}) — does NOT click OK, so the caller decides how OK is
+     * Applies {@code spec} inside an open Adjustment Entry — does NOT click OK, so the caller decides how OK is
      * answered (plain {@link AdjustmentEntry#clickOK()}, or {@link #okAnsweringMismatch}).
+     *
+     * <p>Opens the "Adjusted Document" menu itself, immediately before choosing the option: the floating menu
+     * closes when anything runs in between (run 20261009_164937, FIN-AR-ADD-DOC-03: the popup's before-fill UI
+     * checks took 15 s after the menu opened and "Select Document" was no longer interactable).
      */
     public static void applyAdjustment(AdjustmentEntry entry, AdjustmentSpec spec) {
         AdjustmentType type = spec.getType();
+        entry.openAdjustedDocumentMenu();
         if (type == AdjustmentType.SELECT_DOCUMENT) {
             SelectDocumentPopup popup = entry.selectDocument();
             for (AdjustmentSpec.DocAmount d : spec.getDocs()) {
@@ -95,7 +99,6 @@ public final class AdjustmentFlowSteps {
                 ReportLogger.business("Adjustment Confirmation → I will adjust more — adding "
                         + step.getExtra().getType() + " adjustment");
                 current = popup.clickAdjustMore();
-                current.openAdjustedDocumentMenu();
                 applyAdjustment(current, step.getExtra());
                 popupShowing = current.clickOkAndDetectMismatchConfirmation();
             } else {

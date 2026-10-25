@@ -87,6 +87,12 @@ public abstract class VoucherMainGridBase {
         return By.xpath("//div[normalize-space()='" + documentNumber + "']");
     }
 
+    /** The grid row ({@code <tr>}) holding {@link #rowAnchorLocator}'s cell — the nearest
+     *  ancestor row, same hop {@link #checkboxLocator} takes. */
+    private By rowLocator(String documentNumber) {
+        return By.xpath("//div[normalize-space()='" + documentNumber + "']/ancestor::tr[1]");
+    }
+
     /**
      * Searches for {@code voucherNo} and leaves its row checkbox selected. Was a fictitious,
      * never-confirmed separate search-box + search-button pair ({@code //TODO-search-input}/
@@ -434,14 +440,15 @@ public abstract class VoucherMainGridBase {
      *         document isn't present on the currently loaded page
      */
     public boolean doubleClickRowIfPresentOnCurrentPage(String documentNumber) {
-        WebElement checkbox = locateCheckboxOnCurrentPage(documentNumber);
-        if (checkbox == null) {
+        // locateCheckboxOnCurrentPage only answers "is it on this page" (and scrolls it into
+        // view) — the element it returns is NOT reused for the double-click. Holding that handle
+        // across the visibility wait + double-click is what went stale in FIN-GV-EDIT-DETAIL-01
+        // (runs 20261008_125423, 20261012_142236) when the grid re-rendered in between.
+        if (locateCheckboxOnCurrentPage(documentNumber) == null) {
             return false;
         }
-        WebElement row = checkbox.findElement(By.xpath("./ancestor::tr[1]"));
-        WaitUtils.webDriverWait(ConfigFactory.getFinanceConfig().extjsMinTimeout())
-                .until(ExpectedConditions.visibilityOf(row));
-        ActionUtils.doubleClick(row);
+        SeleniumUtils.doubleClickWithStaleRetry(rowLocator(documentNumber),
+                ConfigFactory.getFinanceConfig().extjsMinTimeout(), "GRID_ROW_" + documentNumber);
         JavascriptExecutorUtils.waitForExtJS();
         return true;
     }

@@ -96,8 +96,8 @@ public class CreateArVoucher extends WebTest {
         // ── Step 3: Open Add form ─────────────────────────────────────────────────
         StepExecutor.step("Open Add Form", () -> addRef[0] = listRef[0].clickAdd());
 
-        StepExecutor.step("UI Validation", () ->
-                addRef[0].validateUiContract(UiValidationLevel.CONTRACT, UiFieldState.EDITABLE, false));
+        StepExecutor.step("Capture blank-form UI state", () ->
+                addRef[0].validateUiContractBeforeFill(UiValidationLevel.CONTRACT, UiFieldState.EDITABLE, false));
 
         // ── Delegate fill/save/verify/logout to the scenario behaviour ────────────
         // (ArVoucherScenarioType.POSITIVE_CREATE_BEHAVIOR — see VoucherScenarioType unification)
@@ -175,8 +175,8 @@ public class CreateArVoucher extends WebTest {
                         : " | expect: successful save"));
         });
 
-        StepExecutor.step("UI Validation", () ->
-                addRef[0].validateUiContract(UiValidationLevel.CONTRACT, UiFieldState.EDITABLE, false));
+        StepExecutor.step("Capture blank-form UI state", () ->
+                addRef[0].validateUiContractBeforeFill(UiValidationLevel.CONTRACT, UiFieldState.EDITABLE, false));
 
         // ── Delegate fill/save/verify/logout to the scenario behaviour ────────────
         boolean ok = testData.getScenarioType().execute(testData, addRef[0]);

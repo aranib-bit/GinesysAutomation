@@ -114,7 +114,19 @@ public final class SessionPool {
                     }
                     PooledSession created;
                     try {
-                        created = createSession(qualifiedLabel);
+                        try {
+                            created = createSession(qualifiedLabel);
+                        } catch (RuntimeException first) {
+                            if (!isColdStartTimeout(first)) throw first;
+                            // The half-started browser was already quit by createSession's unwind; start ONE fresh
+                            // browser instead of losing the test (a skipped invocation is never retried).
+                            ReportLogger.frameworkWarn("[SessionPool] [T-{}] Cold start for '{}' timed out ({}) - "
+                                    + "starting one fresh browser", Thread.currentThread().getId(), qualifiedLabel,
+                                    rootCauseText(first));
+                            created = createSession(qualifiedLabel);
+                            ReportLogger.framework("[SessionPool] [T-{}] Cold start retried after timeout - succeeded",
+                                    Thread.currentThread().getId());
+                        }
                     } finally {
                         coldStartGate().release();
                     }
@@ -461,6 +473,26 @@ public final class SessionPool {
      * Step-1 {@code SessionManager.ensureLoggedIn()} performs it, so recordSessionCreated and
      * cold-start attribution fire exactly as before.
      */
+    /** True when browser creation failed on an infrastructure timeout (a stalled WebDriver/CDP command), as opposed to
+     *  a pool or test problem. Walks the cause chain. */
+    public static boolean isColdStartTimeout(Throwable t) {
+        for (Throwable c = t; c != null; c = c.getCause() == c ? null : c.getCause()) {
+            if (c instanceof java.util.concurrent.TimeoutException
+                    || c instanceof org.openqa.selenium.TimeoutException
+                    || c instanceof org.openqa.selenium.SessionNotCreatedException) {
+                return true;
+            }
+            if (c instanceof com.gsl.exceptions.UserPoolAcquisitionTimeoutException) return false;
+        }
+        return false;
+    }
+
+    private static String rootCauseText(Throwable t) {
+        Throwable c = t;
+        while (c.getCause() != null && c.getCause() != c) c = c.getCause();
+        return c.getClass().getName() + (c.getMessage() == null ? "" : ": " + c.getMessage().split("\n")[0]);
+    }
+
     private static PooledSession createSession(String qualifiedLabel) {
         UserCredential ui = UserPool.acquireSet1User(UserType.UI, qualifiedLabel);
         if (ui == null) {

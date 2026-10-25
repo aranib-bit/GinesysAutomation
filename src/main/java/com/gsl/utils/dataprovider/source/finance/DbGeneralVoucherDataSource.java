@@ -267,12 +267,12 @@ public class DbGeneralVoucherDataSource implements TestDataSource<MergedFinanceG
 
         // 1. Resolve login user → ecode, site codes
         UserCredential threadUser = DriverManager.getCurrentUser();
-        String loginName = (threadUser != null) ? threadUser.username() : ConfigFactory.getConfig().username();
+        String loginName = (threadUser != null) ? threadUser.username() : SupplierUser.username();
         HrEmpDao hrEmpDao = jdbi.onDemand(HrEmpDao.class);
         long ecode = hrEmpDao.findEcodeByAbbre(loginName)
                 .orElseThrow(() -> new IllegalStateException(
                         "No hrdemp record found for login user: '" + loginName +
-                        "'. Check appusername in config.properties."));
+                        "'. The login comes from UsersList.xlsx."));
         gatheringLog.add("  Resolved login user '" + loginName + "' → ecode=" + ecode);
 
         // 2. Owner site + counter-leg Cash/Bank GL (mirrors DbApVoucherDataSource's own pair).
@@ -555,7 +555,7 @@ public class DbGeneralVoucherDataSource implements TestDataSource<MergedFinanceG
     /** Reconstructs the originating {@link GeneralVoucherVariant} — carried on the placeholder
      *  only as scattered fixtureOptions/label fields, not as a single object; rebuilt here
      *  purely for {@link LiveGvDbRefs#getVariant()}'s naming/labeling use. */
-    private static GeneralVoucherVariant buildVariantFromOptions(
+    static GeneralVoucherVariant buildVariantFromOptions(
             MergedFinanceGeneralVoucherData placeholder, GeneralVoucherFixtureOptions opts) {
         return GeneralVoucherVariant.builder()
                 .variantId(placeholder.getScenarioTypeLabel())
@@ -618,6 +618,93 @@ public class DbGeneralVoucherDataSource implements TestDataSource<MergedFinanceG
                 + crossOuSite.getAdmouCode() + ", differs from Owner Site's admou_code=" + ownerSiteAdmouCode
                 + ") — the app's Allocate Sites picker is expected to show NO row for this site.");
         return crossOuSite.getName();
+    }
+
+    /** A plain (no Sub Ledger, no Site) GL and a Bank ledger for the user bound to the thread, plus how they were
+     *  chosen (for the report). */
+    public record Type1GlAndBank(String glName, String cashBankName, List<String> narrative) {}
+
+    /**
+     * The GL to use for a Type1 (slapp=N, costapp=N) row: {@code preferred} when it is in {@code candidates}, else the
+     * first candidate, else empty. Pure logic (unit-tested).
+     */
+    public static java.util.Optional<FinGl> chooseType1Gl(List<FinGl> candidates, String preferred) {
+        return candidates.stream().filter(g -> g.getGlname().equalsIgnoreCase(preferred)).findFirst()
+                .or(() -> candidates.stream().findFirst());
+    }
+
+    /**
+     * Resolves, for the logged-in user, a Type1 GL and a Bank ledger owned by the user's Owner Site - both from the DB
+     * instead of hard-coded names. Type1 (no Sub Ledger, no Site) ledgers are Asset or Liability ledgers: Expense and
+     * Income ledgers are always Site applicable (see {@code LedgerApiClient}), so they are never Type1. {@code preferred}
+     * (the long-proven "Advance Income Tax", an Asset ledger) is used when it is in the pool; otherwise the first
+     * candidate, and the narrative says so.
+     */
+    public static Type1GlAndBank resolveType1GlAndBankForCurrentUser(String preferred) {
+        Jdbi jdbi = DatabaseManager.getJdbi();
+        UserCredential threadUser = DriverManager.getCurrentUser();
+        String loginName = (threadUser != null) ? threadUser.username() : SupplierUser.username();
+        long ecode = jdbi.onDemand(HrEmpDao.class).findEcodeByAbbre(loginName)
+                .orElseThrow(() -> new IllegalStateException("No hrdemp record found for login user: '" + loginName + "'."));
+        OwnerSiteRef owner = findFirstUsableOwnerSite(jdbi, ecode);
+        List<String> narrative = new ArrayList<>();
+        narrative.add("User '" + loginName + "' (ecode=" + ecode + "), owner site '" + owner.name + "' (code=" + owner.code + ")");
+        FinGlDao glDao = jdbi.onDemand(FinGlDao.class);
+        List<FinGl> pool = new ArrayList<>(glDao.findByTypeAndApplicability("A", "N", "N"));
+        pool.addAll(glDao.findByTypeAndApplicability("L", "N", "N"));
+        FinGl chosen = chooseType1Gl(pool, preferred).orElseThrow(() -> new SkipException(
+                "Skipped due to lack of data: no active Type1 (no Sub Ledger, no Site) Asset/Liability GL exists."));
+        narrative.add(chosen.getGlname().equalsIgnoreCase(preferred)
+                ? "Type1 GL '" + chosen.getGlname() + "' (preferred) is in the active Type1 pool of " + pool.size() + " ledger(s)"
+                : "Preferred GL '" + preferred + "' is not in the active Type1 pool - using '" + chosen.getGlname() + "'");
+        String bank = pickGlByType(jdbi, List.of(owner.code), com.gsl.enums.CashBankType.BANK);
+        narrative.add("Bank ledger '" + bank + "' owned by the user's owner site");
+        return new Type1GlAndBank(chosen.getGlname(), bank, narrative);
+    }
+
+    /** A Site-only (slapp=N, costapp=Y) expense/income GL together with sites the LOGGED-IN user can actually
+     *  pick in Allocate Sites, plus the narrative of how they were chosen (for the report). */
+    public record SiteOnlyGl(String glName, List<String> siteNames, List<String> narrative) {}
+
+    /**
+     * For the user bound to the current thread: the first Site-only expense (else income) GL that has at least one
+     * site which is (1) configured for the GL ({@code fingl_site}), (2) assigned to the user ({@code hrdemp_ou}) and
+     * (3) in the SAME Organizational Unit as the user's Owner Site - the three rules the Allocate Sites picker
+     * enforces (a site failing any of them returns "No data to display"). Up to {@code maxSites} sites are returned.
+     *
+     * @throws SkipException naming the user, owner site/OU and every GL that was ruled out, when none qualifies
+     */
+    public static SiteOnlyGl resolveSiteOnlyGlForCurrentUser(int maxSites) {
+        Jdbi jdbi = DatabaseManager.getJdbi();
+        UserCredential threadUser = DriverManager.getCurrentUser();
+        String loginName = (threadUser != null) ? threadUser.username() : SupplierUser.username();
+        long ecode = jdbi.onDemand(HrEmpDao.class).findEcodeByAbbre(loginName)
+                .orElseThrow(() -> new IllegalStateException("No hrdemp record found for login user: '" + loginName + "'."));
+        OwnerSiteRef owner = findFirstUsableOwnerSite(jdbi, ecode);
+        Set<Long> assigned = new HashSet<>(jdbi.onDemand(HrEmpOuDao.class).findSiteCodesByEcode(ecode));
+        List<String> narrative = new ArrayList<>();
+        narrative.add("User '" + loginName + "' (ecode=" + ecode + "), owner site '" + owner.name + "' (code="
+                + owner.code + ", OU=" + owner.admouCode + "), assigned sites " + assigned);
+        FinGlDao glDao = jdbi.onDemand(FinGlDao.class);
+        List<FinGl> candidates = new ArrayList<>(glDao.findByTypeAndApplicability("E", "N", "Y"));
+        candidates.addAll(glDao.findByTypeAndApplicability("I", "N", "Y"));
+        List<String> ruledOut = new ArrayList<>();
+        for (FinGl gl : candidates) {
+            for (int want = Math.max(1, maxSites); want >= 1; want--) {
+                try {
+                    List<String> log = new ArrayList<>();
+                    List<String> names = resolveType2Sites(jdbi, gl, assigned, owner.admouCode, want, log);
+                    narrative.add("Chosen Site-only GL '" + gl.getGlname() + "' with site(s) " + names
+                            + " (fingl_site ∩ assigned ∩ same OU as owner site)");
+                    return new SiteOnlyGl(gl.getGlname(), names, narrative);
+                } catch (SkipException e) {
+                    if (want == 1) ruledOut.add(gl.getGlname());
+                }
+            }
+        }
+        throw new SkipException("Skipped due to lack of data: no Site-only GL has a site that user '" + loginName
+                + "' can pick (configured for the GL, assigned to the user, same OU as owner site '" + owner.name
+                + "' OU=" + owner.admouCode + "). GLs ruled out: " + ruledOut);
     }
 
     /**

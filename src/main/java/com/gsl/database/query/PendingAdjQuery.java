@@ -193,6 +193,23 @@ public class PendingAdjQuery {
     }
 
     /**
+     * Current pending amount(s) of {@code documentNo} in {@code v_pending_adj}, as text for diagnostics (e.g.
+     * "C 10.000"; "none pending" when fully adjusted). Never throws - used only to explain a data conflict.
+     */
+    public static String livePendingForDiagnostics(Jdbi jdbi, String documentNo) {
+        try {
+            List<String> rows = jdbi.withHandle(h ->
+                h.createQuery("SELECT debit_credit || ' ' || pending FROM v_pending_adj WHERE document_no = :doc")
+                    .bind("doc", documentNo)
+                    .mapTo(String.class)
+                    .list());
+            return rows.isEmpty() ? "none pending" : String.join(", ", rows);
+        } catch (RuntimeException e) {
+            return "unavailable (" + e.getClass().getSimpleName() + ")";
+        }
+    }
+
+    /**
      * Builds the composite map key used by {@link #findDocumentsForSlNames}.
      * Call this from any code that needs to look up documents in the returned map.
      */

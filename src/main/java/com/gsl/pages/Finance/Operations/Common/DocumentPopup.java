@@ -444,10 +444,36 @@ public class DocumentPopup {
      */
     public AdjustmentEntryParent clickUpdatePaymentAmount() {
         SeleniumUtils.click(ButtonText.UPDATE_PAYMENT_AMOUNT.locator(), WaitType.CLICKABLE, "Update payment amount");
+        // Edit shows a "Result" dialog ("... Updated Successfully."); the Add form shows none (confirmed live,
+        // 2026-10-09: the voucher then saves normally). The message box is a single reused window whose old
+        // (Confirmation) text stays until the app answers, so wait until that text is gone, then act on what is there.
+        final String confirmation = DocumentMessageBoxMessage.ADJUSTMENT_AMOUNT_MISMATCH_CONFIRMATION.getText();
+        final By text = By.xpath("//*[@id='messagebox-1001-msg']");
+        try {
+            com.gsl.utils.Selenium.WaitUtils.fluentWaitBuilder()
+                    .withMessage("Confirmation to be answered")
+                    .until(d -> {
+                        java.util.List<org.openqa.selenium.WebElement> els = d.findElements(text);
+                        if (els.isEmpty() || !els.get(0).isDisplayed()) return true;
+                        String now = els.get(0).getText();
+                        return now == null || !now.contains(confirmation);
+                    });
+        } catch (org.openqa.selenium.TimeoutException e) {
+            throw new AssertionError("[Adjustment] The mismatch Confirmation was still showing after clicking "
+                    + "'Update payment amount'", e);
+        }
         DocumentMessageBox result = new DocumentMessageBox();
-        result.waitForMessageToContain(DocumentMessageBoxMessage.PAYMENT_AMOUNT_UPDATED_RESULT);
-        result.verifyMessage(DocumentMessageBoxMessage.PAYMENT_AMOUNT_UPDATED_RESULT);
-        result.clickOk();
+        if (SeleniumUtils.isElementPresent(text, 1)) {
+            String shown = result.getMessageText();
+            if (shown != null && shown.contains(DocumentMessageBoxMessage.PAYMENT_AMOUNT_UPDATED_RESULT.getText())) {
+                result.clickOk();
+            } else {
+                com.gsl.reports.ReportLogger.business("Update payment amount: a dialog is showing - [" + shown
+                        + "]; left for the caller to handle");
+            }
+        } else {
+            com.gsl.reports.ReportLogger.business("Update payment amount: no Result dialog (Add form) - continuing");
+        }
         return gridParent;
     }
 

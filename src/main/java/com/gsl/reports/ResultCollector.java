@@ -113,6 +113,9 @@ public final class ResultCollector {
             List<String[]> expected = List.of();
             try {
                 header = VoucherReportRows.withoutHeaderRow(headerRowsOf(data));
+            } catch (NullPointerException e) {
+                // UI-only tests carry no voucher header data - nothing to render, not a problem.
+                com.gsl.utils.Log.debug("[ResultCollector] no header data for this test: {}", e.toString());
             } catch (Throwable e) {
                 com.gsl.utils.Log.warn("[ResultCollector] header rows unavailable: {}", e.toString());
             }

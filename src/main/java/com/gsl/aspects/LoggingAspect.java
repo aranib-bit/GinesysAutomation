@@ -51,6 +51,29 @@ public class LoggingAspect {
     private static final ThreadLocal<Deque<String>> CALL_STACK =
             ThreadLocal.withInitial(ArrayDeque::new);
 
+    /** The exception last reported to Extent on this thread - outer frames of the same failure only log it. */
+    private static final ThreadLocal<Throwable> LAST_REPORTED = new ThreadLocal<>();
+
+    /**
+     * True the first time a failure reaches an advised frame; false for every outer frame it unwinds through
+     * (same instance, or a wrapper whose cause chain holds it). Each Extent fail takes a screenshot - on a hung
+     * browser ~60 s each: run 20261009_164937 FIN-AP-ADD-DOC-04 spent 15 minutes on 15 identical reports.
+     */
+    private static boolean firstReport(Throwable e) {
+        if (isSameOrWraps(e, LAST_REPORTED.get())) return false;
+        LAST_REPORTED.set(e);
+        return true;
+    }
+
+    /** True when {@code t} is {@code reported} or has it in its cause chain. */
+    public static boolean isSameOrWraps(Throwable t, Throwable reported) {
+        if (reported == null) return false;
+        for (Throwable c = t; c != null; c = c.getCause() == c ? null : c.getCause()) {
+            if (c == reported) return true;
+        }
+        return false;
+    }
+
     // DateTimeFormatter is immutable and thread-safe
     private static final DateTimeFormatter DATE_FMT =
             DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss.SSS");
@@ -177,12 +200,38 @@ public class LoggingAspect {
      * Excluded:
      *   com.gsl.reports..*  — prevents infinite loops on ExtentLogger/ReportLogger
      *   com.gsl.aspects..*  — prevents self-interception
+     *   com.gsl.utils.io..* — per-cell Excel/file helpers; tracing them flooded the logs after every run
      */
     @Around("(execution(* com.gsl..*(..)) || execution(* com.tests..*(..))) " +
             "&& !within(com.gsl.reports..*) " +
             "&& !within(com.gsl.aspects..*) " +
             "&& !within(com.gsl.testdata..*) " +
             "&& !within(com.gsl.database..*) " +
+            // Generic Excel/file I/O called per CELL (e.g. XlsxStyle while writing the coverage workbook): tracing it
+            // wrote ~300 MB in 16 s after each run, forcing 30 log rollovers that deleted the whole run's log.
+            "&& !within(com.gsl.utils.io..*) " +
+            // toString/hashCode/equals are never business steps, and they recurse: stringifying a traced
+            // parameter (e.g. UiStyleBaseline's whole-workbook SheetData) ran thousands of advised record
+            // toString() calls per lookup - ~4,600 START/END pairs per 10 MB log file, wiping the run's log.
+            "&& !execution(String *.toString()) " +
+            "&& !execution(int *.hashCode()) " +
+            "&& !execution(boolean *.equals(Object)) " +
+            // A lookup table hit hundreds of times per test; its outcome is already in every UI result row.
+            "&& !within(com.gsl.validation.ui.UiStyleBaseline) " +
+            // Run 20261009_142905 still rolled 30 files in the last 3 minutes. Top sources: zero-arg accessors
+            // (Lombok getters of PendingSlDocument ~70k, CallFrameEntry, CoverageRow), UiValidationFailure accessors
+            // (~45k), config/diagnostics helpers and the UI report's per-cell HTML rendering. None is a step.
+            "&& !execution(* com.gsl..*.get*()) " +
+            "&& !execution(boolean com.gsl..*.is*()) " +
+            "&& !within(com.gsl.model..*) " +
+            "&& !within(com.gsl.config..*) " +
+            "&& !within(com.gsl.diagnostics..*) " +
+            "&& !within(com.gsl.validation.ui.UiValidationFailure) " +
+            "&& !within(com.gsl.validation.ui.UiValidationReporter) " +
+            "&& !within(com.gsl.utils.dataprovider.fixture..*Combinations) " +
+            // Stream-lambda bodies run once per element (run 20261009_152746: findApDocumentsForSlNames lambdas,
+            // each with a whole PendingSlDocument as parameter, rolled 12 files in 3 s). Never a step.
+            "&& !execution(* com.gsl..*.lambda$*(..)) " +
             "&& !within(com.gsl.utils.Selenium.ScreenshotUtils)")
     public Object logMethod(ProceedingJoinPoint pjp) throws Throwable {
         Deque<String> stack = CALL_STACK.get();
@@ -272,8 +321,11 @@ public class LoggingAspect {
             //
             //  • Lambda frames throwing NoSuchElementException or StaleElementReferenceException
             //    are fluent-wait probe attempts — the wait catches and retries them. Log these as
-            //    WARNING with a [RETRY] prefix so the node status is not poisoned by recoverable
-            //    retry-throws on tests that ultimately pass.
+            //    WARNING (prefix [STEP-EXCEPTION]) so the node status is not poisoned by recoverable
+            //    retry-throws on tests that ultimately pass. Labelled [STEP-EXCEPTION], not
+            //    [RETRY]: this aspect only rethrows — whether anything retries depends on the
+            //    caller (a test-step lambda, e.g. EditGeneralVoucher.lambda$runEditFlow$9, has no
+            //    retry at all; the old label made those failures look retried in the report).
             if (ExtentManager.hasTest()
                     && !(e instanceof org.testng.SkipException)
                     && !DataLoadScope.isActive()) {
@@ -283,8 +335,8 @@ public class LoggingAspect {
                 if (isFluentWaitRetry) {
                     String shortMsg = e.getMessage() != null
                             ? e.getMessage().split("\n")[0] : "no message";
-                    ExtentLogger.warning("[RETRY] " + className + "." + methodName + ": " + shortMsg);
-                } else {
+                    ExtentLogger.warning("[STEP-EXCEPTION] " + className + "." + methodName + ": " + shortMsg);
+                } else if (firstReport(e)) {
                     ExtentLogger.fail("[AOP] " + className + "." + methodName + ": " + e.getMessage());
                 }
             }

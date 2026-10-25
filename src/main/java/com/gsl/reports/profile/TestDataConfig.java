@@ -20,6 +20,9 @@ import lombok.Data;
 @JsonInclude(JsonInclude.Include.NON_NULL)
 public class TestDataConfig {
     private String source;
+    /** {@code db.available} (yes/no) and, when no, {@code validation.nodb.mode} (API/SKIP). */
+    private String dbAvailable;
+    private String validationNoDbMode;
     private String masterTestData;
     private String receiptsData;
     private String inventoryGroupData;

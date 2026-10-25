@@ -1,0 +1,32 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE suite SYSTEM "http://testng.org/testng-1.0.dtd">
+<!--
+    General Voucher UI-Contract Validation Suite — runs GeneralVoucherUiValidation's two methods
+    (validateAddFormUiContract, validateEditFormUiContract) with no group filtering.
+
+    This is the framework's first live run: every FieldStyleSpec property is currently a
+    placeholder sentinel (see FieldStyleSpec's own Javadoc), so every property-level soft-assert
+    failure here is EXPECTED on first run — that's the point, its expected-vs-actual output is
+    what drives filling in the true DevTools-confirmed values per field role.
+
+    validateEditFormUiContract needs an existing voucher (same EditVoucherInfo/DB data source
+    EditGeneralVoucher uses) — see that class's own Javadoc for testdata.source=EXCEL setup.
+
+    Run: mvn clean test -Pgv-ui
+-->
+<suite name="General Voucher UI Validation Suite" parallel="none" data-provider-thread-count="4">
+
+    <listeners>
+        <listener class-name="com.gsl.listeners.RetryAnnotationTransformer"/>
+        <listener class-name="com.gsl.listeners.TestListener"/>
+        <listener class-name="com.gsl.listeners.SuiteDataLoader"/>
+        <listener class-name="com.gsl.listeners.AnnotationMethodInterceptor"/>
+    </listeners>
+
+    <test name="General Voucher UI Validation" parallel="methods" thread-count="2">
+        <classes>
+            <class name="com.tests.Finance.Operations.Vouchers.GeneralVoucherUiValidation"/>
+        </classes>
+    </test>
+
+</suite>

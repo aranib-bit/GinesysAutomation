@@ -330,6 +330,7 @@ public class TestListener implements ITestListener, ISuiteListener {
         com.gsl.reports.ActionTrailBuffer.clear();
         StepDurationBuffer.clear();
         com.gsl.validation.ui.UiFailureCollector.clear();   // deferred UI failures never leak into the next test
+        com.gsl.validation.ui.UiValidationReporter.clearHeld();
         com.gsl.validation.ui.UiStyleScope.clear();         // nor does the previous test's voucher style scope
         com.gsl.utils.Selenium.PageStateDiagnostics.reset();
         ScreenshotPolicy.discard();                         // nor do unattached screenshots
@@ -642,6 +643,7 @@ public class TestListener implements ITestListener, ISuiteListener {
         }
         // Safety net: UI-contract failures that were deferred but never reported because the flow
         // failed first (e.g. an Edit snapshot failure) must still be visible in the report.
+        com.gsl.validation.ui.UiValidationReporter.flushHeld();
         if (com.gsl.validation.ui.UiFailureCollector.hasPending()) {
             StringBuilder pendingHtml = new StringBuilder("<b>UI-contract failures found earlier "
                     + "(deferred; the flow then failed):</b><br>");

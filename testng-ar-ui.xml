@@ -1,0 +1,30 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE suite SYSTEM "http://testng.org/testng-1.0.dtd">
+<!--
+    AR Voucher UI-Contract Validation Suite — runs ArVoucherUiValidation's two methods
+    (validateAddFormUiContract, validateEditFormUiContract) with no group filtering.
+
+    Every FieldStyleSpec property is currently a placeholder sentinel (see FieldStyleSpec's own
+    Javadoc), so every property-level soft-assert failure here is EXPECTED on first run.
+
+    validateEditFormUiContract is DB-mode only (AR Voucher Edit has no Excel-mode data source at
+    all — see EditArVoucher's own Javadoc) — set testdata.source=DB before running this suite.
+
+    Run: mvn clean test -Par-ui
+-->
+<suite name="AR Voucher UI Validation Suite" parallel="none" data-provider-thread-count="4">
+
+    <listeners>
+        <listener class-name="com.gsl.listeners.RetryAnnotationTransformer"/>
+        <listener class-name="com.gsl.listeners.TestListener"/>
+        <listener class-name="com.gsl.listeners.SuiteDataLoader"/>
+        <listener class-name="com.gsl.listeners.AnnotationMethodInterceptor"/>
+    </listeners>
+
+    <test name="AR Voucher UI Validation" parallel="methods" thread-count="2">
+        <classes>
+            <class name="com.tests.Finance.Operations.Vouchers.ArVoucherUiValidation"/>
+        </classes>
+    </test>
+
+</suite>

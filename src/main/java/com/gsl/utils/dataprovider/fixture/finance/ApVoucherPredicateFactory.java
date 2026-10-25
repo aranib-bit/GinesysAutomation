@@ -94,6 +94,7 @@ public final class ApVoucherPredicateFactory {
                 ActualResultsHolder.get().setUiOnAccount(docInfo.getOnAccount());
             });
 
+            page.beginFillUi(com.gsl.validation.ui.UiValidationLevel.CONTRACT);
             StepExecutor.step("Fill Sub-Ledger Information", () -> {
                 page.fillSubLedgerRowsForAdvance(data, true);
                 ReportLogger.business("Sub-ledger section complete: "
@@ -111,6 +112,11 @@ public final class ApVoucherPredicateFactory {
                     ReportLogger.business("TDS rows filled: " + data.getTdsAndNetPayableList().size());
                 }
             });
+
+            // UI validation of the REAL fill (soft - deferred, never stops Save / DB validation): header
+            // and footer before/after fill, each filled row identified by Sub Ledger / Reference Site.
+            StepExecutor.step("UI Validation", () ->
+                    page.endFillUiDeferred(com.gsl.validation.ui.UiValidationLevel.CONTRACT));
 
             VoucherSaveFlowSteps.clickSave(ctx, VoucherDbContextBuilder::markSaveStart, page::clickSave);
             VoucherSaveFlowSteps.handlePostSaveDialogs(ctx, VoucherDomain.AP, data);
@@ -168,6 +174,7 @@ public final class ApVoucherPredicateFactory {
                 ActualResultsHolder.get().setUiOnAccount(docInfo.getOnAccount());
             });
 
+            page.beginFillUi(com.gsl.validation.ui.UiValidationLevel.CONTRACT);
             StepExecutor.step("Fill Sub-Ledger Information", () -> {
                 page.fillSubLedgerRowsForDocument(data, true);
                 ReportLogger.business("Sub-ledger section complete: "
@@ -176,6 +183,11 @@ public final class ApVoucherPredicateFactory {
 
             StepExecutor.step("Capture Pre-Save DB State (finpost snapshot)", () ->
                     VoucherDbContextBuilder.capturePreState(data));
+
+            // UI validation of the REAL fill (soft - deferred, never stops Save / DB validation): header
+            // and footer before/after fill, each filled row identified by Sub Ledger / Reference Site.
+            StepExecutor.step("UI Validation", () ->
+                    page.endFillUiDeferred(com.gsl.validation.ui.UiValidationLevel.CONTRACT));
 
             VoucherSaveFlowSteps.clickSave(ctx, VoucherDbContextBuilder::markSaveStart, page::clickSave);
             VoucherSaveFlowSteps.handlePostSaveDialogs(ctx, VoucherDomain.AP, data);
