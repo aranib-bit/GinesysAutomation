@@ -214,7 +214,32 @@ public class GeneralVoucherApiClient extends ApiClient {
         params.put("start", 0);
         params.put("limit", 1000);
         Response response = getRaw(url("/ledgers"), params);
-        return response.jsonPath().getList("result.items", GlLedgerLookupResult.class);
+        List<GlLedgerLookupResult> items = response.jsonPath().getList("result.items", GlLedgerLookupResult.class);
+        logLedgerShape(response, items, connectedSite, userCode, ouCode);
+        return items;
+    }
+
+    /**
+     * Diagnostic for the GL lookup: HTTP status, item count and a histogram of the attributes the fixtures filter on, so a
+     * "0 usable GL(s)" skip shows whether the list was empty, had null attributes, or was simply filtered out. When the list
+     * is empty the start of the raw body is logged.
+     */
+    private static void logLedgerShape(Response response, List<GlLedgerLookupResult> items, int site, long user, int ou) {
+        int n = items == null ? 0 : items.size();
+        Map<String, Long> hist = new java.util.TreeMap<>();
+        if (items != null) {
+            for (GlLedgerLookupResult g : items) {
+                hist.merge("type=" + g.getType() + "/src=" + g.getSourceType() + "/site=" + g.getSiteApplicable()
+                        + "/sl=" + g.getSubLedgerApplicable(), 1L, Long::sum);
+            }
+        }
+        ReportLogger.warn("[GeneralVoucherApiClient] /ledgers site=" + site + " ou=" + ou + " user=" + user + " → HTTP "
+                + response.statusCode() + ", " + n + " item(s); shapes=" + hist);
+        if (n == 0) {
+            String body = response.asString();
+            ReportLogger.warn("[GeneralVoucherApiClient] /ledgers empty — raw body: "
+                    + (body == null ? "null" : body.substring(0, Math.min(body.length(), 600))));
+        }
     }
 
     /** {@code GET /subledgers?module=generalvoucher&parentGLCode=} — the sub-ledgers permitted for a sub-ledger-applicable GL. */

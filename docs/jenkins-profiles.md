@@ -27,6 +27,18 @@ Suites: `testng-regression-arvoucher-phase{1,2,3}.xml` (AR only), `testng-regres
 
 Local run: `mvn clean test -Par-regression-phase1 -Denv=clone-staging -Dbrowser=firefox`
 
+## Source repo, credentials and report output
+- Every job: Pipeline script from SCM → Git, URL `https://github.com/aranib-bit/GinesysAutomation.git`,
+  branch `*/GinesysAutomation`, Credentials = the shared Jenkins credential `gsl-github-ginesys`
+  (kind *Username with password*, Global scope; password = a read-only fine-grained GitHub token for that repo).
+  Team members run builds through their Jenkins permissions and need no GitHub access.
+- After each run, reports are copied to `<Jenkins workspace parent>\GinesysAutomation\<env>\reports\runs\<runId>\...`
+  (one folder per environment: staging, clone-staging, feature-01..08, qaprod). The path is derived from the build's
+  workspace, so it follows whatever drive Jenkins uses. To place it elsewhere, set a Jenkins global environment
+  variable `GINESYS_HOME` (the `<env>` folder is appended).
+- `DOCKER_EXE` / `DOCKER_CONFIG` can be overridden with Jenkins global environment variables of the same name;
+  the Jenkinsfile only carries fallback defaults.
+
 ## qaprod (no database)
 `ENV_NAME=qaprod` has `db.available=no` and `testdata.source=EXCEL`: no database connection is ever attempted
 (`DatabaseManager` refuses), and DB-derived validation is replaced by API/audit validation
