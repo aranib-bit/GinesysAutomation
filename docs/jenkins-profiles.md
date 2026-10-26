@@ -32,10 +32,12 @@ Local run: `mvn clean test -Par-regression-phase1 -Denv=clone-staging -Dbrowser=
   branch `*/GinesysAutomation`, Credentials = the shared Jenkins credential `gsl-github-ginesys`
   (kind *Username with password*, Global scope; password = a read-only fine-grained GitHub token for that repo).
   Team members run builds through their Jenkins permissions and need no GitHub access.
-- After each run, reports are copied to `<Jenkins workspace parent>\GinesysAutomation\<env>\reports\runs\<runId>\...`
-  (one folder per environment: staging, clone-staging, feature-01..08, qaprod). The path is derived from the build's
-  workspace, so it follows whatever drive Jenkins uses. To place it elsewhere, set a Jenkins global environment
-  variable `GINESYS_HOME` (the `<env>` folder is appended).
+- Each build runs in its own folder `<GINESYS_HOME>\<env>\<job>` (checkout, `target\`, and
+  `reports\runs\<runId>\...` all live there; env = staging, clone-staging, feature-01..08, qaprod). Set the Jenkins
+  global environment variable `GINESYS_HOME` (Manage Jenkins → System → Environment variables), e.g.
+  `D:\GinesysAutomation`; the Jenkins service account must be able to write there. If `GINESYS_HOME` is unset the
+  relative folder `GinesysAutomation\<env>\<job>` under Jenkins' own workspace root is used. No drive letter is
+  written in the Jenkinsfile.
 - `DOCKER_EXE` / `DOCKER_CONFIG` can be overridden with Jenkins global environment variables of the same name;
   the Jenkinsfile only carries fallback defaults.
 

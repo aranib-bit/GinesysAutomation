@@ -1,13 +1,29 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE suite SYSTEM "https://testng.org/testng-1.0.dtd">
-<suite name="Failed suite [Pipeline Mechanism Smoke Suite Priority]" guice-stage="DEVELOPMENT">
-  <test thread-count="5" parallel="instances" name="Smoke(failed)">
+<suite data-provider-thread-count="4" name="Failed suite [GV Create/Revert/Delete - failed only (no DB)]" guice-stage="DEVELOPMENT">
+  <listeners>
+    <listener class-name="com.gsl.listeners.RetryAnnotationTransformer"/>
+    <listener class-name="com.gsl.listeners.TestListener"/>
+    <listener class-name="com.gsl.listeners.SuiteDataLoader"/>
+    <listener class-name="com.gsl.listeners.AnnotationMethodInterceptor"/>
+  </listeners>
+  <test thread-count="5" parallel="methods" name="General Voucher Create/Revert - Mandatory(failed)">
+    <parameter name="gv.group" value="MANDATORY"/>
     <classes>
-      <class name="com.tests.smoketest.PipelineMechanismSmokeTestPriority">
+      <class name="com.tests.Finance.Operations.Vouchers.CreateGeneralVoucher">
         <methods>
-          <include name="stepB" invocation-numbers="0"/>
+          <include name="createGeneralVoucher" invocation-numbers="0"/>
+          <include name="setUp"/>
+          <include name="tearDown"/>
         </methods>
-      </class> <!-- com.tests.smoketest.PipelineMechanismSmokeTestPriority -->
+      </class> <!-- com.tests.Finance.Operations.Vouchers.CreateGeneralVoucher -->
+      <class name="com.tests.Finance.Operations.Vouchers.RevertGeneralVoucher">
+        <methods>
+          <include name="setUp"/>
+          <include name="revertGeneralVoucher"/>
+          <include name="tearDown"/>
+        </methods>
+      </class> <!-- com.tests.Finance.Operations.Vouchers.RevertGeneralVoucher -->
     </classes>
-  </test> <!-- Smoke(failed) -->
-</suite> <!-- Failed suite [Pipeline Mechanism Smoke Suite Priority] -->
+  </test> <!-- General Voucher Create/Revert - Mandatory(failed) -->
+</suite> <!-- Failed suite [GV Create/Revert/Delete - failed only (no DB)] -->

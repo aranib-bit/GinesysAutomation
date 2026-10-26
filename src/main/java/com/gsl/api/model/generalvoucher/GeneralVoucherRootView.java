@@ -1,5 +1,7 @@
 package com.gsl.api.model.generalvoucher;
 
+import com.fasterxml.jackson.annotation.JsonAnySetter;
+import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import com.fasterxml.jackson.annotation.JsonProperty;
 import com.gsl.api.model.arvoucher.CashBankLedgerLookupResult;
@@ -8,7 +10,9 @@ import lombok.Builder;
 import lombok.Data;
 import lombok.NoArgsConstructor;
 
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 
 /**
  * {@code result} of {@code GET Finance/api/vouchers/generalvouchers/rootview?code=<vchcode>&connectedOUCode=&connectedUserCode=}
@@ -29,6 +33,8 @@ public class GeneralVoucherRootView {
     private GeneralVoucherDocSchemeRef docScheme;
     private CashBankLedgerLookupResult cashBankLedger;
     private String voucherDate;
+    /** Explicit name: Lombok's {@code getYCode} would otherwise make Jackson look for {@code ycode} and leave this at 0. */
+    @JsonProperty("yCode")
     private int yCode;
     private String docNumber;
     private String reference;
@@ -46,6 +52,16 @@ public class GeneralVoucherRootView {
     private String lastModifiedBy;
     private String releasedBy;
     private List<GeneralVoucherDetailLine> expenseIncomeDetail;
+
+    /** Response fields this model does not map, kept so a caller can look for data the model has no field for (e.g. the accounting year). */
+    @Builder.Default
+    @JsonIgnore
+    private Map<String, Object> extras = new LinkedHashMap<>();
+
+    @JsonAnySetter
+    public void putExtra(String key, Object value) {
+        extras.put(key, value);
+    }
 
     public boolean isPosted()   { return "P".equalsIgnoreCase(documentStatus); }
     public boolean isUnposted() { return "U".equalsIgnoreCase(documentStatus); }

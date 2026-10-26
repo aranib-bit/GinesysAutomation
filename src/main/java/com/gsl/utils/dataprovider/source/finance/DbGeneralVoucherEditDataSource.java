@@ -115,7 +115,7 @@ public class DbGeneralVoucherEditDataSource implements TestDataSource<MergedFina
 
     /** A clearly-different new amount delta applied to the edited detail line — large enough that
      *  it can never coincidentally equal the existing amount. */
-    private static final BigDecimal AMOUNT_DELTA = new BigDecimal("500.00");
+    static final BigDecimal AMOUNT_DELTA = new BigDecimal("500.00");
 
     private final String xmlEditGroupParam;
 
@@ -293,150 +293,17 @@ public class DbGeneralVoucherEditDataSource implements TestDataSource<MergedFina
             paymentEditTarget = buildPaymentEditTarget(jdbi, variant, header, detailRows, gatheringLog);
         }
 
-        // Scope fix: a DETAIL_LINE/PAYMENT_INFO scenario must edit ONLY its own target — the
-        // header's date/reference/remarks stay exactly as they were before this Save. Generating a
-        // new date/reference/remarks unconditionally here (the former behavior) silently turned
-        // every "detail-only"/"payment-only" scenario into a combined header+other edit, which is
-        // exactly the scope-ambiguity the report review flagged. That combined-edit shape is real
-        // and will be covered later by its own regression-phase scenarios — not folded invisibly
-        // into this one.
-        boolean headerFieldsUnchanged = variant.getScenarioType() == GeneralVoucherEditVariant.ScenarioType.DETAIL_LINE
-                || variant.getScenarioType() == GeneralVoucherEditVariant.ScenarioType.PAYMENT_INFO;
-
-        LocalDate newDate;
-        String newReference;
-        String newRemarks;
-        NegativeValidation expectedValidation;
-
-        if (headerFieldsUnchanged) {
-            newDate = header.getVchdt();
-            newReference = header.getRefno();
-            newRemarks = header.getNartext();
-            // PaymentInfoDateScenario#expectedRejection() is null for every ordinary Payment-Info
-            // variant (unchanged default) and for the 3 positive date scenarios — only
-            // NEFT_FUTURE_DATE_CR_REJECTED carries a real NegativeValidation. Mirrors exactly how
-            // the HEADER_ONLY branch below derives its own expectedValidation from its own flags.
-            expectedValidation = variant.getDateScenario() != null
-                    ? variant.getDateScenario().expectedRejection() : null;
-            gatheringLog.add("  " + variant.getScenarioType() + " scenario — header date/reference/remarks "
-                    + "left unchanged (date=" + newDate + ", refno='" + newReference + "')");
-        } else {
-            // Field-isolated header edits (plan §4D): a HEADER_ONLY variant's scope decides which
-            // of date/reference/remarks actually change — ALL (the pre-existing, still-default
-            // behavior) changes every field; a single-field scope holds the other two at the
-            // header's own existing value, the same "hold unchanged" idiom the DETAIL_LINE branch
-            // above already uses for the fields a given scenario doesn't touch. This is what makes
-            // a report row actually isolate one field's effect instead of always changing all three
-            // together, which made it impossible to tell which field's change a given assertion was
-            // really exercising.
-            GeneralVoucherEditVariant.HeaderFieldScope scope = variant.getHeaderFieldScope() != null
-                    ? variant.getHeaderFieldScope() : GeneralVoucherEditVariant.HeaderFieldScope.ALL;
-            boolean changeDate = scope == GeneralVoucherEditVariant.HeaderFieldScope.ALL
-                    || scope == GeneralVoucherEditVariant.HeaderFieldScope.DATE_ONLY;
-            boolean changeReference = scope == GeneralVoucherEditVariant.HeaderFieldScope.ALL
-                    || scope == GeneralVoucherEditVariant.HeaderFieldScope.REFERENCE_ONLY;
-            boolean changeRemarks = scope == GeneralVoucherEditVariant.HeaderFieldScope.ALL
-                    || scope == GeneralVoucherEditVariant.HeaderFieldScope.REMARKS_ONLY;
-
-            VoucherEditDateVariant dateVariant = null;
-            if (changeDate) {
-                // Accounting-year-aware new document date (replaces the former unconditional
-                // LocalDate.now(), which caused a live save failure once a claimed voucher's own
-                // accounting year didn't bracket today — see the "GV Edit: accounting-year-aware
-                // dates..." plan). HEADER_ONLY variants always set an explicit dateVariant.
-                dateVariant = variant.getDateVariant() != null
-                        ? variant.getDateVariant() : VoucherEditDateVariant.RANDOM_MID;
-                long ouCode = AccountingPeriodResolver.resolveOuCode(jdbi, header.getAdmsiteCodeOwner());
-                newDate = AccountingPeriodResolver.resolveEditDate(
-                        jdbi, header.getYcode(), ouCode, dateVariant, PeriodDomain.FINANCE);
-            } else {
-                newDate = header.getVchdt();
-            }
-            newReference = changeReference ? FakerUtils.randomReference() : header.getRefno();
-            newRemarks = changeRemarks ? FakerUtils.randomRemarks() : header.getNartext();
-
-            // Non-null for CROSS_YEAR_INVALID (always) and FUTURE_DATE when the claimed
-            // candidate's Cash/Bank ledger is Cash-type (via requiredCashBankType, set only by
-            // GV_EDIT_HEADER_UNPOSTED_FUTURE_DATE_CASH_NEGATIVE — see claimOne's cashBankFilter
-            // above, which guarantees this variant only ever claims a Cash-type candidate) — the
-            // app is expected to REJECT the save with this exact message rather than succeed (see
-            // EditGeneralVoucher's Step 9b). FUTURE_DATE against a Bank-type ledger
-            // (GV_EDIT_HEADER_UNPOSTED_FUTURE_DATE_BANK) is NOT a rejection case — confirmed live
-            // the app accepts a future-dated document for Bank-type within the same accounting
-            // year, so it falls through to `default -> null` and flows through Step 9b's normal
-            // positive save + full snapshot-validation path. Only reachable when changeDate is
-            // true — a scope that holds the date unchanged can never be rejected on
-            // accounting-year or post-dated-Cash grounds. See "Round 22" of the GV plan
-            // (FIN-GV-EDIT-HEADER-04) — this was previously a single ambiguous FUTURE_DATE
-            // variant with no Cash/Bank-type awareness at all.
-            expectedValidation = changeDate ? switch (dateVariant) {
-                case CROSS_YEAR_INVALID -> NegativeValidation.GV_EDIT_DATE_CROSSES_ACCOUNTING_YEAR;
-                case FUTURE_DATE -> variant.getRequiredCashBankType() == CashBankType.CASH
-                        ? NegativeValidation.GV_CASH_POST_DATED_NOT_ALLOWED : null;
-                default -> null;
-            } : null;
-
-            gatheringLog.add("  Header field scope=" + scope + " — date="
-                    + (changeDate ? newDate + " (dateVariant=" + dateVariant
-                        + (expectedValidation != null ? ", expecting REJECTION: " + expectedValidation.expectedMessage()
-                           : dateVariant == VoucherEditDateVariant.FUTURE_DATE
-                                ? ", intentionally future-dated (Cash/Bank type=" + variant.getRequiredCashBankType()
-                                  + ") — app is confirmed to ACCEPT this, full snapshot validation applies "
-                                  + "same as any other positive header edit"
-                                : "") + ")"
-                       : newDate + " (unchanged)")
-                    + ", reference=" + (changeReference ? "'" + newReference + "' (new)" : "'" + newReference + "' (unchanged)")
-                    + ", remarks=" + (changeRemarks ? "(new)" : "(unchanged)"));
-        }
-
-        DocumentInformation newDocInfo = new DocumentInformation(
-                variant.getVariantId(),
-                null,                               // voucherno — left null so setDocScheme()'s blank-guard
-                                                     // never touches/reads the Voucher No. field at all (see
-                                                     // plan §3: passing the existing scheme_docno here timed
-                                                     // out on a live run — that field's read-before-skip path
-                                                     // requires visibility that Edit mode's disabled/
-                                                     // differently-rendered Voucher No. widget doesn't give
-                                                     // within the wait window).
-                newDate,                            // documentdate — NEW value for HEADER_ONLY, UNCHANGED for DETAIL_LINE
-                newReference,                       // reference — NEW value for HEADER_ONLY, UNCHANGED for DETAIL_LINE
-                cashBankName,                      // unchanged Cash/Bank
-                newRemarks);                        // remarks — NEW value for HEADER_ONLY, UNCHANGED for DETAIL_LINE
-        newDocInfo.setOwnersite(siteName);
-
-        gatheringLog.add("═══════════════════════════════════════════════════════════");
-
-        MergedFinanceGeneralVoucherData data = MergedFinanceGeneralVoucherData.builder()
-                .scenarioTypeLabel(variant.getVariantId())
-                .existingVoucherNo(header.getSchemeDocno())
-                .releaseStatus(header.getReleaseStatus())
-                .currentDocDate(header.getVchdt())
-                .originalReference(header.getRefno())
-                .originalRemarks(header.getNartext())
-                .reservedDocumentKey(String.valueOf(vchcode))
-                .operationMode(GeneralVoucherOperationMode.EDIT)
-                .documentInformation(newDocInfo)
-                .expenseIncomeDetailList(expenseIncomeRows)
-                .siteAllocationList(siteAllocations)
-                .editedDetailLine(editedDetailLine)
-                .paymentEditTarget(paymentEditTarget)
-                // Cross-dependency with the shared Extent header (GeneralVoucherExtentDescriptionLogger
-                // #appendExtraHeaderRows): setting these here — not just paymentEditTarget — is what
-                // makes the "Cheque No."/"Cheque Known/Unknown" header rows render the Edit "after"
-                // state automatically, with zero further changes needed in that reporting file.
-                .cashBankPaymentInfo(paymentEditTarget != null ? paymentEditTarget.getNewPayment() : null)
-                .actualChequeBankMatch(paymentEditTarget != null ? paymentEditTarget.getNewBankMatch() : null)
-                .headerFieldScope(variant.getHeaderFieldScope())
-                .entryMethod(variant.getEntryMethod())
-                .expectedValidation(expectedValidation)
-                .dbGatheringLog(gatheringLog)
-                .invocationIndex(1)
-                .totalInvocations(1)
-                .build();
-
-        Log.info("[DB-Edit] Built edit data for vchcode={}, scheme_docno='{}', variant='{}'",
-                vchcode, header.getSchemeDocno(), variant.getVariantId());
-        return data;
+        // Header-field scope, new document date, expected negative validation and the final row are the same rules the API source
+        // applies — see GeneralVoucherEditRowAssembler. Only the date lookup is DB-specific.
+        return GeneralVoucherEditRowAssembler.assemble("[DB-Edit]", variant, vchcode,
+                new GeneralVoucherEditRowAssembler.EditHeader(header.getSchemeDocno(), header.getReleaseStatus(), header.getVchdt(),
+                        header.getRefno(), header.getNartext()),
+                siteName, cashBankName, expenseIncomeRows, siteAllocations, editedDetailLine, paymentEditTarget,
+                dateVariant -> {
+                    long ouCode = AccountingPeriodResolver.resolveOuCode(jdbi, header.getAdmsiteCodeOwner());
+                    return AccountingPeriodResolver.resolveEditDate(jdbi, header.getYcode(), ouCode, dateVariant, PeriodDomain.FINANCE);
+                },
+                gatheringLog);
     }
 
     /** Resolves every {@code finvchdet} row on the claimed voucher (not just the one being
@@ -694,7 +561,7 @@ public class DbGeneralVoucherEditDataSource implements TestDataSource<MergedFina
      *  Ledger as the existing row, with a new amount ({@code existing amount + AMOUNT_DELTA}),
      *  the variant's reversal toggle, and (when {@code narrationEdit} is set) a new Ledger
      *  Narration. */
-    private static DetailLineEditTarget buildInPlaceEdit(GeneralVoucherEditVariant variant,
+    static DetailLineEditTarget buildInPlaceEdit(GeneralVoucherEditVariant variant,
             List<ExpenseIncomeDetail> expenseIncomeRows, List<String> gatheringLog) {
 
         ExpenseIncomeDetail existing = variant.isRequireSharedGlcodeSibling()
@@ -1006,7 +873,7 @@ public class DbGeneralVoucherEditDataSource implements TestDataSource<MergedFina
      *  {@link ExpenseIncomeDetail} view to work with. Returns {@code null} if no such pair exists
      *  (shouldn't happen given the claim query's guarantee, but defensive rather than throwing an
      *  NPE downstream). */
-    private static ExpenseIncomeDetail findRowWithSharedGlcodeSibling(List<ExpenseIncomeDetail> rows) {
+    static ExpenseIncomeDetail findRowWithSharedGlcodeSibling(List<ExpenseIncomeDetail> rows) {
         for (ExpenseIncomeDetail candidate : rows) {
             boolean hasSibling = rows.stream().anyMatch(other -> other != candidate
                     && candidate.getGeneralLedger() != null

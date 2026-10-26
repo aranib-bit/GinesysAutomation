@@ -10,6 +10,7 @@ import com.gsl.utils.Log;
 import com.gsl.utils.dataprovider.source.TestDataSource;
 import com.gsl.utils.dataprovider.source.finance.ApiGeneralVoucherDataSource;
 import com.gsl.utils.dataprovider.source.finance.ApiGeneralVoucherDeleteDataSource;
+import com.gsl.utils.dataprovider.source.finance.ApiGeneralVoucherEditDataSource;
 import com.gsl.utils.dataprovider.source.finance.ApiGeneralVoucherRevertDataSource;
 import com.gsl.utils.dataprovider.source.finance.DbGeneralVoucherDataSource;
 import com.gsl.utils.dataprovider.source.finance.DbGeneralVoucherDeleteDataSource;
@@ -107,13 +108,15 @@ public class MergedFinGeneralVoucherDataSupplier {
 
             if (sourceMode == TestDataSourceMode.API && !isApiSupported(method.getName())) {
                 throw new org.testng.SkipException("testdata.source=API is not implemented yet for '" + method.getName()
-                        + "' (Create, Mixed, Revert and Delete are supported; the Edit API source is the next work package).");
+                        + "' (Create, Mixed, Revert, Delete and Edit are supported).");
             }
             TestDataSource<MergedFinanceGeneralVoucherData> loader =
                     sourceMode == TestDataSourceMode.API
                             ? switch (method.getName()) {
                                 case "revertGeneralVoucher" -> new ApiGeneralVoucherRevertDataSource(xmlGroupParam, xmlTagParam);
                                 case "deleteGeneralVoucher" -> new ApiGeneralVoucherDeleteDataSource();
+                                case "editGeneralVoucherHeader", "editGeneralVoucherDetailLine",
+                                     "editGeneralVoucherPaymentInfo" -> new ApiGeneralVoucherEditDataSource(xmlEditGroupParam);
                                 default -> new ApiGeneralVoucherDataSource(xmlGroupParam, xmlTagParam);
                               }
                     : sourceMode == TestDataSourceMode.DB
@@ -208,7 +211,9 @@ public class MergedFinGeneralVoucherDataSupplier {
     /** Methods that already have an API data source. */
     private static boolean isApiSupported(String methodName) {
         return "createGeneralVoucher".equals(methodName) || "createGeneralVoucherMixedTypes".equals(methodName)
-                || "revertGeneralVoucher".equals(methodName) || "deleteGeneralVoucher".equals(methodName);
+                || "revertGeneralVoucher".equals(methodName) || "deleteGeneralVoucher".equals(methodName)
+                || "editGeneralVoucherHeader".equals(methodName) || "editGeneralVoucherDetailLine".equals(methodName)
+                || "editGeneralVoucherPaymentInfo".equals(methodName);
     }
 
     /**

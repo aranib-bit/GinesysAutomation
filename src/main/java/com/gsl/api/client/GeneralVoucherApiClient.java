@@ -306,10 +306,41 @@ public class GeneralVoucherApiClient extends ApiClient {
 
     /** {@code POST /vouchers/general/validations/voucherdate} — throws {@link ApiException} when the date is rejected. */
     public void validateVoucherDate(long empCode, String voucherDate, long ouCode, long voucherCode) {
+        validateVoucherDate(empCode, voucherDate, ouCode, voucherCode, 0);
+    }
+
+    /**
+     * As above for an EXISTING voucher: {@code oldYcode} is the voucher's current accounting year ({@code GeneralVoucherRootView#yCode}) —
+     * without it the application compares the new date against year 0 and rejects every date with "cannot be changed to a new accounting
+     * year" (confirmed live), so an edit-date check must pass it.
+     */
+    public void validateVoucherDate(long empCode, String voucherDate, long ouCode, long voucherCode, int oldYcode) {
         VoucherDateValidationRequest request = VoucherDateValidationRequest.builder()
+                .oldYcode(oldYcode)
                 .voucherDate(voucherDate).empCode(empCode).connectedOUCode(ouCode)
                 .voucherCode((int) voucherCode).isNewEntity(voucherCode == 0).build();
         postRaw(url("/vouchers/general/validations/voucherdate"), request);
+    }
+
+    /** True when the application's own voucher-date validation accepts {@code date} for {@code voucherCode} ({@code 0} = new voucher). */
+    public boolean isVoucherDateAccepted(long empCode, LocalDate date, long ouCode, long voucherCode, int oldYcode) {
+        try {
+            validateVoucherDate(empCode, workDate(date), ouCode, voucherCode, oldYcode);
+            return true;
+        } catch (ApiException rejected) {
+            return false;
+        }
+    }
+
+    /**
+     * The contiguous run of dates the application accepts around {@code anchor} when EDITING {@code voucherCode} (whose current accounting
+     * year is {@code oldYcode}), found purely by probing {@link #validateVoucherDate} — there is no accounting-year API. Under
+     * {@code db.available=no} this replaces the {@code admyear}/{@code admmonth} reads the DB data sources use to pick first/last/
+     * cross-year/future edit dates. A NEW voucher (code 0) is not year-bounded by the validator, so only existing vouchers are meaningful.
+     */
+    public com.gsl.utils.ValidDateRangeFinder.Range findValidVoucherDateRange(long empCode, LocalDate anchor, long ouCode, long voucherCode,
+                                                                              int oldYcode) {
+        return com.gsl.utils.ValidDateRangeFinder.find(anchor, d -> isVoucherDateAccepted(empCode, d, ouCode, voucherCode, oldYcode), 400);
     }
 
     /** Fetches the UDF metadata of {@code FINVCHMAIN} and builds the {@code udfValues}/{@code udfDetails} list. */

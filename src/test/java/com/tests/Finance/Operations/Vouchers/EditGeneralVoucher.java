@@ -3,7 +3,9 @@ package com.tests.Finance.Operations.Vouchers;
 import com.gsl.annotations.ApiFlow;
 import com.gsl.annotations.FrameworkAnnotation;
 import com.gsl.annotations.TestCaseId;
+import com.gsl.api.model.generalvoucher.GeneralVoucherRootView;
 import com.gsl.database.DatabaseManager;
+import com.gsl.database.DbAvailability;
 import com.gsl.database.dao.adm.AdmSiteDao;
 import com.gsl.database.dao.finance.FinCostTagDao;
 import com.gsl.database.dao.finance.FinGlDao;
@@ -50,6 +52,8 @@ import com.gsl.utils.dataprovider.fixture.finance.VoucherEditEntryMethod;
 import com.gsl.utils.ui.UiFieldState;
 import com.gsl.validation.snapshot.DocumentContext;
 import com.gsl.validation.snapshot.ExpectedChangeSet;
+import com.gsl.validation.api.GeneralVoucherEditApiValidator;
+import com.gsl.validation.api.NoDbApiSession;
 import com.gsl.validation.snapshot.SnapshotService;
 import com.gsl.validation.snapshot.TableSnapshot;
 import com.gsl.validation.snapshot.VoucherSnapshot;
@@ -124,10 +128,22 @@ public class EditGeneralVoucher extends WebTest {
     }
 
     private void runEditFlow(MergedFinanceGeneralVoucherData data, GeneralVoucherEditVariant.ScenarioType scenarioType) {
+        try {
+            runEditFlowBody(data, scenarioType);
+        } finally {
+            NoDbApiSession.closeQuietly();
+        }
+    }
+
+    private void runEditFlowBody(MergedFinanceGeneralVoucherData data, GeneralVoucherEditVariant.ScenarioType scenarioType) {
 
         Log.info("Existing Voucher No.: {}, Release Status: {}", data.getExistingVoucherNo(), data.getReleaseStatus());
 
         DbGatheringExtentLogger.log(data);
+        // A data source that could not produce this row's fixture keeps the row (so the variant stays visible) and fails it here, by name.
+        if (data.getFixtureFailure() != null) {
+            throw new AssertionError("[Fixture] " + data.getFixtureFailure());
+        }
         GeneralVoucherExtentDescriptionLogger.log(data);
         ActualResultsHolder.get().setVoucherType("GV");
         ActualResultsHolder.get().setTestData(data);
@@ -153,7 +169,13 @@ public class EditGeneralVoucher extends WebTest {
         final String[]                 immediateBeforeReleaseStatusRef = new String[1];
         final GeneralVoucherRevertOutcome[] unpostOutcomeRef = new GeneralVoucherRevertOutcome[1];
 
-        SnapshotService snapshotService = new SnapshotService(new Aud2SnapshotDao());
+        // db.available=no: nothing below may touch the database — DB reads/snapshots are replaced by rootview reads (validation.nodb.mode=API)
+        // or reported SKIPPED (validation.nodb.mode=SKIP). db.available=yes keeps the original path unchanged.
+        final boolean noDb = !DbAvailability.isAvailable();
+        final boolean apiValidation = noDb && DbAvailability.noDbValidation() == DbAvailability.NoDbValidation.API;
+        final GeneralVoucherRootView[] beforeView = new GeneralVoucherRootView[1];
+        final GeneralVoucherRootView[] afterView  = new GeneralVoucherRootView[1];
+        SnapshotService snapshotService = noDb ? null : new SnapshotService(new Aud2SnapshotDao());
         final com.gsl.flow.Finance.Operations.Common.VoucherSaveCtx ctx = new com.gsl.flow.Finance.Operations.Common.VoucherSaveCtx();
 
         // ── Step 0: DB Pre-Check — Verify Document Exists & Release Status ───────────
@@ -163,7 +185,17 @@ public class EditGeneralVoucher extends WebTest {
         // repeatedly-run Excel voucher's real status can drift on its own once the
         // Release-after-save confirmation (§14) starts firing Yes. Mirrors
         // RevertGeneralVoucher's own Step 1 "DB Pre-Check" — same position, before Login.
-        StepExecutor.step("DB Pre-Check — Verify Document Exists & Release Status", () -> {
+        StepExecutor.step(noDb ? "API Pre-Check — Verify Document Exists & Release Status"
+                : "DB Pre-Check — Verify Document Exists & Release Status", () -> {
+            if (noDb) {
+                GeneralVoucherRootView view = NoDbApiSession.current().rootView(Long.parseLong(testData.getReservedDocumentKey()));
+                Assert.assertNotNull(view, "[API-PreCheck] rootview not found for vchcode=" + testData.getReservedDocumentKey()
+                        + " — target document does not exist; cannot proceed with Edit.");
+                liveReleaseStatusRef[0] = view.isPosted() ? "P" : "U";
+                ReportLogger.business("Captured live release status='" + liveReleaseStatusRef[0] + "' (rootview) for voucher: "
+                        + testData.getExistingVoucherNo());
+                return;
+            }
             FinVchMain header = DatabaseManager.getJdbi().onDemand(FinVchMainDao.class)
                     .findBySchemeDocno(testData.getExistingVoucherNo())
                     .orElse(null);
@@ -228,7 +260,17 @@ public class EditGeneralVoucher extends WebTest {
         // of masquerading as a product defect. Mirrors RevertGeneralVoucher's own Step 7 exactly
         // (see the "GV Revert picks documents in a now-closed accounting period, + closed-period
         // negative-test coverage" plan, follow-up round 3).
-        StepExecutor.step("DB Check — Release Status Immediately Before Unpost", () -> {
+        StepExecutor.step(noDb ? "API Check — Release Status Immediately Before Unpost"
+                : "DB Check — Release Status Immediately Before Unpost", () -> {
+            if (noDb) {
+                GeneralVoucherRootView view = NoDbApiSession.current().rootView(Long.parseLong(testData.getReservedDocumentKey()));
+                Assert.assertNotNull(view, "[API-Check] rootview not found for " + testData.getExistingVoucherNo()
+                        + " — target document disappeared before Unpost/Edit could be attempted.");
+                immediateBeforeReleaseStatusRef[0] = view.isPosted() ? "P" : "U";
+                ReportLogger.business("Release status immediately before Unpost: '" + immediateBeforeReleaseStatusRef[0]
+                        + "' (rootview) for voucher: " + testData.getExistingVoucherNo());
+                return;
+            }
             FinVchMain header = DatabaseManager.getJdbi().onDemand(FinVchMainDao.class)
                     .findBySchemeDocno(testData.getExistingVoucherNo())
                     .orElse(null);
@@ -299,6 +341,16 @@ public class EditGeneralVoucher extends WebTest {
 
         // ── Step 5: Resolve Document Context ──────────────────────────────────────
         StepExecutor.step("Resolve Document Context", () -> {
+            if (noDb) {
+                ExtentLogger.infoLabeledTable("Document Context", new String[][]{
+                        {"Field", "Value"},
+                        {"Voucher No.", testData.getExistingVoucherNo()},
+                        {"vchcode", testData.getReservedDocumentKey()},
+                        {"Source", "db.available=no — resolved from the API, no persistence-map/audit tables"},
+                        {"Validation mode", apiValidation ? "API (rootview before/after diff)" : "SKIP (DB-derived checks skipped)"},
+                });
+                return;
+            }
             contextRef[0] = new VoucherDocumentContextResolver().resolve(testData.getExistingVoucherNo(), VoucherDomain.GV);
             ExtentLogger.infoLabeledTable("Document Context", new String[][]{
                     {"Field", "Value"},
@@ -324,6 +376,16 @@ public class EditGeneralVoucher extends WebTest {
 
         // ── Step 6: Capture BEFORE Snapshot ────────────────────────────────────────
         StepExecutor.step("Capture BEFORE Snapshot", () -> {
+            if (noDb) {
+                if (apiValidation) {
+                    beforeView[0] = NoDbApiSession.current().rootView(Long.parseLong(testData.getReservedDocumentKey()));
+                    ReportLogger.business("BEFORE rootview captured: " + beforeView[0].getExpenseIncomeDetail().size()
+                            + " line(s), status=" + beforeView[0].getDocumentStatus());
+                } else {
+                    ExtentLogger.skip("BEFORE snapshot skipped — db.available=no and validation.nodb.mode=SKIP");
+                }
+                return;
+            }
             beforeRef[0] = snapshotService.capture(contextRef[0]);
             logSnapshotTable("📸 BEFORE Snapshot", beforeRef[0], contextRef[0]);
         });
@@ -446,6 +508,16 @@ public class EditGeneralVoucher extends WebTest {
 
         // ── Step 13: Capture AFTER Snapshot ───────────────────────────────────────
         StepExecutor.step("Capture AFTER Snapshot", () -> {
+            if (noDb) {
+                if (apiValidation) {
+                    afterView[0] = NoDbApiSession.current().rootView(Long.parseLong(testData.getReservedDocumentKey()));
+                    ReportLogger.business("AFTER rootview captured: " + afterView[0].getExpenseIncomeDetail().size()
+                            + " line(s), status=" + afterView[0].getDocumentStatus());
+                } else {
+                    ExtentLogger.skip("AFTER snapshot skipped — db.available=no and validation.nodb.mode=SKIP");
+                }
+                return;
+            }
             afterRef[0] = snapshotService.capture(contextRef[0]);
             logSnapshotTable("📸 AFTER Snapshot", afterRef[0], contextRef[0]);
         });
@@ -466,7 +538,14 @@ public class EditGeneralVoucher extends WebTest {
         // cascading into every "Actual Results" → "DB Validation" row rendering as "— (not
         // reached)"/Skip. findByVoucherCode(long) already exists on FinVchMainDao for exactly
         // this purpose.
-        StepExecutor.step("Populate Actual Results (DB read-back)", () -> {
+        StepExecutor.step(noDb ? "Populate Actual Results (API read-back)" : "Populate Actual Results (DB read-back)", () -> {
+            if (noDb) {
+                // ActualResultsHolder's header/det/post fields are DB row models; with no DB only the voucher number is known.
+                ActualResultsHolder.get().setVoucherNo(docNoRef[0]);
+                ReportLogger.business("db.available=no — DB-derived Actual Results rows (finvchmain/finvchdet/finpost) not populated; "
+                        + "voucher no. recorded: " + docNoRef[0]);
+                return;
+            }
             FinVchMain freshHeader = DatabaseManager.getJdbi().onDemand(FinVchMainDao.class)
                     .findByVoucherCode(contextRef[0].getVchcode()).orElse(null);
             ActualResultsHolder.get().setHeader(freshHeader);
@@ -496,7 +575,20 @@ public class EditGeneralVoucher extends WebTest {
         // SITE_SPLIT_ONLY both reuse the original detailLineEdit (SITE_SPLIT_ONLY's newValues is
         // an exact copy of beforeRow, so its amount naturally reads as unchanged — the actual
         // site-redistribution check is Step 14b below, not this snapshot-diff pass).
-        StepExecutor.step("Database Snapshot Validation", () -> {
+        StepExecutor.step(noDb ? "API Rootview Validation" : "Database Snapshot Validation", () -> {
+            if (noDb) {
+                if (!apiValidation) {
+                    ExtentLogger.skip("Validation skipped — db.available=no and validation.nodb.mode=SKIP");
+                    return;
+                }
+                GeneralVoucherEditApiValidator.Result result = GeneralVoucherEditApiValidator.validate(
+                        testData, scenarioType, beforeView[0], afterView[0]);
+                result.passed().forEach(ReportLogger::pass);
+                Assert.assertTrue(result.ok(), "[API validation] " + result.failed().size() + " check(s) failed for "
+                        + docNoRef[0] + ":\n  " + String.join("\n  ", result.failed()));
+                ReportLogger.pass("API rootview validation complete (" + result.passed().size() + " checks). Document No: " + docNoRef[0]);
+                return;
+            }
             ExpectedChangeSet changeSet;
             if (scenarioType == GeneralVoucherEditVariant.ScenarioType.DETAIL_LINE) {
                 DetailLineEditTarget target = testData.getEditedDetailLine();
@@ -534,6 +626,12 @@ public class EditGeneralVoucher extends WebTest {
         if (scenarioType == GeneralVoucherEditVariant.ScenarioType.DETAIL_LINE
                 && testData.getEditedDetailLine().getShape() == DetailLineEditTarget.EditShape.SITE_SPLIT_ONLY) {
             StepExecutor.step("Verify Site Reallocation", () -> {
+                if (noDb) {
+                    // Covered by "API Rootview Validation" (the edited line's cost-centre allocations are compared there).
+                    ExtentLogger.skip(apiValidation ? "Covered by API Rootview Validation (site allocation of the edited line)"
+                            : "Skipped — db.available=no and validation.nodb.mode=SKIP");
+                    return;
+                }
                 DetailLineEditTarget target = testData.getEditedDetailLine();
                 String entcode = String.valueOf(contextRef[0].getVchcode());
                 FinGl gl = DatabaseManager.getJdbi().onDemand(FinGlDao.class)

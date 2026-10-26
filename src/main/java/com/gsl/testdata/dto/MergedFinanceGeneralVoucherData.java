@@ -129,6 +129,13 @@ public class MergedFinanceGeneralVoucherData
      *  (per-row counterpart of {@link #actualChequeBankMatch}); {@code null} when not set. */
     private java.util.Map<String, com.gsl.utils.cheque.ChequeInstrumentResolver.ChequeBankMatch> rowChequeBankMatches;
 
+    /**
+     * Set by a data source that could not produce this row's fixture (e.g. the API Edit source could not create or read the voucher a
+     * variant needs): the row is kept so the variant stays visible in the report, and the test fails on it by name instead of the row
+     * silently disappearing. {@code null} for every ordinary row.
+     */
+    private String fixtureFailure;
+
     /** Structured log of DB data-gathering steps, rendered before test steps begin. */
     @Builder.Default
     private List<String> dbGatheringLog = new ArrayList<>();

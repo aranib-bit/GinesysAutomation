@@ -1,57 +1,753 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<testng-results ignored="0" total="4" passed="4" failed="0" skipped="0">
+<testng-results ignored="0" total="18" passed="18" failed="0" skipped="0">
   <reporter-output>
   </reporter-output>
-  <suite started-at="2026-08-14T00:28:56 IST" name="Pipeline Mechanism Smoke Suite Poll" finished-at="2026-08-14T00:28:59 IST" duration-ms="3232">
+  <suite started-at="2026-10-26T17:20:45 IST" name="GV Create/Revert/Delete - failed only (no DB)" finished-at="2026-10-26T17:38:12 IST" duration-ms="1046237">
     <groups>
     </groups>
-    <test started-at="2026-08-14T00:28:56 IST" name="Smoke" finished-at="2026-08-14T00:28:59 IST" duration-ms="3232">
-      <class name="com.tests.smoketest.PipelineMechanismSmokeTestPoll">
-        <test-method signature="stepA(int)[pri:0, instance:com.tests.smoketest.PipelineMechanismSmokeTestPoll@1e7aa82b, instance params:[]]" started-at="2026-08-14T00:28:56 IST" name="stepA" data-provider="onlyThisInstance" finished-at="2026-08-14T00:28:59 IST" duration-ms="3007" status="PASS">
+    <test started-at="2026-10-26T17:20:45 IST" name="General Voucher Create/Revert - Mandatory" finished-at="2026-10-26T17:38:12 IST" duration-ms="1046237">
+      <class name="com.tests.Finance.Operations.Vouchers.CreateGeneralVoucher">
+        <test-method is-config="true" signature="setUp(java.lang.reflect.Method,[Ljava.lang.Object;)[pri:0, instance:com.tests.Finance.Operations.Vouchers.CreateGeneralVoucher@37b48520]" started-at="2026-10-26T17:20:48 IST" name="setUp" finished-at="2026-10-26T17:21:21 IST" duration-ms="33411" status="PASS">
           <params>
             <param index="0">
               <value>
-                <![CDATA[0]]>
+                <![CDATA[public void com.tests.Finance.Operations.Vouchers.CreateGeneralVoucher.createGeneralVoucherMixedTypes(com.gsl.testdata.UserCredential,com.gsl.testdata.dto.MergedFinanceGeneralVoucherData)]]>
+              </value>
+            </param>
+            <param index="1">
+              <value>
+                <![CDATA[[Ljava.lang.Object;@251dc883]]>
               </value>
             </param>
           </params>
           <reporter-output>
           </reporter-output>
-        </test-method> <!-- stepA -->
-        <test-method signature="stepA(int)[pri:0, instance:com.tests.smoketest.PipelineMechanismSmokeTestPoll@3b2c0e88, instance params:[]]" started-at="2026-08-14T00:28:56 IST" name="stepA" data-provider="onlyThisInstance" finished-at="2026-08-14T00:28:56 IST" duration-ms="27" status="PASS">
+        </test-method> <!-- setUp -->
+        <test-method is-config="true" signature="setUp(java.lang.reflect.Method,[Ljava.lang.Object;)[pri:0, instance:com.tests.Finance.Operations.Vouchers.CreateGeneralVoucher@37b48520]" started-at="2026-10-26T17:20:49 IST" name="setUp" finished-at="2026-10-26T17:22:04 IST" duration-ms="75391" status="PASS">
           <params>
             <param index="0">
               <value>
-                <![CDATA[1]]>
+                <![CDATA[public void com.tests.Finance.Operations.Vouchers.CreateGeneralVoucher.createGeneralVoucher(com.gsl.testdata.UserCredential,com.gsl.testdata.dto.MergedFinanceGeneralVoucherData)]]>
+              </value>
+            </param>
+            <param index="1">
+              <value>
+                <![CDATA[[Ljava.lang.Object;@6a2ee354]]>
               </value>
             </param>
           </params>
           <reporter-output>
           </reporter-output>
-        </test-method> <!-- stepA -->
-        <test-method signature="stepB(int)[pri:0, instance:com.tests.smoketest.PipelineMechanismSmokeTestPoll@1e7aa82b, instance params:[]]" started-at="2026-08-14T00:28:56 IST" name="stepB" data-provider="onlyThisInstance" finished-at="2026-08-14T00:28:59 IST" duration-ms="3082" status="PASS">
+        </test-method> <!-- setUp -->
+        <test-method signature="createGeneralVoucherMixedTypes(com.gsl.testdata.UserCredential,com.gsl.testdata.dto.MergedFinanceGeneralVoucherData)[pri:0, instance:com.tests.Finance.Operations.Vouchers.CreateGeneralVoucher@37b48520]" started-at="2026-10-26T17:21:21 IST" name="createGeneralVoucherMixedTypes" description="Create General Voucher – multiple ledger types mixed in one voucher" data-provider="supplySeqData" finished-at="2026-10-26T17:24:42 IST" duration-ms="200631" status="PASS">
           <params>
             <param index="0">
+              <value is-null="true"/>
+            </param>
+            <param index="1">
               <value>
-                <![CDATA[0]]>
+                <![CDATA[MergedFinanceGeneralVoucherData(masterTestData=com.gsl.testdata.MasterTestData@63bc9ff4, documentInformation=null, expenseIncomeDetailList=[], siteAllocationList=[], needsPaymentInfoWarning=false, expectedValidation=null, expectedRevertOutcome=null, scenarioTypeLabel=MIXED_TYPES, scenarioType=MIXED_TYPES, fixtureOptions=null, tags=[], cashBankPaymentInfo=null, actualChequeBankMatch=null, rowPayments=null, rowChequeBankMatches=null, fixtureFailure=null, dbGatheringLog=[], existingVoucherNo=null, releaseStatus=null, currentDocDate=null, originalReference=null, originalRemarks=null, reservedDocumentKey=null, operationMode=null, editedDetailLine=null, paymentEditTarget=null, headerFieldScope=ALL, entryMethod=null, searchStrategy=null, invocationIndex=1, totalInvocations=1)]]>
               </value>
             </param>
           </params>
           <reporter-output>
           </reporter-output>
-        </test-method> <!-- stepB -->
-        <test-method signature="stepB(int)[pri:0, instance:com.tests.smoketest.PipelineMechanismSmokeTestPoll@3b2c0e88, instance params:[]]" started-at="2026-08-14T00:28:59 IST" name="stepB" data-provider="onlyThisInstance" finished-at="2026-08-14T00:28:59 IST" duration-ms="10" status="PASS">
+        </test-method> <!-- createGeneralVoucherMixedTypes -->
+        <test-method signature="createGeneralVoucher(com.gsl.testdata.UserCredential,com.gsl.testdata.dto.MergedFinanceGeneralVoucherData)[pri:0, instance:com.tests.Finance.Operations.Vouchers.CreateGeneralVoucher@37b48520]" started-at="2026-10-26T17:22:04 IST" name="createGeneralVoucher" description="Create General Voucher – ledger-type combination matrix" data-provider="supplySeqData" finished-at="2026-10-26T17:24:17 IST" duration-ms="132725" status="PASS">
           <params>
             <param index="0">
+              <value is-null="true"/>
+            </param>
+            <param index="1">
               <value>
-                <![CDATA[1]]>
+                <![CDATA[MergedFinanceGeneralVoucherData(masterTestData=com.gsl.testdata.MasterTestData@570fb2f8, documentInformation=null, expenseIncomeDetailList=[], siteAllocationList=[], needsPaymentInfoWarning=false, expectedValidation=null, expectedRevertOutcome=null, scenarioTypeLabel=I_site_applicable_only_1GL_1SITE_CR_REV_N_CHEQUE, scenarioType=POSITIVE_COMBINATION, fixtureOptions=com.gsl.utils.dataprovider.fixture.finance.GeneralVoucherFixtureOptions@723b5276, tags=[CREDIT_SIDE, REVERSAL_NO, PAYMENT_CHEQUE, INCOME, TYPE2_SITE_ONLY], cashBankPaymentInfo=null, actualChequeBankMatch=null, rowPayments=null, rowChequeBankMatches=null, fixtureFailure=null, dbGatheringLog=[], existingVoucherNo=null, releaseStatus=null, currentDocDate=null, originalReference=null, originalRemarks=null, reservedDocumentKey=null, operationMode=null, editedDetailLine=null, paymentEditTarget=null, headerFieldScope=ALL, entryMethod=null, searchStrategy=null, invocationIndex=1, totalInvocations=9)]]>
               </value>
             </param>
           </params>
           <reporter-output>
           </reporter-output>
-        </test-method> <!-- stepB -->
-      </class> <!-- com.tests.smoketest.PipelineMechanismSmokeTestPoll -->
-    </test> <!-- Smoke -->
-  </suite> <!-- Pipeline Mechanism Smoke Suite Poll -->
+        </test-method> <!-- createGeneralVoucher -->
+        <test-method is-config="true" signature="tearDown(org.testng.ITestResult)[pri:0, instance:com.tests.Finance.Operations.Vouchers.CreateGeneralVoucher@37b48520]" started-at="2026-10-26T17:24:23 IST" name="tearDown" finished-at="2026-10-26T17:24:23 IST" duration-ms="28" status="PASS">
+          <params>
+            <param index="0">
+              <value>
+                <![CDATA[[TestResult name=createGeneralVoucher status=SUCCESS method=CreateGeneralVoucher.createGeneralVoucher(com.gsl.testdata.UserCredential,com.gsl.testdata.dto.MergedFinanceGeneralVoucherData)[pri:0, instance:com.tests.Finance.Operations.Vouchers.CreateGeneralVoucher@37b48520] output={null}]]]>
+              </value>
+            </param>
+          </params>
+          <reporter-output>
+          </reporter-output>
+        </test-method> <!-- tearDown -->
+        <test-method is-config="true" signature="setUp(java.lang.reflect.Method,[Ljava.lang.Object;)[pri:0, instance:com.tests.Finance.Operations.Vouchers.CreateGeneralVoucher@37b48520]" started-at="2026-10-26T17:24:23 IST" name="setUp" finished-at="2026-10-26T17:24:23 IST" duration-ms="36" status="PASS">
+          <params>
+            <param index="0">
+              <value>
+                <![CDATA[public void com.tests.Finance.Operations.Vouchers.CreateGeneralVoucher.createGeneralVoucher(com.gsl.testdata.UserCredential,com.gsl.testdata.dto.MergedFinanceGeneralVoucherData)]]>
+              </value>
+            </param>
+            <param index="1">
+              <value>
+                <![CDATA[[Ljava.lang.Object;@740936c5]]>
+              </value>
+            </param>
+          </params>
+          <reporter-output>
+          </reporter-output>
+        </test-method> <!-- setUp -->
+        <test-method signature="createGeneralVoucher(com.gsl.testdata.UserCredential,com.gsl.testdata.dto.MergedFinanceGeneralVoucherData)[pri:0, instance:com.tests.Finance.Operations.Vouchers.CreateGeneralVoucher@37b48520]" started-at="2026-10-26T17:24:23 IST" name="createGeneralVoucher" description="Create General Voucher – ledger-type combination matrix" data-provider="supplySeqData" finished-at="2026-10-26T17:25:46 IST" duration-ms="83632" status="PASS">
+          <params>
+            <param index="0">
+              <value is-null="true"/>
+            </param>
+            <param index="1">
+              <value>
+                <![CDATA[MergedFinanceGeneralVoucherData(masterTestData=com.gsl.testdata.MasterTestData@15e704c3, documentInformation=null, expenseIncomeDetailList=[], siteAllocationList=[], needsPaymentInfoWarning=false, expectedValidation=null, expectedRevertOutcome=null, scenarioTypeLabel=I_site_applicable_only_1GL_1SITE_CR_REV_N_NEFT_RTGS, scenarioType=POSITIVE_COMBINATION, fixtureOptions=com.gsl.utils.dataprovider.fixture.finance.GeneralVoucherFixtureOptions@3fd5e9b3, tags=[CREDIT_SIDE, REVERSAL_NO, PAYMENT_NEFT_RTGS, INCOME, TYPE2_SITE_ONLY], cashBankPaymentInfo=null, actualChequeBankMatch=null, rowPayments=null, rowChequeBankMatches=null, fixtureFailure=null, dbGatheringLog=[], existingVoucherNo=null, releaseStatus=null, currentDocDate=null, originalReference=null, originalRemarks=null, reservedDocumentKey=null, operationMode=null, editedDetailLine=null, paymentEditTarget=null, headerFieldScope=ALL, entryMethod=null, searchStrategy=null, invocationIndex=2, totalInvocations=9)]]>
+              </value>
+            </param>
+          </params>
+          <reporter-output>
+          </reporter-output>
+        </test-method> <!-- createGeneralVoucher -->
+        <test-method is-config="true" signature="tearDown(org.testng.ITestResult)[pri:0, instance:com.tests.Finance.Operations.Vouchers.CreateGeneralVoucher@37b48520]" started-at="2026-10-26T17:24:49 IST" name="tearDown" finished-at="2026-10-26T17:24:49 IST" duration-ms="65" status="PASS">
+          <params>
+            <param index="0">
+              <value>
+                <![CDATA[[TestResult name=createGeneralVoucherMixedTypes status=SUCCESS method=CreateGeneralVoucher.createGeneralVoucherMixedTypes(com.gsl.testdata.UserCredential,com.gsl.testdata.dto.MergedFinanceGeneralVoucherData)[pri:0, instance:com.tests.Finance.Operations.Vouchers.CreateGeneralVoucher@37b48520] output={null}]]]>
+              </value>
+            </param>
+          </params>
+          <reporter-output>
+          </reporter-output>
+        </test-method> <!-- tearDown -->
+        <test-method is-config="true" signature="tearDown(org.testng.ITestResult)[pri:0, instance:com.tests.Finance.Operations.Vouchers.CreateGeneralVoucher@37b48520]" started-at="2026-10-26T17:25:51 IST" name="tearDown" finished-at="2026-10-26T17:25:51 IST" duration-ms="18" status="PASS">
+          <params>
+            <param index="0">
+              <value>
+                <![CDATA[[TestResult name=createGeneralVoucher status=SUCCESS method=CreateGeneralVoucher.createGeneralVoucher(com.gsl.testdata.UserCredential,com.gsl.testdata.dto.MergedFinanceGeneralVoucherData)[pri:0, instance:com.tests.Finance.Operations.Vouchers.CreateGeneralVoucher@37b48520] output={null}]]]>
+              </value>
+            </param>
+          </params>
+          <reporter-output>
+          </reporter-output>
+        </test-method> <!-- tearDown -->
+        <test-method is-config="true" signature="setUp(java.lang.reflect.Method,[Ljava.lang.Object;)[pri:0, instance:com.tests.Finance.Operations.Vouchers.CreateGeneralVoucher@37b48520]" started-at="2026-10-26T17:25:51 IST" name="setUp" finished-at="2026-10-26T17:25:51 IST" duration-ms="27" status="PASS">
+          <params>
+            <param index="0">
+              <value>
+                <![CDATA[public void com.tests.Finance.Operations.Vouchers.CreateGeneralVoucher.createGeneralVoucher(com.gsl.testdata.UserCredential,com.gsl.testdata.dto.MergedFinanceGeneralVoucherData)]]>
+              </value>
+            </param>
+            <param index="1">
+              <value>
+                <![CDATA[[Ljava.lang.Object;@19abd5a1]]>
+              </value>
+            </param>
+          </params>
+          <reporter-output>
+          </reporter-output>
+        </test-method> <!-- setUp -->
+        <test-method signature="createGeneralVoucher(com.gsl.testdata.UserCredential,com.gsl.testdata.dto.MergedFinanceGeneralVoucherData)[pri:0, instance:com.tests.Finance.Operations.Vouchers.CreateGeneralVoucher@37b48520]" started-at="2026-10-26T17:25:51 IST" name="createGeneralVoucher" description="Create General Voucher – ledger-type combination matrix" data-provider="supplySeqData" finished-at="2026-10-26T17:26:46 IST" duration-ms="54466" status="PASS">
+          <params>
+            <param index="0">
+              <value is-null="true"/>
+            </param>
+            <param index="1">
+              <value>
+                <![CDATA[MergedFinanceGeneralVoucherData(masterTestData=com.gsl.testdata.MasterTestData@2dc1953, documentInformation=null, expenseIncomeDetailList=[], siteAllocationList=[], needsPaymentInfoWarning=false, expectedValidation=null, expectedRevertOutcome=null, scenarioTypeLabel=I_site_applicable_only_1GL_1SITE_CR_REV_N_NONE, scenarioType=POSITIVE_COMBINATION, fixtureOptions=com.gsl.utils.dataprovider.fixture.finance.GeneralVoucherFixtureOptions@2fb0d17a, tags=[CREDIT_SIDE, REVERSAL_NO, INCOME, TYPE2_SITE_ONLY, PAYMENT_NONE], cashBankPaymentInfo=null, actualChequeBankMatch=null, rowPayments=null, rowChequeBankMatches=null, fixtureFailure=null, dbGatheringLog=[], existingVoucherNo=null, releaseStatus=null, currentDocDate=null, originalReference=null, originalRemarks=null, reservedDocumentKey=null, operationMode=null, editedDetailLine=null, paymentEditTarget=null, headerFieldScope=ALL, entryMethod=null, searchStrategy=null, invocationIndex=3, totalInvocations=9)]]>
+              </value>
+            </param>
+          </params>
+          <reporter-output>
+          </reporter-output>
+        </test-method> <!-- createGeneralVoucher -->
+        <test-method is-config="true" signature="tearDown(org.testng.ITestResult)[pri:0, instance:com.tests.Finance.Operations.Vouchers.CreateGeneralVoucher@37b48520]" started-at="2026-10-26T17:26:50 IST" name="tearDown" finished-at="2026-10-26T17:26:50 IST" duration-ms="16" status="PASS">
+          <params>
+            <param index="0">
+              <value>
+                <![CDATA[[TestResult name=createGeneralVoucher status=SUCCESS method=CreateGeneralVoucher.createGeneralVoucher(com.gsl.testdata.UserCredential,com.gsl.testdata.dto.MergedFinanceGeneralVoucherData)[pri:0, instance:com.tests.Finance.Operations.Vouchers.CreateGeneralVoucher@37b48520] output={null}]]]>
+              </value>
+            </param>
+          </params>
+          <reporter-output>
+          </reporter-output>
+        </test-method> <!-- tearDown -->
+        <test-method is-config="true" signature="setUp(java.lang.reflect.Method,[Ljava.lang.Object;)[pri:0, instance:com.tests.Finance.Operations.Vouchers.CreateGeneralVoucher@37b48520]" started-at="2026-10-26T17:26:50 IST" name="setUp" finished-at="2026-10-26T17:26:50 IST" duration-ms="25" status="PASS">
+          <params>
+            <param index="0">
+              <value>
+                <![CDATA[public void com.tests.Finance.Operations.Vouchers.CreateGeneralVoucher.createGeneralVoucher(com.gsl.testdata.UserCredential,com.gsl.testdata.dto.MergedFinanceGeneralVoucherData)]]>
+              </value>
+            </param>
+            <param index="1">
+              <value>
+                <![CDATA[[Ljava.lang.Object;@2ee61278]]>
+              </value>
+            </param>
+          </params>
+          <reporter-output>
+          </reporter-output>
+        </test-method> <!-- setUp -->
+        <test-method signature="createGeneralVoucher(com.gsl.testdata.UserCredential,com.gsl.testdata.dto.MergedFinanceGeneralVoucherData)[pri:0, instance:com.tests.Finance.Operations.Vouchers.CreateGeneralVoucher@37b48520]" started-at="2026-10-26T17:26:50 IST" name="createGeneralVoucher" description="Create General Voucher – ledger-type combination matrix" data-provider="supplySeqData" finished-at="2026-10-26T17:28:07 IST" duration-ms="76456" status="PASS">
+          <params>
+            <param index="0">
+              <value is-null="true"/>
+            </param>
+            <param index="1">
+              <value>
+                <![CDATA[MergedFinanceGeneralVoucherData(masterTestData=com.gsl.testdata.MasterTestData@1ebfb922, documentInformation=null, expenseIncomeDetailList=[], siteAllocationList=[], needsPaymentInfoWarning=false, expectedValidation=null, expectedRevertOutcome=null, scenarioTypeLabel=E_site_applicable_only_1GL_1SITE_DR_REV_N_CHEQUE, scenarioType=POSITIVE_COMBINATION, fixtureOptions=com.gsl.utils.dataprovider.fixture.finance.GeneralVoucherFixtureOptions@2cefc45b, tags=[REVERSAL_NO, PAYMENT_CHEQUE, TYPE2_SITE_ONLY, DEBIT_SIDE, EXPENSE], cashBankPaymentInfo=null, actualChequeBankMatch=null, rowPayments=null, rowChequeBankMatches=null, fixtureFailure=null, dbGatheringLog=[], existingVoucherNo=null, releaseStatus=null, currentDocDate=null, originalReference=null, originalRemarks=null, reservedDocumentKey=null, operationMode=null, editedDetailLine=null, paymentEditTarget=null, headerFieldScope=ALL, entryMethod=null, searchStrategy=null, invocationIndex=4, totalInvocations=9)]]>
+              </value>
+            </param>
+          </params>
+          <reporter-output>
+          </reporter-output>
+        </test-method> <!-- createGeneralVoucher -->
+        <test-method is-config="true" signature="tearDown(org.testng.ITestResult)[pri:0, instance:com.tests.Finance.Operations.Vouchers.CreateGeneralVoucher@37b48520]" started-at="2026-10-26T17:28:11 IST" name="tearDown" finished-at="2026-10-26T17:28:11 IST" duration-ms="19" status="PASS">
+          <params>
+            <param index="0">
+              <value>
+                <![CDATA[[TestResult name=createGeneralVoucher status=SUCCESS method=CreateGeneralVoucher.createGeneralVoucher(com.gsl.testdata.UserCredential,com.gsl.testdata.dto.MergedFinanceGeneralVoucherData)[pri:0, instance:com.tests.Finance.Operations.Vouchers.CreateGeneralVoucher@37b48520] output={null}]]]>
+              </value>
+            </param>
+          </params>
+          <reporter-output>
+          </reporter-output>
+        </test-method> <!-- tearDown -->
+        <test-method is-config="true" signature="setUp(java.lang.reflect.Method,[Ljava.lang.Object;)[pri:0, instance:com.tests.Finance.Operations.Vouchers.CreateGeneralVoucher@37b48520]" started-at="2026-10-26T17:28:11 IST" name="setUp" finished-at="2026-10-26T17:28:11 IST" duration-ms="30" status="PASS">
+          <params>
+            <param index="0">
+              <value>
+                <![CDATA[public void com.tests.Finance.Operations.Vouchers.CreateGeneralVoucher.createGeneralVoucher(com.gsl.testdata.UserCredential,com.gsl.testdata.dto.MergedFinanceGeneralVoucherData)]]>
+              </value>
+            </param>
+            <param index="1">
+              <value>
+                <![CDATA[[Ljava.lang.Object;@6ab67ad1]]>
+              </value>
+            </param>
+          </params>
+          <reporter-output>
+          </reporter-output>
+        </test-method> <!-- setUp -->
+        <test-method signature="createGeneralVoucher(com.gsl.testdata.UserCredential,com.gsl.testdata.dto.MergedFinanceGeneralVoucherData)[pri:0, instance:com.tests.Finance.Operations.Vouchers.CreateGeneralVoucher@37b48520]" started-at="2026-10-26T17:28:11 IST" name="createGeneralVoucher" description="Create General Voucher – ledger-type combination matrix" data-provider="supplySeqData" finished-at="2026-10-26T17:29:32 IST" duration-ms="80934" status="PASS">
+          <params>
+            <param index="0">
+              <value is-null="true"/>
+            </param>
+            <param index="1">
+              <value>
+                <![CDATA[MergedFinanceGeneralVoucherData(masterTestData=com.gsl.testdata.MasterTestData@74be2945, documentInformation=null, expenseIncomeDetailList=[], siteAllocationList=[], needsPaymentInfoWarning=false, expectedValidation=null, expectedRevertOutcome=null, scenarioTypeLabel=E_site_applicable_only_1GL_1SITE_DR_REV_N_NEFT_RTGS, scenarioType=POSITIVE_COMBINATION, fixtureOptions=com.gsl.utils.dataprovider.fixture.finance.GeneralVoucherFixtureOptions@26a1fcd6, tags=[REVERSAL_NO, PAYMENT_NEFT_RTGS, TYPE2_SITE_ONLY, DEBIT_SIDE, EXPENSE], cashBankPaymentInfo=null, actualChequeBankMatch=null, rowPayments=null, rowChequeBankMatches=null, fixtureFailure=null, dbGatheringLog=[], existingVoucherNo=null, releaseStatus=null, currentDocDate=null, originalReference=null, originalRemarks=null, reservedDocumentKey=null, operationMode=null, editedDetailLine=null, paymentEditTarget=null, headerFieldScope=ALL, entryMethod=null, searchStrategy=null, invocationIndex=5, totalInvocations=9)]]>
+              </value>
+            </param>
+          </params>
+          <reporter-output>
+          </reporter-output>
+        </test-method> <!-- createGeneralVoucher -->
+        <test-method is-config="true" signature="tearDown(org.testng.ITestResult)[pri:0, instance:com.tests.Finance.Operations.Vouchers.CreateGeneralVoucher@37b48520]" started-at="2026-10-26T17:29:37 IST" name="tearDown" finished-at="2026-10-26T17:29:37 IST" duration-ms="15" status="PASS">
+          <params>
+            <param index="0">
+              <value>
+                <![CDATA[[TestResult name=createGeneralVoucher status=SUCCESS method=CreateGeneralVoucher.createGeneralVoucher(com.gsl.testdata.UserCredential,com.gsl.testdata.dto.MergedFinanceGeneralVoucherData)[pri:0, instance:com.tests.Finance.Operations.Vouchers.CreateGeneralVoucher@37b48520] output={null}]]]>
+              </value>
+            </param>
+          </params>
+          <reporter-output>
+          </reporter-output>
+        </test-method> <!-- tearDown -->
+        <test-method is-config="true" signature="setUp(java.lang.reflect.Method,[Ljava.lang.Object;)[pri:0, instance:com.tests.Finance.Operations.Vouchers.CreateGeneralVoucher@37b48520]" started-at="2026-10-26T17:29:37 IST" name="setUp" finished-at="2026-10-26T17:29:37 IST" duration-ms="26" status="PASS">
+          <params>
+            <param index="0">
+              <value>
+                <![CDATA[public void com.tests.Finance.Operations.Vouchers.CreateGeneralVoucher.createGeneralVoucher(com.gsl.testdata.UserCredential,com.gsl.testdata.dto.MergedFinanceGeneralVoucherData)]]>
+              </value>
+            </param>
+            <param index="1">
+              <value>
+                <![CDATA[[Ljava.lang.Object;@642138cc]]>
+              </value>
+            </param>
+          </params>
+          <reporter-output>
+          </reporter-output>
+        </test-method> <!-- setUp -->
+        <test-method signature="createGeneralVoucher(com.gsl.testdata.UserCredential,com.gsl.testdata.dto.MergedFinanceGeneralVoucherData)[pri:0, instance:com.tests.Finance.Operations.Vouchers.CreateGeneralVoucher@37b48520]" started-at="2026-10-26T17:29:37 IST" name="createGeneralVoucher" description="Create General Voucher – ledger-type combination matrix" data-provider="supplySeqData" finished-at="2026-10-26T17:30:32 IST" duration-ms="54303" status="PASS">
+          <params>
+            <param index="0">
+              <value is-null="true"/>
+            </param>
+            <param index="1">
+              <value>
+                <![CDATA[MergedFinanceGeneralVoucherData(masterTestData=com.gsl.testdata.MasterTestData@6d243a17, documentInformation=null, expenseIncomeDetailList=[], siteAllocationList=[], needsPaymentInfoWarning=false, expectedValidation=null, expectedRevertOutcome=null, scenarioTypeLabel=E_site_applicable_only_1GL_1SITE_DR_REV_N_NONE, scenarioType=POSITIVE_COMBINATION, fixtureOptions=com.gsl.utils.dataprovider.fixture.finance.GeneralVoucherFixtureOptions@444a2904, tags=[REVERSAL_NO, TYPE2_SITE_ONLY, DEBIT_SIDE, EXPENSE, PAYMENT_NONE], cashBankPaymentInfo=null, actualChequeBankMatch=null, rowPayments=null, rowChequeBankMatches=null, fixtureFailure=null, dbGatheringLog=[], existingVoucherNo=null, releaseStatus=null, currentDocDate=null, originalReference=null, originalRemarks=null, reservedDocumentKey=null, operationMode=null, editedDetailLine=null, paymentEditTarget=null, headerFieldScope=ALL, entryMethod=null, searchStrategy=null, invocationIndex=6, totalInvocations=9)]]>
+              </value>
+            </param>
+          </params>
+          <reporter-output>
+          </reporter-output>
+        </test-method> <!-- createGeneralVoucher -->
+        <test-method is-config="true" signature="tearDown(org.testng.ITestResult)[pri:0, instance:com.tests.Finance.Operations.Vouchers.CreateGeneralVoucher@37b48520]" started-at="2026-10-26T17:30:37 IST" name="tearDown" finished-at="2026-10-26T17:30:37 IST" duration-ms="20" status="PASS">
+          <params>
+            <param index="0">
+              <value>
+                <![CDATA[[TestResult name=createGeneralVoucher status=SUCCESS method=CreateGeneralVoucher.createGeneralVoucher(com.gsl.testdata.UserCredential,com.gsl.testdata.dto.MergedFinanceGeneralVoucherData)[pri:0, instance:com.tests.Finance.Operations.Vouchers.CreateGeneralVoucher@37b48520] output={null}]]]>
+              </value>
+            </param>
+          </params>
+          <reporter-output>
+          </reporter-output>
+        </test-method> <!-- tearDown -->
+        <test-method is-config="true" signature="setUp(java.lang.reflect.Method,[Ljava.lang.Object;)[pri:0, instance:com.tests.Finance.Operations.Vouchers.CreateGeneralVoucher@37b48520]" started-at="2026-10-26T17:30:37 IST" name="setUp" finished-at="2026-10-26T17:30:37 IST" duration-ms="27" status="PASS">
+          <params>
+            <param index="0">
+              <value>
+                <![CDATA[public void com.tests.Finance.Operations.Vouchers.CreateGeneralVoucher.createGeneralVoucher(com.gsl.testdata.UserCredential,com.gsl.testdata.dto.MergedFinanceGeneralVoucherData)]]>
+              </value>
+            </param>
+            <param index="1">
+              <value>
+                <![CDATA[[Ljava.lang.Object;@4ca48fc]]>
+              </value>
+            </param>
+          </params>
+          <reporter-output>
+          </reporter-output>
+        </test-method> <!-- setUp -->
+        <test-method signature="createGeneralVoucher(com.gsl.testdata.UserCredential,com.gsl.testdata.dto.MergedFinanceGeneralVoucherData)[pri:0, instance:com.tests.Finance.Operations.Vouchers.CreateGeneralVoucher@37b48520]" started-at="2026-10-26T17:30:37 IST" name="createGeneralVoucher" description="Create General Voucher – ledger-type combination matrix" data-provider="supplySeqData" finished-at="2026-10-26T17:32:07 IST" duration-ms="90200" status="PASS">
+          <params>
+            <param index="0">
+              <value is-null="true"/>
+            </param>
+            <param index="1">
+              <value>
+                <![CDATA[MergedFinanceGeneralVoucherData(masterTestData=com.gsl.testdata.MasterTestData@795b69be, documentInformation=null, expenseIncomeDetailList=[], siteAllocationList=[], needsPaymentInfoWarning=false, expectedValidation=null, expectedRevertOutcome=null, scenarioTypeLabel=E_site_applicable_only_1GL_1SITE_DR_REV_Y_CHEQUE, scenarioType=POSITIVE_COMBINATION, fixtureOptions=com.gsl.utils.dataprovider.fixture.finance.GeneralVoucherFixtureOptions@35630987, tags=[REVERSAL_YES, PAYMENT_CHEQUE, TYPE2_SITE_ONLY, DEBIT_SIDE, EXPENSE], cashBankPaymentInfo=null, actualChequeBankMatch=null, rowPayments=null, rowChequeBankMatches=null, fixtureFailure=null, dbGatheringLog=[], existingVoucherNo=null, releaseStatus=null, currentDocDate=null, originalReference=null, originalRemarks=null, reservedDocumentKey=null, operationMode=null, editedDetailLine=null, paymentEditTarget=null, headerFieldScope=ALL, entryMethod=null, searchStrategy=null, invocationIndex=7, totalInvocations=9)]]>
+              </value>
+            </param>
+          </params>
+          <reporter-output>
+          </reporter-output>
+        </test-method> <!-- createGeneralVoucher -->
+        <test-method is-config="true" signature="tearDown(org.testng.ITestResult)[pri:0, instance:com.tests.Finance.Operations.Vouchers.CreateGeneralVoucher@37b48520]" started-at="2026-10-26T17:32:15 IST" name="tearDown" finished-at="2026-10-26T17:32:15 IST" duration-ms="44" status="PASS">
+          <params>
+            <param index="0">
+              <value>
+                <![CDATA[[TestResult name=createGeneralVoucher status=SUCCESS method=CreateGeneralVoucher.createGeneralVoucher(com.gsl.testdata.UserCredential,com.gsl.testdata.dto.MergedFinanceGeneralVoucherData)[pri:0, instance:com.tests.Finance.Operations.Vouchers.CreateGeneralVoucher@37b48520] output={null}]]]>
+              </value>
+            </param>
+          </params>
+          <reporter-output>
+          </reporter-output>
+        </test-method> <!-- tearDown -->
+        <test-method is-config="true" signature="setUp(java.lang.reflect.Method,[Ljava.lang.Object;)[pri:0, instance:com.tests.Finance.Operations.Vouchers.CreateGeneralVoucher@37b48520]" started-at="2026-10-26T17:32:15 IST" name="setUp" finished-at="2026-10-26T17:32:16 IST" duration-ms="1025" status="PASS">
+          <params>
+            <param index="0">
+              <value>
+                <![CDATA[public void com.tests.Finance.Operations.Vouchers.CreateGeneralVoucher.createGeneralVoucher(com.gsl.testdata.UserCredential,com.gsl.testdata.dto.MergedFinanceGeneralVoucherData)]]>
+              </value>
+            </param>
+            <param index="1">
+              <value>
+                <![CDATA[[Ljava.lang.Object;@7a39736f]]>
+              </value>
+            </param>
+          </params>
+          <reporter-output>
+          </reporter-output>
+        </test-method> <!-- setUp -->
+        <test-method signature="createGeneralVoucher(com.gsl.testdata.UserCredential,com.gsl.testdata.dto.MergedFinanceGeneralVoucherData)[pri:0, instance:com.tests.Finance.Operations.Vouchers.CreateGeneralVoucher@37b48520]" started-at="2026-10-26T17:32:16 IST" name="createGeneralVoucher" description="Create General Voucher – ledger-type combination matrix" data-provider="supplySeqData" finished-at="2026-10-26T17:33:46 IST" duration-ms="90092" status="PASS">
+          <params>
+            <param index="0">
+              <value is-null="true"/>
+            </param>
+            <param index="1">
+              <value>
+                <![CDATA[MergedFinanceGeneralVoucherData(masterTestData=com.gsl.testdata.MasterTestData@129d2684, documentInformation=null, expenseIncomeDetailList=[], siteAllocationList=[], needsPaymentInfoWarning=false, expectedValidation=null, expectedRevertOutcome=null, scenarioTypeLabel=E_site_applicable_only_1GL_2SITE_DR_REV_N_CHEQUE, scenarioType=POSITIVE_COMBINATION, fixtureOptions=com.gsl.utils.dataprovider.fixture.finance.GeneralVoucherFixtureOptions@3f1f2fd1, tags=[REVERSAL_NO, PAYMENT_CHEQUE, TYPE2_SITE_ONLY, DEBIT_SIDE, EXPENSE], cashBankPaymentInfo=null, actualChequeBankMatch=null, rowPayments=null, rowChequeBankMatches=null, fixtureFailure=null, dbGatheringLog=[], existingVoucherNo=null, releaseStatus=null, currentDocDate=null, originalReference=null, originalRemarks=null, reservedDocumentKey=null, operationMode=null, editedDetailLine=null, paymentEditTarget=null, headerFieldScope=ALL, entryMethod=null, searchStrategy=null, invocationIndex=8, totalInvocations=9)]]>
+              </value>
+            </param>
+          </params>
+          <reporter-output>
+          </reporter-output>
+        </test-method> <!-- createGeneralVoucher -->
+        <test-method is-config="true" signature="tearDown(org.testng.ITestResult)[pri:0, instance:com.tests.Finance.Operations.Vouchers.CreateGeneralVoucher@37b48520]" started-at="2026-10-26T17:33:53 IST" name="tearDown" finished-at="2026-10-26T17:33:53 IST" duration-ms="16" status="PASS">
+          <params>
+            <param index="0">
+              <value>
+                <![CDATA[[TestResult name=createGeneralVoucher status=SUCCESS method=CreateGeneralVoucher.createGeneralVoucher(com.gsl.testdata.UserCredential,com.gsl.testdata.dto.MergedFinanceGeneralVoucherData)[pri:0, instance:com.tests.Finance.Operations.Vouchers.CreateGeneralVoucher@37b48520] output={null}]]]>
+              </value>
+            </param>
+          </params>
+          <reporter-output>
+          </reporter-output>
+        </test-method> <!-- tearDown -->
+        <test-method is-config="true" signature="setUp(java.lang.reflect.Method,[Ljava.lang.Object;)[pri:0, instance:com.tests.Finance.Operations.Vouchers.CreateGeneralVoucher@37b48520]" started-at="2026-10-26T17:33:53 IST" name="setUp" finished-at="2026-10-26T17:34:04 IST" duration-ms="11829" status="PASS">
+          <params>
+            <param index="0">
+              <value>
+                <![CDATA[public void com.tests.Finance.Operations.Vouchers.CreateGeneralVoucher.createGeneralVoucher(com.gsl.testdata.UserCredential,com.gsl.testdata.dto.MergedFinanceGeneralVoucherData)]]>
+              </value>
+            </param>
+            <param index="1">
+              <value>
+                <![CDATA[[Ljava.lang.Object;@12c17d93]]>
+              </value>
+            </param>
+          </params>
+          <reporter-output>
+          </reporter-output>
+        </test-method> <!-- setUp -->
+        <test-method signature="createGeneralVoucher(com.gsl.testdata.UserCredential,com.gsl.testdata.dto.MergedFinanceGeneralVoucherData)[pri:0, instance:com.tests.Finance.Operations.Vouchers.CreateGeneralVoucher@37b48520]" started-at="2026-10-26T17:34:04 IST" name="createGeneralVoucher" description="Create General Voucher – ledger-type combination matrix" data-provider="supplySeqData" finished-at="2026-10-26T17:38:04 IST" duration-ms="239921" status="PASS">
+          <params>
+            <param index="0">
+              <value is-null="true"/>
+            </param>
+            <param index="1">
+              <value>
+                <![CDATA[MergedFinanceGeneralVoucherData(masterTestData=com.gsl.testdata.MasterTestData@48b6fdc3, documentInformation=null, expenseIncomeDetailList=[], siteAllocationList=[], needsPaymentInfoWarning=false, expectedValidation=null, expectedRevertOutcome=null, scenarioTypeLabel=E_site_applicable_only_3GL_1SITE_DR_REV_N_CHEQUE_ROWPAY, scenarioType=POSITIVE_COMBINATION, fixtureOptions=com.gsl.utils.dataprovider.fixture.finance.GeneralVoucherFixtureOptions@33e4543d, tags=[REVERSAL_NO, PAYMENT_CHEQUE, TYPE2_SITE_ONLY, DEBIT_SIDE, PAYMENT_MULTI_ROW, EXPENSE], cashBankPaymentInfo=null, actualChequeBankMatch=null, rowPayments=null, rowChequeBankMatches=null, fixtureFailure=null, dbGatheringLog=[], existingVoucherNo=null, releaseStatus=null, currentDocDate=null, originalReference=null, originalRemarks=null, reservedDocumentKey=null, operationMode=null, editedDetailLine=null, paymentEditTarget=null, headerFieldScope=ALL, entryMethod=null, searchStrategy=null, invocationIndex=9, totalInvocations=9)]]>
+              </value>
+            </param>
+          </params>
+          <reporter-output>
+          </reporter-output>
+        </test-method> <!-- createGeneralVoucher -->
+        <test-method is-config="true" signature="tearDown(org.testng.ITestResult)[pri:0, instance:com.tests.Finance.Operations.Vouchers.CreateGeneralVoucher@37b48520]" started-at="2026-10-26T17:38:11 IST" name="tearDown" finished-at="2026-10-26T17:38:12 IST" duration-ms="19" status="PASS">
+          <params>
+            <param index="0">
+              <value>
+                <![CDATA[[TestResult name=createGeneralVoucher status=SUCCESS method=CreateGeneralVoucher.createGeneralVoucher(com.gsl.testdata.UserCredential,com.gsl.testdata.dto.MergedFinanceGeneralVoucherData)[pri:0, instance:com.tests.Finance.Operations.Vouchers.CreateGeneralVoucher@37b48520] output={null}]]]>
+              </value>
+            </param>
+          </params>
+          <reporter-output>
+          </reporter-output>
+        </test-method> <!-- tearDown -->
+      </class> <!-- com.tests.Finance.Operations.Vouchers.CreateGeneralVoucher -->
+      <class name="com.tests.Finance.Operations.Vouchers.RevertGeneralVoucher">
+        <test-method is-config="true" signature="setUp(java.lang.reflect.Method,[Ljava.lang.Object;)[pri:0, instance:com.tests.Finance.Operations.Vouchers.RevertGeneralVoucher@57a4ca74]" started-at="2026-10-26T17:21:55 IST" name="setUp" finished-at="2026-10-26T17:22:11 IST" duration-ms="15982" status="PASS">
+          <params>
+            <param index="0">
+              <value>
+                <![CDATA[public void com.tests.Finance.Operations.Vouchers.RevertGeneralVoucher.revertGeneralVoucher(com.gsl.testdata.UserCredential,com.gsl.testdata.dto.MergedFinanceGeneralVoucherData)]]>
+              </value>
+            </param>
+            <param index="1">
+              <value>
+                <![CDATA[[Ljava.lang.Object;@2425179e]]>
+              </value>
+            </param>
+          </params>
+          <reporter-output>
+          </reporter-output>
+        </test-method> <!-- setUp -->
+        <test-method signature="revertGeneralVoucher(com.gsl.testdata.UserCredential,com.gsl.testdata.dto.MergedFinanceGeneralVoucherData)[pri:0, instance:com.tests.Finance.Operations.Vouchers.RevertGeneralVoucher@57a4ca74]" started-at="2026-10-26T17:22:11 IST" name="revertGeneralVoucher" description="Revert an existing General Voucher from the List Page" data-provider="supplySeqData" finished-at="2026-10-26T17:23:16 IST" duration-ms="64662" status="PASS">
+          <params>
+            <param index="0">
+              <value is-null="true"/>
+            </param>
+            <param index="1">
+              <value>
+                <![CDATA[MergedFinanceGeneralVoucherData(masterTestData=com.gsl.testdata.MasterTestData@53620565, documentInformation=com.gsl.testdata.Finance.Operations.Vouchers.GeneralVoucher.DocumentInformation@41df6a33, expenseIncomeDetailList=[], siteAllocationList=[], needsPaymentInfoWarning=false, expectedValidation=null, expectedRevertOutcome=null, scenarioTypeLabel=I_site_applicable_only_1GL_1SITE_CR_REV_N_CHEQUE, scenarioType=POSITIVE_COMBINATION, fixtureOptions=com.gsl.utils.dataprovider.fixture.finance.GeneralVoucherFixtureOptions@63b24b1e, tags=[CREDIT_SIDE, REVERSAL_NO, PAYMENT_CHEQUE, INCOME, TYPE2_SITE_ONLY], cashBankPaymentInfo=null, actualChequeBankMatch=null, rowPayments=null, rowChequeBankMatches=null, fixtureFailure=null, dbGatheringLog=[═══════════════════════════════════════════════════════════,   API DATA GATHERING - POSTED VOUCHER CREATED (GENERAL VOUCHER REVERT), ═══════════════════════════════════════════════════════════,   Combination='I_site_applicable_only_1GL_1SITE_CR_REV_N_CHEQUE', account type=INCOME,   Created and released voucher scheme_docno='VG/00511/26-27' (vchcode=1183728), ═══════════════════════════════════════════════════════════], existingVoucherNo=VG/00511/26-27, releaseStatus=P, currentDocDate=null, originalReference=null, originalRemarks=null, reservedDocumentKey=1183728, operationMode=REVERT, editedDetailLine=null, paymentEditTarget=null, headerFieldScope=ALL, entryMethod=null, searchStrategy=null, invocationIndex=1, totalInvocations=8)]]>
+              </value>
+            </param>
+          </params>
+          <reporter-output>
+          </reporter-output>
+        </test-method> <!-- revertGeneralVoucher -->
+        <test-method is-config="true" signature="tearDown(org.testng.ITestResult)[pri:0, instance:com.tests.Finance.Operations.Vouchers.RevertGeneralVoucher@57a4ca74]" started-at="2026-10-26T17:23:24 IST" name="tearDown" finished-at="2026-10-26T17:23:24 IST" duration-ms="61" status="PASS">
+          <params>
+            <param index="0">
+              <value>
+                <![CDATA[[TestResult name=revertGeneralVoucher status=SUCCESS method=RevertGeneralVoucher.revertGeneralVoucher(com.gsl.testdata.UserCredential,com.gsl.testdata.dto.MergedFinanceGeneralVoucherData)[pri:0, instance:com.tests.Finance.Operations.Vouchers.RevertGeneralVoucher@57a4ca74] output={null}]]]>
+              </value>
+            </param>
+          </params>
+          <reporter-output>
+          </reporter-output>
+        </test-method> <!-- tearDown -->
+        <test-method is-config="true" signature="setUp(java.lang.reflect.Method,[Ljava.lang.Object;)[pri:0, instance:com.tests.Finance.Operations.Vouchers.RevertGeneralVoucher@57a4ca74]" started-at="2026-10-26T17:23:24 IST" name="setUp" finished-at="2026-10-26T17:23:24 IST" duration-ms="37" status="PASS">
+          <params>
+            <param index="0">
+              <value>
+                <![CDATA[public void com.tests.Finance.Operations.Vouchers.RevertGeneralVoucher.revertGeneralVoucher(com.gsl.testdata.UserCredential,com.gsl.testdata.dto.MergedFinanceGeneralVoucherData)]]>
+              </value>
+            </param>
+            <param index="1">
+              <value>
+                <![CDATA[[Ljava.lang.Object;@538e2898]]>
+              </value>
+            </param>
+          </params>
+          <reporter-output>
+          </reporter-output>
+        </test-method> <!-- setUp -->
+        <test-method signature="revertGeneralVoucher(com.gsl.testdata.UserCredential,com.gsl.testdata.dto.MergedFinanceGeneralVoucherData)[pri:0, instance:com.tests.Finance.Operations.Vouchers.RevertGeneralVoucher@57a4ca74]" started-at="2026-10-26T17:23:24 IST" name="revertGeneralVoucher" description="Revert an existing General Voucher from the List Page" data-provider="supplySeqData" finished-at="2026-10-26T17:24:08 IST" duration-ms="43593" status="PASS">
+          <params>
+            <param index="0">
+              <value is-null="true"/>
+            </param>
+            <param index="1">
+              <value>
+                <![CDATA[MergedFinanceGeneralVoucherData(masterTestData=com.gsl.testdata.MasterTestData@62de0bd2, documentInformation=com.gsl.testdata.Finance.Operations.Vouchers.GeneralVoucher.DocumentInformation@6aab2e1a, expenseIncomeDetailList=[], siteAllocationList=[], needsPaymentInfoWarning=false, expectedValidation=null, expectedRevertOutcome=null, scenarioTypeLabel=I_site_applicable_only_1GL_1SITE_CR_REV_N_NEFT_RTGS, scenarioType=POSITIVE_COMBINATION, fixtureOptions=com.gsl.utils.dataprovider.fixture.finance.GeneralVoucherFixtureOptions@54111e2, tags=[CREDIT_SIDE, REVERSAL_NO, PAYMENT_NEFT_RTGS, INCOME, TYPE2_SITE_ONLY], cashBankPaymentInfo=null, actualChequeBankMatch=null, rowPayments=null, rowChequeBankMatches=null, fixtureFailure=null, dbGatheringLog=[═══════════════════════════════════════════════════════════,   API DATA GATHERING - POSTED VOUCHER CREATED (GENERAL VOUCHER REVERT), ═══════════════════════════════════════════════════════════,   Combination='I_site_applicable_only_1GL_1SITE_CR_REV_N_NEFT_RTGS', account type=INCOME,   Created and released voucher scheme_docno='VG/00512/26-27' (vchcode=1183731), ═══════════════════════════════════════════════════════════], existingVoucherNo=VG/00512/26-27, releaseStatus=P, currentDocDate=null, originalReference=null, originalRemarks=null, reservedDocumentKey=1183731, operationMode=REVERT, editedDetailLine=null, paymentEditTarget=null, headerFieldScope=ALL, entryMethod=null, searchStrategy=null, invocationIndex=2, totalInvocations=8)]]>
+              </value>
+            </param>
+          </params>
+          <reporter-output>
+          </reporter-output>
+        </test-method> <!-- revertGeneralVoucher -->
+        <test-method is-config="true" signature="tearDown(org.testng.ITestResult)[pri:0, instance:com.tests.Finance.Operations.Vouchers.RevertGeneralVoucher@57a4ca74]" started-at="2026-10-26T17:24:14 IST" name="tearDown" finished-at="2026-10-26T17:24:14 IST" duration-ms="84" status="PASS">
+          <params>
+            <param index="0">
+              <value>
+                <![CDATA[[TestResult name=revertGeneralVoucher status=SUCCESS method=RevertGeneralVoucher.revertGeneralVoucher(com.gsl.testdata.UserCredential,com.gsl.testdata.dto.MergedFinanceGeneralVoucherData)[pri:0, instance:com.tests.Finance.Operations.Vouchers.RevertGeneralVoucher@57a4ca74] output={null}]]]>
+              </value>
+            </param>
+          </params>
+          <reporter-output>
+          </reporter-output>
+        </test-method> <!-- tearDown -->
+        <test-method is-config="true" signature="setUp(java.lang.reflect.Method,[Ljava.lang.Object;)[pri:0, instance:com.tests.Finance.Operations.Vouchers.RevertGeneralVoucher@57a4ca74]" started-at="2026-10-26T17:24:14 IST" name="setUp" finished-at="2026-10-26T17:24:14 IST" duration-ms="140" status="PASS">
+          <params>
+            <param index="0">
+              <value>
+                <![CDATA[public void com.tests.Finance.Operations.Vouchers.RevertGeneralVoucher.revertGeneralVoucher(com.gsl.testdata.UserCredential,com.gsl.testdata.dto.MergedFinanceGeneralVoucherData)]]>
+              </value>
+            </param>
+            <param index="1">
+              <value>
+                <![CDATA[[Ljava.lang.Object;@87b2c8e]]>
+              </value>
+            </param>
+          </params>
+          <reporter-output>
+          </reporter-output>
+        </test-method> <!-- setUp -->
+        <test-method signature="revertGeneralVoucher(com.gsl.testdata.UserCredential,com.gsl.testdata.dto.MergedFinanceGeneralVoucherData)[pri:0, instance:com.tests.Finance.Operations.Vouchers.RevertGeneralVoucher@57a4ca74]" started-at="2026-10-26T17:24:14 IST" name="revertGeneralVoucher" description="Revert an existing General Voucher from the List Page" data-provider="supplySeqData" finished-at="2026-10-26T17:24:57 IST" duration-ms="42795" status="PASS">
+          <params>
+            <param index="0">
+              <value is-null="true"/>
+            </param>
+            <param index="1">
+              <value>
+                <![CDATA[MergedFinanceGeneralVoucherData(masterTestData=com.gsl.testdata.MasterTestData@71703277, documentInformation=com.gsl.testdata.Finance.Operations.Vouchers.GeneralVoucher.DocumentInformation@30b8cef4, expenseIncomeDetailList=[], siteAllocationList=[], needsPaymentInfoWarning=false, expectedValidation=null, expectedRevertOutcome=null, scenarioTypeLabel=I_site_applicable_only_1GL_1SITE_CR_REV_N_NONE, scenarioType=POSITIVE_COMBINATION, fixtureOptions=com.gsl.utils.dataprovider.fixture.finance.GeneralVoucherFixtureOptions@1d965883, tags=[CREDIT_SIDE, REVERSAL_NO, INCOME, TYPE2_SITE_ONLY, PAYMENT_NONE], cashBankPaymentInfo=null, actualChequeBankMatch=null, rowPayments=null, rowChequeBankMatches=null, fixtureFailure=null, dbGatheringLog=[═══════════════════════════════════════════════════════════,   API DATA GATHERING - POSTED VOUCHER CREATED (GENERAL VOUCHER REVERT), ═══════════════════════════════════════════════════════════,   Combination='I_site_applicable_only_1GL_1SITE_CR_REV_N_NONE', account type=INCOME,   Created and released voucher scheme_docno='VG/00513/26-27' (vchcode=1183734), ═══════════════════════════════════════════════════════════], existingVoucherNo=VG/00513/26-27, releaseStatus=P, currentDocDate=null, originalReference=null, originalRemarks=null, reservedDocumentKey=1183734, operationMode=REVERT, editedDetailLine=null, paymentEditTarget=null, headerFieldScope=ALL, entryMethod=null, searchStrategy=null, invocationIndex=3, totalInvocations=8)]]>
+              </value>
+            </param>
+          </params>
+          <reporter-output>
+          </reporter-output>
+        </test-method> <!-- revertGeneralVoucher -->
+        <test-method is-config="true" signature="tearDown(org.testng.ITestResult)[pri:0, instance:com.tests.Finance.Operations.Vouchers.RevertGeneralVoucher@57a4ca74]" started-at="2026-10-26T17:25:02 IST" name="tearDown" finished-at="2026-10-26T17:25:02 IST" duration-ms="37" status="PASS">
+          <params>
+            <param index="0">
+              <value>
+                <![CDATA[[TestResult name=revertGeneralVoucher status=SUCCESS method=RevertGeneralVoucher.revertGeneralVoucher(com.gsl.testdata.UserCredential,com.gsl.testdata.dto.MergedFinanceGeneralVoucherData)[pri:0, instance:com.tests.Finance.Operations.Vouchers.RevertGeneralVoucher@57a4ca74] output={null}]]]>
+              </value>
+            </param>
+          </params>
+          <reporter-output>
+          </reporter-output>
+        </test-method> <!-- tearDown -->
+        <test-method is-config="true" signature="setUp(java.lang.reflect.Method,[Ljava.lang.Object;)[pri:0, instance:com.tests.Finance.Operations.Vouchers.RevertGeneralVoucher@57a4ca74]" started-at="2026-10-26T17:25:02 IST" name="setUp" finished-at="2026-10-26T17:25:02 IST" duration-ms="51" status="PASS">
+          <params>
+            <param index="0">
+              <value>
+                <![CDATA[public void com.tests.Finance.Operations.Vouchers.RevertGeneralVoucher.revertGeneralVoucher(com.gsl.testdata.UserCredential,com.gsl.testdata.dto.MergedFinanceGeneralVoucherData)]]>
+              </value>
+            </param>
+            <param index="1">
+              <value>
+                <![CDATA[[Ljava.lang.Object;@73179af9]]>
+              </value>
+            </param>
+          </params>
+          <reporter-output>
+          </reporter-output>
+        </test-method> <!-- setUp -->
+        <test-method signature="revertGeneralVoucher(com.gsl.testdata.UserCredential,com.gsl.testdata.dto.MergedFinanceGeneralVoucherData)[pri:0, instance:com.tests.Finance.Operations.Vouchers.RevertGeneralVoucher@57a4ca74]" started-at="2026-10-26T17:25:02 IST" name="revertGeneralVoucher" description="Revert an existing General Voucher from the List Page" data-provider="supplySeqData" finished-at="2026-10-26T17:25:42 IST" duration-ms="39838" status="PASS">
+          <params>
+            <param index="0">
+              <value is-null="true"/>
+            </param>
+            <param index="1">
+              <value>
+                <![CDATA[MergedFinanceGeneralVoucherData(masterTestData=com.gsl.testdata.MasterTestData@5a0fe789, documentInformation=com.gsl.testdata.Finance.Operations.Vouchers.GeneralVoucher.DocumentInformation@3fcbe82d, expenseIncomeDetailList=[], siteAllocationList=[], needsPaymentInfoWarning=false, expectedValidation=null, expectedRevertOutcome=null, scenarioTypeLabel=E_site_applicable_only_1GL_1SITE_DR_REV_N_CHEQUE, scenarioType=POSITIVE_COMBINATION, fixtureOptions=com.gsl.utils.dataprovider.fixture.finance.GeneralVoucherFixtureOptions@598b8400, tags=[REVERSAL_NO, PAYMENT_CHEQUE, TYPE2_SITE_ONLY, DEBIT_SIDE, EXPENSE], cashBankPaymentInfo=null, actualChequeBankMatch=null, rowPayments=null, rowChequeBankMatches=null, fixtureFailure=null, dbGatheringLog=[═══════════════════════════════════════════════════════════,   API DATA GATHERING - POSTED VOUCHER CREATED (GENERAL VOUCHER REVERT), ═══════════════════════════════════════════════════════════,   Combination='E_site_applicable_only_1GL_1SITE_DR_REV_N_CHEQUE', account type=EXPENSE,   Created and released voucher scheme_docno='VG/00514/26-27' (vchcode=1183737), ═══════════════════════════════════════════════════════════], existingVoucherNo=VG/00514/26-27, releaseStatus=P, currentDocDate=null, originalReference=null, originalRemarks=null, reservedDocumentKey=1183737, operationMode=REVERT, editedDetailLine=null, paymentEditTarget=null, headerFieldScope=ALL, entryMethod=null, searchStrategy=null, invocationIndex=4, totalInvocations=8)]]>
+              </value>
+            </param>
+          </params>
+          <reporter-output>
+          </reporter-output>
+        </test-method> <!-- revertGeneralVoucher -->
+        <test-method is-config="true" signature="tearDown(org.testng.ITestResult)[pri:0, instance:com.tests.Finance.Operations.Vouchers.RevertGeneralVoucher@57a4ca74]" started-at="2026-10-26T17:25:46 IST" name="tearDown" finished-at="2026-10-26T17:25:46 IST" duration-ms="262" status="PASS">
+          <params>
+            <param index="0">
+              <value>
+                <![CDATA[[TestResult name=revertGeneralVoucher status=SUCCESS method=RevertGeneralVoucher.revertGeneralVoucher(com.gsl.testdata.UserCredential,com.gsl.testdata.dto.MergedFinanceGeneralVoucherData)[pri:0, instance:com.tests.Finance.Operations.Vouchers.RevertGeneralVoucher@57a4ca74] output={null}]]]>
+              </value>
+            </param>
+          </params>
+          <reporter-output>
+          </reporter-output>
+        </test-method> <!-- tearDown -->
+        <test-method is-config="true" signature="setUp(java.lang.reflect.Method,[Ljava.lang.Object;)[pri:0, instance:com.tests.Finance.Operations.Vouchers.RevertGeneralVoucher@57a4ca74]" started-at="2026-10-26T17:25:46 IST" name="setUp" finished-at="2026-10-26T17:25:46 IST" duration-ms="225" status="PASS">
+          <params>
+            <param index="0">
+              <value>
+                <![CDATA[public void com.tests.Finance.Operations.Vouchers.RevertGeneralVoucher.revertGeneralVoucher(com.gsl.testdata.UserCredential,com.gsl.testdata.dto.MergedFinanceGeneralVoucherData)]]>
+              </value>
+            </param>
+            <param index="1">
+              <value>
+                <![CDATA[[Ljava.lang.Object;@1032e7e2]]>
+              </value>
+            </param>
+          </params>
+          <reporter-output>
+          </reporter-output>
+        </test-method> <!-- setUp -->
+        <test-method signature="revertGeneralVoucher(com.gsl.testdata.UserCredential,com.gsl.testdata.dto.MergedFinanceGeneralVoucherData)[pri:0, instance:com.tests.Finance.Operations.Vouchers.RevertGeneralVoucher@57a4ca74]" started-at="2026-10-26T17:25:46 IST" name="revertGeneralVoucher" description="Revert an existing General Voucher from the List Page" data-provider="supplySeqData" finished-at="2026-10-26T17:26:23 IST" duration-ms="36200" status="PASS">
+          <params>
+            <param index="0">
+              <value is-null="true"/>
+            </param>
+            <param index="1">
+              <value>
+                <![CDATA[MergedFinanceGeneralVoucherData(masterTestData=com.gsl.testdata.MasterTestData@3249c445, documentInformation=com.gsl.testdata.Finance.Operations.Vouchers.GeneralVoucher.DocumentInformation@673cd920, expenseIncomeDetailList=[], siteAllocationList=[], needsPaymentInfoWarning=false, expectedValidation=null, expectedRevertOutcome=null, scenarioTypeLabel=E_site_applicable_only_1GL_1SITE_DR_REV_N_NEFT_RTGS, scenarioType=POSITIVE_COMBINATION, fixtureOptions=com.gsl.utils.dataprovider.fixture.finance.GeneralVoucherFixtureOptions@27b55f20, tags=[REVERSAL_NO, PAYMENT_NEFT_RTGS, TYPE2_SITE_ONLY, DEBIT_SIDE, EXPENSE], cashBankPaymentInfo=null, actualChequeBankMatch=null, rowPayments=null, rowChequeBankMatches=null, fixtureFailure=null, dbGatheringLog=[═══════════════════════════════════════════════════════════,   API DATA GATHERING - POSTED VOUCHER CREATED (GENERAL VOUCHER REVERT), ═══════════════════════════════════════════════════════════,   Combination='E_site_applicable_only_1GL_1SITE_DR_REV_N_NEFT_RTGS', account type=EXPENSE,   Created and released voucher scheme_docno='VG/00515/26-27' (vchcode=1183740), ═══════════════════════════════════════════════════════════], existingVoucherNo=VG/00515/26-27, releaseStatus=P, currentDocDate=null, originalReference=null, originalRemarks=null, reservedDocumentKey=1183740, operationMode=REVERT, editedDetailLine=null, paymentEditTarget=null, headerFieldScope=ALL, entryMethod=null, searchStrategy=null, invocationIndex=5, totalInvocations=8)]]>
+              </value>
+            </param>
+          </params>
+          <reporter-output>
+          </reporter-output>
+        </test-method> <!-- revertGeneralVoucher -->
+        <test-method is-config="true" signature="tearDown(org.testng.ITestResult)[pri:0, instance:com.tests.Finance.Operations.Vouchers.RevertGeneralVoucher@57a4ca74]" started-at="2026-10-26T17:26:26 IST" name="tearDown" finished-at="2026-10-26T17:26:26 IST" duration-ms="19" status="PASS">
+          <params>
+            <param index="0">
+              <value>
+                <![CDATA[[TestResult name=revertGeneralVoucher status=SUCCESS method=RevertGeneralVoucher.revertGeneralVoucher(com.gsl.testdata.UserCredential,com.gsl.testdata.dto.MergedFinanceGeneralVoucherData)[pri:0, instance:com.tests.Finance.Operations.Vouchers.RevertGeneralVoucher@57a4ca74] output={null}]]]>
+              </value>
+            </param>
+          </params>
+          <reporter-output>
+          </reporter-output>
+        </test-method> <!-- tearDown -->
+        <test-method is-config="true" signature="setUp(java.lang.reflect.Method,[Ljava.lang.Object;)[pri:0, instance:com.tests.Finance.Operations.Vouchers.RevertGeneralVoucher@57a4ca74]" started-at="2026-10-26T17:26:26 IST" name="setUp" finished-at="2026-10-26T17:26:27 IST" duration-ms="32" status="PASS">
+          <params>
+            <param index="0">
+              <value>
+                <![CDATA[public void com.tests.Finance.Operations.Vouchers.RevertGeneralVoucher.revertGeneralVoucher(com.gsl.testdata.UserCredential,com.gsl.testdata.dto.MergedFinanceGeneralVoucherData)]]>
+              </value>
+            </param>
+            <param index="1">
+              <value>
+                <![CDATA[[Ljava.lang.Object;@509bf94a]]>
+              </value>
+            </param>
+          </params>
+          <reporter-output>
+          </reporter-output>
+        </test-method> <!-- setUp -->
+        <test-method signature="revertGeneralVoucher(com.gsl.testdata.UserCredential,com.gsl.testdata.dto.MergedFinanceGeneralVoucherData)[pri:0, instance:com.tests.Finance.Operations.Vouchers.RevertGeneralVoucher@57a4ca74]" started-at="2026-10-26T17:26:27 IST" name="revertGeneralVoucher" description="Revert an existing General Voucher from the List Page" data-provider="supplySeqData" finished-at="2026-10-26T17:27:02 IST" duration-ms="35193" status="PASS">
+          <params>
+            <param index="0">
+              <value is-null="true"/>
+            </param>
+            <param index="1">
+              <value>
+                <![CDATA[MergedFinanceGeneralVoucherData(masterTestData=com.gsl.testdata.MasterTestData@3608b9de, documentInformation=com.gsl.testdata.Finance.Operations.Vouchers.GeneralVoucher.DocumentInformation@53837687, expenseIncomeDetailList=[], siteAllocationList=[], needsPaymentInfoWarning=false, expectedValidation=null, expectedRevertOutcome=null, scenarioTypeLabel=E_site_applicable_only_1GL_1SITE_DR_REV_N_NONE, scenarioType=POSITIVE_COMBINATION, fixtureOptions=com.gsl.utils.dataprovider.fixture.finance.GeneralVoucherFixtureOptions@e84a114, tags=[REVERSAL_NO, TYPE2_SITE_ONLY, DEBIT_SIDE, EXPENSE, PAYMENT_NONE], cashBankPaymentInfo=null, actualChequeBankMatch=null, rowPayments=null, rowChequeBankMatches=null, fixtureFailure=null, dbGatheringLog=[═══════════════════════════════════════════════════════════,   API DATA GATHERING - POSTED VOUCHER CREATED (GENERAL VOUCHER REVERT), ═══════════════════════════════════════════════════════════,   Combination='E_site_applicable_only_1GL_1SITE_DR_REV_N_NONE', account type=EXPENSE,   Created and released voucher scheme_docno='VG/00516/26-27' (vchcode=1183743), ═══════════════════════════════════════════════════════════], existingVoucherNo=VG/00516/26-27, releaseStatus=P, currentDocDate=null, originalReference=null, originalRemarks=null, reservedDocumentKey=1183743, operationMode=REVERT, editedDetailLine=null, paymentEditTarget=null, headerFieldScope=ALL, entryMethod=null, searchStrategy=null, invocationIndex=6, totalInvocations=8)]]>
+              </value>
+            </param>
+          </params>
+          <reporter-output>
+          </reporter-output>
+        </test-method> <!-- revertGeneralVoucher -->
+        <test-method is-config="true" signature="tearDown(org.testng.ITestResult)[pri:0, instance:com.tests.Finance.Operations.Vouchers.RevertGeneralVoucher@57a4ca74]" started-at="2026-10-26T17:27:07 IST" name="tearDown" finished-at="2026-10-26T17:27:07 IST" duration-ms="16" status="PASS">
+          <params>
+            <param index="0">
+              <value>
+                <![CDATA[[TestResult name=revertGeneralVoucher status=SUCCESS method=RevertGeneralVoucher.revertGeneralVoucher(com.gsl.testdata.UserCredential,com.gsl.testdata.dto.MergedFinanceGeneralVoucherData)[pri:0, instance:com.tests.Finance.Operations.Vouchers.RevertGeneralVoucher@57a4ca74] output={null}]]]>
+              </value>
+            </param>
+          </params>
+          <reporter-output>
+          </reporter-output>
+        </test-method> <!-- tearDown -->
+        <test-method is-config="true" signature="setUp(java.lang.reflect.Method,[Ljava.lang.Object;)[pri:0, instance:com.tests.Finance.Operations.Vouchers.RevertGeneralVoucher@57a4ca74]" started-at="2026-10-26T17:27:07 IST" name="setUp" finished-at="2026-10-26T17:27:07 IST" duration-ms="31" status="PASS">
+          <params>
+            <param index="0">
+              <value>
+                <![CDATA[public void com.tests.Finance.Operations.Vouchers.RevertGeneralVoucher.revertGeneralVoucher(com.gsl.testdata.UserCredential,com.gsl.testdata.dto.MergedFinanceGeneralVoucherData)]]>
+              </value>
+            </param>
+            <param index="1">
+              <value>
+                <![CDATA[[Ljava.lang.Object;@412e0d88]]>
+              </value>
+            </param>
+          </params>
+          <reporter-output>
+          </reporter-output>
+        </test-method> <!-- setUp -->
+        <test-method signature="revertGeneralVoucher(com.gsl.testdata.UserCredential,com.gsl.testdata.dto.MergedFinanceGeneralVoucherData)[pri:0, instance:com.tests.Finance.Operations.Vouchers.RevertGeneralVoucher@57a4ca74]" started-at="2026-10-26T17:27:07 IST" name="revertGeneralVoucher" description="Revert an existing General Voucher from the List Page" data-provider="supplySeqData" finished-at="2026-10-26T17:27:42 IST" duration-ms="35746" status="PASS">
+          <params>
+            <param index="0">
+              <value is-null="true"/>
+            </param>
+            <param index="1">
+              <value>
+                <![CDATA[MergedFinanceGeneralVoucherData(masterTestData=com.gsl.testdata.MasterTestData@6a98d5d1, documentInformation=com.gsl.testdata.Finance.Operations.Vouchers.GeneralVoucher.DocumentInformation@e91e8ac, expenseIncomeDetailList=[], siteAllocationList=[], needsPaymentInfoWarning=false, expectedValidation=null, expectedRevertOutcome=null, scenarioTypeLabel=E_site_applicable_only_1GL_1SITE_DR_REV_Y_CHEQUE, scenarioType=POSITIVE_COMBINATION, fixtureOptions=com.gsl.utils.dataprovider.fixture.finance.GeneralVoucherFixtureOptions@172a8a51, tags=[REVERSAL_YES, PAYMENT_CHEQUE, TYPE2_SITE_ONLY, DEBIT_SIDE, EXPENSE], cashBankPaymentInfo=null, actualChequeBankMatch=null, rowPayments=null, rowChequeBankMatches=null, fixtureFailure=null, dbGatheringLog=[═══════════════════════════════════════════════════════════,   API DATA GATHERING - POSTED VOUCHER CREATED (GENERAL VOUCHER REVERT), ═══════════════════════════════════════════════════════════,   Combination='E_site_applicable_only_1GL_1SITE_DR_REV_Y_CHEQUE', account type=EXPENSE,   Created and released voucher scheme_docno='VG/00517/26-27' (vchcode=1183746), ═══════════════════════════════════════════════════════════], existingVoucherNo=VG/00517/26-27, releaseStatus=P, currentDocDate=null, originalReference=null, originalRemarks=null, reservedDocumentKey=1183746, operationMode=REVERT, editedDetailLine=null, paymentEditTarget=null, headerFieldScope=ALL, entryMethod=null, searchStrategy=null, invocationIndex=7, totalInvocations=8)]]>
+              </value>
+            </param>
+          </params>
+          <reporter-output>
+          </reporter-output>
+        </test-method> <!-- revertGeneralVoucher -->
+        <test-method is-config="true" signature="tearDown(org.testng.ITestResult)[pri:0, instance:com.tests.Finance.Operations.Vouchers.RevertGeneralVoucher@57a4ca74]" started-at="2026-10-26T17:27:47 IST" name="tearDown" finished-at="2026-10-26T17:27:47 IST" duration-ms="82" status="PASS">
+          <params>
+            <param index="0">
+              <value>
+                <![CDATA[[TestResult name=revertGeneralVoucher status=SUCCESS method=RevertGeneralVoucher.revertGeneralVoucher(com.gsl.testdata.UserCredential,com.gsl.testdata.dto.MergedFinanceGeneralVoucherData)[pri:0, instance:com.tests.Finance.Operations.Vouchers.RevertGeneralVoucher@57a4ca74] output={null}]]]>
+              </value>
+            </param>
+          </params>
+          <reporter-output>
+          </reporter-output>
+        </test-method> <!-- tearDown -->
+        <test-method is-config="true" signature="setUp(java.lang.reflect.Method,[Ljava.lang.Object;)[pri:0, instance:com.tests.Finance.Operations.Vouchers.RevertGeneralVoucher@57a4ca74]" started-at="2026-10-26T17:27:47 IST" name="setUp" finished-at="2026-10-26T17:27:47 IST" duration-ms="54" status="PASS">
+          <params>
+            <param index="0">
+              <value>
+                <![CDATA[public void com.tests.Finance.Operations.Vouchers.RevertGeneralVoucher.revertGeneralVoucher(com.gsl.testdata.UserCredential,com.gsl.testdata.dto.MergedFinanceGeneralVoucherData)]]>
+              </value>
+            </param>
+            <param index="1">
+              <value>
+                <![CDATA[[Ljava.lang.Object;@38d6603b]]>
+              </value>
+            </param>
+          </params>
+          <reporter-output>
+          </reporter-output>
+        </test-method> <!-- setUp -->
+        <test-method signature="revertGeneralVoucher(com.gsl.testdata.UserCredential,com.gsl.testdata.dto.MergedFinanceGeneralVoucherData)[pri:0, instance:com.tests.Finance.Operations.Vouchers.RevertGeneralVoucher@57a4ca74]" started-at="2026-10-26T17:27:47 IST" name="revertGeneralVoucher" description="Revert an existing General Voucher from the List Page" data-provider="supplySeqData" finished-at="2026-10-26T17:28:22 IST" duration-ms="35123" status="PASS">
+          <params>
+            <param index="0">
+              <value is-null="true"/>
+            </param>
+            <param index="1">
+              <value>
+                <![CDATA[MergedFinanceGeneralVoucherData(masterTestData=com.gsl.testdata.MasterTestData@615ddc3e, documentInformation=com.gsl.testdata.Finance.Operations.Vouchers.GeneralVoucher.DocumentInformation@60f92df0, expenseIncomeDetailList=[], siteAllocationList=[], needsPaymentInfoWarning=false, expectedValidation=null, expectedRevertOutcome=null, scenarioTypeLabel=E_site_applicable_only_1GL_2SITE_DR_REV_N_CHEQUE, scenarioType=POSITIVE_COMBINATION, fixtureOptions=com.gsl.utils.dataprovider.fixture.finance.GeneralVoucherFixtureOptions@5ca2cb1, tags=[REVERSAL_NO, PAYMENT_CHEQUE, TYPE2_SITE_ONLY, DEBIT_SIDE, EXPENSE], cashBankPaymentInfo=null, actualChequeBankMatch=null, rowPayments=null, rowChequeBankMatches=null, fixtureFailure=null, dbGatheringLog=[═══════════════════════════════════════════════════════════,   API DATA GATHERING - POSTED VOUCHER CREATED (GENERAL VOUCHER REVERT), ═══════════════════════════════════════════════════════════,   Combination='E_site_applicable_only_1GL_2SITE_DR_REV_N_CHEQUE', account type=EXPENSE,   Created and released voucher scheme_docno='VG/00518/26-27' (vchcode=1183749), ═══════════════════════════════════════════════════════════], existingVoucherNo=VG/00518/26-27, releaseStatus=P, currentDocDate=null, originalReference=null, originalRemarks=null, reservedDocumentKey=1183749, operationMode=REVERT, editedDetailLine=null, paymentEditTarget=null, headerFieldScope=ALL, entryMethod=null, searchStrategy=null, invocationIndex=8, totalInvocations=8)]]>
+              </value>
+            </param>
+          </params>
+          <reporter-output>
+          </reporter-output>
+        </test-method> <!-- revertGeneralVoucher -->
+        <test-method is-config="true" signature="tearDown(org.testng.ITestResult)[pri:0, instance:com.tests.Finance.Operations.Vouchers.RevertGeneralVoucher@57a4ca74]" started-at="2026-10-26T17:28:28 IST" name="tearDown" finished-at="2026-10-26T17:28:29 IST" duration-ms="112" status="PASS">
+          <params>
+            <param index="0">
+              <value>
+                <![CDATA[[TestResult name=revertGeneralVoucher status=SUCCESS method=RevertGeneralVoucher.revertGeneralVoucher(com.gsl.testdata.UserCredential,com.gsl.testdata.dto.MergedFinanceGeneralVoucherData)[pri:0, instance:com.tests.Finance.Operations.Vouchers.RevertGeneralVoucher@57a4ca74] output={null}]]]>
+              </value>
+            </param>
+          </params>
+          <reporter-output>
+          </reporter-output>
+        </test-method> <!-- tearDown -->
+      </class> <!-- com.tests.Finance.Operations.Vouchers.RevertGeneralVoucher -->
+    </test> <!-- General Voucher Create/Revert - Mandatory -->
+  </suite> <!-- GV Create/Revert/Delete - failed only (no DB) -->
 </testng-results>
