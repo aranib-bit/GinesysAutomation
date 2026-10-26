@@ -54,6 +54,19 @@ def effectiveBrowser() {
     return (params.BROWSER ?: 'chrome').toString().trim().toLowerCase()
 }
 
+// Folder the whole build (checkout, target/, reports/) runs in: <GINESYS_HOME>\<env>\<job>. GINESYS_HOME is an
+// optional Jenkins global environment variable (e.g. D:\GinesysAutomation on one machine, E:\... on another).
+// When it is unset the relative path GinesysAutomation\<env>\<job> is used, which Jenkins resolves under its own
+// workspace root, so no drive letter is ever written here. The env name is checked against the allowed list
+// before it becomes part of a path (an invalid value fails later in 'Init' with a clear message).
+def workspaceDir() {
+    def e = effectiveEnv()
+    def safeEnv = allowedEnvs().contains(e) ? e : 'invalid-env'
+    def job = (env.JOB_NAME ?: 'job').replaceAll('[^A-Za-z0-9._-]', '_')
+    def base = (env.GINESYS_HOME ?: 'GinesysAutomation').toString().replaceAll('[\\\\/]+$', '')
+    return "${base}\\${safeEnv}\\${job}"
+}
+
 // Lockable Resource that guards an environment AND its Selenium Grid. Resource names are the
 // environment names (clone-staging, feature-05, ...), except staging, which keeps the pre-existing
 // "staging-slot" resource. Two builds on the same environment queue; different environments run in parallel.
@@ -78,7 +91,13 @@ def gridIndexFor(envName) {
 }
 
 pipeline {
-    agent any
+    // Runs in GINESYS_HOME\<env>\<job> (see workspaceDir above), not in Jenkins' default per-job workspace.
+    agent {
+        node {
+            label ''
+            customWorkspace workspaceDir()
+        }
+    }
 
     options {
         // The lock is NOT taken here: its name depends on the ENV_NAME parameter, so it is taken by
@@ -191,13 +210,9 @@ pipeline {
                     steps {
                         script {
                             // The job's git SCM is github.com/aranib-bit/GinesysAutomation (see Jenkins job
-                            // config; credentials id gsl-github-ginesys). Reports are synced back after the
-                            // run into GinesysAutomation\<env>\reports, a folder derived from this build's own
-                            // workspace parent (never a literal drive path), so it works on any drive/agent.
-                            // An optional GINESYS_HOME Jenkins environment variable moves that base folder.
+                            // config; credentials id gsl-github-ginesys). The workspace itself is
+                            // GINESYS_HOME\<env>\<job> (agent block above), so reports\ is already in place.
                             checkout scm
-                            def base = env.GINESYS_HOME ?: "${env.WORKSPACE}\\..\\GinesysAutomation"
-                            env.OUTPUT_ROOT = "${base}\\${env.TARGET_ENV}"
                         }
                     }
                 }
@@ -300,15 +315,8 @@ pipeline {
                 reportFiles: 'index.html',
                 reportName: 'Extent Report'
             ])
-            // Jenkins clones into its own workspace (no customWorkspace configured), so
-            // reports/ never reaches the dev folder on its own — sync a copy back after
-            // every run. /XO = only copy files newer than what's already there;
-            // "& exit 0" because robocopy's own success exit codes are non-zero.
-            // Destination is OUTPUT_ROOT (set at Checkout time: GinesysAutomation\<env> beside the
-            // workspace, or under GINESYS_HOME) + \reports — one folder per environment, no
-            // profile-specific subfolder, so every profile's run lands at reports\runs\<runId>\...
-            // the same way a local (non-Jenkins) run does. Skipped if the build failed before Checkout.
-            bat 'if defined OUTPUT_ROOT robocopy "%WORKSPACE%\\reports" "%OUTPUT_ROOT%\\reports" /E /XO /R:2 /W:2 & exit 0'
+            // No report copy-back is needed: the build runs in GINESYS_HOME\<env>\<job>, so
+            // reports\runs\<runId>\... is written there directly (same layout as a local run).
         }
     }
 }
