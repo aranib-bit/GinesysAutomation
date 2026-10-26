@@ -3,7 +3,9 @@ package com.tests.Finance.Operations.Vouchers;
 import com.gsl.annotations.ApiFlow;
 import com.gsl.annotations.FrameworkAnnotation;
 import com.gsl.annotations.TestCaseId;
+import com.gsl.api.model.generalvoucher.GeneralVoucherRootView;
 import com.gsl.database.DatabaseManager;
+import com.gsl.database.DbAvailability;
 import com.gsl.database.DbQueryBuffer;
 import com.gsl.database.dao.adm.AdmSiteDao;
 import com.gsl.database.dao.finance.FinGlDao;
@@ -35,6 +37,8 @@ import com.gsl.utils.dataprovider.MergedFinGeneralVoucherDataSupplier;
 import com.gsl.utils.dataprovider.fixture.finance.DocumentSearchStrategy;
 import com.gsl.validation.snapshot.DocumentContext;
 import com.gsl.validation.snapshot.ExpectedChangeSet;
+import com.gsl.validation.api.GeneralVoucherApiStateChecks;
+import com.gsl.validation.api.NoDbApiSession;
 import com.gsl.validation.snapshot.SnapshotService;
 import com.gsl.validation.snapshot.VoucherSnapshot;
 import com.gsl.validation.snapshot.VoucherSnapshotValidator;
@@ -116,9 +120,44 @@ public class RevertGeneralVoucher extends WebTest {
         final DocumentContext[]               contextRef            = new DocumentContext[1];
         final VoucherSnapshot[]               beforeSnapshotRef     = new VoucherSnapshot[1];
         final VoucherSnapshot[]               afterSnapshotRef      = new VoucherSnapshot[1];
+        // db.available=no: the DB pre-checks/snapshots below are replaced by rootview reads (validation.nodb.mode=API) or reported SKIPPED
+        // (SKIP). The voucher's vchcode comes from the data source (reservedDocumentKey), its number is looked up in the list API as fallback.
+        final boolean noDb = !DbAvailability.isAvailable();
+        final boolean apiValidation = noDb && DbAvailability.noDbValidation() == DbAvailability.NoDbValidation.API;
+        final GeneralVoucherRootView[] beforeView = new GeneralVoucherRootView[1];
+        final GeneralVoucherRootView[] afterView  = new GeneralVoucherRootView[1];
+        try {
+        revertFlow(testData, noDb, apiValidation, beforeView, afterView, beforeReleaseStatusRef, immediateBeforeReleaseStatusRef,
+                revertOutcomeRef, contextRef, beforeSnapshotRef, afterSnapshotRef, homeRef, listRef);
+        } finally {
+            NoDbApiSession.closeQuietly();
+        }
+    }
+
+    private void revertFlow(MergedFinanceGeneralVoucherData testData, boolean noDb, boolean apiValidation,
+            GeneralVoucherRootView[] beforeView, GeneralVoucherRootView[] afterView, String[] beforeReleaseStatusRef,
+            String[] immediateBeforeReleaseStatusRef, GeneralVoucherRevertOutcome[] revertOutcomeRef, DocumentContext[] contextRef,
+            VoucherSnapshot[] beforeSnapshotRef, VoucherSnapshot[] afterSnapshotRef, HomePage[] homeRef, GeneralVoucherListPage[] listRef) {
 
         // ── Step 1: DB Pre-Check — Verify Document Exists ────────────────────────────
-        StepExecutor.step("DB Pre-Check — Verify Document Exists", () -> {
+        StepExecutor.step(noDb ? "API Pre-Check — Verify Document Exists" : "DB Pre-Check — Verify Document Exists", () -> {
+            if (noDb) {
+                GeneralVoucherRootView view = readVoucher(testData);
+                Assert.assertNotNull(view, "[API-PreCheck] voucher " + testData.getExistingVoucherNo()
+                        + " not found through the API — target document does not exist; cannot proceed with Revert.");
+                beforeReleaseStatusRef[0] = view.isPosted() ? "P" : "U";
+                ReportLogger.business("Captured release status='" + beforeReleaseStatusRef[0] + "' (before Revert) for voucher: "
+                        + testData.getExistingVoucherNo());
+                DocumentInformation docInfo = new DocumentInformation(testData.getScenarioTypeLabel(), view.getDocNumber(),
+                        view.getVoucherDate() == null ? null : java.time.LocalDate.parse(view.getVoucherDate().substring(0, 10)),
+                        view.getReference(), view.getCashBankLedger() == null ? null : view.getCashBankLedger().getGlName(),
+                        view.getRemarks());
+                docInfo.setOwnersite(view.getOwnerSite() == null ? null : view.getOwnerSite().getName());
+                testData.setDocumentInformation(docInfo);
+                com.gsl.reports.StepSummaryBuffer.record("Pre-Check summary — voucher=" + testData.getExistingVoucherNo()
+                        + ", found=Yes, release_status(before)='" + beforeReleaseStatusRef[0] + "'");
+                return;
+            }
             DbQueryBuffer.start();
             FinVchMain header;
             try {
@@ -210,7 +249,16 @@ public class RevertGeneralVoucher extends WebTest {
         // pattern) then had to recover, but was itself racing the same window on its own retry.
         // Both DB-only steps now run BEFORE Actions is opened, so the dropdown opens immediately
         // ahead of the click with no idle gap in between.
-        StepExecutor.step("DB Check — Release Status Immediately Before Revert", () -> {
+        StepExecutor.step(noDb ? "API Check — Release Status Immediately Before Revert" : "DB Check — Release Status Immediately Before Revert", () -> {
+            if (noDb) {
+                GeneralVoucherRootView view = readVoucher(testData);
+                Assert.assertNotNull(view, "[API-Check] voucher " + testData.getExistingVoucherNo()
+                        + " disappeared before Revert could be clicked.");
+                immediateBeforeReleaseStatusRef[0] = view.isPosted() ? "P" : "U";
+                ReportLogger.business("Release status immediately before Revert action: '" + immediateBeforeReleaseStatusRef[0]
+                        + "' for voucher: " + testData.getExistingVoucherNo());
+                return;
+            }
             DbQueryBuffer.start();
             FinVchMain header;
             try {
@@ -240,6 +288,15 @@ public class RevertGeneralVoucher extends WebTest {
         // before. Captured here (immediately before the state-changing click) rather than at
         // Step 1's precheck, for the same staleness reason Step 7's own re-read exists.
         StepExecutor.step("Resolve Document Context + Capture BEFORE Snapshot", () -> {
+            if (noDb) {
+                if (apiValidation) {
+                    beforeView[0] = readVoucher(testData);
+                    ReportLogger.business("BEFORE rootview captured for voucher: " + testData.getExistingVoucherNo());
+                } else {
+                    com.gsl.reports.ExtentLogger.skip("BEFORE snapshot skipped — db.available=no and validation.nodb.mode=SKIP");
+                }
+                return;
+            }
             contextRef[0] = new VoucherDocumentContextResolver()
                     .resolve(testData.getExistingVoucherNo(), VoucherDomain.GV);
             beforeSnapshotRef[0] = new SnapshotService(new Aud2SnapshotDao()).capture(contextRef[0]);
@@ -310,6 +367,15 @@ public class RevertGeneralVoucher extends WebTest {
 
         // ── Step 10b: Capture AFTER Snapshot ──────────────────────────────────────────
         StepExecutor.step("Capture AFTER Snapshot", () -> {
+            if (noDb) {
+                if (apiValidation) {
+                    afterView[0] = readVoucher(testData);
+                    ReportLogger.business("AFTER rootview captured for voucher: " + testData.getExistingVoucherNo());
+                } else {
+                    com.gsl.reports.ExtentLogger.skip("AFTER snapshot skipped — db.available=no and validation.nodb.mode=SKIP");
+                }
+                return;
+            }
             afterSnapshotRef[0] = new SnapshotService(new Aud2SnapshotDao()).capture(contextRef[0]);
             ReportLogger.business("AFTER snapshot captured for voucher: " + testData.getExistingVoucherNo());
             recordSnapshotTableSummary("AFTER Snapshot", afterSnapshotRef[0]);
@@ -327,7 +393,24 @@ public class RevertGeneralVoucher extends WebTest {
         // finpost release-trio rules already assert the exact same release_status transition (with
         // an equally descriptive per-column failure message), and DiffEngine's own Pass 2
         // subsumes the audit-trail check for every active table, not just finvchmain.
-        StepExecutor.step("Database Validation", () -> {
+        StepExecutor.step(noDb ? "API Validation" : "Database Validation", () -> {
+            if (noDb) {
+                if (!apiValidation) {
+                    com.gsl.reports.ExtentLogger.skip("Validation skipped — db.available=no and validation.nodb.mode=SKIP");
+                    return;
+                }
+                // A blocked Revert (BRS / closed period) leaves the status as it was; otherwise Revert's only legal end-state is Unposted.
+                boolean blocked = revertOutcomeRef[0] == GeneralVoucherRevertOutcome.CANNOT_REVERT_BRS_DONE
+                        || revertOutcomeRef[0] == GeneralVoucherRevertOutcome.CANNOT_REVERT_MONTH_CLOSED;
+                String expectedStatus = blocked ? immediateBeforeReleaseStatusRef[0] : "U";
+                GeneralVoucherApiStateChecks.Result result = GeneralVoucherApiStateChecks.statusChangedOnly(beforeView[0], afterView[0], expectedStatus);
+                result.passed().forEach(ReportLogger::pass);
+                Assert.assertTrue(result.ok(), "[API validation] " + result.failed().size() + " check(s) failed for "
+                        + testData.getExistingVoucherNo() + ":\n  " + String.join("\n  ", result.failed()));
+                ReportLogger.pass("API validated — expected status '" + expectedStatus + "', dialog outcome=" + revertOutcomeRef[0]
+                        + " for voucher: " + testData.getExistingVoucherNo());
+                return;
+            }
             FinVchMain afterHeader = DatabaseManager.getJdbi().onDemand(FinVchMainDao.class)
                     .findBySchemeDocno(testData.getExistingVoucherNo())
                     .orElseThrow(() -> new IllegalStateException(
@@ -404,6 +487,14 @@ public class RevertGeneralVoucher extends WebTest {
      * line per table (not one long comma-joined line) — matches the report's established
      * "Level 1 — finvchmain field checks" house style for readability.
      */
+    /** {@code db.available=no}: the voucher as the application holds it now — by vchcode when the data source supplied one, else by number. */
+    private static GeneralVoucherRootView readVoucher(MergedFinanceGeneralVoucherData testData) {
+        NoDbApiSession api = NoDbApiSession.current();
+        String key = testData.getReservedDocumentKey();
+        if (key != null && !key.isBlank()) return api.rootViewOrNull(Long.parseLong(key));
+        return api.rootViewByDocNo(testData.getExistingVoucherNo());
+    }
+
     private static void recordSnapshotTableSummary(String label, VoucherSnapshot snapshot) {
         if (snapshot == null || snapshot.getTables() == null || snapshot.getTables().isEmpty()) {
             com.gsl.reports.StepSummaryBuffer.record(label + ": no tables captured");

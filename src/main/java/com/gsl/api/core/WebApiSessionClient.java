@@ -68,6 +68,19 @@ public final class WebApiSessionClient {
         logRedactedCall("POST", loginUrl, "(omitted — contains password)", response, System.currentTimeMillis() - start);
         boolean retried = false;
 
+        // "number of users allowed by your license has exceeded" is a transient capacity refusal, not a bad credential: wait for a seat.
+        for (int wait = 1; response.getStatusCode() != 200 && isLicenseExceeded(response) && wait <= cfg.webApiLicenseRetries(); wait++) {
+            ReportLogger.sessionWarn("[WebApiSessionClient] Login for '{}' refused — licence seat limit reached; waiting {}s for a seat "
+                    + "(attempt {}/{}).", credential.username(), cfg.webApiLicenseWaitSeconds(), wait, cfg.webApiLicenseRetries());
+            try {
+                Thread.sleep(cfg.webApiLicenseWaitSeconds() * 1000L);
+            } catch (InterruptedException ie) {
+                Thread.currentThread().interrupt();
+                break;
+            }
+            response = performLogin(credential);
+        }
+
         if (response.getStatusCode() != 200) {
             // Log the first attempt's full detail explicitly, separately from any exception
             // message — TestNG's failure/skip handling does not reliably surface a multi-line
@@ -194,6 +207,11 @@ public final class WebApiSessionClient {
         } catch (Exception e) {
             return json;
         }
+    }
+
+    private static boolean isLicenseExceeded(Response response) {
+        ParsedLoginError e = tryParseErrorDescription(response);
+        return e != null && "555555555".equals(e.code);
     }
 
     /** Ginesys encodes login failures as "<code>|<message>|<tag>" in error_description, e.g. code 012. */

@@ -3,7 +3,9 @@ package com.tests.Finance.Operations.Vouchers;
 import com.gsl.annotations.ApiFlow;
 import com.gsl.annotations.FrameworkAnnotation;
 import com.gsl.annotations.TestCaseId;
+import com.gsl.api.model.generalvoucher.GeneralVoucherRootView;
 import com.gsl.database.DatabaseManager;
+import com.gsl.database.DbAvailability;
 import com.gsl.database.DbQueryBuffer;
 import com.gsl.database.dao.finance.FinVchMainDao;
 import com.gsl.driver.DriverManager;
@@ -32,6 +34,8 @@ import com.gsl.validation.snapshot.DocumentContext;
 import com.gsl.validation.snapshot.ExpectedChangeSet;
 import com.gsl.validation.snapshot.TableRule;
 import com.gsl.validation.snapshot.TableSnapshot;
+import com.gsl.validation.api.GeneralVoucherApiStateChecks;
+import com.gsl.validation.api.NoDbApiSession;
 import com.gsl.validation.snapshot.SnapshotService;
 import com.gsl.validation.snapshot.VoucherSnapshot;
 import com.gsl.validation.snapshot.VoucherSnapshotValidator;
@@ -100,7 +104,11 @@ public class DeleteGeneralVoucher extends WebTest {
         final String[]                 beforeReleaseStatusRef = new String[1];
         final String[]                 immediateBeforeReleaseStatusRef = new String[1];
 
-        Aud2SnapshotDao auditDao = new Aud2SnapshotDao();
+        // db.available=no: the DB pre-checks/snapshots/audit checks below are replaced by rootview/list reads (validation.nodb.mode=API) or
+        // reported SKIPPED (SKIP). Deleted-ness is checked through the API: the voucher can no longer be read nor listed.
+        final boolean noDb = !DbAvailability.isAvailable();
+        final boolean apiValidation = noDb && DbAvailability.noDbValidation() == DbAvailability.NoDbValidation.API;
+        Aud2SnapshotDao auditDao = noDb ? null : new Aud2SnapshotDao();
 
         DbGatheringExtentLogger.log(testData);
         GeneralVoucherExtentDescriptionLogger.log(testData);
@@ -112,7 +120,17 @@ public class DeleteGeneralVoucher extends WebTest {
         // below re-reads it again immediately before the state-changing click to catch any drift
         // in between (see the "GV Revert picks documents in a now-closed accounting period,
         // + closed-period negative-test coverage" plan, follow-up round 3).
-        StepExecutor.step("DB Pre-Check — Verify Document Exists & Release Status", () -> {
+        StepExecutor.step(noDb ? "API Pre-Check — Verify Document Exists & Release Status"
+                : "DB Pre-Check — Verify Document Exists & Release Status", () -> {
+            if (noDb) {
+                GeneralVoucherRootView view = readVoucher(testData);
+                Assert.assertNotNull(view, "[API-PreCheck] voucher " + testData.getExistingVoucherNo()
+                        + " not found through the API — target document does not exist; cannot proceed with Delete.");
+                beforeReleaseStatusRef[0] = view.isPosted() ? "P" : "U";
+                ReportLogger.business("Captured release status='" + beforeReleaseStatusRef[0] + "' (before Delete) for voucher: "
+                        + testData.getExistingVoucherNo());
+                return;
+            }
             DbQueryBuffer.start();
             FinVchMain header;
             try {
@@ -168,7 +186,17 @@ public class DeleteGeneralVoucher extends WebTest {
         // divergence from Step 1's value (when it occurs) explains an otherwise-confusing later
         // mismatch instead of masquerading as a product defect. Mirrors RevertGeneralVoucher's
         // own Step 7 exactly.
-        StepExecutor.step("DB Check — Release Status Immediately Before Unpost", () -> {
+        StepExecutor.step(noDb ? "API Check — Release Status Immediately Before Unpost"
+                : "DB Check — Release Status Immediately Before Unpost", () -> {
+            if (noDb) {
+                GeneralVoucherRootView view = readVoucher(testData);
+                Assert.assertNotNull(view, "[API-Check] voucher " + testData.getExistingVoucherNo()
+                        + " disappeared before Unpost/Delete could be attempted.");
+                immediateBeforeReleaseStatusRef[0] = view.isPosted() ? "P" : "U";
+                ReportLogger.business("Release status immediately before Unpost: '" + immediateBeforeReleaseStatusRef[0]
+                        + "' for voucher: " + testData.getExistingVoucherNo());
+                return;
+            }
             DbQueryBuffer.start();
             FinVchMain header;
             try {
@@ -268,6 +296,11 @@ public class DeleteGeneralVoucher extends WebTest {
         // DB-only and doesn't touch the UI, so reordering it is safe, and it closes the gap that
         // used to sit between confirming selection and opening Actions.
         StepExecutor.step("Resolve Document Context + Capture Pre-Delete State", () -> {
+            if (noDb) {
+                ReportLogger.business("db.available=no — no persistence-map/audit context; the voucher's pre-delete state is the API read taken "
+                        + "by the pre-checks above.");
+                return;
+            }
             contextRef[0] = new VoucherDocumentContextResolver().resolve(testData.getExistingVoucherNo(), VoucherDomain.GV);
             // Round 3 Item K: captures the FULL persistence-map snapshot (finvchmain/finvchdet/
             // finpost/fincosttag), not just finvchmain — needed so the new "Database Validation —
@@ -325,7 +358,20 @@ public class DeleteGeneralVoucher extends WebTest {
         // row is actually gone (previously assumed "gone by construction" rather than asserted).
         // Closes that gap explicitly: the UI's "Deleted Successfully" Result dialog is a claim,
         // not proof, that the live row was actually removed.
-        StepExecutor.step("Database Validation — Live Row Removed", () -> {
+        StepExecutor.step(noDb ? "API Validation — Voucher Removed" : "Database Validation — Live Row Removed", () -> {
+            if (noDb) {
+                if (!apiValidation) {
+                    com.gsl.reports.ExtentLogger.skip("Validation skipped — db.available=no and validation.nodb.mode=SKIP");
+                    return;
+                }
+                NoDbApiSession api = NoDbApiSession.current();
+                GeneralVoucherApiStateChecks.Result result = GeneralVoucherApiStateChecks.deleted(testData.getExistingVoucherNo(),
+                        readVoucher(testData), api.listRow(testData.getExistingVoucherNo()) != null);
+                result.passed().forEach(ReportLogger::pass);
+                Assert.assertTrue(result.ok(), "[API validation] " + String.join("; ", result.failed()));
+                ReportLogger.business("Confirmed voucher removed through the API: " + testData.getExistingVoucherNo());
+                return;
+            }
             DbQueryBuffer.start();
             java.util.Optional<FinVchMain> stillPresent;
             try {
@@ -348,6 +394,11 @@ public class DeleteGeneralVoucher extends WebTest {
         // validates that aud2_finvchmain recorded a DELETE row whose captured state matches what
         // the record held immediately before deletion.
         StepExecutor.step("Database Validation — Audit Trail", () -> {
+            if (noDb) {
+                // The aud2_* audit tables are only readable through the database.
+                com.gsl.reports.ExtentLogger.skip("Audit trail check skipped — db.available=no (aud2_finvchmain is not exposed through the API)");
+                return;
+            }
             TableRule finvchmainRule = contextRef[0].getPersistenceMap().findByTableName("finvchmain");
             AuditAssertion.assertAuditDeleted(contextRef[0], auditDao, finvchmainRule, beforeFinvchmainRowRef[0]);
             ReportLogger.pass("Audit trail validated — DELETE recorded for voucher: "
@@ -367,6 +418,10 @@ public class DeleteGeneralVoucher extends WebTest {
         // gap recordAuditTrailSummary's own Javadoc explicitly flagged as "option (b) ... a
         // longer-term follow-up, not done here," never implemented until now.
         StepExecutor.step("Capture AFTER Snapshot", () -> {
+            if (noDb) {
+                com.gsl.reports.ExtentLogger.skip("AFTER snapshot skipped — db.available=no (removal is verified through the API above)");
+                return;
+            }
             afterSnapshotRef[0] = new SnapshotService(auditDao).capture(contextRef[0]);
             ReportLogger.business("AFTER snapshot captured for voucher: " + testData.getExistingVoucherNo());
             recordAfterSnapshotSummary(afterSnapshotRef[0]);
@@ -380,6 +435,11 @@ public class DeleteGeneralVoucher extends WebTest {
         // vchcode/entcode/entcode, all resolved via VoucherDocumentContextResolver/SnapshotService's
         // fk-scoped capture) were ALSO actually removed, not just finvchmain.
         StepExecutor.step("Database Validation — Full Table Deletion (finvchdet/finpost/fincosttag)", () -> {
+            if (noDb) {
+                com.gsl.reports.ExtentLogger.skip("Child-table deletion check skipped — db.available=no (the voucher, lines included, "
+                        + "is no longer readable through the API — see API Validation above)");
+                return;
+            }
             ExpectedChangeSet changeSet = GeneralVoucherDeleteChangeSets.delete(contextRef[0]);
 
             VoucherSnapshotValidator validator = new VoucherSnapshotValidator();
@@ -399,6 +459,14 @@ public class DeleteGeneralVoucher extends WebTest {
      * two-column table) — matches the report's established "Level 1 — finvchmain field checks"
      * house style for readability.
      */
+    /** {@code db.available=no}: the voucher as the application holds it now — by vchcode when the data source supplied one, else by number. */
+    private static GeneralVoucherRootView readVoucher(MergedFinanceGeneralVoucherData testData) {
+        NoDbApiSession api = NoDbApiSession.current();
+        String key = testData.getReservedDocumentKey();
+        if (key != null && !key.isBlank()) return api.rootViewOrNull(Long.parseLong(key));
+        return api.rootViewByDocNo(testData.getExistingVoucherNo());
+    }
+
     private static void recordPreDeleteStateSummary(Map<String, Object> beforeRow) {
         if (beforeRow == null) return;
         String[] fields = {"release_status", "vchdt", "nartext", "refno"};

@@ -116,7 +116,10 @@ public final class GeneralVoucherTemplateLoader {
                     // Round 23: keep the resolver's ACTUAL outcome (a "known" row can silently fall back
                     // to unknown) — GeneralVoucherCreateChangeSets' bookcode rule needs the real one.
                     ChequeInstrumentResolver.ChequeResolution resolution = variant.knownChequeForRow(i)
-                            ? ChequeInstrumentResolver.resolveKnownSameBank(DatabaseManager.getJdbi(), refs.getCashBankGlcode())
+                            ? (com.gsl.database.DbAvailability.isAvailable()
+                                    ? ChequeInstrumentResolver.resolveKnownSameBank(DatabaseManager.getJdbi(), refs.getCashBankGlcode())
+                                    : com.gsl.utils.cheque.ApiChequeResolver.resolveKnownSameBank(
+                                            com.gsl.validation.api.NoDbApiSession.current().client(), refs.getCashBankGlcode()))
                             : ChequeInstrumentResolver.resolveUnknown();
                     Log.info("[GeneralVoucherTemplateLoader] Row {} cheque instrument resolved: bankMatch={}, chqno={}",
                             lineNo, resolution.bankMatch(), resolution.chqno());

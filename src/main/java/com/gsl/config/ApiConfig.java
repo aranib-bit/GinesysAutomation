@@ -43,6 +43,19 @@ public interface ApiConfig extends Config {
     String webApiLoginPath();
 
     /**
+     * How many times a login that the server refuses with "number of users allowed by your license has exceeded" (code 555555555) is
+     * repeated, waiting {@link #webApiLicenseWaitSeconds()} between tries. That refusal is a transient capacity condition — seats free up
+     * as other sessions end — not a bad credential, so waiting for a seat is the correct response; every wait is logged.
+     */
+    @Key("webapi.license.retries")
+    @DefaultValue("12")
+    int webApiLicenseRetries();
+
+    @Key("webapi.license.waitSeconds")
+    @DefaultValue("10")
+    int webApiLicenseWaitSeconds();
+
+    /**
      * Prefix every flow-client endpoint needs between {@link #webApiBaseUri()} and the endpoint
      * path itself — mirrors k6's lib/config.js apiPrefix ("/WebAPI/api", tenant-agnostic).
      * Confirmed via k6's flows/serviceInvoiceAdhoc.js building every call as

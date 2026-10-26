@@ -44,7 +44,13 @@ public final class ApiSessionFactory {
      */
     public static ApiSessionBundle createForWebApi() {
         UserCredential uiUser = UserPool.acquireSet1User(UserType.UI, "ApiSessionFactory.createForWebApi");
-        return createForWebApi(uiUser, true);
+        try {
+            return createForWebApi(uiUser, true);
+        } catch (RuntimeException loginFailed) {
+            // The bundle that would have released this user on logout never came into existence — without this the pool slot leaks.
+            UserPool.releaseSet1User(uiUser);
+            throw loginFailed;
+        }
     }
 
     /** Builds a WEBAPI session using an already-acquired credential (e.g. one APITest already holds). Caller retains release ownership. */

@@ -20,13 +20,18 @@ import lombok.NoArgsConstructor;
 public class GeneralVoucherOwnerSite {
     private long code;
     @JsonProperty("Name")
+    @com.fasterxml.jackson.annotation.JsonAlias("name")
     private String name;
     @JsonProperty("SiteType")
+    @com.fasterxml.jackson.annotation.JsonAlias("siteType")
     private String siteType;
     @JsonProperty("ShortName")
+    @com.fasterxml.jackson.annotation.JsonAlias("shortName")
     private String shortName;
     @JsonProperty("OUName")
+    @com.fasterxml.jackson.annotation.JsonAlias("ouName")
     private String ouName;
     @JsonProperty("OUCode")
+    @com.fasterxml.jackson.annotation.JsonAlias("ouCode")
     private long ouCode;
 }

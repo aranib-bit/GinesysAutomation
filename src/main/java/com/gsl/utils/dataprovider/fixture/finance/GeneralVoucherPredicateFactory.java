@@ -174,6 +174,28 @@ public final class GeneralVoucherPredicateFactory {
 
             VoucherSaveFlowSteps.deferLogout();
 
+            if (!com.gsl.database.DbAvailability.isAvailable()) {
+                // db.available=no: the voucher is read back through the API instead of the database. validation.nodb.mode=SKIP reports the
+                // DB-derived checks as skipped; API (default) compares what the test entered with what the application now holds.
+                VoucherSaveFlowSteps.softStep(ctx, "API Validation", com.gsl.validation.CombinedValidationError.Kind.DATABASE, () -> {
+                    if (com.gsl.database.DbAvailability.noDbValidation() != com.gsl.database.DbAvailability.NoDbValidation.API) {
+                        com.gsl.reports.ExtentLogger.skip("Validation skipped — db.available=no and validation.nodb.mode=SKIP");
+                        return;
+                    }
+                    try {
+                        com.gsl.validation.api.GeneralVoucherApiStateChecks.Result result =
+                                com.gsl.validation.api.GeneralVoucherApiStateChecks.created(data,
+                                        com.gsl.validation.api.NoDbApiSession.current().rootViewByDocNo(ctx.docNo));
+                        result.passed().forEach(ReportLogger::pass);
+                        org.testng.Assert.assertTrue(result.ok(), "[API validation] " + result.failed().size() + " check(s) failed for "
+                                + ctx.docNo + ":\n  " + String.join("\n  ", result.failed()));
+                        com.gsl.reports.StepSummaryBuffer.record("API validation: " + result.passed().size() + " checks passed — Document No <b>"
+                                + ctx.docNo + "</b>");
+                    } finally {
+                        com.gsl.validation.api.NoDbApiSession.closeQuietly();
+                    }
+                });
+            } else {
             VoucherSaveFlowSteps.databaseValidation(ctx, docNo -> {
                 new GeneralVoucherDbValidator().validate(data, docNo, saveStartTimeRef[0]);
                 int detailRows = data.getExpenseIncomeDetailList() == null ? 0 : data.getExpenseIncomeDetailList().size();
@@ -207,6 +229,8 @@ public final class GeneralVoucherPredicateFactory {
                 ReportLogger.pass("Snapshot validation complete. Document No: " + ctx.docNo);
                 recordSnapshotDiffSummary(after);
             });
+
+            }
 
             VoucherSaveFlowSteps.finalizeAsserts(ctx, () ->
                     com.gsl.reports.StepSummaryBuffer.record(
