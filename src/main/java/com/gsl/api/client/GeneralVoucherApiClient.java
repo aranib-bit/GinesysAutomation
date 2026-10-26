@@ -9,6 +9,7 @@ import com.gsl.api.model.arvoucher.SubLedgerLookupResult;
 import com.gsl.api.model.arvoucher.VoucherDateValidationRequest;
 import com.gsl.api.model.common.UserSiteContext;
 import com.gsl.api.model.generalvoucher.ChequeLookupResult;
+import com.gsl.api.model.generalvoucher.CostCenterAllocation;
 import com.gsl.api.model.generalvoucher.CostCenterSiteLookupResult;
 import com.gsl.api.model.generalvoucher.GeneralVoucherActionRequest;
 import com.gsl.api.model.generalvoucher.GeneralVoucherActionResponse;
@@ -438,12 +439,31 @@ public class GeneralVoucherApiClient extends ApiClient {
         boolean cash = "C".equalsIgnoreCase(header.getSourceType());
 
         String typeCode = accountType.code();
-        GlLedgerLookupResult gl = fetchLedgers(siteCode, empCode, ou, workDate).stream()
+        List<GlLedgerLookupResult> generalOfType = fetchLedgers(siteCode, empCode, ou, workDate).stream()
                 .filter(l -> typeCode.equalsIgnoreCase(l.getType()) && "G".equalsIgnoreCase(l.getSourceType())
-                        && !l.isSiteApplicable() && !l.isSubLedgerApplicable())
-                .findFirst()
-                .orElseThrow(() -> new ApiException("No Type1 (no site, no sub-ledger) General ledger of type " + typeCode
-                        + " found — cannot raise a General Voucher of account type " + accountType + ".", 0));
+                        && !l.isSubLedgerApplicable())
+                .toList();
+        // Prefer Type1 (no site, no sub-ledger); fall back to Type2 (site only) with a cost-centre allocation, since some
+        // environments (e.g. clone-staging) have no Type1 Expense/Income GL at all.
+        GlLedgerLookupResult gl = generalOfType.stream().filter(l -> !l.isSiteApplicable()).findFirst().orElse(null);
+        List<CostCenterAllocation> allocations = null;
+        if (gl == null) {
+            for (GlLedgerLookupResult candidate : generalOfType) {
+                List<CostCenterSiteLookupResult> sites = fetchCostCenterSites(candidate.getGlCode(), null, ou, siteCode, empCode, workDate, 1);
+                if (sites != null && !sites.isEmpty()) {
+                    CostCenterSiteLookupResult s = sites.get(0);
+                    gl = candidate;
+                    allocations = List.of(CostCenterAllocation.builder().code(s.getCode()).name(s.getName()).siteType(s.getSiteType())
+                            .shortName(s.getShortName()).amount(1).ouCode(s.getOuCode() == null ? ou : s.getOuCode()).build());
+                    break;
+                }
+            }
+        }
+        if (gl == null) {
+            throw new ApiException("No Type1 (no site, no sub-ledger) nor Type2 (site-only, with an allocatable site) General ledger of type "
+                    + typeCode + " found (" + generalOfType.size() + " non-sub-ledger GL(s) of that type) — cannot raise a General Voucher of account type "
+                    + accountType + ".", 0);
+        }
 
         List<DocNumberSchemeEntry> schemes = fetchDocNumberSchemes(siteCode, workDate);
         DocNumberSchemeEntry scheme = schemes.stream().filter(s -> DOC_SCHEME_NAME.equalsIgnoreCase(s.getName())).findFirst()
@@ -454,9 +474,10 @@ public class GeneralVoucherApiClient extends ApiClient {
 
         boolean debit = accountType == GlAccountType.ASSET || accountType == GlAccountType.EXPENSE;
         GeneralVoucherDetailLine line = GeneralVoucherDetailLine.builder()
-                .glCode(gl.getGlCode()).glName(gl.getGlName()).siteApplicable("N").groupName(gl.getGroupName())
+                .glCode(gl.getGlCode()).glName(gl.getGlName()).siteApplicable(allocations == null ? "N" : "Y").groupName(gl.getGroupName())
                 .expense(debit ? 1 : 0).income(debit ? 0 : 1)
                 .paymentMode(cash ? "H" : "C")
+                .costCenterAllocations(allocations)
                 .build();
 
         List<UdfValueEntry> udf = fetchAndBuildUdfValues();

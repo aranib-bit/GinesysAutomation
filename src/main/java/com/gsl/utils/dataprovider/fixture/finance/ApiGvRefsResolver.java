@@ -100,7 +100,8 @@ public final class ApiGvRefsResolver {
                 .filter(g -> typeCode.equalsIgnoreCase(g.getType()))
                 .filter(g -> g.getSourceType() == null || g.getSourceType().isBlank() || "G".equalsIgnoreCase(g.getSourceType()))
                 .filter(g -> siteApp.equalsIgnoreCase(g.getSiteApplicable()) && slApp.equalsIgnoreCase(g.getSubLedgerApplicable()))
-                .filter(g -> !lineType.isSiteApplicable() || g.getGlSiteCount() > 0)
+                // glSiteCount is always 0 in the /ledgers payload (HAR-confirmed), so it cannot gate site availability;
+                // tryResolveRow proves it per GL through the cost-centre site lookup instead.
                 .filter(g -> !lineType.isSubLedgerApplicable() || g.getSlCount() > 0)
                 .filter(g -> !opts.isRequireAmbiguousSubLedger() || g.getSlCount() > 1)
                 .collect(Collectors.toList());
