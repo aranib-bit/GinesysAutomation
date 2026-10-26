@@ -131,14 +131,16 @@ pipeline {
         // neither the docker CLI's location nor its default named-pipe daemon connection
         // are visible here. Full path sidesteps the missing PATH entry; DOCKER_HOST
         // points at the TCP daemon endpoint enabled in Docker Desktop → Settings → General.
-        DOCKER_EXE = 'C:\\Users\\arani.barman\\AppData\\Local\\Programs\\DockerDesktop\\resources\\bin\\docker.exe'
+        // Both DOCKER_EXE and DOCKER_CONFIG can be overridden by a Jenkins global environment variable of
+        // the same name (Manage Jenkins -> System -> Global properties); the values below are only fallbacks.
+        DOCKER_EXE = "${env.DOCKER_EXE ?: 'C:\\Users\\arani.barman\\AppData\\Local\\Programs\\DockerDesktop\\resources\\bin\\docker.exe'}"
         DOCKER_HOST = 'tcp://localhost:2375'
         // LocalSystem has no .docker\cli-plugins of its own, so the "compose" plugin
         // isn't found unless we point Docker's config dir explicitly at a real one.
         // Uses a dedicated CI config (not the personal one) — the personal config's
         // credsStore=desktop tries to exec docker-credential-desktop.exe, which isn't
         // on LocalSystem's PATH either; these images are public and need no auth anyway.
-        DOCKER_CONFIG = 'C:\\ProgramData\\Jenkins\\.docker'
+        DOCKER_CONFIG = "${env.DOCKER_CONFIG ?: 'C:\\ProgramData\\Jenkins\\.docker'}"
     }
 
     stages {
@@ -188,15 +190,14 @@ pipeline {
                 stage('Checkout') {
                     steps {
                         script {
-                            // The job's git SCM remote is configured as the dev folder's local path
-                            // itself (see Jenkins job config) — capturing GIT_URL here derives that
-                            // path at runtime instead of hardcoding it, so the post-build robocopy
-                            // step below never needs a literal absolute path.
-                            def scmVars = checkout scm
-                            if (!scmVars.GIT_URL) {
-                                error "GIT_URL was not returned by checkout scm — cannot derive PROJECT_ROOT."
-                            }
-                            env.PROJECT_ROOT = scmVars.GIT_URL
+                            // The job's git SCM is github.com/aranib-bit/GinesysAutomation (see Jenkins job
+                            // config; credentials id gsl-github-ginesys). Reports are synced back after the
+                            // run into GinesysAutomation\<env>\reports, a folder derived from this build's own
+                            // workspace parent (never a literal drive path), so it works on any drive/agent.
+                            // An optional GINESYS_HOME Jenkins environment variable moves that base folder.
+                            checkout scm
+                            def base = env.GINESYS_HOME ?: "${env.WORKSPACE}\\..\\GinesysAutomation"
+                            env.OUTPUT_ROOT = "${base}\\${env.TARGET_ENV}"
                         }
                     }
                 }
@@ -303,10 +304,11 @@ pipeline {
             // reports/ never reaches the dev folder on its own — sync a copy back after
             // every run. /XO = only copy files newer than what's already there;
             // "& exit 0" because robocopy's own success exit codes are non-zero.
-            // Destination is PROJECT_ROOT (derived at Checkout time from checkout scm's
-            // GIT_URL) + \reports — no profile-specific subfolder, so every profile's run
-            // lands at reports\runs\<runId>\... the same way a local (non-Jenkins) run does.
-            bat 'robocopy "%WORKSPACE%\\reports" "%PROJECT_ROOT%\\reports" /E /XO /R:2 /W:2 & exit 0'
+            // Destination is OUTPUT_ROOT (set at Checkout time: GinesysAutomation\<env> beside the
+            // workspace, or under GINESYS_HOME) + \reports — one folder per environment, no
+            // profile-specific subfolder, so every profile's run lands at reports\runs\<runId>\...
+            // the same way a local (non-Jenkins) run does. Skipped if the build failed before Checkout.
+            bat 'if defined OUTPUT_ROOT robocopy "%WORKSPACE%\\reports" "%OUTPUT_ROOT%\\reports" /E /XO /R:2 /W:2 & exit 0'
         }
     }
 }

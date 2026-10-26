@@ -91,8 +91,12 @@ public final class ApiGvRefsResolver {
         String siteApp = lineType.isSiteApplicable() ? "Y" : "N";
         String slApp = lineType.isSubLedgerApplicable() ? "Y" : "N";
         String typeCode = opts.getAccountType().code();
-        List<GlLedgerLookupResult> candidates = api
-                .fetchLedgers(owner.siteCode(), caller.empCode(), owner.ouCode(), owner.workDate()).stream()
+        List<GlLedgerLookupResult> fetchedGls = api.fetchLedgers(owner.siteCode(), caller.empCode(), owner.ouCode(), owner.workDate());
+        List<GlLedgerLookupResult> allGls = fetchedGls == null ? List.of() : fetchedGls;
+        long ofType = allGls.stream().filter(g -> typeCode.equalsIgnoreCase(g.getType())).count();
+        long ofTypeGeneral = allGls.stream().filter(g -> typeCode.equalsIgnoreCase(g.getType()))
+                .filter(g -> g.getSourceType() == null || g.getSourceType().isBlank() || "G".equalsIgnoreCase(g.getSourceType())).count();
+        List<GlLedgerLookupResult> candidates = allGls.stream()
                 .filter(g -> typeCode.equalsIgnoreCase(g.getType()))
                 .filter(g -> g.getSourceType() == null || g.getSourceType().isBlank() || "G".equalsIgnoreCase(g.getSourceType()))
                 .filter(g -> siteApp.equalsIgnoreCase(g.getSiteApplicable()) && slApp.equalsIgnoreCase(g.getSubLedgerApplicable()))
@@ -112,7 +116,9 @@ public final class ApiGvRefsResolver {
         }
         if (rows.size() < glCount) {
             throw new SkipException("Skipped due to lack of data: found " + rows.size() + " usable GL(s) for type="
-                    + opts.getAccountType() + " (" + lineType + ", " + siteCount + " site(s) each) — need " + glCount + ".");
+                    + opts.getAccountType() + " (" + lineType + ", " + siteCount + " site(s) each) — need " + glCount + ". "
+                    + "Ledger funnel at site '" + owner.siteName() + "': total=" + allGls.size() + ", type=" + typeCode + ":" + ofType
+                    + ", +source G:" + ofTypeGeneral + ", +site/sub-ledger shape:" + candidates.size() + ".");
         }
 
         // 3. Doc scheme — the General Voucher auto-numbered scheme (capacity is not readable by API; see Part F.7)
