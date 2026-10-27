@@ -90,7 +90,7 @@ public class ApiGeneralVoucherEditDataSource implements TestDataSource<MergedFin
             long empCode = Long.parseLong(session.getUserId());
             List<MergedFinanceGeneralVoucherData> rows = new ArrayList<>();
             for (GeneralVoucherEditVariant variant : variants) {
-                rows.add(buildOrFailRow(api, empCode, variant));
+                rows.add(buildOrFailRow(api, empCode, variant, session.getLedgerApiClient(), session.getSubLedgerOthersApiClient()));
             }
             return rows;
         });
@@ -106,7 +106,9 @@ public class ApiGeneralVoucherEditDataSource implements TestDataSource<MergedFin
 
     // ───────────────────────────── one row ─────────────────────────────
 
-    private static MergedFinanceGeneralVoucherData buildOrFailRow(GeneralVoucherApiClient api, long empCode, GeneralVoucherEditVariant variant) {
+    private static MergedFinanceGeneralVoucherData buildOrFailRow(GeneralVoucherApiClient api, long empCode, GeneralVoucherEditVariant variant,
+                                                                  com.gsl.api.client.LedgerApiClient ledgerClient,
+                                                                  com.gsl.api.client.SubLedgerOthersApiClient subLedgerOthersClient) {
         List<String> log = new ArrayList<>();
         log.add("═══════════════════════════════════════════════════════════");
         log.add("  API DATA GATHERING — FRESH VOUCHER CREATED (GENERAL VOUCHER EDIT)");
@@ -116,7 +118,7 @@ public class ApiGeneralVoucherEditDataSource implements TestDataSource<MergedFin
 
         ApiGeneralVoucherEditFixtures.Fixture fixture = null;
         try {
-            fixture = ApiGeneralVoucherEditFixtures.create(api, empCode, variant, log);
+            fixture = ApiGeneralVoucherEditFixtures.create(api, empCode, variant, log, ledgerClient, subLedgerOthersClient);
             return buildRow(api, fixture, variant, log);
         } catch (RuntimeException | AssertionError e) {
             if (fixture != null) ApiGeneralVoucherEditFixtures.discard(api, fixture);
@@ -215,7 +217,7 @@ public class ApiGeneralVoucherEditDataSource implements TestDataSource<MergedFin
 
         PaymentInfoEditTarget paymentEditTarget = null;
         if (variant.getScenarioType() == GeneralVoucherEditVariant.ScenarioType.PAYMENT_INFO) {
-            paymentEditTarget = buildPaymentEditTarget(api, variant, view, lines.get(0), vchdt, dates, workDate, log);
+            paymentEditTarget = buildPaymentEditTarget(api, variant, view, lines.get(0), vchdt, dates, workDate, f.site().getSiteCode(), f.empCode(), log);
         }
 
         String releaseStatus = view.isPosted() ? "P" : "U";
@@ -419,7 +421,8 @@ public class ApiGeneralVoucherEditDataSource implements TestDataSource<MergedFin
 
     private static PaymentInfoEditTarget buildPaymentEditTarget(GeneralVoucherApiClient api, GeneralVoucherEditVariant variant,
                                                                 GeneralVoucherRootView view, GeneralVoucherDetailLine first, LocalDate vchdt,
-                                                                EditDates dates, String workDate, List<String> log) {
+                                                                EditDates dates, String workDate, long ownerSiteCode, long empCode,
+                                                                List<String> log) {
         PaymentSelectionType beforeMode = PaymentSelectionType.fromDbCode(first.getPaymentMode());
         String beforeDate = first.getInstrumentDate() == null || first.getInstrumentDate().length() < 10 ? null
                 : first.getInstrumentDate().substring(0, 10);
@@ -447,7 +450,7 @@ public class ApiGeneralVoucherEditDataSource implements TestDataSource<MergedFin
             newBookcode = null;
         } else {
             long bankGl = view.getCashBankLedger().getGlCode();
-            var cheque = ApiGeneralVoucherEditFixtures.pickCheque(api, bankGl, workDate,
+            var cheque = ApiGeneralVoucherEditFixtures.pickChequeOrBackfill(api, bankGl, ownerSiteCode, empCode, workDate,
                             first.getInstrumentNumber() == null ? Set.<String>of() : new HashSet<>(List.of(first.getInstrumentNumber())))
                     .orElseThrow(() -> new SkipException("Skipped due to lack of data: no further registered, unused cheque exists for Bank ledger '"
                             + view.getCashBankLedger().getGlName() + "' to change the instrument to, for variant '" + variant.getVariantId() + "'."));

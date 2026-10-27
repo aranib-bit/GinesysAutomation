@@ -182,9 +182,16 @@ public final class PickerUi {
         Snapshot s = o.after();
         int nameIdx = Math.max(0, s.headers().indexOf("Name"));
         String typed = o.typed() == null ? "" : o.typed().toLowerCase(Locale.ROOT);
-        long misses = s.rows().stream().filter(c -> c.size() <= nameIdx
-                || !c.get(nameIdx).toLowerCase(Locale.ROOT).contains(typed)).count();
-        r.add(row(comp + "_ROWS", "every Name contains '" + o.typed() + "'", "0 rows without it", misses + " rows without it",
+        // The pickers search several columns (e.g. the GL lookup queries glName, abbreviation and groupName), so a row whose Name does
+        // not contain the typed text is still a correct match when another displayed column does ("Mass Media Expenses" whose Group
+        // is "Advertisement Expenses"). A row is only wrong when NO column contains it.
+        long misses = s.rows().stream().filter(c -> c.stream()
+                .noneMatch(cell -> cell != null && cell.toLowerCase(Locale.ROOT).contains(typed))).count();
+        long viaOtherColumn = s.rows().stream().filter(c -> c.size() > nameIdx
+                && !c.get(nameIdx).toLowerCase(Locale.ROOT).contains(typed)
+                && c.stream().anyMatch(cell -> cell != null && cell.toLowerCase(Locale.ROOT).contains(typed))).count();
+        r.add(row(comp + "_ROWS", "every row contains '" + o.typed() + "' in a searchable column", "0 rows without it",
+                misses + " rows without it" + (viaOtherColumn > 0 ? " (" + viaOtherColumn + " matched via a column other than Name)" : ""),
                 misses == 0));
         int idIdx = s.headers().indexOf("Id");
         List<String> target = s.rows().stream()

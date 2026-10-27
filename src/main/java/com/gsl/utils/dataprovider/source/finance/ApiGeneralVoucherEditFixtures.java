@@ -1,6 +1,11 @@
 package com.gsl.utils.dataprovider.source.finance;
 
 import com.gsl.api.client.GeneralVoucherApiClient;
+import com.gsl.api.client.LedgerApiClient;
+import com.gsl.api.client.SubLedgerOthersApiClient;
+import com.gsl.api.integration.LedgerDataSetup;
+import com.gsl.api.integration.SubLedgerOthersDataSetup;
+import com.gsl.utils.dataprovider.fixture.finance.ApiSubLedgerWait;
 import com.gsl.api.core.ApiException;
 import com.gsl.api.model.arvoucher.CashBankLedgerLookupResult;
 import com.gsl.api.model.arvoucher.DocNumberSchemeEntry;
@@ -58,6 +63,12 @@ final class ApiGeneralVoucherEditFixtures {
                    List<GlLedgerLookupResult> ledgers) {}
 
     static Fixture create(GeneralVoucherApiClient api, long empCode, GeneralVoucherEditVariant variant, List<String> log) {
+        return create(api, empCode, variant, log, null, null);
+    }
+
+    /** As above; the optional master-data clients let a fixture that finds no suitable ledger create one through the API. */
+    static Fixture create(GeneralVoucherApiClient api, long empCode, GeneralVoucherEditVariant variant, List<String> log,
+                          LedgerApiClient ledgerClient, SubLedgerOthersApiClient subLedgerOthersClient) {
         LocalDate today = LocalDate.now();
         String workDate = GeneralVoucherApiClient.workDate(today);
         UserSiteContext ctx = api.fetchUserContext();
@@ -73,7 +84,7 @@ final class ApiGeneralVoucherEditFixtures {
         UserSiteContext.Site site = choice.site();
         int siteCode = (int) site.getSiteCode();
         int ou = (int) site.getOuCode();
-        CashBankLedgerLookupResult header = chooseHeaderLedger(api, choice.ledgers(), workDate, paymentVariant);
+        CashBankLedgerLookupResult header = chooseHeaderLedger(api, choice.ledgers(), workDate, paymentVariant, siteCode, empCode);
         boolean cash = "C".equalsIgnoreCase(header.getSourceType());
         log.add("  Owner site='" + site.getSiteName() + "' (" + siteCode + "), Cash/Bank ledger='" + header.getGlName() + "' ("
                 + (cash ? "Cash" : "Bank") + ")");
@@ -82,11 +93,12 @@ final class ApiGeneralVoucherEditFixtures {
 
         String paymentMode = cash ? "H" : "C";
         GeneralVoucherDetailLine firstPaymentHolder;
-        List<GeneralVoucherDetailLine> lines = new ArrayList<>(buildLines(api, variant, ledgers, empCode, ou, siteCode, workDate, log));
+        List<GeneralVoucherDetailLine> lines = new ArrayList<>(buildLines(api, variant, ledgers, empCode, ou, siteCode, workDate, log,
+                ledgerClient, subLedgerOthersClient));
         for (GeneralVoucherDetailLine l : lines) l.setPaymentMode(paymentMode);
         firstPaymentHolder = lines.get(0);
         if (chequeBefore) {
-            ChequeLookupResult cheque = pickCheque(api, header.getGlCode(), workDate, Set.of())
+            ChequeLookupResult cheque = pickChequeOrBackfill(api, header.getGlCode(), siteCode, empCode, workDate, Set.of())
                     .orElseThrow(() -> new IllegalStateException("no registered, unused cheque exists for Bank ledger '" + header.getGlName()
                             + "' (glCode=" + header.getGlCode() + ") — cannot build a Cheque-before Payment-Info voucher"));
             firstPaymentHolder.setPaymentMode("C");
@@ -157,6 +169,15 @@ final class ApiGeneralVoucherEditFixtures {
         return ApiChequeResolver.claim(api, bankGlCode, workDate, exclude);
     }
 
+    /** {@link #pickCheque(GeneralVoucherApiClient, long, String, Set)}, registering a cheque book through the API first when no leaf is left. */
+    static java.util.Optional<ChequeLookupResult> pickChequeOrBackfill(GeneralVoucherApiClient api, long bankGlCode, long ownerSiteCode,
+                                                                       long empCode, String workDate, Set<String> exclude) {
+        java.util.Optional<ChequeLookupResult> c = pickCheque(api, bankGlCode, workDate, exclude);
+        if (c.isPresent()) return c;
+        if (!ApiChequeResolver.ensureLeaves(api, bankGlCode, ownerSiteCode, empCode, workDate)) return c;
+        return pickCheque(api, bankGlCode, workDate, exclude);
+    }
+
     private static boolean hasUnclaimedCheque(GeneralVoucherApiClient api, long bankGlCode, String workDate) {
         return ApiChequeResolver.hasUnclaimed(api, bankGlCode, workDate);
     }
@@ -175,17 +196,21 @@ final class ApiGeneralVoucherEditFixtures {
 
     /** For a Cheque-before variant, the first ledger of the site that actually has an unused cheque; otherwise the first ledger. */
     private static CashBankLedgerLookupResult chooseHeaderLedger(GeneralVoucherApiClient api, List<CashBankLedgerLookupResult> ledgers,
-                                                                 String workDate, boolean needCheque) {
+                                                                 String workDate, boolean needCheque, int siteCode, long empCode) {
         if (!needCheque) return ledgers.get(0);
         for (CashBankLedgerLookupResult l : ledgers) {
             if (hasUnclaimedCheque(api, l.getGlCode(), workDate)) return l;
         }
-        throw new IllegalStateException("none of the " + ledgers.size() + " Bank ledger(s) at the chosen site has a registered, unused cheque");
+        // None has a usable leaf: register a cheque book for the first Bank ledger through the API, then use it.
+        CashBankLedgerLookupResult first = ledgers.get(0);
+        if (ApiChequeResolver.ensureLeaves(api, first.getGlCode(), siteCode, empCode, workDate)) return first;
+        throw new org.testng.SkipException("Skipped due to lack of data: none of the " + ledgers.size() + " Bank ledger(s) at the chosen site has a registered, unused cheque and a cheque-book backfill via the API did not produce one.");
     }
 
     private static List<GeneralVoucherDetailLine> buildLines(GeneralVoucherApiClient api, GeneralVoucherEditVariant variant,
                                                              List<GlLedgerLookupResult> ledgers, long empCode, int ou, int siteCode,
-                                                             String workDate, List<String> log) {
+                                                             String workDate, List<String> log,
+                                                             LedgerApiClient ledgerClient, SubLedgerOthersApiClient subLedgerOthersClient) {
         GlAccountType accountType = GlAccountType.ASSET;
         boolean debit = accountType.allowsBothSides() || accountType.isDebitOnly();
         double amount = variant.getDetailLineEditShape() == com.gsl.testdata.Finance.Operations.Vouchers.GeneralVoucher
@@ -203,8 +228,12 @@ final class ApiGeneralVoucherEditFixtures {
                         + sls.get(1).getSlName() + "' (shared-glcode narration variant)");
                 return List.of(line(gl, sls.get(0), debit, amount, null), line(gl, sls.get(1), debit, amount, null));
             }
-            throw new IllegalStateException("no Asset General ledger with Sub Ledger Applicable=Y/Site Applicable=N and at least two sub-ledgers "
-                    + "exists at site " + siteCode + " (shared-glcode narration variant)");
+            List<GeneralVoucherDetailLine> created = backfillSharedGlcodeLines(api, ledgerClient, subLedgerOthersClient, accountType, debit,
+                    amount, empCode, ou, siteCode, workDate, log);
+            if (created != null) return created;
+            throw new org.testng.SkipException("Skipped due to lack of data: no Asset General ledger with Sub Ledger Applicable=Y/Site "
+                    + "Applicable=N and at least two sub-ledgers exists at site " + siteCode + " (shared-glcode narration variant)"
+                    + (ledgerClient == null ? "." : ", and creating one through the API did not succeed."));
         }
 
         GlLineType type = variant.getGlLineType() != null ? variant.getGlLineType() : GlLineType.TYPE1_NONE;
@@ -237,6 +266,51 @@ final class ApiGeneralVoucherEditFixtures {
         }
         throw new IllegalStateException("no Asset General ledger of shape " + type + " (site=" + wantSite + ", subLedger=" + wantSl
                 + ") with the lookups it needs exists at site " + siteCode);
+    }
+
+    /**
+     * Shortfall backfill for the shared-glcode narration variant: creates an Asset General ledger (Sub Ledger Y / Site N) and two
+     * "Others" Sub Ledgers through the API, waits for them in the {@code /subledgers} lookup (no DB read) and returns the two lines.
+     * {@code null} when the clients are absent or any step fails.
+     */
+    private static List<GeneralVoucherDetailLine> backfillSharedGlcodeLines(
+            GeneralVoucherApiClient api, LedgerApiClient ledgerClient, SubLedgerOthersApiClient subLedgerOthersClient,
+            GlAccountType accountType, boolean debit, double amount, long empCode, int ou, int siteCode, String workDate,
+            List<String> log) {
+        if (ledgerClient == null || subLedgerOthersClient == null) return null;
+        try {
+            String glname = LedgerDataSetup.createLedgerForTest(ledgerClient, accountType, true, false, List.of())
+                    .getRequest().getGlname();
+            log.add("  Backfill: created Asset ledger '" + glname + "' (Sub Ledger Y / Site N) via the API");
+            GlLedgerLookupResult gl = null;
+            for (int attempt = 0; attempt < 10 && gl == null; attempt++) {
+                gl = api.fetchLedgers(siteCode, empCode, ou, workDate).stream()
+                        .filter(l -> glname.equalsIgnoreCase(l.getGlName())).findFirst().orElse(null);
+                if (gl == null) Thread.sleep(1_500L);
+            }
+            if (gl == null) {
+                log.add("  Backfill: the new ledger '" + glname + "' is not visible in the /ledgers lookup");
+                return null;
+            }
+            for (int i = 0; i < 2; i++) {
+                SubLedgerOthersDataSetup.createSubLedgerOthersForTest(subLedgerOthersClient, gl.getGlCode(), gl.getGlName(), null);
+            }
+            List<SubLedgerLookupResult> sls = ApiSubLedgerWait.awaitAtLeast(api, gl.getGlCode(), siteCode, empCode, ou, workDate, 2);
+            if (sls.size() < 2) {
+                log.add("  Backfill: only " + sls.size() + " sub-ledger(s) visible for '" + glname + "' after creating 2");
+                return null;
+            }
+            log.add("  Backfill: two lines on '" + glname + "' with sub-ledgers '" + sls.get(0).getSlName() + "' and '"
+                    + sls.get(1).getSlName() + "' (shared-glcode narration variant)");
+            return List.of(line(gl, sls.get(0), debit, amount, null), line(gl, sls.get(1), debit, amount, null));
+        } catch (InterruptedException ie) {
+            Thread.currentThread().interrupt();
+            return null;
+        } catch (RuntimeException e) {
+            log.add("  Backfill for the shared-glcode variant failed: " + e.getMessage());
+            Log.warn("[API-Edit] Shared-glcode backfill failed: {}", e.getMessage());
+            return null;
+        }
     }
 
     private static GeneralVoucherDetailLine line(GlLedgerLookupResult gl, SubLedgerLookupResult sl, boolean debit, double amount,

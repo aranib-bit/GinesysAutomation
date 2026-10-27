@@ -84,7 +84,8 @@ public class ApiGeneralVoucherDataSource implements TestDataSource<MergedFinance
         log.add("═══════════════════════════════════════════════════════════");
 
         ApiGvRefsResolver.Caller caller = new ApiGvRefsResolver.Caller(
-                session.getGeneralVoucherApiClient(), Long.parseLong(session.getUserId()));
+                session.getGeneralVoucherApiClient(), Long.parseLong(session.getUserId()),
+                session.getLedgerApiClient(), session.getSubLedgerOthersApiClient());
         ApiGvRefsResolver.OwnerContext owner = ApiGvRefsResolver.resolveOwner(caller, opts.cashBankType(), log);
         LiveGvDbRefs refs = ApiGvRefsResolver.resolve(caller, owner, opts,
                 DbGeneralVoucherDataSource.buildVariantFromOptions(placeholder, opts), log);

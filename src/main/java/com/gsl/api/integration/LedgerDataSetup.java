@@ -32,8 +32,15 @@ public final class LedgerDataSetup {
     public static LedgerCreationOutcome createLedgerForTest(
             LedgerApiClient client, GlAccountType type, boolean subLedgerApplicable, boolean siteApplicable,
             Collection<Long> assignedSiteCodes) {
+        return createLedgerForTest(client, type, subLedgerApplicable, siteApplicable, assignedSiteCodes, 1);
+    }
+
+    /** As above, attaching {@code siteCount} assigned sites to a Site-applicable ledger. */
+    public static LedgerCreationOutcome createLedgerForTest(
+            LedgerApiClient client, GlAccountType type, boolean subLedgerApplicable, boolean siteApplicable,
+            Collection<Long> assignedSiteCodes, int siteCount) {
         LedgerCreationOutcome outcome = client.createLedgerWithDefaults(
-                type, subLedgerApplicable, siteApplicable, assignedSiteCodes);
+                type, subLedgerApplicable, siteApplicable, assignedSiteCodes, siteCount);
         if (!outcome.getResponse().isSuccess() || !outcome.getResponse().isResult()) {
             throw new ApiException("Ledger/Create returned success=" + outcome.getResponse().isSuccess()
                     + ", result=" + outcome.getResponse().isResult() + ", error=" + outcome.getResponse().getError(), 0);

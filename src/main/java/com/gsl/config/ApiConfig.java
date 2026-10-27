@@ -25,6 +25,28 @@ public interface ApiConfig extends Config {
     @Key("webapi.baseuri")
     String webApiBaseUri();
 
+    // ── Cheque book backfill (Finance /cheques/create) ───────────────────────
+
+    /** Leaves per auto-created cheque book. */
+    @Key("backfill.chequebook.leafCount")
+    @DefaultValue("25")
+    int chequeBookLeafCount();
+
+    /** First cheque number tried for an auto-created book; the range is moved up until {@code duplicatecheques} reports it free. */
+    @Key("backfill.chequebook.startNumber")
+    @DefaultValue("900000")
+    int chequeBookStartNumber();
+
+    /** Zero-padded cheque number width ({@code chequeWidth} in the Finance API). */
+    @Key("backfill.chequebook.width")
+    @DefaultValue("6")
+    int chequeBookWidth();
+
+    /** How many successive ranges are probed before giving up. */
+    @Key("backfill.chequebook.maxRangeAttempts")
+    @DefaultValue("20")
+    int chequeBookMaxRangeAttempts();
+
     @Key("webapi.timeout.connect")
     @DefaultValue("10000")
     int webApiConnectTimeoutMs();

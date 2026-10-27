@@ -41,7 +41,16 @@ import java.util.Objects;
  */
 public abstract class VoucherDocumentInformationBase {
 
-    protected static final String SCHEME_DOC_SELECTION = "//span[text()='%s']";
+    /**
+     * Option row of the Voucher No. (doc scheme) dropdown — a grid-style boundlist
+     * ({@code x-boundlist-floating → x-boundlist-item → td per column: Scheme Name | Sample No.}).
+     * Scoped to the visible floating list: a bare {@code //span[text()='General Voucher']} also matched
+     * the left-nav tree node of the same name on qaprod (scheme name == menu label) and the click was
+     * intercepted. Same row shape/convention as {@code GeneralVoucherExpenseIncomeDetail.gridBoundlistOption}.
+     */
+    protected static final String SCHEME_DOC_SELECTION =
+            "//div[contains(@class,'x-boundlist-floating') and not(contains(@style,'display: none'))]"
+            + "//div[contains(@class,'x-boundlist-item') and .//td[@data-qtip=\"%1$s\" or normalize-space(.)=\"%1$s\"]]";
 
     private static final DateTimeFormatter UI_DATE_FORMAT = DateTimeFormatter.ofPattern("dd/MM/yyyy");
 

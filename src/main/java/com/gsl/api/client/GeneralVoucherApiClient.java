@@ -57,6 +57,8 @@ public class GeneralVoucherApiClient extends ApiClient {
     private static final String SITE_TYPE = "OS-OO-CM";
     private static final String MENU_SHORT_CODE = "FinanceGenVoucher";
     private static final String DOC_SCHEME_NAME = "General Voucher";
+    /** Safety cap for {@link #getAllPages}. */
+    private static final int MAX_LOOKUP_PAGES = 50;
 
     /** Wraps an already-authenticated session {@code spec} — see {@link ApiClient}'s class Javadoc. */
     public GeneralVoucherApiClient(RequestSpecification spec) {
@@ -66,6 +68,17 @@ public class GeneralVoucherApiClient extends ApiClient {
     /** The Finance API base ({@code financeApiBaseUri}, i.e. {@code …/Finance/api}); overridable so unit tests can point at a local server. */
     protected String financeBase() {
         return ConfigFactory.getApiConfig().financeApiBaseUri();
+    }
+
+    /** Cheque Book master client sharing this session and Finance base (used by the API-mode cheque shortfall backfill). */
+    public ChequeBookApiClient chequeBooks() {
+        final GeneralVoucherApiClient outer = this;
+        return new ChequeBookApiClient(spec) {
+            @Override
+            protected String financeBase() {
+                return outer.financeBase();
+            }
+        };
     }
 
     /** Prefixes {@code path} with {@link #financeBase()}. */
@@ -197,12 +210,8 @@ public class GeneralVoucherApiClient extends ApiClient {
         Map<String, Object> params = lookupParams(connectedSite, userCode, ouCode, workDate);
         params.put("query", "");
         params.put("queryFieldName", List.of("glName", "abbreviation"));
-        params.put("page", 1);
-        params.put("start", 0);
-        params.put("limit", 50);
         params.put("sort", "glName ASC");
-        Response response = getRaw(url("/ledgers/cashbankledgers"), params);
-        return response.jsonPath().getList("result.items", CashBankLedgerLookupResult.class);
+        return getAllPages("/ledgers/cashbankledgers", params, 50, CashBankLedgerLookupResult.class);
     }
 
     /** {@code GET /ledgers?module=generalvoucher} — the GL lookup of the Expense/Income grid (all pages, up to 1000 rows). */
@@ -211,13 +220,37 @@ public class GeneralVoucherApiClient extends ApiClient {
         params.put("query", "");
         params.put("queryFieldName", List.of("glName", "abbreviation", "groupName", "siteApplicable", "subLedgerApplicable"));
         params.put("pagingNotRequired", true);
-        params.put("page", 1);
-        params.put("start", 0);
-        params.put("limit", 1000);
-        Response response = getRaw(url("/ledgers"), params);
-        List<GlLedgerLookupResult> items = response.jsonPath().getList("result.items", GlLedgerLookupResult.class);
-        logLedgerShape(response, items, connectedSite, userCode, ouCode);
+        List<GlLedgerLookupResult> items = getAllPages("/ledgers", params, 1000, GlLedgerLookupResult.class);
+        logLedgerShape(items, connectedSite, userCode, ouCode);
         return items;
+    }
+
+    /**
+     * {@code GET <path>} read page by page ({@code page}/{@code start}/{@code limit}) until {@code result.totalCount} items are
+     * collected, a page comes back empty, or a safety cap is hit. The first page is requested exactly as a single call used to be,
+     * so a server that already honours {@code pagingNotRequired}/a big limit costs no extra request; a server that caps the page
+     * is now followed instead of silently truncated. {@code totalCount} vs fetched is logged whenever they differ.
+     */
+    private <T> List<T> getAllPages(String path, Map<String, Object> baseParams, int pageSize, Class<T> type) {
+        List<T> all = new java.util.ArrayList<>();
+        int total = Integer.MAX_VALUE;
+        for (int page = 1; page <= MAX_LOOKUP_PAGES && all.size() < total; page++) {
+            Map<String, Object> params = new LinkedHashMap<>(baseParams);
+            params.put("page", page);
+            params.put("start", all.size());
+            params.put("limit", pageSize);
+            Response response = getRaw(url(path), params);
+            List<T> items = response.jsonPath().getList("result.items", type);
+            Integer reported = response.jsonPath().getObject("result.totalCount", Integer.class);
+            if (reported != null) total = reported;
+            if (items == null || items.isEmpty()) break;
+            all.addAll(items);
+            if (reported == null) break; // no totalCount advertised: a single page is all we can trust
+        }
+        if (total != Integer.MAX_VALUE && total != all.size()) {
+            ReportLogger.warn("[GeneralVoucherApiClient] " + path + " totalCount=" + total + " but fetched " + all.size());
+        }
+        return all;
     }
 
     /**
@@ -225,7 +258,7 @@ public class GeneralVoucherApiClient extends ApiClient {
      * "0 usable GL(s)" skip shows whether the list was empty, had null attributes, or was simply filtered out. When the list
      * is empty the start of the raw body is logged.
      */
-    private static void logLedgerShape(Response response, List<GlLedgerLookupResult> items, int site, long user, int ou) {
+    private static void logLedgerShape(List<GlLedgerLookupResult> items, int site, long user, int ou) {
         int n = items == null ? 0 : items.size();
         Map<String, Long> hist = new java.util.TreeMap<>();
         if (items != null) {
@@ -234,12 +267,10 @@ public class GeneralVoucherApiClient extends ApiClient {
                         + "/sl=" + g.getSubLedgerApplicable(), 1L, Long::sum);
             }
         }
-        ReportLogger.warn("[GeneralVoucherApiClient] /ledgers site=" + site + " ou=" + ou + " user=" + user + " → HTTP "
-                + response.statusCode() + ", " + n + " item(s); shapes=" + hist);
+        ReportLogger.warn("[GeneralVoucherApiClient] /ledgers site=" + site + " ou=" + ou + " user=" + user + " → "
+                + n + " item(s); shapes=" + hist);
         if (n == 0) {
-            String body = response.asString();
-            ReportLogger.warn("[GeneralVoucherApiClient] /ledgers empty — raw body: "
-                    + (body == null ? "null" : body.substring(0, Math.min(body.length(), 600))));
+            ReportLogger.warn("[GeneralVoucherApiClient] /ledgers returned no items for this user/site/OU.");
         }
     }
 
@@ -249,11 +280,7 @@ public class GeneralVoucherApiClient extends ApiClient {
         params.put("query", "");
         params.put("parentGLCode", parentGlCode);
         params.put("queryFieldName", List.of("slName", "className"));
-        params.put("page", 1);
-        params.put("start", 0);
-        params.put("limit", 100);
-        Response response = getRaw(url("/subledgers"), params);
-        return response.jsonPath().getList("result.items", SubLedgerLookupResult.class);
+        return getAllPages("/subledgers", params, 100, SubLedgerLookupResult.class);
     }
 
     /**

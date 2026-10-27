@@ -34,6 +34,33 @@ public final class ApiChequeResolver {
         return Optional.empty();
     }
 
+    /**
+     * Cheque shortfall backfill: when {@code bankGlCode} has no claimable leaf, registers a new cheque book through the Finance API
+     * (HAR flow: duplicatecheques → create) and confirms a leaf is then claimable via the cheque lookup. No DB read.
+     *
+     * @return true when a claimable leaf exists afterwards (already existed, or the new book made one visible)
+     */
+    public static boolean ensureLeaves(GeneralVoucherApiClient api, long bankGlCode, long ownerSiteCode, long empCode, String workDate) {
+        if (hasUnclaimed(api, bankGlCode, workDate)) return true;
+        try {
+            api.chequeBooks().createFreeChequeBook(bankGlCode, ownerSiteCode, empCode, workDate);
+        } catch (RuntimeException e) {
+            Log.warn("[ApiChequeResolver] Cheque book backfill failed for glcode={}: {}", bankGlCode, e.getMessage());
+            return false;
+        }
+        long deadline = System.currentTimeMillis() + 15_000L;
+        while (System.currentTimeMillis() < deadline) {
+            if (hasUnclaimed(api, bankGlCode, workDate)) return true;
+            try {
+                Thread.sleep(1_000L);
+            } catch (InterruptedException ie) {
+                Thread.currentThread().interrupt();
+                break;
+            }
+        }
+        return false;
+    }
+
     /** True when at least one leaf of {@code bankGlCode} could still be claimed; claims nothing. */
     public static boolean hasUnclaimed(GeneralVoucherApiClient api, long bankGlCode, String workDate) {
         List<ChequeLookupResult> all = api.fetchCheques(bankGlCode, workDate);

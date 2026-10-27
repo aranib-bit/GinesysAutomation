@@ -10,13 +10,13 @@ import com.gsl.api.model.ledger.LedgerGroupRef;
 import com.gsl.api.model.ledger.LedgerSiteInfo;
 import com.gsl.api.model.ledger.SiteLookupResult;
 import com.gsl.database.DatabaseManager;
+import com.gsl.database.DbAvailability;
 import com.gsl.database.dao.finance.FinAccGrpDao;
 import com.gsl.enums.GlAccountType;
 import com.gsl.reports.ReportLogger;
 import com.gsl.reports.StepExecutor;
 import io.restassured.response.Response;
 import io.restassured.specification.RequestSpecification;
-import org.jdbi.v3.core.Jdbi;
 
 import java.time.LocalDate;
 import java.util.Collection;
@@ -90,14 +90,15 @@ public class LedgerApiClient extends ApiClient {
      */
     public long resolveLeafGroupCode(GlAccountType type) {
         List<AccountGroupTreeNode> tree = fetchAccountGroupTree();
-        Jdbi jdbi = DatabaseManager.getJdbi();
-        FinAccGrpDao finAccGrpDao = jdbi.onDemand(FinAccGrpDao.class);
+        // db.available=no: the DB leaf confirmation is unavailable — rely on the API tree's own leaf shape alone.
+        boolean confirmWithDb = DbAvailability.isAvailable();
+        FinAccGrpDao finAccGrpDao = confirmWithDb ? DatabaseManager.getJdbi().onDemand(FinAccGrpDao.class) : null;
 
         for (AccountGroupTreeNode root : tree) {
             for (AccountGroupTreeNode node : root.flatten()) {
                 if (!type.code().equalsIgnoreCase(node.getType())) continue;
                 if (!node.isLeafByTree()) continue; // cheap first-pass filter
-                if (finAccGrpDao.countChildren(node.getGrpCode()) > 0) {
+                if (confirmWithDb && finAccGrpDao.countChildren(node.getGrpCode()) > 0) {
                     ReportLogger.dataBackfillWarn(
                             "[LedgerApiClient] Group '{}' (grpCode={}) looked like a leaf in the API tree "
                                     + "but has child row(s) in fingrp — skipping, restricted per the leaf-node rule.",
@@ -139,6 +140,18 @@ public class LedgerApiClient extends ApiClient {
     public LedgerCreationOutcome createLedgerWithDefaults(
             GlAccountType type, boolean subLedgerApplicable, boolean requestedSiteApplicable,
             Collection<Long> assignedSiteCodes) {
+        return createLedgerWithDefaults(type, subLedgerApplicable, requestedSiteApplicable, assignedSiteCodes, 1);
+    }
+
+    /**
+     * As above, attaching {@code siteCount} of the user's assigned sites to a Site-applicable ledger (a General Voucher
+     * line allocated across several sites needs a ledger that offers that many).
+     *
+     * @throws ApiException if fewer than {@code siteCount} assigned sites are offered by the site lookup
+     */
+    public LedgerCreationOutcome createLedgerWithDefaults(
+            GlAccountType type, boolean subLedgerApplicable, boolean requestedSiteApplicable,
+            Collection<Long> assignedSiteCodes, int siteCount) {
 
         if ((type == GlAccountType.EXPENSE || type == GlAccountType.INCOME) && !requestedSiteApplicable) {
             throw new IllegalArgumentException("Invalid combination: " + type
@@ -152,16 +165,19 @@ public class LedgerApiClient extends ApiClient {
         List<LedgerSiteInfo> ledgerSiteInfo = List.of();
         if (requestedSiteApplicable) {
             List<SiteLookupResult> sites = StepExecutor.call("Get Sites for Ledger", this::fetchSitesForFinanceLookup);
-            SiteLookupResult matched = sites.stream()
+            List<SiteLookupResult> matched = sites.stream()
                     .filter(s -> assignedSiteCodes.contains(s.getCode()))
-                    .findFirst()
-                    .orElseThrow(() -> new ApiException("GetSitesForFinanceLookup returned none of the "
-                            + "logged-in user's assigned sites " + assignedSiteCodes + " among its "
-                            + sites.size() + " result(s) — refusing to attach a site outside that set to a "
-                            + "new Site-applicable ledger for type=" + type + ". Attaching an arbitrary site "
-                            + "here is exactly the bug that produced \"No site is assigned to this ledger\" "
-                            + "in run 20260810_135033.", 0));
-            ledgerSiteInfo = List.of(LedgerSiteInfo.builder().siteCode(matched.getCode()).build());
+                    .limit(Math.max(1, siteCount))
+                    .collect(java.util.stream.Collectors.toList());
+            if (matched.size() < Math.max(1, siteCount)) {
+                throw new ApiException("GetSitesForFinanceLookup returned " + matched.size() + " of the logged-in user's assigned sites "
+                        + assignedSiteCodes + " among its " + sites.size() + " result(s) — need " + Math.max(1, siteCount)
+                        + " for the new Site-applicable ledger of type=" + type + ". Refusing to attach a site outside the "
+                        + "assigned set (run 20260810_135033's \"No site is assigned to this ledger\").", 0);
+            }
+            ledgerSiteInfo = matched.stream()
+                    .map(m -> LedgerSiteInfo.builder().siteCode(m.getCode()).build())
+                    .collect(java.util.stream.Collectors.toList());
         }
 
         String uniqueSuffix = String.valueOf(System.nanoTime());
