@@ -107,7 +107,8 @@ public class DeleteGeneralVoucher extends WebTest {
         // db.available=no: the DB pre-checks/snapshots/audit checks below are replaced by rootview/list reads (validation.nodb.mode=API) or
         // reported SKIPPED (SKIP). Deleted-ness is checked through the API: the voucher can no longer be read nor listed.
         final boolean noDb = !DbAvailability.isAvailable();
-        final boolean apiValidation = noDb && DbAvailability.noDbValidation() == DbAvailability.NoDbValidation.API;
+        final boolean apiValidation = noDb && DbAvailability.noDbValidation() == DbAvailability.NoDbValidation.API
+                && com.gsl.validation.ValidationSwitches.run(com.gsl.validation.ValidationSwitches.Area.API);
         Aud2SnapshotDao auditDao = noDb ? null : new Aud2SnapshotDao();
 
         DbGatheringExtentLogger.log(testData);
@@ -367,7 +368,7 @@ public class DeleteGeneralVoucher extends WebTest {
                 NoDbApiSession api = NoDbApiSession.current();
                 GeneralVoucherApiStateChecks.Result result = GeneralVoucherApiStateChecks.deleted(testData.getExistingVoucherNo(),
                         readVoucher(testData), api.listRow(testData.getExistingVoucherNo()) != null);
-                result.passed().forEach(ReportLogger::pass);
+                com.gsl.reports.ApiValidationReporter.report(result.rows(), null);
                 Assert.assertTrue(result.ok(), "[API validation] " + String.join("; ", result.failed()));
                 ReportLogger.business("Confirmed voucher removed through the API: " + testData.getExistingVoucherNo());
                 return;
@@ -394,6 +395,10 @@ public class DeleteGeneralVoucher extends WebTest {
         // validates that aud2_finvchmain recorded a DELETE row whose captured state matches what
         // the record held immediately before deletion.
         StepExecutor.step("Database Validation — Audit Trail", () -> {
+            if (!noDb && !com.gsl.validation.ValidationSwitches.run(com.gsl.validation.ValidationSwitches.Area.DB)) {
+                com.gsl.reports.ExtentLogger.skip("DB validation skipped — validation.db.enabled=no");
+                return;
+            }
             if (noDb) {
                 // The aud2_* audit tables are only readable through the database.
                 com.gsl.reports.ExtentLogger.skip("Audit trail check skipped — db.available=no (aud2_finvchmain is not exposed through the API)");
@@ -435,6 +440,10 @@ public class DeleteGeneralVoucher extends WebTest {
         // vchcode/entcode/entcode, all resolved via VoucherDocumentContextResolver/SnapshotService's
         // fk-scoped capture) were ALSO actually removed, not just finvchmain.
         StepExecutor.step("Database Validation — Full Table Deletion (finvchdet/finpost/fincosttag)", () -> {
+            if (!noDb && !com.gsl.validation.ValidationSwitches.run(com.gsl.validation.ValidationSwitches.Area.DB)) {
+                com.gsl.reports.ExtentLogger.skip("DB validation skipped — validation.db.enabled=no");
+                return;
+            }
             if (noDb) {
                 com.gsl.reports.ExtentLogger.skip("Child-table deletion check skipped — db.available=no (the voucher, lines included, "
                         + "is no longer readable through the API — see API Validation above)");

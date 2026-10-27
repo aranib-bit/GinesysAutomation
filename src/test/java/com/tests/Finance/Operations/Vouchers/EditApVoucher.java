@@ -233,6 +233,10 @@ public class EditApVoucher extends WebTest {
         // invariant via AdjustmentTotalsValidator (payment == fintag total, documents as expected).
         // Wiring fintag into the snapshot engine itself is flagged follow-up work.
         StepExecutor.step("Database Validation", () -> {
+            if (!com.gsl.validation.ValidationSwitches.run(com.gsl.validation.ValidationSwitches.Area.DB)) {
+                com.gsl.reports.ExtentLogger.skip("DB validation skipped — validation.db.enabled=no");
+                return;
+            }
             final String docNo = ctx.docNo;
             if (scenarioType == ApVoucherEditScenarioType.HEADER_ONLY) {
                 ExpectedChangeSet changeSet = APVoucherEditChangeSets.headerEdit(contextRef[0], beforeRef[0],

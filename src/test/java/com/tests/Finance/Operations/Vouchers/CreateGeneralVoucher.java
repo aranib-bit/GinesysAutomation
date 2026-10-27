@@ -140,7 +140,13 @@ public class CreateGeneralVoucher extends WebTest {
         if (data.getScenarioType() != null
                 && (data.getExpenseIncomeDetailList() == null || data.getExpenseIncomeDetailList().isEmpty())) {
             Log.debug("[DB mode] Placeholder detected for scenario={}", data.getScenarioType());
-            data = lazyLoader.apply(data);
+            // One named node for the data-gathering API calls, so they no longer sit loose above "Test Data — Header".
+            final MergedFinanceGeneralVoucherData placeholder = data;
+            final MergedFinanceGeneralVoucherData[] loaded = new MergedFinanceGeneralVoucherData[1];
+            boolean apiSource = "API".equalsIgnoreCase(com.gsl.config.ConfigFactory.getConfig().testDataSource());
+            com.gsl.reports.StepExecutor.step(apiSource ? "API Test Data Gathering" : "Test Data Gathering",
+                    () -> loaded[0] = lazyLoader.apply(placeholder));
+            data = loaded[0];
         }
         Log.info("Running test for: {}", data.getMasterTestData() != null
                 ? data.getMasterTestData().getTestcaseid() : data.getScenarioTypeLabel());

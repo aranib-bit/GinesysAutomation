@@ -21,6 +21,8 @@ import com.gsl.testdata.dto.MergedFinanceApVoucherData;
 import com.gsl.testdata.dto.MergedFinanceArVoucherData;
 import com.gsl.testdata.dto.MergedFinanceGeneralVoucherData;
 import com.gsl.utils.Log;
+import com.gsl.validation.ValidationSwitches;
+import com.gsl.validation.api.ApiCheckRow;
 import com.gsl.validation.snapshot.finance.AuditStateSummary;
 import com.gsl.validation.ui.UiValidationFailure;
 import com.gsl.validation.ui.UiValidationReporter;
@@ -37,6 +39,7 @@ import static com.gsl.reports.FoldableSectionRenderer.badge;
 import java.math.BigDecimal;
 import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 
@@ -66,6 +69,72 @@ public final class ActualResultsLogger {
     private static final class Tally {
         int checked, passed, failed, skipped, known;
         final List<String[]> failures = new ArrayList<>(); // {field, expected, actual}
+    }
+
+
+    // ── Per-section report modes (ValidationSwitches) ───────────────────────────
+    /** True while a FAILURES_ONLY section is being built: row helpers still tally every row but render only Fail / Known-issue ones. */
+    private static final ThreadLocal<Boolean> FAILURES_ONLY = ThreadLocal.withInitial(() -> Boolean.FALSE);
+
+    private static void beginSection(ValidationSwitches.Mode mode) {
+        FAILURES_ONLY.set(mode == ValidationSwitches.Mode.FAILURES_ONLY);
+    }
+
+    private static boolean suppressed(Status status) {
+        return FAILURES_ONLY.get() && (status == Status.PASS || status == Status.SKIP);
+    }
+
+    /** Closes a section built since {@code start}: OFF drops it; FAILURES_ONLY drops sub-tables left empty, and the whole section when nothing failed. */
+    private static void endSection(StringBuilder sb, int start, ValidationSwitches.Mode mode) {
+        FAILURES_ONLY.set(false);
+        if (mode == ValidationSwitches.Mode.FULL) return;
+        if (mode == ValidationSwitches.Mode.OFF) { sb.setLength(start); return; }
+        String html = sb.substring(start);
+        if (!html.contains("Fail</span>") && !html.contains("Known Issue</span>")) { sb.setLength(start); return; }
+        String pruned = EMPTY_SUBSECTION.matcher(html).replaceAll("");
+        sb.setLength(start);
+        sb.append(pruned);
+    }
+
+    /** A sub-section whose table body is empty (nothing failed in it) and which contains no nested section. */
+    private static final java.util.regex.Pattern EMPTY_SUBSECTION = java.util.regex.Pattern.compile(
+            "<details[^>]*>(?:(?!<details).)*?<tbody>\\s*</tbody>(?:(?!<details).)*?</details>", java.util.regex.Pattern.DOTALL);
+
+    /** "API Validation" top section: Check | Expected | Actual | Status, one sub-table per group (Document, Line N, ...). */
+    private static String buildApiValidationSection(ActualResultsHolder h, ValidationSwitches.Mode mode) {
+        List<ApiCheckRow> rows = h.getApiValidationRows();
+        if (mode == ValidationSwitches.Mode.OFF || rows == null || rows.isEmpty()) return "";
+        boolean failuresOnly = mode == ValidationSwitches.Mode.FAILURES_ONLY;
+        Map<String, List<ApiCheckRow>> groups = new LinkedHashMap<>();
+        for (ApiCheckRow r : rows) groups.computeIfAbsent(r.group(), k -> new ArrayList<>()).add(r);
+        StringBuilder body = new StringBuilder();
+        boolean anyShown = false;
+        for (Map.Entry<String, List<ApiCheckRow>> g : groups.entrySet()) {
+            StringBuilder rowsHtml = new StringBuilder();
+            for (ApiCheckRow r : g.getValue()) {
+                Status st = r.passed() ? Status.PASS : Status.FAIL;
+                if (failuresOnly && r.passed()) { tally(st, r.check(), r.expected(), r.actual()); continue; }
+                rowsHtml.append(row(r.check(), r.expected(), r.actual(), st));
+            }
+            if (rowsHtml.length() == 0) continue;
+            anyShown = true;
+            body.append(FoldableSectionRenderer.sectionOpen("open", "rs-sub", "",
+                    FoldableSectionRenderer.headerLabel(ICO_TABLE, g.getKey(), 6)));
+            body.append(tableOpen()).append(headerRow("Check", "Expected", "Actual", "Status"));
+            body.append(rowsHtml).append("</tbody>").append(TABLE_CLOSE).append(FoldableSectionRenderer.sectionClose());
+        }
+        if (!anyShown) return "";
+        long failed = rows.stream().filter(r -> !r.passed()).count();
+        StringBuilder sb = new StringBuilder();
+        sb.append(FoldableSectionRenderer.sectionOpen(SECTION_OPEN_PLACEHOLDER, "rs-top rs-api", "",
+                FoldableSectionRenderer.headerLabel(FoldableSectionRenderer.ICO_API, "API Validation", 8)));
+        sb.append("<div style='padding:6px 14px 2px;font-size:11px;color:#64748B'>")
+          .append(rows.size()).append(" checks &middot; ").append(rows.size() - failed).append(" passed &middot; ")
+          .append(failed).append(" failed")
+          .append(h.getApiValidationSource() == null ? "" : " &middot; " + esc(h.getApiValidationSource()))
+          .append(failuresOnly ? " &middot; showing failures only" : "").append("</div>");
+        sb.append(body).append(FoldableSectionRenderer.sectionClose());
+        return sb.toString();
     }
 
     /** No-op when no render is in progress (e.g. the negative-scenario path, which doesn't call
@@ -139,6 +208,7 @@ public final class ActualResultsLogger {
                 && h.getVoucherNo() == null
                 && h.getDetRowCount() == -1
                 && h.getPostEntryCount() == -1
+                && (h.getApiValidationRows() == null || h.getApiValidationRows().isEmpty())
                 // A UI-contract-only flow (e.g. GeneralVoucherUiValidation's tests) never touches
                 // the DB/header/business fields above but DOES populate this — without this check,
                 // such a flow was incorrectly classified as "completely untouched" and its real
@@ -226,6 +296,12 @@ public final class ActualResultsLogger {
         sb.append(FoldableSectionRenderer.STATUS_LEGEND);
         sb.append(SUMMARY_PLACEHOLDER);
 
+        ValidationSwitches.Mode uiMode  = ValidationSwitches.mode(ValidationSwitches.Area.UI);
+        ValidationSwitches.Mode apiMode = ValidationSwitches.mode(ValidationSwitches.Area.API);
+        ValidationSwitches.Mode dbMode  = ValidationSwitches.mode(ValidationSwitches.Area.DB);
+        int uiStart = sb.length();
+        beginSection(uiMode);
+        if (uiMode != ValidationSwitches.Mode.OFF) {
         // ── UI Validation section ──────────────────────────────────────────────
         sb.append(FoldableSectionRenderer.sectionOpen(SECTION_OPEN_PLACEHOLDER, "rs-top rs-ui", "",
                 FoldableSectionRenderer.headerLabel(ICO_MONITOR, "UI Validation", 8)));
@@ -290,7 +366,16 @@ public final class ActualResultsLogger {
         sb.append(buildScopedUiContractSection(h));
 
         sb.append(FoldableSectionRenderer.sectionClose()); // end UI Validation
+        }
+        endSection(sb, uiStart, uiMode);
 
+        // ── API Validation section (API read-back checks, db.available=no) ──
+        sb.append(buildApiValidationSection(h, apiMode));
+
+
+        int dbStart = sb.length();
+        beginSection(dbMode);
+        if (dbMode != ValidationSwitches.Mode.OFF) {
         // ── DB Validation section ──────────────────────────────────────────────
         sb.append(FoldableSectionRenderer.sectionOpen(SECTION_OPEN_PLACEHOLDER, "rs-top rs-db", "",
                 FoldableSectionRenderer.headerLabel(ICO_DB, "DB Validation", 8)));
@@ -464,6 +549,9 @@ public final class ActualResultsLogger {
         if (!captured.isEmpty()) {
             sb.append(buildDbLookupsSection(captured));
         }
+
+        }
+        endSection(sb, dbStart, dbMode);
 
         sb.append("</div>"); // end rs-wrap
         sb.append(HIDE_TS_SCRIPT);
@@ -997,7 +1085,11 @@ public final class ActualResultsLogger {
      *  failure is logged, not thrown — same fail-soft contract as {@link #renderPositiveHtml}. */
     private static void renderNegativeTable(ActualResultsHolder h) {
         try {
-            ExtentLogger.infoTable(buildNegativeTable(h));
+            boolean ui = ValidationSwitches.run(ValidationSwitches.Area.UI);
+            boolean db = ValidationSwitches.run(ValidationSwitches.Area.DB);
+            ExtentLogger.infoTable(java.util.Arrays.stream(buildNegativeTable(h))
+                    .filter(r -> (ui || !r[0].startsWith("UI —")) && (db || !r[0].startsWith("DB —")))
+                    .toArray(String[][]::new));
         } catch (Exception e) {
             Log.warn("[ActualResultsLogger] Failed to build negative table: {}", e.getMessage());
         }
@@ -1217,6 +1309,7 @@ public final class ActualResultsLogger {
     private static String rowHtml(String field, String expectedHtml, String actualHtml,
                                   String expected, String actual, Status status) {
         tally(status, field, expected, actual);
+        if (suppressed(status)) return "";
         String rowBg      = status == Status.FAIL ? "#FEF2F2" : status == Status.KNOWN_ISSUE ? "#FFF7ED" : "transparent";
         String actualColor = status == Status.FAIL ? "#991B1B" : status == Status.KNOWN_ISSUE ? "#E65100" : "#1E293B";
         StringBuilder sb = new StringBuilder();
@@ -1235,6 +1328,7 @@ public final class ActualResultsLogger {
 
     private static String row(String field, String expected, String actual, Status status) {
         tally(status, field, expected, actual);
+        if (suppressed(status)) return "";
         String rowBg      = status == Status.FAIL ? "#FEF2F2" : "transparent";
         String actualColor = status == Status.FAIL ? "#991B1B" : "#1E293B";
         StringBuilder sb = new StringBuilder();
@@ -1262,6 +1356,7 @@ public final class ActualResultsLogger {
     private static String flagRow(String field, String slName, String slId,
                                   String expected, String actual, Status status) {
         tally(status, field, expected, actual);
+        if (suppressed(status)) return "";
         String rowBg      = status == Status.FAIL ? "#FEF2F2" : "transparent";
         String actualColor = status == Status.FAIL ? "#991B1B" : "#1E293B";
         StringBuilder sb = new StringBuilder();

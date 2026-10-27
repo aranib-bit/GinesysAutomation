@@ -177,6 +177,8 @@ public final class GeneralVoucherPredicateFactory {
             if (!com.gsl.database.DbAvailability.isAvailable()) {
                 // db.available=no: the voucher is read back through the API instead of the database. validation.nodb.mode=SKIP reports the
                 // DB-derived checks as skipped; API (default) compares what the test entered with what the application now holds.
+                // validation.api.enabled=no skips the read-back altogether.
+                if (com.gsl.validation.ValidationSwitches.run(com.gsl.validation.ValidationSwitches.Area.API))
                 VoucherSaveFlowSteps.softStep(ctx, "API Validation", com.gsl.validation.CombinedValidationError.Kind.DATABASE, () -> {
                     if (com.gsl.database.DbAvailability.noDbValidation() != com.gsl.database.DbAvailability.NoDbValidation.API) {
                         com.gsl.reports.ExtentLogger.skip("Validation skipped — db.available=no and validation.nodb.mode=SKIP");
@@ -186,7 +188,7 @@ public final class GeneralVoucherPredicateFactory {
                         com.gsl.validation.api.GeneralVoucherApiStateChecks.Result result =
                                 com.gsl.validation.api.GeneralVoucherApiStateChecks.created(data,
                                         com.gsl.validation.api.NoDbApiSession.current().rootViewByDocNo(ctx.docNo));
-                        result.passed().forEach(ReportLogger::pass);
+                        com.gsl.reports.ApiValidationReporter.report(result.rows(), "GET rootview?docNo=" + ctx.docNo);
                         org.testng.Assert.assertTrue(result.ok(), "[API validation] " + result.failed().size() + " check(s) failed for "
                                 + ctx.docNo + ":\n  " + String.join("\n  ", result.failed()));
                         com.gsl.reports.StepSummaryBuffer.record("API validation: " + result.passed().size() + " checks passed — Document No <b>"
@@ -195,7 +197,7 @@ public final class GeneralVoucherPredicateFactory {
                         com.gsl.validation.api.NoDbApiSession.closeQuietly();
                     }
                 });
-            } else {
+            } else if (com.gsl.validation.ValidationSwitches.run(com.gsl.validation.ValidationSwitches.Area.DB)) {
             VoucherSaveFlowSteps.databaseValidation(ctx, docNo -> {
                 new GeneralVoucherDbValidator().validate(data, docNo, saveStartTimeRef[0]);
                 int detailRows = data.getExpenseIncomeDetailList() == null ? 0 : data.getExpenseIncomeDetailList().size();

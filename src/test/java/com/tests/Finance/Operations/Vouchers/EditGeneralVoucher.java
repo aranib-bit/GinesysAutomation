@@ -172,7 +172,8 @@ public class EditGeneralVoucher extends WebTest {
         // db.available=no: nothing below may touch the database — DB reads/snapshots are replaced by rootview reads (validation.nodb.mode=API)
         // or reported SKIPPED (validation.nodb.mode=SKIP). db.available=yes keeps the original path unchanged.
         final boolean noDb = !DbAvailability.isAvailable();
-        final boolean apiValidation = noDb && DbAvailability.noDbValidation() == DbAvailability.NoDbValidation.API;
+        final boolean apiValidation = noDb && DbAvailability.noDbValidation() == DbAvailability.NoDbValidation.API
+                && com.gsl.validation.ValidationSwitches.run(com.gsl.validation.ValidationSwitches.Area.API);
         final GeneralVoucherRootView[] beforeView = new GeneralVoucherRootView[1];
         final GeneralVoucherRootView[] afterView  = new GeneralVoucherRootView[1];
         SnapshotService snapshotService = noDb ? null : new SnapshotService(new Aud2SnapshotDao());
@@ -583,10 +584,14 @@ public class EditGeneralVoucher extends WebTest {
                 }
                 GeneralVoucherEditApiValidator.Result result = GeneralVoucherEditApiValidator.validate(
                         testData, scenarioType, beforeView[0], afterView[0]);
-                result.passed().forEach(ReportLogger::pass);
+                com.gsl.reports.ApiValidationReporter.report(result.rows(), null);
                 Assert.assertTrue(result.ok(), "[API validation] " + result.failed().size() + " check(s) failed for "
                         + docNoRef[0] + ":\n  " + String.join("\n  ", result.failed()));
                 ReportLogger.pass("API rootview validation complete (" + result.passed().size() + " checks). Document No: " + docNoRef[0]);
+                return;
+            }
+            if (!com.gsl.validation.ValidationSwitches.run(com.gsl.validation.ValidationSwitches.Area.DB)) {
+                com.gsl.reports.ExtentLogger.skip("DB validation skipped — validation.db.enabled=no");
                 return;
             }
             ExpectedChangeSet changeSet;

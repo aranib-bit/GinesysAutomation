@@ -267,6 +267,10 @@ public class RevertApVoucher extends WebTest {
 
         // ── Step 13: Database Validation ──────────────────────────────────────────────
         StepExecutor.step("Database Validation", () -> {
+            if (!com.gsl.validation.ValidationSwitches.run(com.gsl.validation.ValidationSwitches.Area.DB)) {
+                com.gsl.reports.ExtentLogger.skip("DB validation skipped — validation.db.enabled=no");
+                return;
+            }
             FinVchMain afterHeader = DatabaseManager.getJdbi().onDemand(FinVchMainDao.class)
                     .findBySchemeDocno(testData.getExistingVoucherNo())
                     .orElseThrow(() -> new IllegalStateException(

@@ -43,6 +43,15 @@ public final class ConfigValidator {
         } else if (!isBlank(db.databaseHost()) || !isBlank(db.databasename())) {
             Log.warn("[ConfigValidator] {}: database values are present but db.available=no — they are ignored", where);
         }
+        try {
+            if (!com.gsl.validation.ValidationSwitches.run(com.gsl.validation.ValidationSwitches.Area.UI)
+                    && !com.gsl.validation.ValidationSwitches.run(com.gsl.validation.ValidationSwitches.Area.API)
+                    && !com.gsl.validation.ValidationSwitches.run(com.gsl.validation.ValidationSwitches.Area.DB)) {
+                Log.warn("[ConfigValidator] {}: UI, API and DB validation are all off — tests will only exercise the flows", where);
+            }
+        } catch (IllegalArgumentException e) {
+            fatals.add(e.getMessage());
+        }
         requireFilled(fatals, where, "webapi.baseuri", api.webApiBaseUri());
         requireFilled(fatals, where, "api.tenant.active", api.activeTenant());
 

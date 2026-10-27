@@ -104,4 +104,19 @@ public interface ReportConfig extends Config {
     @Key("report.snapshotValidation.suppressUnchanged.enabled")
     @DefaultValue("true")
     boolean suppressUnchangedColumnsEnabled();
+
+    /** yes | no — full UI validation detail in the report; no = only failures and known issues (validation still runs). */
+    @Key("report.validation.ui.enabled")
+    @DefaultValue("yes")
+    String validationUiDetail();
+
+    /** yes | no — full API validation detail in the report; no = only failures. */
+    @Key("report.validation.api.enabled")
+    @DefaultValue("yes")
+    String validationApiDetail();
+
+    /** yes | no — full DB validation detail in the report; no = only failures and known issues. */
+    @Key("report.validation.db.enabled")
+    @DefaultValue("yes")
+    String validationDbDetail();
 }

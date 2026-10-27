@@ -253,6 +253,21 @@ public final class ReportConfigRenderer {
         ExtentManager.getExtentTest().info(MarkupHelper.createTable(table));
     }
 
+    /** Effective per-area mode: OFF (not run) / FAILURES_ONLY (run, report failures only) / FULL (run, full report). */
+    private static String validationModes() {
+        try {
+            com.gsl.validation.ValidationSwitches.Area[] areas = com.gsl.validation.ValidationSwitches.Area.values();
+            StringBuilder sb = new StringBuilder();
+            for (com.gsl.validation.ValidationSwitches.Area a : areas) {
+                if (sb.length() > 0) sb.append(" / ");
+                sb.append(a).append("=").append(com.gsl.validation.ValidationSwitches.mode(a));
+            }
+            return sb.toString();
+        } catch (RuntimeException e) {
+            return "unresolved: " + e.getMessage();
+        }
+    }
+
     /** Renders the Test Data Configuration table (data source and file paths) on the current test node. */
     private static void renderTestDataSection(TestDataConfig td) {
         String[][] table = {
@@ -260,6 +275,7 @@ public final class ReportConfigRenderer {
                 {"Test Data Source",     nullSafe(td.getSource())},
                 {"DB Available (db.available)", nullSafe(td.getDbAvailable())},
                 {"Validation without DB (validation.nodb.mode)", nullSafe(td.getValidationNoDbMode())},
+                {"Validation modes (UI / API / DB)", validationModes()},
                 {"Master Test Data",     nullSafe(td.getMasterTestData())},
                 {"Receipts Data",        nullSafe(td.getReceiptsData())},
                 {"Inventory Group Data", nullSafe(td.getInventoryGroupData())},

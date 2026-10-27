@@ -33,17 +33,17 @@ public final class GeneralVoucherApiStateChecks {
     private GeneralVoucherApiStateChecks() {}
 
     /** Every check that ran, split by outcome — the caller renders both and fails the step when {@code failed} is non-empty. */
-    public record Result(List<String> passed, List<String> failed) {
+    public record Result(List<String> passed, List<String> failed, List<ApiCheckRow> rows) {
         public boolean ok() { return failed.isEmpty(); }
     }
 
     // ───────────────────────────── Create ─────────────────────────────
 
     public static Result created(MergedFinanceGeneralVoucherData data, GeneralVoucherRootView actual) {
-        Checks c = new Checks();
+        ApiChecks c = new ApiChecks();
         if (actual == null) {
-            c.failed.add("The created voucher could not be read back through the API");
-            return new Result(c.passed, c.failed);
+            c.fail("The created voucher could not be read back through the API");
+            return new Result(c.passed, c.failed, c.rows);
         }
         DocumentInformation doc = data.getDocumentInformation();
         if (doc != null) {
@@ -84,7 +84,7 @@ public final class GeneralVoucherApiStateChecks {
                 if (norm(pay.getInstrumentNo()) != null) c.eq(label + " instrument number", norm(pay.getInstrumentNo()), norm(l.getInstrumentNumber()));
             }
         }
-        return new Result(c.passed, c.failed);
+        return new Result(c.passed, c.failed, c.rows);
     }
 
     private static PaymentInformation paymentFor(MergedFinanceGeneralVoucherData data, String lineNo, int index) {
@@ -101,10 +101,10 @@ public final class GeneralVoucherApiStateChecks {
 
     /** The voucher's release status is {@code expectedStatus} ({@code "P"} or {@code "U"}) and everything else about it equals {@code before}. */
     public static Result statusChangedOnly(GeneralVoucherRootView before, GeneralVoucherRootView after, String expectedStatus) {
-        Checks c = new Checks();
+        ApiChecks c = new ApiChecks();
         if (before == null || after == null) {
-            c.failed.add("rootview unavailable (before=" + (before != null) + ", after=" + (after != null) + ")");
-            return new Result(c.passed, c.failed);
+            c.fail("rootview unavailable (before=" + (before != null) + ", after=" + (after != null) + ")");
+            return new Result(c.passed, c.failed, c.rows);
         }
         c.eq("Release status", expectedStatus, after.isPosted() ? "P" : "U");
         c.eq("Document date", date(before.getVoucherDate()), date(after.getVoucherDate()));
@@ -125,17 +125,17 @@ public final class GeneralVoucherApiStateChecks {
             c.eq(label + " instrument number", norm(b.get(i).getInstrumentNumber()), norm(a.get(i).getInstrumentNumber()));
             c.eq(label + " site allocation", allocationsOf(b.get(i).getCostCenterAllocations()), allocationsOf(a.get(i).getCostCenterAllocations()));
         }
-        return new Result(c.passed, c.failed);
+        return new Result(c.passed, c.failed, c.rows);
     }
 
     // ───────────────────────────── Delete ─────────────────────────────
 
     /** The voucher can no longer be read ({@code rootviewAfter == null}) nor found by number ({@code listedAfter == false}). */
     public static Result deleted(String docNo, GeneralVoucherRootView rootviewAfter, boolean listedAfter) {
-        Checks c = new Checks();
+        ApiChecks c = new ApiChecks();
         c.eq("Voucher " + docNo + " readable after Delete", false, rootviewAfter != null);
         c.eq("Voucher " + docNo + " listed after Delete", false, listedAfter);
-        return new Result(c.passed, c.failed);
+        return new Result(c.passed, c.failed, c.rows);
     }
 
     // ───────────────────────────── helpers ─────────────────────────────
@@ -164,27 +164,5 @@ public final class GeneralVoucherApiStateChecks {
 
     private static String trim(String s) {
         return s == null ? null : s.trim();
-    }
-
-    private static final class Checks {
-        final List<String> passed = new ArrayList<>();
-        final List<String> failed = new ArrayList<>();
-
-        void eq(String what, Object expected, Object actual) {
-            if (Objects.equals(expected, actual)) passed.add(what + " = " + show(actual));
-            else failed.add(what + ": expected " + show(expected) + " but was " + show(actual));
-        }
-
-        void money(String what, BigDecimal expected, BigDecimal actual) {
-            if (expected != null && actual != null && expected.compareTo(actual) == 0) {
-                passed.add(what + " = " + actual.stripTrailingZeros().toPlainString());
-            } else {
-                failed.add(what + ": expected " + show(expected) + " but was " + show(actual));
-            }
-        }
-
-        private static String show(Object o) {
-            return o == null ? "(none)" : o instanceof BigDecimal bd ? bd.stripTrailingZeros().toPlainString() : "'" + o + "'";
-        }
     }
 }

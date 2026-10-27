@@ -123,7 +123,8 @@ public class RevertGeneralVoucher extends WebTest {
         // db.available=no: the DB pre-checks/snapshots below are replaced by rootview reads (validation.nodb.mode=API) or reported SKIPPED
         // (SKIP). The voucher's vchcode comes from the data source (reservedDocumentKey), its number is looked up in the list API as fallback.
         final boolean noDb = !DbAvailability.isAvailable();
-        final boolean apiValidation = noDb && DbAvailability.noDbValidation() == DbAvailability.NoDbValidation.API;
+        final boolean apiValidation = noDb && DbAvailability.noDbValidation() == DbAvailability.NoDbValidation.API
+                && com.gsl.validation.ValidationSwitches.run(com.gsl.validation.ValidationSwitches.Area.API);
         final GeneralVoucherRootView[] beforeView = new GeneralVoucherRootView[1];
         final GeneralVoucherRootView[] afterView  = new GeneralVoucherRootView[1];
         try {
@@ -404,11 +405,15 @@ public class RevertGeneralVoucher extends WebTest {
                         || revertOutcomeRef[0] == GeneralVoucherRevertOutcome.CANNOT_REVERT_MONTH_CLOSED;
                 String expectedStatus = blocked ? immediateBeforeReleaseStatusRef[0] : "U";
                 GeneralVoucherApiStateChecks.Result result = GeneralVoucherApiStateChecks.statusChangedOnly(beforeView[0], afterView[0], expectedStatus);
-                result.passed().forEach(ReportLogger::pass);
+                com.gsl.reports.ApiValidationReporter.report(result.rows(), null);
                 Assert.assertTrue(result.ok(), "[API validation] " + result.failed().size() + " check(s) failed for "
                         + testData.getExistingVoucherNo() + ":\n  " + String.join("\n  ", result.failed()));
                 ReportLogger.pass("API validated — expected status '" + expectedStatus + "', dialog outcome=" + revertOutcomeRef[0]
                         + " for voucher: " + testData.getExistingVoucherNo());
+                return;
+            }
+            if (!com.gsl.validation.ValidationSwitches.run(com.gsl.validation.ValidationSwitches.Area.DB)) {
+                com.gsl.reports.ExtentLogger.skip("DB validation skipped — validation.db.enabled=no");
                 return;
             }
             FinVchMain afterHeader = DatabaseManager.getJdbi().onDemand(FinVchMainDao.class)

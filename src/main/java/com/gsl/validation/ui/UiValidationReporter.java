@@ -84,6 +84,7 @@ public final class UiValidationReporter {
      *  asserted once at the flow's final assertion point, combined with any DB/snapshot failure.
      *  Results are APPENDED to the Actual Results holder across several calls (checkpoints). */
     public static void renderDeferred(List<UiValidationFailure> results) {
+        if (!com.gsl.validation.ValidationSwitches.run(com.gsl.validation.ValidationSwitches.Area.UI)) return;
         List<UiValidationFailure> held = drainHeld();
         List<UiValidationFailure> merged = new ArrayList<>(held);
         merged.addAll(results);
@@ -108,6 +109,7 @@ public final class UiValidationReporter {
      * flow dies before the rendering step ({@link #flushHeld} then still shows them).
      */
     public static void holdForFill(List<UiValidationFailure> results) {
+        if (!com.gsl.validation.ValidationSwitches.run(com.gsl.validation.ValidationSwitches.Area.UI)) return;
         HELD.get().addAll(results);
         UiFailureCollector.addAll(results);
     }
@@ -121,6 +123,7 @@ public final class UiValidationReporter {
 
     /** Renders anything still held (flow ended before the consolidated render); no-op otherwise. */
     public static void flushHeld() {
+        if (!com.gsl.validation.ValidationSwitches.run(com.gsl.validation.ValidationSwitches.Area.UI)) { drainHeld(); return; }
         List<UiValidationFailure> held = drainHeld();
         if (!held.isEmpty()) renderAndRecord(held);
     }
@@ -166,10 +169,19 @@ public final class UiValidationReporter {
                 + "Checks: " + results.size() + " | Passed: " + passCount + " | Failed: " + failCount
                 + (skipCount > 0 ? " | Skipped: " + skipCount : "")
                 + (knownCount > 0 ? " | Known issues: " + knownCount : "") + "</div>";
+        // report.validation.ui.enabled=no: the validation ran; the tree shows only failures and known issues
+        // (and is omitted when there are none) — the summary above still carries the full counts.
+        boolean failuresOnly = com.gsl.validation.ValidationSwitches.mode(com.gsl.validation.ValidationSwitches.Area.UI)
+                == com.gsl.validation.ValidationSwitches.Mode.FAILURES_ONLY;
+        List<UiValidationFailure> shown = failuresOnly
+                ? results.stream().filter(r -> r.isFail() || r.isKnownIssue()).toList() : results;
+        if (failuresOnly && shown.isEmpty()) return;
         ExtentLogger.infoHtmlOnChildNode("UI Full Validation Details",
                 FoldableSectionRenderer.foldableSection(FoldableSectionRenderer.ICO_TABLE,
                         "UI Full Validation Details", false,
-                        UV_CSS + "<div class='uv-root'>" + summaryLine + buildTreeHtml(results) + "</div>"));
+                        UV_CSS + "<div class='uv-root'>" + summaryLine
+                                + (failuresOnly ? "<div style='padding:0 14px 4px;font-size:11px;color:#64748B'>Showing failures and known issues only</div>" : "")
+                                + buildTreeHtml(shown) + "</div>"));
     }
 
     // ── Tree ───────────────────────────────────────────────────────────────────────────────

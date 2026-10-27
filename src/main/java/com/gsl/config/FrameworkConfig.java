@@ -49,6 +49,21 @@ public interface FrameworkConfig extends Config {
     @DefaultValue("API")
     String validationNoDbMode();
 
+    /** yes | no — whether UI validation runs at all. See {@link com.gsl.validation.ValidationSwitches}. */
+    @Key("validation.ui.enabled")
+    @DefaultValue("yes")
+    String validationUiEnabled();
+
+    /** yes | no — whether API validation runs at all. */
+    @Key("validation.api.enabled")
+    @DefaultValue("yes")
+    String validationApiEnabled();
+
+    /** yes | no — whether DB validation runs at all (forced to no when {@code db.available=no}). */
+    @Key("validation.db.enabled")
+    @DefaultValue("yes")
+    String validationDbEnabled();
+
     /** App login username used in DB mode (must match hrdemp.abbre in the database). */
     @Key("appusername")
     String username();

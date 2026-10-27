@@ -33,6 +33,8 @@ import java.util.function.IntConsumer;
 public final class VoucherUiValidationStage {
 
     private final VoucherUiSpec spec;
+    /** validation.ui.enabled=no: the form is still filled, nothing is read back or validated. */
+    private final boolean run = com.gsl.validation.ValidationSwitches.run(com.gsl.validation.ValidationSwitches.Area.UI);
     private final VoucherGridChrome chrome;
     private final List<UiValidationFailure> results = new ArrayList<>();
     /** Snapshots taken by {@link #blankForm}, compared by {@link #afterFill}. */
@@ -61,6 +63,7 @@ public final class VoucherUiValidationStage {
      *  section (header + toolbar, columns, Narration / Sub Ledger Balance, Adjustment / Payment Information,
      *  footer) and the page footer. */
     public VoucherUiValidationStage blankForm(UiValidationLevel level, UiFieldState state, boolean isEditMode) {
+        if (!run) return this;
         results.addAll(UiValidationScope.node(FormSection.DOCUMENT_INFORMATION.title(),
                 () -> documentInformation(level, state, isEditMode)));
         results.addAll(UiValidationScope.node(spec.gridSection().title(), () -> gridSection(level, isEditMode)));
@@ -156,6 +159,7 @@ public final class VoucherUiValidationStage {
      * keys (Sub Ledger / Reference Site) with its row buttons.
      */
     public VoucherUiValidationStage afterFill(UiValidationLevel level, int rowsFilled) {
+        if (!run) return this;
         VoucherDocumentInformationBase doc = spec.documentInformation();
         if (headerBeforeFill != null) {
             Map<String, FieldSnapshot> after = doc.captureFieldSnapshots();
@@ -190,6 +194,7 @@ public final class VoucherUiValidationStage {
 
     /** Starts observing the business fill of the sub-ledger grid. Pair with {@link #endFill}. */
     public VoucherUiValidationStage beginFill(UiValidationLevel level) {
+        if (!run) return this;
         if (spec.subLedger() == null) return this;
         fillRecorder = new VoucherFillUiRecorder(spec, chrome, level, footerBeforeFill);
         spec.subLedger().setSubLedgerFillListener(fillRecorder);
@@ -198,6 +203,7 @@ public final class VoucherUiValidationStage {
 
     /** Stops observing; adds the header before/after and the whole-fill footer summary after the per-row results. */
     public VoucherUiValidationStage endFill(UiValidationLevel level) {
+        if (!run) return this;
         if (fillRecorder == null) return afterFill(level, 0);
         spec.subLedger().setSubLedgerFillListener(null);
         results.addAll(fillRecorder.results());
@@ -227,6 +233,10 @@ public final class VoucherUiValidationStage {
     /** Runs {@code fillHeader} between two snapshots of every Document Information field and reports, per
      *  field, state/value before and after and whether the change was the expected one. */
     public VoucherUiValidationStage headerFill(Runnable fillHeader) {
+        if (!run) {
+            fillHeader.run();
+            return this;
+        }
         VoucherDocumentInformationBase doc = spec.documentInformation();
         Map<String, FieldSnapshot> before = doc.captureFieldSnapshots();
         fillHeader.run();
@@ -247,6 +257,13 @@ public final class VoucherUiValidationStage {
      */
     public VoucherUiValidationStage rowFlow(int rowCount, IntConsumer fillRow, IntConsumer selectLine,
             UiValidationLevel level) {
+        if (!run) {
+            for (int i = 0; i < rowCount; i++) {
+                fillRow.accept(i);
+                selectLine.accept(i);
+            }
+            return this;
+        }
         for (int i = 0; i < rowCount; i++) {
             final int row = i;
             results.addAll(UiValidationScope.node(spec.gridSection().title(),
@@ -326,12 +343,14 @@ public final class VoucherUiValidationStage {
 
     /** Holds the results collected so far; the next render (after the fill) merges them into ONE report. */
     public void holdForFill() {
+        if (!run) { results.clear(); return; }
         UiValidationReporter.holdForFill(new ArrayList<>(results));
         results.clear();
     }
 
     /** Same as {@link #finish()}. */
     public void finishDeferred() {
+        if (!run) { results.clear(); return; }
         UiValidationReporter.renderDeferred(new ArrayList<>(results));
         results.clear();
     }

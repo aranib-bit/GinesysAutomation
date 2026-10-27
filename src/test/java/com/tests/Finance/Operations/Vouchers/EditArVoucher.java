@@ -188,6 +188,10 @@ public class EditArVoucher extends WebTest {
         // hand-written ARVoucherDbValidator (which never looked at aud2_* tables at all). Gets
         // field-level audit assertions for AR Edit "for free" via the shared engine.
         StepExecutor.step("Database Snapshot Validation", () -> {
+            if (!com.gsl.validation.ValidationSwitches.run(com.gsl.validation.ValidationSwitches.Area.DB)) {
+                com.gsl.reports.ExtentLogger.skip("DB validation skipped — validation.db.enabled=no");
+                return;
+            }
             ExpectedChangeSet changeSet = ARVoucherEditChangeSets.headerEdit(contextRef[0], beforeRef[0],
                     testData.getDocumentInformation().getReference(),
                     testData.getDocumentInformation().getRemarks(),

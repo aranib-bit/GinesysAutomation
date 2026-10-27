@@ -126,6 +126,10 @@ public final class ActualResultsHolder implements TestResultsAccumulator {
     private long creationDtToleranceSeconds;
     /** MergedFinanceArVoucherData or MergedFinanceApVoucherData */
     private Object     testData;
+    /** db.available=no: the API read-back checks (Check | Expected | Actual | Status) shown as "API Validation" in Actual Results; null = none. */
+    private java.util.List<com.gsl.validation.api.ApiCheckRow> apiValidationRows;
+    /** One line naming what was read back, e.g. GET rootview?docNo=VG/00000046/26-27; may be null. */
+    private String apiValidationSource;
 
     private static final ThreadLocal<ActualResultsHolder> HOLDER =
             ThreadLocal.withInitial(ActualResultsHolder::new);

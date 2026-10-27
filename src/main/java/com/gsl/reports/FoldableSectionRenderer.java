@@ -31,6 +31,7 @@ public final class FoldableSectionRenderer {
             "padding:9px 14px;user-select:none;border-radius:8px 8px 0 0;margin-top:10px}" +
         ".rs-ui{background:#EAF2FB;color:#1F4E79;border:0.5px solid #B8D4EC}" +
         ".rs-db{background:#E6F4F4;color:#2C7A7B;border:0.5px solid #B2D8D8}" +
+        ".rs-api{background:#F1ECFA;color:#5B3E96;border:0.5px solid #D3C5EC}" +
         ".rs-wrap details[open] .rs-top,.rs-sub{border-radius:0}" +
         ".rs-sub{list-style:none;cursor:pointer;display:flex;align-items:center;" +
             "justify-content:space-between;gap:6px;" +
@@ -348,6 +349,8 @@ public final class FoldableSectionRenderer {
         "<ellipse cx='12' cy='5' rx='9' ry='3'/>"
         + "<path d='M21 12c0 1.66-4 3-9 3s-9-1.34-9-3'/>"
         + "<path d='M3 5v14c0 1.66 4 3 9 3s9-1.34 9-3V5'/>", 14);
+    public static final String ICO_API       = icon(
+        "<polyline points='16 18 22 12 16 6'/><polyline points='8 6 2 12 8 18'/>", 14);
     public static final String ICO_TABLE     = icon(
         "<rect x='3' y='3' width='18' height='18' rx='2'/>"
         + "<line x1='3' y1='9' x2='21' y2='9'/><line x1='9' y1='9' x2='9' y2='21'/>", 12);

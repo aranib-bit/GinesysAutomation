@@ -33,13 +33,13 @@ public final class GeneralVoucherEditApiValidator {
     private GeneralVoucherEditApiValidator() {}
 
     /** Every check that ran, split by outcome — the caller renders both and fails the step when {@code failed} is non-empty. */
-    public record Result(List<String> passed, List<String> failed) {
+    public record Result(List<String> passed, List<String> failed, List<ApiCheckRow> rows) {
         public boolean ok() { return failed.isEmpty(); }
     }
 
     public static Result validate(MergedFinanceGeneralVoucherData data, GeneralVoucherEditVariant.ScenarioType scenario,
                                   GeneralVoucherRootView before, GeneralVoucherRootView after) {
-        Checks c = new Checks();
+        ApiChecks c = new ApiChecks();
         DocumentInformation doc = data.getDocumentInformation();
 
         // Header: the assembler stores the intended values — unchanged ones equal the originals — so one comparison covers every scope.
@@ -83,10 +83,10 @@ public final class GeneralVoucherEditApiValidator {
             c.eq("Payment mode", np.getPaymentMode().dbCode(), first.getPaymentMode());
             c.eq("Instrument number", norm(np.getInstrumentNo()), norm(first.getInstrumentNumber()));
         }
-        return new Result(c.passed, c.failed);
+        return new Result(c.passed, c.failed, c.rows);
     }
 
-    private static void expectEditedLine(Checks c, String label, DetailLineEditTarget target, GeneralVoucherDetailLine before,
+    private static void expectEditedLine(ApiChecks c, String label, DetailLineEditTarget target, GeneralVoucherDetailLine before,
                                          GeneralVoucherDetailLine after) {
         ExpenseIncomeDetail nv = target.getNewValues();
         c.eq(label + " GL", nv.getGeneralLedger(), after.getGlName());
@@ -104,7 +104,7 @@ public final class GeneralVoucherEditApiValidator {
     }
 
     /** An untouched line must be identical before and after (payment fields excluded on the line a payment edit targets). */
-    private static void sameLine(Checks c, String label, GeneralVoucherDetailLine b, GeneralVoucherDetailLine a, boolean paymentEdited) {
+    private static void sameLine(ApiChecks c, String label, GeneralVoucherDetailLine b, GeneralVoucherDetailLine a, boolean paymentEdited) {
         c.eq(label + " GL", b.getGlCode(), a.getGlCode());
         c.eq(label + " sub-ledger", b.getSlCode() == null ? 0L : b.getSlCode(), a.getSlCode() == null ? 0L : a.getSlCode());
         c.money(label + " amount", amountOf(b), amountOf(a));
@@ -154,28 +154,5 @@ public final class GeneralVoucherEditApiValidator {
 
     private static <T> List<T> nz(List<T> l) {
         return l == null ? List.of() : l;
-    }
-
-    /** Accumulates pass/fail lines instead of throwing, so one run reports every discrepancy. */
-    private static final class Checks {
-        final List<String> passed = new ArrayList<>();
-        final List<String> failed = new ArrayList<>();
-
-        void eq(String what, Object expected, Object actual) {
-            if (Objects.equals(expected, actual)) passed.add(what + " = " + show(actual));
-            else failed.add(what + ": expected " + show(expected) + " but was " + show(actual));
-        }
-
-        void money(String what, BigDecimal expected, BigDecimal actual) {
-            if (expected != null && actual != null && expected.compareTo(actual) == 0) {
-                passed.add(what + " = " + actual.stripTrailingZeros().toPlainString());
-            } else {
-                failed.add(what + ": expected " + show(expected) + " but was " + show(actual));
-            }
-        }
-
-        private static String show(Object o) {
-            return o == null ? "(none)" : o instanceof BigDecimal bd ? bd.stripTrailingZeros().toPlainString() : "'" + o + "'";
-        }
     }
 }

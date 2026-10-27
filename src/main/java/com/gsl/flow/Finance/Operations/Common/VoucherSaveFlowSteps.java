@@ -112,6 +112,7 @@ public final class VoucherSaveFlowSteps {
      *  does not abort the flow (the node still turns red): it is recorded on {@code ctx} and reported
      *  by {@link #finalizeAsserts}, so snapshot validation and the UI result are still produced. */
     public static void databaseValidation(VoucherSaveCtx ctx, Consumer<String> validator) {
+        if (!com.gsl.validation.ValidationSwitches.run(com.gsl.validation.ValidationSwitches.Area.DB)) return;
         softStep(ctx, "Database Validation", CombinedValidationError.Kind.DATABASE, () -> {
             validator.accept(ctx.docNo);
             ReportLogger.pass("DB validated. Document No: " + ctx.docNo);

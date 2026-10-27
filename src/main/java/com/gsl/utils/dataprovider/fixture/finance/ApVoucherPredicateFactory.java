@@ -606,6 +606,10 @@ public final class ApVoucherPredicateFactory {
             });
 
             StepExecutor.step("Database Validation", () -> {
+            if (!com.gsl.validation.ValidationSwitches.run(com.gsl.validation.ValidationSwitches.Area.DB)) {
+                com.gsl.reports.ExtentLogger.skip("DB validation skipped — validation.db.enabled=no");
+                return;
+            }
                 new APVoucherDbValidator().validate(
                         ApVoucherDbContext.builder()
                                 .voucherNo(docNoRef[0])

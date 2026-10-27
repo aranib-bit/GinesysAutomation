@@ -258,6 +258,10 @@ public final class ArVoucherPredicateFactory {
             });
 
             StepExecutor.step("Database Validation", () -> {
+            if (!com.gsl.validation.ValidationSwitches.run(com.gsl.validation.ValidationSwitches.Area.DB)) {
+                com.gsl.reports.ExtentLogger.skip("DB validation skipped — validation.db.enabled=no");
+                return;
+            }
                 new ARVoucherDbValidator().validate(
                         VoucherDbContext.builder()
                                 .voucherNo(docNoRef[0])
