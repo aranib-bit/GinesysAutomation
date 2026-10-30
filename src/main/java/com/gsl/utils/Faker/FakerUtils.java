@@ -5,11 +5,10 @@ import com.github.javafaker.Faker;
 import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.util.List;
-import java.util.concurrent.ThreadLocalRandom;
 
 /**
  * Generic random test-data generator — wraps {@code javafaker} (name/email/phone/catch-phrase
- * generation) alongside plain {@link ThreadLocalRandom} number/collection helpers, behind one
+ * generation) alongside plain seedable number/collection helpers (the shared {@link FakerContext}), behind one
  * shared static facade. Purely mechanical: every method produces a random value of a given shape
  * with no knowledge of which field it will populate or what business rule applies to it — callers
  * decide that. The Finance/Voucher-named generators ({@link #randomReference()},
@@ -19,7 +18,6 @@ import java.util.concurrent.ThreadLocalRandom;
  */
 public final class FakerUtils {
 
-    private static final Faker faker = new Faker();
 
     private FakerUtils() {
         // utility class
@@ -29,25 +27,24 @@ public final class FakerUtils {
 
     /** Random int (full positive range) */
     public static int randomInt() {
-        faker.random().nextInt(Integer.MAX_VALUE);
-        return ThreadLocalRandom.current().nextInt();
+        return FakerContext.current().random().nextInt(Integer.MAX_VALUE);
     }
 
     /** Random int between min & max (inclusive) */
     public static int randomInt(int min, int max) {
-        return ThreadLocalRandom.current().nextInt(min, max + 1);
+        return FakerContext.current().random().nextInt(min, max + 1);
     }
 
     // -------------------- Double Generators --------------------
 
     /** Random double (0.0 — 1.0) */
     public static double randomDouble() {
-        return ThreadLocalRandom.current().nextDouble();
+        return FakerContext.current().random().nextDouble();
     }
 
     /** Random double in {@code [min, max)}, rounded (half-up) to {@code scale} decimal places. */
     public static double randomDouble(double min, double max, int scale) {
-        double value = ThreadLocalRandom.current().nextDouble(min, max);
+        double value = FakerContext.current().random().nextDouble(min, max);
 
         return BigDecimal.valueOf(value)
                 .setScale(scale, RoundingMode.HALF_UP)
@@ -68,7 +65,7 @@ public final class FakerUtils {
         if (max == null || max.compareTo(BigDecimal.ONE) <= 0) {
             return BigDecimal.ONE.setScale(2, RoundingMode.HALF_UP);
         }
-        double value = ThreadLocalRandom.current().nextDouble(1.0, max.doubleValue());
+        double value = FakerContext.current().random().nextDouble(1.0, max.doubleValue());
         return BigDecimal.valueOf(value).setScale(2, RoundingMode.HALF_UP);
     }
 
@@ -86,24 +83,24 @@ public final class FakerUtils {
         if (list == null || list.isEmpty()) {
             throw new IllegalArgumentException("Cannot pick a random element from a null or empty list");
         }
-        return list.get(ThreadLocalRandom.current().nextInt(list.size()));
+        return list.get(FakerContext.current().random().nextInt(list.size()));
     }
 
     // -------------------- Helpers using jFaker --------------------
 
     /** Random full name, e.g. {@code "Jane Doe"}. */
     public static String randomName() {
-        return faker.name().fullName();
+        return FakerContext.current().faker().name().fullName();
     }
 
     /** Random email address. */
     public static String randomEmail() {
-        return faker.internet().emailAddress();
+        return FakerContext.current().faker().internet().emailAddress();
     }
 
     /** Random cell-phone-formatted number. */
     public static String randomPhone() {
-        return faker.phoneNumber().cellPhone();
+        return FakerContext.current().faker().phoneNumber().cellPhone();
     }
 
     // -------------------- Finance / Voucher Generators --------------------
@@ -117,7 +114,7 @@ public final class FakerUtils {
      * {@code "REF-FIN-DUP"} instead.
      */
     public static String randomReference() {
-        return "REF-" + faker.bothify("????-####").toUpperCase();
+        return "REF-" + FakerContext.current().faker().bothify("????-####").toUpperCase();
     }
 
     /**
@@ -127,6 +124,6 @@ public final class FakerUtils {
      * <p>Used for voucher narration (finvchmain.nartext) in DB-mode tests.
      */
     public static String randomRemarks() {
-        return faker.company().catchPhrase();
+        return FakerContext.current().faker().company().catchPhrase();
     }
 }

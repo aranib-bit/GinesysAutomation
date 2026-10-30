@@ -1,5 +1,6 @@
 package com.gsl.api.client;
 
+import com.gsl.api.webapi.WebApiEndpoints;
 import com.gsl.api.core.ApiClient;
 import com.gsl.api.core.ApiException;
 import com.gsl.api.model.common.SimpleResultResponse;
@@ -56,7 +57,7 @@ public class LedgerApiClient extends ApiClient {
         params.put("grpType", "A,L,I,E");
         params.put("workDate", LocalDate.now() + "T00:00:00");
         params.put("node", "root");
-        Response response = getRaw("/FinGroup/GetAccountGrpTree", params);
+        Response response = getRaw(WebApiEndpoints.Ledger.ACCOUNT_GROUP_TREE, params);
         return response.jsonPath().getList("result", AccountGroupTreeNode.class);
     }
 
@@ -67,13 +68,13 @@ public class LedgerApiClient extends ApiClient {
         params.put("page", 1);
         params.put("start", 0);
         params.put("limit", 50);
-        Response response = postRaw("/Shared/GetSitesForFinanceLookup", Map.of(), params);
+        Response response = postRaw(WebApiEndpoints.Ledger.SITES_FOR_FINANCE_LOOKUP, Map.of(), params);
         return response.jsonPath().getList("result.items", SiteLookupResult.class);
     }
 
     /** POST /Ledger/Create?code=0 — the final save call. */
     public SimpleResultResponse createLedger(LedgerCreateRequest request) {
-        return post("/Ledger/Create", request, SimpleResultResponse.class);
+        return post(WebApiEndpoints.Ledger.CREATE, request, SimpleResultResponse.class);
     }
 
     /**
@@ -118,7 +119,7 @@ public class LedgerApiClient extends ApiClient {
     /**
      * Orchestrates the full flow for a given (type, Sub-Ledger-Applicable, Site-Applicable)
      * combination — same "thread each live response into the next, never hardcode" principle as
-     * {@code ArVoucherApiClient.createArVoucherWithDefaults}.
+     * {@code ArVoucherService.createArVoucherWithDefaults}.
      *
      * @param type                     Expense/Income/Asset/Liability (fingl.type)
      * @param subLedgerApplicable      fingl.slapp — "Y"/"N"
@@ -153,6 +154,60 @@ public class LedgerApiClient extends ApiClient {
             GlAccountType type, boolean subLedgerApplicable, boolean requestedSiteApplicable,
             Collection<Long> assignedSiteCodes, int siteCount) {
 
+        LedgerPlan plan = plan(type, requestedSiteApplicable, assignedSiteCodes, siteCount);
+        long grpCode = plan.grpCode();
+        List<LedgerSiteInfo> ledgerSiteInfo = plan.sites();
+
+        String uniqueSuffix = String.valueOf(System.nanoTime());
+        String glname = "AUTO_GL_" + type.code() + "_" + uniqueSuffix;
+        // Short, still-unique abbreviation — abbre columns are typically narrow, so this uses a
+        // base-36 compressed nanoTime rather than the full decimal suffix used in glname.
+        String abbre = "AG" + Long.toString(System.nanoTime(), 36).toUpperCase();
+
+        LedgerCreateRequest request = request(type, subLedgerApplicable, requestedSiteApplicable, glname, abbre, plan);
+
+        ReportLogger.dataBackfill(
+                "[LedgerApiClient] Creating Ledger — type={}, slapp={}, costapp={}, glname='{}', grpCode={}, siteCount={}",
+                type, request.getSlapp(), request.getCostapp(), glname, grpCode, ledgerSiteInfo.size());
+
+        SimpleResultResponse response = StepExecutor.call("Create Ledger via API", () -> createLedger(request));
+        return LedgerCreationOutcome.builder().request(request).response(response).build();
+    }
+
+    /**
+     * {@code count} create bodies of one combination with unique names ("ZZ API GL &lt;runId&gt; &lt;i&gt;"), the group and sites resolved once; for the
+     * k6 bulk hand-over. Same validation and lookups as {@link #createLedgerWithDefaults}.
+     */
+    public List<LedgerCreateRequest> buildBulkRequests(GlAccountType type, boolean subLedgerApplicable, boolean requestedSiteApplicable,
+                                                       Collection<Long> assignedSiteCodes, int siteCount, int count, String runId) {
+        LedgerPlan plan = plan(type, requestedSiteApplicable, assignedSiteCodes, siteCount);
+        List<LedgerCreateRequest> out = new java.util.ArrayList<>(count);
+        for (int i = 0; i < count; i++) {
+            String abbre = ("ZG" + runId + i);
+            out.add(request(type, subLedgerApplicable, requestedSiteApplicable, "ZZ API GL " + type.code() + " " + runId + " " + i,
+                    abbre.substring(0, Math.min(abbre.length(), 25)), plan));
+        }
+        return out;
+    }
+
+    /** The environment-dependent parts of a ledger: its group and (when site applicable) its sites. */
+    private record LedgerPlan(long grpCode, List<LedgerSiteInfo> sites) {}
+
+    private static LedgerCreateRequest request(GlAccountType type, boolean subLedgerApplicable, boolean requestedSiteApplicable,
+                                               String glname, String abbre, LedgerPlan plan) {
+        return LedgerCreateRequest.builder()
+                .srctype("G")
+                .slapp(subLedgerApplicable ? "Y" : "N")
+                .costapp(requestedSiteApplicable ? "Y" : "N")
+                .glname(glname)
+                .abbre(abbre)
+                .type(type.code())
+                .grpcode(LedgerGroupRef.builder().code(String.valueOf(plan.grpCode())).build())
+                .ledgerSiteInfo(plan.sites())
+                .build();
+    }
+
+    private LedgerPlan plan(GlAccountType type, boolean requestedSiteApplicable, Collection<Long> assignedSiteCodes, int siteCount) {
         if ((type == GlAccountType.EXPENSE || type == GlAccountType.INCOME) && !requestedSiteApplicable) {
             throw new IllegalArgumentException("Invalid combination: " + type
                     + " ledgers must be Site applicable (Sub Ledger applicable can still be Yes/No) — "
@@ -180,28 +235,6 @@ public class LedgerApiClient extends ApiClient {
                     .collect(java.util.stream.Collectors.toList());
         }
 
-        String uniqueSuffix = String.valueOf(System.nanoTime());
-        String glname = "AUTO_GL_" + type.code() + "_" + uniqueSuffix;
-        // Short, still-unique abbreviation — abbre columns are typically narrow, so this uses a
-        // base-36 compressed nanoTime rather than the full decimal suffix used in glname.
-        String abbre = "AG" + Long.toString(System.nanoTime(), 36).toUpperCase();
-
-        LedgerCreateRequest request = LedgerCreateRequest.builder()
-                .srctype("G")
-                .slapp(subLedgerApplicable ? "Y" : "N")
-                .costapp(requestedSiteApplicable ? "Y" : "N")
-                .glname(glname)
-                .abbre(abbre)
-                .type(type.code())
-                .grpcode(LedgerGroupRef.builder().code(String.valueOf(grpCode)).build())
-                .ledgerSiteInfo(ledgerSiteInfo)
-                .build();
-
-        ReportLogger.dataBackfill(
-                "[LedgerApiClient] Creating Ledger — type={}, slapp={}, costapp={}, glname='{}', grpCode={}, siteCount={}",
-                type, request.getSlapp(), request.getCostapp(), glname, grpCode, ledgerSiteInfo.size());
-
-        SimpleResultResponse response = StepExecutor.call("Create Ledger via API", () -> createLedger(request));
-        return LedgerCreationOutcome.builder().request(request).response(response).build();
+        return new LedgerPlan(grpCode, ledgerSiteInfo);
     }
 }

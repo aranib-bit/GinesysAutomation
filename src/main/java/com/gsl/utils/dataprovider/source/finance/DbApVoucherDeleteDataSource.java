@@ -48,11 +48,8 @@ public class DbApVoucherDeleteDataSource implements TestDataSource<MergedFinance
             results.add(resolveOneCandidate(jdbi, ApVoucherTagState.TAGGED));
         }
 
+        TestDataSource.stampInvocations(results);
         int total = results.size();
-        for (int i = 0; i < total; i++) {
-            results.get(i).setInvocationIndex(i + 1);
-            results.get(i).setTotalInvocations(total);
-        }
 
         Log.info("[DB] ApVoucherDelete emitted {} row(s) for '{}' — group filter={}",
                 results.size(), methodName, activeGroup);

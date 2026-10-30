@@ -2,12 +2,14 @@ package com.gsl.api.core;
 
 import com.gsl.api.client.ApVoucherApiClient;
 import com.gsl.api.client.ArVoucherApiClient;
+import com.gsl.api.client.CustomerApiClient;
 import com.gsl.api.client.DcApiClient;
 import com.gsl.api.client.DocumentAdjustmentApiClient;
 import com.gsl.api.client.GeneralVoucherApiClient;
 import com.gsl.api.client.GrcApiClient;
 import com.gsl.api.client.ItemApiClient;
 import com.gsl.api.client.LedgerApiClient;
+import com.gsl.api.client.VendorApiClient;
 import com.gsl.api.client.ServiceInvoiceAdhocApiClient;
 import com.gsl.api.client.SubLedgerOthersApiClient;
 import com.gsl.api.client.TransferOutApiClient;
@@ -131,8 +133,12 @@ public final class ApiSessionFactory {
                 .arVoucherApiClient(new ArVoucherApiClient(spec))
                 .apVoucherApiClient(new ApVoucherApiClient(spec))
                 .ledgerApiClient(new LedgerApiClient(spec))
+                .vendorApiClient(new VendorApiClient(spec))
+                .tdsMasterApiClient(new com.gsl.api.client.TdsMasterApiClient(spec))
+                .customerApiClient(new CustomerApiClient(spec))
                 .subLedgerOthersApiClient(new SubLedgerOthersApiClient(spec))
                 .generalVoucherApiClient(new GeneralVoucherApiClient(spec))
+                .auditLogApiClient(new com.gsl.api.client.AuditLogApiClient(spec))
                 .documentAdjustmentApiClient(new DocumentAdjustmentApiClient(spec))
                 .build();
     }

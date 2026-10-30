@@ -38,7 +38,7 @@ public enum TransferOutApiScenarioType {
     CREATE_TRANSFER_OUT_POSITIVE("SI/Save", ScenarioKind.POSITIVE,
             (client, ctx) -> {
                 try {
-                    TransferOutCreateResponse response = client.createTransferOut(
+                    TransferOutCreateResponse response = new com.gsl.service.TransferOutService(client).createTransferOut(
                             ctx.getDcCode(), ctx.getItemCode(), ctx.getQuantity(), ctx.getRate());
                     TransferOutApiValidator.validate(response);
                     return ScenarioOutcome.pass("createTransferOut succeeded — siCode=" + response.getSiCode());

@@ -117,7 +117,7 @@ public class DbArVoucherDeleteDataSource implements TestDataSource<MergedFinance
      * the live DOM (this class's own Javadoc already flags the positive path as not running
      * end-to-end today), AND none of those methods read/return a dialog outcome the way
      * {@code GeneralVoucherMainGrid#confirmRevert()} does — there is no
-     * {@code GeneralVoucherRevertOutcome} equivalent for AR to assert against. Wiring this in
+     * {@code VoucherRevertOutcome} equivalent for AR to assert against. Wiring this in
      * requires both gaps closed first (confirm the real locators, then add an outcome-reading
      * {@code confirmUnpost()}-style method) — out of scope for a data-source-level fix; kept here,
      * documented and ready, rather than either skipped silently or fabricated as a false-passing

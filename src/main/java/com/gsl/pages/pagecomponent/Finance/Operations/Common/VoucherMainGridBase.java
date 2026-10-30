@@ -342,7 +342,7 @@ public abstract class VoucherMainGridBase {
      * dialog(s) actually appear (Revert's own confirm flow needed two — a Yes/No THEN a separate
      * Result dialog — Release may need the same), and (3) their exact text, so a
      * {@code GeneralVoucherReleaseOutcome}-style enum (mirroring
-     * {@link com.gsl.pages.enums.Finance.Operations.GeneralVoucher.GeneralVoucherRevertOutcome})
+     * {@link com.gsl.pages.enums.Finance.Operations.Common.VoucherRevertOutcome})
      * can be built against real evidence instead of guessed text.
      */
     @LogStep("Confirm Release Dialog")

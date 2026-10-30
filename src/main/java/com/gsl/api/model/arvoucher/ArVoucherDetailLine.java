@@ -1,5 +1,9 @@
 package com.gsl.api.model.arvoucher;
 
+import com.gsl.api.model.common.CashBankLedgerLookupResult;
+import com.gsl.api.model.common.SubLedgerLookupResult;
+import com.gsl.api.model.common.ReferenceSiteLookupResult;
+
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Data;

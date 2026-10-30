@@ -1,5 +1,6 @@
 package com.gsl.api.client;
 
+import com.gsl.api.webapi.WebApiEndpoints;
 import com.gsl.api.core.ApiClient;
 import com.gsl.api.core.ApiException;
 import com.gsl.api.model.common.LookupValue;
@@ -32,13 +33,13 @@ public class ItemApiClient extends ApiClient {
     /** GET /udf/GetUDFConfigList — 1 of 21 k6 lookup calls. */
     @SuppressWarnings("unchecked")
     public List<Map<String, Object>> fetchUdfConfigList() {
-        Response response = getRaw("/udf/GetUDFConfigList");
+        Response response = getRaw(WebApiEndpoints.Item.UDF_CONFIG_LIST, Map.of());
         return response.jsonPath().getList("result");
     }
 
     /** POST /Shared/GetGSTHSNLookup */
     public int fetchDefaultHsnCode() {
-        Response response = postRaw("/Shared/GetGSTHSNLookup", Map.of());
+        Response response = postRaw(WebApiEndpoints.Item.GST_HSN_LOOKUP, Map.of());
         List<Integer> codes = response.jsonPath().getList("result.code", Integer.class);
         return codes.isEmpty() ? 0 : codes.get(0);
     }
@@ -60,7 +61,7 @@ public class ItemApiClient extends ApiClient {
     public ItemLookupData fetchGroupDefaults(int inventoryGroupCode) {
         Response response;
         try {
-            response = postRaw("/ItemMaster/GetGroupDefaultValues", Map.of("invgrp", LookupValue.ofCode(inventoryGroupCode)));
+            response = postRaw(WebApiEndpoints.Item.GROUP_DEFAULT_VALUES, Map.of("invgrp", LookupValue.ofCode(inventoryGroupCode)));
         } catch (ApiException e) {
             throw new ApiException(e.getMessage() + " [inventoryGroupCode=" + inventoryGroupCode
                     + ", thread=" + Thread.currentThread().getName() + "]", e.getStatusCode(), e);
@@ -74,7 +75,7 @@ public class ItemApiClient extends ApiClient {
 
     /** POST /ItemMaster/GetUnitOfMeasurement */
     public String fetchDefaultUnitName() {
-        Response response = postRaw("/ItemMaster/GetUnitOfMeasurement", Map.of());
+        Response response = postRaw(WebApiEndpoints.Item.UNIT_OF_MEASUREMENT, Map.of());
         String unit = response.jsonPath().getString("result[0].unitname");
         return unit != null ? unit : "NOS";
     }
@@ -95,7 +96,7 @@ public class ItemApiClient extends ApiClient {
 
     /** POST /ItemMaster/Create — the final save call. */
     public ItemCreateResponse createItem(ItemCreateRequest request) {
-        return post("/ItemMaster/Create", request, ItemCreateResponse.class);
+        return post(WebApiEndpoints.Item.CREATE, request, ItemCreateResponse.class);
     }
 
     /**
@@ -105,7 +106,7 @@ public class ItemApiClient extends ApiClient {
      * expected to succeed.
      */
     public Response createItemExpectFailure(ItemCreateRequest request) {
-        return postRawExpectFailure("/ItemMaster/Create", request);
+        return postRawExpectFailure(endpointUrl(WebApiEndpoints.Item.CREATE), request);
     }
 
     /** Orchestrates lookups + create, matching k6's runCreateItemFlow() end-to-end sequence. */

@@ -30,7 +30,7 @@ public final class ArVoucherDataSetup {
         // Scheme chosen from the DB so an exhausted one (e.g. a full "AR/AP Voucher") is never used.
         String docSchemeName = VoucherDocSchemeSupport.resolveSchemeName(
                 VoucherDomain.AR.getMenuShortcode(), ownerSiteCode, empCode);
-        ArVoucherCreateResponse response = client.createArVoucherWithDefaults(
+        ArVoucherCreateResponse response = new com.gsl.service.ArVoucherService(client).createArVoucherWithDefaults(
                 requiredClsCode, ownerSiteCode, ouCode, empCode, quantity, rate, docSchemeName);
         ArVoucherApiValidator.validate(response);
         ReportLogger.business("[ArVoucherDataSetup] AR Voucher created via API — voucherCode={}, docScheme={}",

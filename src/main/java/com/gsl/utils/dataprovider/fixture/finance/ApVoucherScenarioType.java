@@ -245,6 +245,13 @@ public enum ApVoucherScenarioType implements
             true
     ),
 
+    /** An extinct vendor must not be offered for a transaction: the sub-ledger lookup and the Sub Ledger picker must both omit it. API mode only. */
+    NEG_EXTINCT_VENDOR_NOT_OFFERED(
+            ApVoucherTemplateLoader::negExtinctVendorTemplate,
+            ApVoucherPredicateFactory.NEG_EXTINCT_VENDOR_NOT_OFFERED_BEHAVIOR,
+            true
+    ),
+
     /** Save on a document scheme with no numbers left → proper rejection message; nothing created.
      *  The scheme is resolved in EXHAUSTED mode (provisions + fills a dedicated test scheme if none is full). */
     NEG_DOC_SCHEME_EXHAUSTED(
@@ -316,6 +323,12 @@ public enum ApVoucherScenarioType implements
         this.templateLoader    = templateLoader;
         this.behaviorSupplier  = behaviorSupplier;
         this.onAccount         = onAccount;
+    }
+
+    /** True when the UI allocates across the sub-ledger's whole pending list (FIFO / reference-site-wise FIFO), so the scenario needs the whole sub-ledger to itself. */
+    public boolean usesUiFifoAllocation() {
+        return this == DOC_FIFO || this == DOC_REFERENCE_SITEWISE_FIFO
+                || this == DOC_PARTIAL_ADJUST_MORE_FIFO || this == DOC_PARTIAL_ADJUST_MORE_REFSITE_FIFO;
     }
 
     /** Returns {@code true} when this scenario targets the Advance Payment path. */

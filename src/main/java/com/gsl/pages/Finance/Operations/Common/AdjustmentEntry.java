@@ -67,9 +67,15 @@ public class AdjustmentEntry {
         // is checked directly on the candidate <a>, so it isn't vulnerable to that same loophole.
         // ancestor:: (not the earlier //div[...]//a[...] structure) is used for the same reason —
         // it walks every real ancestor rather than whichever div an outer predicate binds to first.
+        // Live evidence (FIN-AP-EDIT-HEADER-02, DOM dump of the matches): the singleton Ext.Msg window keeps its OK button with
+        // aria-hidden="false" while the window itself is hidden via the class 'x-hidden-offsets' (displayed=false, 75x30), and it sits
+        // BEFORE the Adjustment Entry window in the DOM - so findElement returned the hidden button and the real OK (the second match)
+        // was never clicked. aria-hidden alone is therefore not enough: any hidden ancestor must exclude the candidate too. ancestor::*
+        // (every ancestor, not an outer div predicate) so inner wrapper divs cannot hide the hidden outer window from the test.
         static final By OK_BUTTON = By.xpath(
                 "//a[@aria-hidden='false' and contains(normalize-space(),'OK')" +
-                " and not(ancestor::div[contains(@class,'x-window-maximized')])]");
+                " and not(ancestor::div[contains(@class,'x-window-maximized')])" +
+                " and not(ancestor::*[contains(@class,'x-hidden-offsets') or contains(@class,'x-hide-display')])]");
 
         static final By SHOW_REF_SITE_SUMMARY =
                 By.xpath("//span[normalize-space()='Show Reference Site Summary' and @class='x-btn-inner x-btn-inner-default-toolbar-small']");
@@ -239,7 +245,12 @@ public class AdjustmentEntry {
      * part of the scenario, not an unexpected one to flag.
      */
     public boolean clickOkAndDetectMismatchConfirmation() {
-        SeleniumUtils.click(Loc.OK_BUTTON, WaitType.CLICKABLE, "OK Button in Adjustment Entry");
+        try {
+            SeleniumUtils.click(Loc.OK_BUTTON, WaitType.CLICKABLE, "OK Button in Adjustment Entry");
+        } catch (RuntimeException e) {
+            logOkCandidates();
+            throw e;
+        }
         final String expected = com.gsl.enums.Finance.Operations.Common.DocumentMessageBoxMessage
                 .ADJUSTMENT_AMOUNT_MISMATCH_CONFIRMATION.getText();
         try {
@@ -254,6 +265,33 @@ public class AdjustmentEntry {
             return true;
         } catch (TimeoutException e) {
             return false;
+        }
+    }
+
+    /**
+     * Failure diagnostic for {@link Loc#OK_BUTTON}: lists every element the locator matches (id, aria-hidden, displayed, size and the
+     * nearest window/hidden-offset ancestor), so a "not visible" timeout shows whether the first match is a stale hidden button while
+     * the real one is a later match, or whether no OK is rendered at all.
+     */
+    private void logOkCandidates() {
+        try {
+            WaitUtils.fluentWaitBuilder().withTimeout(Duration.ofSeconds(2)).until(d -> {
+                StringBuilder sb = new StringBuilder("OK candidates for ").append(Loc.OK_BUTTON).append(':');
+                int i = 0;
+                for (org.openqa.selenium.WebElement e : d.findElements(Loc.OK_BUTTON)) {
+                    Object owner = ((org.openqa.selenium.JavascriptExecutor) d).executeScript(
+                            "var w=arguments[0].closest('.x-window');return w?(w.id+' cls='+w.className+' display='+getComputedStyle(w).display):'no-window';", e);
+                    sb.append("\n  [").append(i++).append("] id=").append(e.getAttribute("id"))
+                            .append(" displayed=").append(e.isDisplayed())
+                            .append(" size=").append(e.getSize())
+                            .append(" window=").append(owner);
+                }
+                if (i == 0) sb.append(" none");
+                ReportLogger.warn(sb.toString());
+                return true;
+            });
+        } catch (RuntimeException ignored) {
+            // diagnostic only
         }
     }
 

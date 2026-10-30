@@ -130,6 +130,8 @@ public final class ActualResultsHolder implements TestResultsAccumulator {
     private java.util.List<com.gsl.validation.api.ApiCheckRow> apiValidationRows;
     /** One line naming what was read back, e.g. GET rootview?docNo=VG/00000046/26-27; may be null. */
     private String apiValidationSource;
+    /** group key ("Row 1") -> report title with Sub Ledger / Site / Payment chips; absent = plain group name. */
+    private java.util.Map<String, String> apiValidationTitles;
 
     private static final ThreadLocal<ActualResultsHolder> HOLDER =
             ThreadLocal.withInitial(ActualResultsHolder::new);

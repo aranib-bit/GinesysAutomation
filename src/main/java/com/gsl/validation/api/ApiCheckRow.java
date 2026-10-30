@@ -13,7 +13,7 @@ public record ApiCheckRow(String group, String check, String expected, String ac
         if (label.startsWith("Line ") || label.startsWith("Added line")) {
             int space = label.startsWith("Line ") ? label.indexOf(' ', 5) : label.indexOf(' ', 10);
             if (space > 0) {
-                group = label.substring(0, space);
+                group = label.startsWith("Line ") ? "Row " + label.substring(5, space) : label.substring(0, space);
                 check = label.substring(space + 1);
             }
         }

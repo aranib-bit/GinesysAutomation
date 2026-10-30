@@ -23,7 +23,7 @@ import org.jdbi.v3.core.Jdbi;
  * retry picks the freshly-created row up through the caller's own claim query, not through this
  * method's return value).
  *
- * <p><b>Currently non-functional</b> — {@link GeneralVoucherApiClient#createGeneralVoucherWithDefaults}
+ * <p><b>Currently non-functional</b> — {@link com.gsl.service.GeneralVoucherService#createGeneralVoucherWithDefaults}
  * is a structural stub pending a real HAR capture (see that class's Javadoc), so calling this
  * strategy today surfaces a clearly-labeled {@link UnsupportedOperationException} instead of
  * silently fabricating incorrect data.
@@ -56,7 +56,7 @@ public final class GeneralVoucherApiBackfillStrategy implements BackfillStrategy
                 // empCode is the logged-in user's code from the API session.
                 long empCode = Long.parseLong(session.getUserId());
                 GeneralVoucherCreateResponse response = StepExecutor.call("Create General Voucher via API",
-                        () -> session.getGeneralVoucherApiClient().createGeneralVoucherWithDefaults(accountType, 0, 0, empCode));
+                        () -> new com.gsl.service.GeneralVoucherService(session.getGeneralVoucherApiClient()).createGeneralVoucherWithDefaults(accountType, 0, 0, empCode));
 
                 StepExecutor.call("Verify General Voucher Landed Posted in DB", () -> {
                     verifyLandedPosted(response);

@@ -78,15 +78,12 @@ public class ApiGeneralVoucherDataSource implements TestDataSource<MergedFinance
 
     private static MergedFinanceGeneralVoucherData resolve(ApiSessionBundle session, MergedFinanceGeneralVoucherData placeholder) {
         GeneralVoucherFixtureOptions opts = placeholder.getFixtureOptions();
-        List<String> log = new ArrayList<>();
-        log.add("═══════════════════════════════════════════════════════════");
-        log.add("  API DATA GATHERING — RESOLVED REFERENCES (GENERAL VOUCHER)");
-        log.add("═══════════════════════════════════════════════════════════");
+        List<String> log = GatheringLog.start("API DATA GATHERING — RESOLVED REFERENCES (GENERAL VOUCHER)");
 
         ApiGvRefsResolver.Caller caller = new ApiGvRefsResolver.Caller(
                 session.getGeneralVoucherApiClient(), Long.parseLong(session.getUserId()),
                 session.getLedgerApiClient(), session.getSubLedgerOthersApiClient());
-        ApiGvRefsResolver.OwnerContext owner = ApiGvRefsResolver.resolveOwner(caller, opts.cashBankType(), log);
+        ApiVoucherSupport.Owner owner = ApiGvRefsResolver.resolveOwner(caller, opts.cashBankType(), log);
         LiveGvDbRefs refs = ApiGvRefsResolver.resolve(caller, owner, opts,
                 DbGeneralVoucherDataSource.buildVariantFromOptions(placeholder, opts), log);
 
@@ -94,7 +91,7 @@ public class ApiGeneralVoucherDataSource implements TestDataSource<MergedFinance
         data.setFixtureOptions(opts);
         data.setTags(placeholder.getTags());
         data.setMasterTestData(placeholder.getMasterTestData());
-        log.add("═══════════════════════════════════════════════════════════");
+        GatheringLog.end(log);
         data.setDbGatheringLog(log);
         return data;
     }

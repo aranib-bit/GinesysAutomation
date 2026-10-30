@@ -51,7 +51,9 @@ public final class PageStateDiagnostics {
             var eds=all('.x-editor, .x-grid-editor');
             out.push('Visible cell editors: '+eds.length);
             take(eds).forEach(function(e){ var i=e.querySelector('input,textarea');
-                out.push('  editor '+(e.id||'')+' value="'+(i?i.value:'')+'" text="'+txt(e)+'"'); });
+                var col='?'; try{ var c=window.Ext&&Ext.getCmp&&Ext.getCmp(e.id); var cx=c&&c.context;
+                    if(cx&&cx.column) col=(cx.column.dataIndex||'')+'/'+(cx.column.text||'')+' row='+cx.rowIdx+' grid='+(cx.grid&&cx.grid.itemId||''); }catch(x){}
+                out.push('  editor '+(e.id||'')+' column='+col+' value="'+(i?i.value:'')+'" text="'+txt(e)+'"'); });
             var errs=[].slice.call(document.querySelectorAll('*')).filter(function(e){
                 return e.children.length===0 && /^Error:/.test((e.textContent||'').trim()) && vis(e); });
             if(errs.length) out.push('Error text on page: '+take(errs).map(txt).join(' || '));

@@ -1,6 +1,8 @@
 package com.gsl.api.client;
 
 import com.gsl.api.core.ApiClient;
+import com.gsl.api.webapi.WebApiEndpoints;
+import com.gsl.api.webapi.model.request.transferout.SearchChallanRequest;
 import com.gsl.api.model.transferout.DcSearchResult;
 import com.gsl.api.model.transferout.TransferOutCreateRequest;
 import com.gsl.api.model.transferout.TransferOutCreateResponse;
@@ -26,13 +28,13 @@ public class TransferOutApiClient extends ApiClient {
 
     /** POST /SI/SearchChallan — finds a DC eligible to transfer out. */
     public DcSearchResult searchChallan(String dcCode) {
-        Response response = postRaw("/SI/SearchChallan", Map.of("dcCode", dcCode));
+        Response response = postRaw(WebApiEndpoints.TransferOut.SEARCH_CHALLAN, SearchChallanRequest.builder().dcCode(dcCode).build());
         return response.jsonPath().getObject("result[0]", DcSearchResult.class);
     }
 
     /** POST SI/Save — the final save call. */
     public TransferOutCreateResponse createTransferOut(TransferOutCreateRequest request) {
-        return post("/SI/Save", request, TransferOutCreateResponse.class);
+        return post(WebApiEndpoints.TransferOut.SAVE, request, TransferOutCreateResponse.class);
     }
 
     /**
@@ -41,26 +43,7 @@ public class TransferOutApiClient extends ApiClient {
      * instead of throwing.
      */
     public Response createTransferOutExpectFailure(TransferOutCreateRequest request) {
-        return postRawExpectFailure("/SI/Save", request);
+        return postRawExpectFailure(endpointUrl(WebApiEndpoints.TransferOut.SAVE), request);
     }
 
-    /** Builds and saves a single-line Transfer Out against the given DC, matching k6's flow. */
-    public TransferOutCreateResponse createTransferOut(String dcCode, String itemCode, int quantity, int rate) {
-        // * NOTE: this overload does not call searchChallan() — dcCode is threaded straight into
-        // the line item as supplied by the caller. Only the actual Save call below gets its own
-        // sub-section; a "search" node here would misrepresent a call that isn't made.
-        TransferOutLineItem line = TransferOutLineItem.builder()
-                .dcCode(dcCode)
-                .itemCode(itemCode)
-                .invQty(quantity)
-                .rate(rate)
-                .build();
-
-        TransferOutCreateRequest request = TransferOutCreateRequest.builder()
-                .invoiceDate(LocalDate.now() + "T00:00:00")
-                .item(line)
-                .build();
-
-        return StepExecutor.call("Create Transfer Out via API", () -> createTransferOut(request));
-    }
 }

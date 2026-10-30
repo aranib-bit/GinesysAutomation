@@ -2,6 +2,14 @@ package com.gsl.api.core;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.gsl.api.webapi.WebApiEndpoints;
+import com.gsl.api.webapi.constants.AuthDefaults;
+import com.gsl.api.webapi.model.request.auth.KillSessionQuery;
+import com.gsl.api.webapi.model.request.auth.LogoutQuery;
+import com.gsl.api.webapi.model.request.auth.PasswordTokenRequest;
+import com.gsl.api.webapi.model.response.auth.LoginError;
+import com.gsl.api.webapi.model.response.auth.LogoutResponse;
+import com.gsl.api.webapi.model.response.auth.TokenResponse;
 import com.gsl.config.ApiConfig;
 import com.gsl.config.ConfigFactory;
 import com.gsl.config.TenantUtils;
@@ -34,8 +42,6 @@ import java.util.Base64;
  */
 public final class WebApiSessionClient {
 
-    private static final String NAMEIDENTIFIER_CLAIM =
-            "http://schemas.xmlsoap.org/ws/2005/05/identity/claims/nameidentifier";
     private static final ObjectMapper MAPPER = new ObjectMapper();
 
     private WebApiSessionClient() {}
@@ -90,16 +96,16 @@ public final class WebApiSessionClient {
             ReportLogger.sessionWarn("[WebApiSessionClient] Login attempt #1 for '{}' failed — HTTP {} — body: {}",
                     credential.username(), response.getStatusCode(), response.getBody().asString());
 
-            ParsedLoginError parsedError = tryParseErrorDescription(response);
+            LoginError parsedError = TokenResponse.parse(response.getBody().asString()).loginError();
 
-            if (parsedError != null && "012".equals(parsedError.code) && parsedError.tag != null) {
+            if (parsedError != null && parsedError.isAlreadyLoggedIn()) {
                 ReportLogger.sessionWarn("[WebApiSessionClient] Login for '{}' hit code 012 (already logged in "
                         + "elsewhere, userId={}) — killing that session and retrying once.",
-                        credential.username(), parsedError.tag);
+                        credential.username(), parsedError.tag());
                 if (ExtentManager.hasTest()) {
-                    StepExecutor.step(BackfillStepLabel.KILL_TOKEN.label(), () -> killSession(parsedError.tag));
+                    StepExecutor.step(BackfillStepLabel.KILL_TOKEN.label(), () -> killSession(parsedError.tag()));
                 } else {
-                    killSession(parsedError.tag);
+                    killSession(parsedError.tag());
                 }
                 long retryStart = System.currentTimeMillis();
                 response = performLogin(credential);
@@ -126,14 +132,11 @@ public final class WebApiSessionClient {
         // snake_case (access_token/access_token2); qafeature/qahbros (multi-tenant) use
         // camelCase (accessToken/accessToken2) — confirmed live in auth.js. Without this
         // fallback a multi-tenant host silently returns null for both tokens.
-        String authorizationToken = firstNonNull(
-                response.jsonPath().getString("access_token"),
-                response.jsonPath().getString("accessToken"));
-        String ginesysAuthToken = firstNonNull(
-                response.jsonPath().getString("access_token2"),
-                response.jsonPath().getString("accessToken2"));
+        TokenResponse token = TokenResponse.parse(response.getBody().asString());
+        String authorizationToken = token.getAccessToken();
+        String ginesysAuthToken = token.getAccessToken2();
 
-        String userId = ginesysAuthToken != null ? extractClaim(ginesysAuthToken, NAMEIDENTIFIER_CLAIM) : null;
+        String userId = ginesysAuthToken != null ? extractClaim(ginesysAuthToken, AuthDefaults.NAME_IDENTIFIER_CLAIM) : null;
 
         ReportLogger.session("[WebApiSessionClient] Login — user={}, userId={}, ginesysAuthPresent={}",
                 credential.username(), userId, ginesysAuthToken != null);
@@ -151,22 +154,21 @@ public final class WebApiSessionClient {
         ApiConfig cfg = ConfigFactory.getApiConfig();
         return RestAssured.given()
                 .baseUri(cfg.webApiBaseUri())
-                .contentType("application/x-www-form-urlencoded")
-                .formParam("grant_type", "password")
-                .formParam("username", credential.username())
-                .formParam("password", credential.password())
+                .contentType(AuthDefaults.FORM_CONTENT_TYPE)
+                .formParams(QueryParams.toMap(PasswordTokenRequest.of(credential.username(), credential.password())))
                 .post(cfg.webApiLoginPath());
     }
 
     /** GET {apiPrefix}/Session/KillUser?userId=<tag> — forces the stale session (from code 012) to end. */
     private static void killSession(String userId) {
         ApiConfig cfg = ConfigFactory.getApiConfig();
-        String url = cfg.webApiBaseUri() + cfg.webApiApiPrefix() + "/Session/KillUser?userId=" + userId;
+        String path = cfg.webApiApiPrefix() + WebApiEndpoints.Auth.KILL_USER.path();
+        String url = cfg.webApiBaseUri() + path + "?userId=" + userId;
         long start = System.currentTimeMillis();
         Response response = RestAssured.given()
                 .baseUri(cfg.webApiBaseUri())
-                .queryParam("userId", userId)
-                .get(cfg.webApiApiPrefix() + "/Session/KillUser");
+                .queryParams(QueryParams.toMap(KillSessionQuery.of(userId)))
+                .get(path);
         logRedactedCall("GET", url, "(none)", response, System.currentTimeMillis() - start);
     }
 
@@ -210,28 +212,8 @@ public final class WebApiSessionClient {
     }
 
     private static boolean isLicenseExceeded(Response response) {
-        ParsedLoginError e = tryParseErrorDescription(response);
-        return e != null && "555555555".equals(e.code);
-    }
-
-    /** Ginesys encodes login failures as "<code>|<message>|<tag>" in error_description, e.g. code 012. */
-    private static ParsedLoginError tryParseErrorDescription(Response response) {
-        try {
-            String errorDescription = response.jsonPath().getString("error_description");
-            if (errorDescription == null) return null;
-            String[] parts = errorDescription.split("\\|");
-            return new ParsedLoginError(
-                    parts.length > 0 ? parts[0] : null,
-                    parts.length > 2 ? parts[2] : null);
-        } catch (Exception e) {
-            return null; // response wasn't the expected JSON shape — caller falls through to a hard failure
-        }
-    }
-
-    private static final class ParsedLoginError {
-        final String code;
-        final String tag;
-        ParsedLoginError(String code, String tag) { this.code = code; this.tag = tag; }
+        LoginError e = TokenResponse.parse(response.getBody().asString()).loginError();
+        return e != null && e.isLicenseExceeded();
     }
 
     /** Mirrors the captured HAR exactly for single-tenant; branches for multi-tenant (shape TBD). */
@@ -241,7 +223,7 @@ public final class WebApiSessionClient {
         boolean multiTenant = TenantUtils.isMultiTenant(cfg, tenant);
         String sessionIdParam = multiTenant && session.getSessionId() != null
                 ? session.getSessionId()
-                : "null"; // literal string "null" — matches captured single-tenant Session/Logout behavior exactly
+                : AuthDefaults.NO_SESSION_ID; // the literal string "null" — matches the captured single-tenant Session/Logout exactly
 
         if (multiTenant && session.getSessionId() == null) {
             ReportLogger.sessionWarn("[WebApiSessionClient] Logout for multi-tenant '{}' has no captured sessionId " +
@@ -253,12 +235,11 @@ public final class WebApiSessionClient {
         // builds the flow-client spec against {webApiBaseUri}{webApiApiPrefix} (see §0.10), so
         // the path here must stay relative ("/Session/Logout"), not re-prepend the prefix.
         Response response = session.getBaseSpec()
-                .queryParam("_dc", System.currentTimeMillis())
-                .queryParam("userId", session.getUserId())
-                .queryParam("sessionId", sessionIdParam)
-                .get("/Session/Logout");
+                .queryParams(QueryParams.toMap(LogoutQuery.builder()
+                        .cacheBuster(System.currentTimeMillis()).userId(session.getUserId()).sessionId(sessionIdParam).build()))
+                .get(WebApiEndpoints.Auth.LOGOUT.path());
 
-        boolean success = Boolean.TRUE.equals(response.jsonPath().get("success"));
+        boolean success = LogoutResponse.parse(response.getBody().asString()).succeeded();
         if (success) {
             ReportLogger.session("[WebApiSessionClient] Logout — tenant={}, userId={}, sessionId={}, success=true",
                     tenant, session.getUserId(), sessionIdParam);
@@ -292,7 +273,4 @@ public final class WebApiSessionClient {
         return segment + "=".repeat(padding);
     }
 
-    private static String firstNonNull(String a, String b) {
-        return a != null ? a : b;
-    }
 }

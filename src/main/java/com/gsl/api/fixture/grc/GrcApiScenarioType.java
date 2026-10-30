@@ -38,7 +38,7 @@ public enum GrcApiScenarioType {
     CREATE_GRC_POSITIVE("GRC/Save", ScenarioKind.POSITIVE,
             (client, ctx) -> {
                 try {
-                    GrcCreateResponse response = client.createGrc(
+                    GrcCreateResponse response = new com.gsl.service.GrcService(client).createGrc(
                             ctx.getItemCode(), ctx.getVendorCode(), ctx.getSiteCode(), ctx.getOuCode(),
                             ctx.getQuantity(), ctx.getRate());
                     GrcApiValidator.validate(response);

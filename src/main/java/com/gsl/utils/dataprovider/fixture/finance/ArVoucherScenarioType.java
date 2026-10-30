@@ -100,6 +100,11 @@ public enum ArVoucherScenarioType implements
         this.behaviorSupplier = behaviorSupplier;
     }
 
+    /** True when the UI allocates across the sub-ledger's whole pending list (FIFO / reference-site-wise FIFO), so the scenario needs the whole sub-ledger to itself. */
+    public boolean usesUiFifoAllocation() {
+        return this == FIFO_SETOFF || this == REFERENCE_SITEWISE_FIFO;
+    }
+
     /**
      * Builds the test data object from live DB values and stamps {@code scenarioType = this}
      * on it so the test method can dispatch to {@link #execute}.

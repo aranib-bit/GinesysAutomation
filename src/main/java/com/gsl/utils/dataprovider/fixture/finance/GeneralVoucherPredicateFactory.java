@@ -188,7 +188,7 @@ public final class GeneralVoucherPredicateFactory {
                         com.gsl.validation.api.GeneralVoucherApiStateChecks.Result result =
                                 com.gsl.validation.api.GeneralVoucherApiStateChecks.created(data,
                                         com.gsl.validation.api.NoDbApiSession.current().rootViewByDocNo(ctx.docNo));
-                        com.gsl.reports.ApiValidationReporter.report(result.rows(), "GET rootview?docNo=" + ctx.docNo);
+                        com.gsl.reports.ApiValidationReporter.report(result.rows(), result.titles(), "GET rootview?docNo=" + ctx.docNo);
                         org.testng.Assert.assertTrue(result.ok(), "[API validation] " + result.failed().size() + " check(s) failed for "
                                 + ctx.docNo + ":\n  " + String.join("\n  ", result.failed()));
                         com.gsl.reports.StepSummaryBuffer.record("API validation: " + result.passed().size() + " checks passed — Document No <b>"
@@ -196,6 +196,24 @@ public final class GeneralVoucherPredicateFactory {
                     } finally {
                         com.gsl.validation.api.NoDbApiSession.closeQuietly();
                     }
+                });
+                // The audit trail (aud2_*) is read through the Audit API instead of the database.
+                if (com.gsl.validation.ValidationSwitches.run(com.gsl.validation.ValidationSwitches.Area.API)
+                        && com.gsl.database.DbAvailability.noDbValidation() == com.gsl.database.DbAvailability.NoDbValidation.API)
+                VoucherSaveFlowSteps.softStep(ctx, "API Audit Validation", com.gsl.validation.CombinedValidationError.Kind.DATABASE, () -> {
+                    var api = com.gsl.validation.api.NoDbApiSession.current();
+                    var row = api.listRow(ctx.docNo);
+                    String vchcode = row == null ? null : String.valueOf(row.getCode());
+                    org.testng.Assert.assertNotNull(vchcode, "[API audit] voucher " + ctx.docNo + " is not listed, so its audit trail cannot be read");
+                    java.time.LocalDate from = com.gsl.validation.api.AuditApiReader.createdDate(row.getCreatedOn(), java.time.LocalDate.now());
+                    var after = com.gsl.validation.api.AuditApiReader.awaitNewVersion(ctx.docNo, vchcode, from,
+                            c -> !c.main().isEmpty() && !c.det().isEmpty());
+                    var result = com.gsl.validation.api.GeneralVoucherApiAuditChecks.created(data, after);
+                    com.gsl.reports.ApiValidationReporter.append(result.rows(), result.titles(), "AuditLog FinVoucher / Finance Site Allocation");
+                    org.testng.Assert.assertTrue(result.ok(), "[API audit] " + result.failed().size() + " check(s) failed for "
+                            + ctx.docNo + ":\n  " + String.join("\n  ", result.failed()));
+                    com.gsl.reports.StepSummaryBuffer.record("API audit validation: " + result.passed().size() + " checks passed — Document No <b>"
+                            + ctx.docNo + "</b>");
                 });
             } else if (com.gsl.validation.ValidationSwitches.run(com.gsl.validation.ValidationSwitches.Area.DB)) {
             VoucherSaveFlowSteps.databaseValidation(ctx, docNo -> {

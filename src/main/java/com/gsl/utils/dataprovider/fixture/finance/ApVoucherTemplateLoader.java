@@ -227,6 +227,15 @@ public final class ApVoucherTemplateLoader {
                 refs.getCashBankName(), FakerUtils.randomReference(), NegativeValidation.BLANK_SUBLEDGER_AP);
     }
 
+    /** NEG_EXTINCT_VENDOR_NOT_OFFERED - the single sub-ledger row is an EXTINCT vendor; the behaviour only checks it is not offered. */
+    public static MergedFinanceApVoucherData negExtinctVendorTemplate(ApVoucherLiveDbRefs refs) {
+        String id = "DB_NEG_EXTINCT_VENDOR";
+        List<SubLedgerInformation> subLedgers = buildSubLedgersForAdvance(
+                refs.getPendingSlNames(), refs.getSlToArApName(), refs.getSlToRefSiteName());
+        return negativeAdvanceData(id, "NEGATIVE | Extinct vendor not offered", refs, subLedgers,
+                refs.getCashBankName(), FakerUtils.randomReference(), null);
+    }
+
     /**
      * NEG_BLANK_SUBLEDGER_RECOVER — T-2: same error trigger as T-1, but after dismissing the
      * popup the test fills valid SL rows and verifies that the voucher saves successfully.

@@ -27,7 +27,7 @@ public final class DcDataSetup {
      * @throws com.gsl.api.core.ApiException if the response fails {@link DcApiValidator}'s checks
      */
     public static DcCreateResponse setupDcForTest(DcApiClient client, String itemCode, int quantity, int rate) {
-        DcCreateResponse response = client.createDc(itemCode, quantity, rate);
+        DcCreateResponse response = new com.gsl.service.DcService(client).createDc(itemCode, quantity, rate);
         DcApiValidator.validate(response);
         ReportLogger.business("[DcDataSetup] DC created via API — dcCode={}, packetBarcode={}",
                 response.getDcCode(), response.getPacketBarcode());

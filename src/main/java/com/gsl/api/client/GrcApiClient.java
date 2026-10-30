@@ -1,6 +1,8 @@
 package com.gsl.api.client;
 
 import com.gsl.api.core.ApiClient;
+import com.gsl.api.webapi.WebApiEndpoints;
+import com.gsl.api.webapi.model.request.grc.VendorTaxRegionQuery;
 import com.gsl.api.model.common.LookupValue;
 import com.gsl.api.model.grc.GrcCreateRequest;
 import com.gsl.api.model.grc.GrcCreateResponse;
@@ -35,13 +37,13 @@ public class GrcApiClient extends ApiClient {
      * param from one call leaking into a later, unrelated call on the same shared spec).
      */
     public VendorTaxRegion fetchVendorTaxRegion(int vendorCode) {
-        Response response = getRaw("/GRC/GetGRCVendorTaxRegion", Map.of("vendorCode", vendorCode));
+        Response response = getRawQuery(WebApiEndpoints.Grc.VENDOR_TAX_REGION, new VendorTaxRegionQuery(vendorCode));
         return response.jsonPath().getObject("result", VendorTaxRegion.class);
     }
 
     /** POST GRC/Save — the final save call. */
     public GrcCreateResponse createGrc(GrcCreateRequest request) {
-        return post("/GRC/Save", request, GrcCreateResponse.class);
+        return post(WebApiEndpoints.Grc.SAVE, request, GrcCreateResponse.class);
     }
 
     /**
@@ -49,33 +51,7 @@ public class GrcApiClient extends ApiClient {
      * incomplete/invalid {@code request}, returns the raw {@link Response} instead of throwing.
      */
     public Response createGrcExpectFailure(GrcCreateRequest request) {
-        return postRawExpectFailure("/GRC/Save", request);
+        return postRawExpectFailure(endpointUrl(WebApiEndpoints.Grc.SAVE), request);
     }
 
-    /** Builds and saves a single-line GRC for the given item, matching k6's runCreateGrcFlow(). */
-    public GrcCreateResponse createGrc(String itemCode, int vendorCode, int siteCode, int ouCode,
-                                        int quantity, int rate) {
-        // resolved for correctness/logging parity with k6; not yet consumed in the payload below
-        StepExecutor.call("Get Vendor Tax Region for GRC", () -> fetchVendorTaxRegion(vendorCode));
-
-        GrcLineItem line = GrcLineItem.builder()
-                .itemId(itemCode)
-                .acqty(quantity)
-                .acrate(rate)
-                .grsamt(quantity * rate)
-                .netamt(quantity * rate)
-                .build();
-
-        GrcCreateRequest request = GrcCreateRequest.builder()
-                .vendorCode(vendorCode)
-                .admsite(LookupValue.ofCode(siteCode))
-                .admouCode(LookupValue.ofCode(ouCode))
-                .grcdt(LocalDate.now() + "T00:00:00")
-                .item(line)
-                .rcqty(quantity)
-                .grsamt(quantity * rate)
-                .build();
-
-        return StepExecutor.call("Create GRC via API", () -> createGrc(request));
-    }
 }

@@ -35,7 +35,7 @@ public class GeneralVoucherDateRangeProbe extends APITest {
             if (!code.isBlank()) removeVoucher(api, Long.parseLong(code.trim()), empCode, ouCode);
         }
 
-        GeneralVoucherCreateResponse created = api.createGeneralVoucherWithDefaults(GlAccountType.ASSET, 0, 0, empCode, false);
+        GeneralVoucherCreateResponse created = new com.gsl.service.GeneralVoucherService(api).createGeneralVoucherWithDefaults(GlAccountType.ASSET, 0, 0, empCode, false);
         long vchcode = created.vchcode();
         try {
             GeneralVoucherRootView view = api.fetchRootView(vchcode, ouCode, empCode);

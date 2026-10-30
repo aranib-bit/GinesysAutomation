@@ -19,10 +19,17 @@ import java.util.Map;
  */
 public class StateCapture {
 
-    private final FinPostDao finPostDao;
+    private FinPostDao finPostDao;
 
+    /** Does not touch the database: with {@code db.available=no} there is nothing to snapshot (see {@link #captureInvoiceState}). */
     public StateCapture() {
-        this.finPostDao = DatabaseManager.getJdbi().onDemand(FinPostDao.class);
+    }
+
+    private FinPostDao dao() {
+        if (finPostDao == null) {
+            finPostDao = DatabaseManager.getJdbi().onDemand(FinPostDao.class);
+        }
+        return finPostDao;
     }
 
     /**
@@ -33,9 +40,13 @@ public class StateCapture {
      */
     public Map<String, FinPost> captureInvoiceState(List<String> invoiceDocNos) {
         Map<String, FinPost> snapshot = new LinkedHashMap<>();
+        // db.available=no: no finpost to read; the DB validators that consume this snapshot are switched off in that mode too.
+        if (!com.gsl.database.DbAvailability.isAvailable()) {
+            return snapshot;
+        }
 
         for (String invoiceNo : invoiceDocNos) {
-            List<FinPost> rows = finPostDao.findByEntNo(invoiceNo);
+            List<FinPost> rows = dao().findByEntNo(invoiceNo);
 
             FinPost arRow = rows.stream()
                     .filter(r -> r.getCamount() != null

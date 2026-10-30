@@ -133,7 +133,7 @@ public enum ServiceInvoiceAdhocApiScenarioType {
     RESOLVE_VENDOR_FALLBACK_ON_UNKNOWN_CODE("GetVendors (resolveVendor fallback)", ScenarioKind.BOUNDARY,
             (client, ctx) -> {
                 try {
-                    VendorLookupResult vendor = client.resolveVendor("NO_SUCH_VENDOR_SL_CODE", ctx.getOwnerSiteCode(), ctx.getOuCode());
+                    VendorLookupResult vendor = new com.gsl.service.ServiceInvoiceAdhocService(client).resolveVendor("NO_SUCH_VENDOR_SL_CODE", ctx.getOwnerSiteCode(), ctx.getOuCode());
                     return vendor != null
                             ? ScenarioOutcome.pass("resolveVendor fell back to a live vendor as documented: " + vendor.getSlid())
                             : ScenarioOutcome.fail("resolveVendor returned null instead of falling back");
@@ -145,7 +145,7 @@ public enum ServiceInvoiceAdhocApiScenarioType {
     // ─── ValidateReferenceNo ────────────────────────────────────────────────
     VALIDATE_REFERENCE_NO_POSITIVE("ValidateReferenceNo", ScenarioKind.POSITIVE,
             (client, ctx) -> {
-                VendorLookupResult vendor = client.resolveVendor(ctx.getVendorSlCode(), ctx.getOwnerSiteCode(), ctx.getOuCode());
+                VendorLookupResult vendor = new com.gsl.service.ServiceInvoiceAdhocService(client).resolveVendor(ctx.getVendorSlCode(), ctx.getOwnerSiteCode(), ctx.getOuCode());
                 String workDate = LocalDate.now() + "T00:00:00";
                 String uniqueRef = "SCN" + Long.toString(System.nanoTime(), 36);
                 try {
@@ -158,7 +158,7 @@ public enum ServiceInvoiceAdhocApiScenarioType {
 
     VALIDATE_REFERENCE_NO_NEGATIVE_BLANK("ValidateReferenceNo", ScenarioKind.NEGATIVE,
             (client, ctx) -> {
-                VendorLookupResult vendor = client.resolveVendor(ctx.getVendorSlCode(), ctx.getOwnerSiteCode(), ctx.getOuCode());
+                VendorLookupResult vendor = new com.gsl.service.ServiceInvoiceAdhocService(client).resolveVendor(ctx.getVendorSlCode(), ctx.getOwnerSiteCode(), ctx.getOuCode());
                 String workDate = LocalDate.now() + "T00:00:00";
                 try {
                     client.validateReferenceNo(ctx.getOwnerSiteCode(), vendor.getCode(), workDate, "");
@@ -171,7 +171,7 @@ public enum ServiceInvoiceAdhocApiScenarioType {
     // ─── GetOtherDetails ────────────────────────────────────────────────────
     FETCH_OTHER_DETAILS_POSITIVE("GetOtherDetails", ScenarioKind.POSITIVE,
             (client, ctx) -> {
-                VendorLookupResult vendor = client.resolveVendor(ctx.getVendorSlCode(), ctx.getOwnerSiteCode(), ctx.getOuCode());
+                VendorLookupResult vendor = new com.gsl.service.ServiceInvoiceAdhocService(client).resolveVendor(ctx.getVendorSlCode(), ctx.getOwnerSiteCode(), ctx.getOuCode());
                 String workDate = LocalDate.now() + "T00:00:00";
                 GetOtherDetailsResult details = client.fetchOtherDetails(ctx.getOwnerSiteCode(), ctx.getOuCode(), vendor.getCode(), workDate);
                 try {
@@ -228,7 +228,7 @@ public enum ServiceInvoiceAdhocApiScenarioType {
     // ─── CalculateServiceCharges ────────────────────────────────────────────
     CALCULATE_SERVICE_CHARGES_POSITIVE("CalculateServiceCharges", ScenarioKind.POSITIVE,
             (client, ctx) -> {
-                VendorLookupResult vendor = client.resolveVendor(ctx.getVendorSlCode(), ctx.getOwnerSiteCode(), ctx.getOuCode());
+                VendorLookupResult vendor = new com.gsl.service.ServiceInvoiceAdhocService(client).resolveVendor(ctx.getVendorSlCode(), ctx.getOwnerSiteCode(), ctx.getOuCode());
                 ServiceLookupResult service = firstServiceOrDefault(client, ctx);
                 String workDate = LocalDate.now() + "T00:00:00";
                 try {
@@ -262,7 +262,7 @@ public enum ServiceInvoiceAdhocApiScenarioType {
     // ─── GetCalculatedTdsRateAndAmount ──────────────────────────────────────
     CALCULATE_TDS_RATE_AND_AMOUNT_POSITIVE("GetCalculatedTdsRateAndAmount", ScenarioKind.POSITIVE,
             (client, ctx) -> {
-                VendorLookupResult vendor = client.resolveVendor(ctx.getVendorSlCode(), ctx.getOwnerSiteCode(), ctx.getOuCode());
+                VendorLookupResult vendor = new com.gsl.service.ServiceInvoiceAdhocService(client).resolveVendor(ctx.getVendorSlCode(), ctx.getOwnerSiteCode(), ctx.getOuCode());
                 ServiceLookupResult service = firstServiceOrDefault(client, ctx);
                 String srvDate = LocalDate.now() + "T00:00:00";
                 try {
@@ -296,7 +296,7 @@ public enum ServiceInvoiceAdhocApiScenarioType {
     CREATE_SERVICE_INVOICE_ADHOC_POSITIVE("ServiceInvoice/Save", ScenarioKind.POSITIVE,
             (client, ctx) -> {
                 try {
-                    ServiceInvoiceAdhocCreateResponse response = client.createServiceInvoiceAdhocWithDefaults(
+                    ServiceInvoiceAdhocCreateResponse response = new com.gsl.service.ServiceInvoiceAdhocService(client).createServiceInvoiceAdhocWithDefaults(
                             ctx.getVendorSlCode(), ctx.getOwnerSiteCode(), ctx.getQuantity(), ctx.getRate());
                     return (response != null && response.isSuccess())
                             ? ScenarioOutcome.pass("createServiceInvoiceAdhocWithDefaults succeeded — schemeDocno=" + response.getSchemeDocno())

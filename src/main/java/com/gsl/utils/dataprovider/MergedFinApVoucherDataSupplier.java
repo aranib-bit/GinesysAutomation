@@ -5,6 +5,8 @@ import com.gsl.enums.TestDataSourceMode;
 import com.gsl.testdata.dto.MergedFinanceApVoucherData;
 import com.gsl.utils.Log;
 import com.gsl.utils.dataprovider.source.TestDataSource;
+import com.gsl.utils.dataprovider.source.finance.ApiApVoucherDataSource;
+import com.gsl.utils.dataprovider.source.finance.ApiApVoucherLifecycleDataSource;
 import com.gsl.utils.dataprovider.source.finance.DbApVoucherDataSource;
 import com.gsl.utils.dataprovider.source.finance.DbApVoucherDeleteDataSource;
 import com.gsl.utils.dataprovider.source.finance.DbApVoucherEditDataSource;
@@ -68,15 +70,23 @@ public class MergedFinApVoucherDataSupplier {
      * @param method  the TestNG-injected test method — its name selects/filters the data source
      * @param context supplies the TestNG XML {@code apv.group}/{@code apv.tag} parameters
      */
+    /** API mode covers Create ({@link ApiApVoucherDataSource}) Revert/Delete/Edit-header ({@link ApiApVoucherLifecycleDataSource}); the other Edit tests (detail line, payment info, date field) are still DB/Excel. */
+    private static boolean isApiSupported(String methodName) {
+        return switch (methodName) {
+            case "editApVoucherDetailLine", "editApVoucherPaymentInfo", "editApVoucherDateFieldDisabled" -> false;
+            default -> true;
+        };
+    }
+
     @DataSupplier(name = "FinanceApVoucherData", flatMap = true, runInParallel = true)
     public StreamEx<Object[]> dataSupplier(Method method, ITestContext context) {
         String source = ConfigFactory.getConfig().testDataSource();
         TestDataSourceMode sourceMode = TestDataSourceMode.from(source);
-        if (sourceMode == TestDataSourceMode.API) {
-            String msg = "[DataSupplier] testdata.source=API is not supported for AP vouchers yet - API data sources exist only for General Voucher. "
-                    + "Use testdata.source=EXCEL (or DB when db.available=yes) for this suite.";
+        if (sourceMode == TestDataSourceMode.API && !isApiSupported(method.getName())) {
+            String msg = "[DataSupplier] testdata.source=API is supported for the AP Voucher Create/Revert/Delete tests only so far ('" + method.getName()
+                    + "' needs DB-derived document data). Use testdata.source=EXCEL (or DB when db.available=yes) for this suite.";
             Log.error(msg);
-            throw new IllegalStateException(msg);
+            throw new org.testng.SkipException(msg);
         }
         Log.info("[DataSupplier] testdata.source={}, method={}", source, method.getName());
 
@@ -86,7 +96,14 @@ public class MergedFinApVoucherDataSupplier {
         String xmlTagParam   = context.getCurrentXmlTest().getParameter("apv.tag");
 
         TestDataSource<MergedFinanceApVoucherData> loader =
-                sourceMode == TestDataSourceMode.DB
+                sourceMode == TestDataSourceMode.API
+                        ? switch (method.getName()) {
+                            case "revertApVoucher" -> new ApiApVoucherLifecycleDataSource(xmlGroupParam, "REVERT");
+                            case "deleteApVoucher" -> new ApiApVoucherLifecycleDataSource(xmlGroupParam, "DELETE");
+                            case "editApVoucherHeader" -> new ApiApVoucherLifecycleDataSource(xmlGroupParam, "EDIT");
+                            default -> new ApiApVoucherDataSource(xmlGroupParam, xmlTagParam);
+                          }
+                : sourceMode == TestDataSourceMode.DB
                         ? switch (method.getName()) {
                             case "revertApVoucher" -> new DbApVoucherRevertDataSource(xmlGroupParam, xmlTagParam);
                             case "deleteApVoucher" -> new DbApVoucherDeleteDataSource(xmlGroupParam);

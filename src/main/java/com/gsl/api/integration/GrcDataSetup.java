@@ -28,7 +28,7 @@ public final class GrcDataSetup {
      */
     public static GrcCreateResponse setupGrcForTest(GrcApiClient client, String itemCode, int vendorCode,
                                                       int siteCode, int ouCode, int quantity, int rate) {
-        GrcCreateResponse response = client.createGrc(itemCode, vendorCode, siteCode, ouCode, quantity, rate);
+        GrcCreateResponse response = new com.gsl.service.GrcService(client).createGrc(itemCode, vendorCode, siteCode, ouCode, quantity, rate);
         GrcApiValidator.validate(response);
         ReportLogger.business("[GrcDataSetup] GRC created via API — grcCode={}, schemeDocno={}",
                 response.getGrcCode(), response.getSchemeDocno());

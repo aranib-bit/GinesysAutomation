@@ -1,6 +1,6 @@
 package com.gsl.pages.Finance.Operations;
 
-import com.gsl.pages.enums.Finance.Operations.ARVoucher.ARVoucherRevertOutcome;
+import com.gsl.pages.enums.Finance.Operations.Common.VoucherRevertOutcome;
 import com.gsl.pages.pagecomponent.Finance.Operations.ARVoucher.ARVoucherListFooter;
 import com.gsl.utils.dataprovider.fixture.finance.DocumentSearchStrategy;
 import com.gsl.pages.pagecomponent.Finance.Operations.ARVoucher.ARVoucherListGridHeader;
@@ -52,13 +52,13 @@ public class ArVoucherListPage extends VoucherListPageBase<
     }
 
     /** Confirms whichever post-Revert dialog appears; returns which one so callers can assert the DB outcome. */
-    public ARVoucherRevertOutcome confirmRevert() {
+    public VoucherRevertOutcome confirmRevert() {
         return getMainGrid().confirmRevert();
     }
 
     /** Actions → Revert → confirm, for an already-selected document. AR has no standalone
      *  "Unpost" button — un-posting IS Revert (replaces the {@code //TODO-unpost-button} placeholder). */
-    public ARVoucherRevertOutcome revertSelectedDocument() {
+    public VoucherRevertOutcome revertSelectedDocument() {
         clickActions();
         clickRevert();
         return confirmRevert();

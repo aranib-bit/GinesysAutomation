@@ -6,10 +6,10 @@ import com.gsl.api.fixture.core.ScenarioKind;
 import com.gsl.api.fixture.core.ScenarioOutcome;
 import com.gsl.api.model.arvoucher.ArVoucherCreateRequest;
 import com.gsl.api.model.arvoucher.ArVoucherCreateResponse;
-import com.gsl.api.model.arvoucher.CashBankLedgerLookupResult;
-import com.gsl.api.model.arvoucher.DocNumberSchemeEntry;
-import com.gsl.api.model.arvoucher.ReferenceSiteLookupResult;
-import com.gsl.api.model.arvoucher.SubLedgerLookupResult;
+import com.gsl.api.model.common.CashBankLedgerLookupResult;
+import com.gsl.api.model.common.DocNumberSchemeEntry;
+import com.gsl.api.model.common.ReferenceSiteLookupResult;
+import com.gsl.api.model.common.SubLedgerLookupResult;
 import com.gsl.api.model.udf.UdfFieldMetadata;
 import com.gsl.api.validator.ArVoucherApiValidator;
 import io.restassured.response.Response;
@@ -177,7 +177,7 @@ public enum ArVoucherApiScenarioType {
     CREATE_AR_VOUCHER_POSITIVE("vouchers/ar", ScenarioKind.POSITIVE,
             (client, ctx) -> {
                 try {
-                    ArVoucherCreateResponse response = client.createArVoucherWithDefaults(
+                    ArVoucherCreateResponse response = new com.gsl.service.ArVoucherService(client).createArVoucherWithDefaults(
                             0, ctx.getOwnerSiteCode(), ctx.getOuCode(), ctx.getEmpCode(), ctx.getQuantity(), ctx.getRate());
                     ArVoucherApiValidator.validate(response);
                     return ScenarioOutcome.pass("createArVoucherWithDefaults succeeded — voucherCode=" + response.getVoucherCode());

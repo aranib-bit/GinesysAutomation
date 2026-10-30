@@ -38,12 +38,12 @@ public class ARVoucherMainGrid extends VoucherMainGridBase {
      * Replaces the never-confirmed {@code //TODO-unpost-button} locator AR tests used to hit.
      */
     @com.gsl.annotations.LogStep("Confirm Revert")
-    public com.gsl.pages.enums.Finance.Operations.ARVoucher.ARVoucherRevertOutcome confirmRevert() {
+    public com.gsl.pages.enums.Finance.Operations.Common.VoucherRevertOutcome confirmRevert() {
         switch (com.gsl.pages.pagecomponent.Finance.Operations.Common.ArApVoucherDialogs.confirmRevert()) {
-            case UNPOSTED:                   return com.gsl.pages.enums.Finance.Operations.ARVoucher.ARVoucherRevertOutcome.UNPOSTED;
-            case ALREADY_UNPOSTED:           return com.gsl.pages.enums.Finance.Operations.ARVoucher.ARVoucherRevertOutcome.ALREADY_UNPOSTED;
-            case CANNOT_REVERT_BRS_DONE:     return com.gsl.pages.enums.Finance.Operations.ARVoucher.ARVoucherRevertOutcome.CANNOT_REVERT_BRS_DONE;
-            case CANNOT_REVERT_MONTH_CLOSED: return com.gsl.pages.enums.Finance.Operations.ARVoucher.ARVoucherRevertOutcome.CANNOT_REVERT_MONTH_CLOSED;
+            case UNPOSTED:                   return com.gsl.pages.enums.Finance.Operations.Common.VoucherRevertOutcome.UNPOSTED;
+            case ALREADY_UNPOSTED:           return com.gsl.pages.enums.Finance.Operations.Common.VoucherRevertOutcome.ALREADY_UNPOSTED;
+            case CANNOT_REVERT_BRS_DONE:     return com.gsl.pages.enums.Finance.Operations.Common.VoucherRevertOutcome.CANNOT_REVERT_BRS_DONE;
+            case CANNOT_REVERT_MONTH_CLOSED: return com.gsl.pages.enums.Finance.Operations.Common.VoucherRevertOutcome.CANNOT_REVERT_MONTH_CLOSED;
             default: throw new IllegalStateException("Unmapped revert dialog result");
         }
     }

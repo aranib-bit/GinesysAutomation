@@ -196,7 +196,8 @@ public final class CoverageCatalog {
         for (ApVoucherScenarioType s : new ApVoucherScenarioType[]{
                 ApVoucherScenarioType.NEG_BLANK_CASHBANK, ApVoucherScenarioType.NEG_BLANK_CASHBANK_ADD_ROW,
                 ApVoucherScenarioType.NEG_BLANK_CASHBANK_ADD_ROW_RECOVER, ApVoucherScenarioType.NEG_BLANK_SUBLEDGER,
-                ApVoucherScenarioType.NEG_BLANK_SUBLEDGER_RECOVER, ApVoucherScenarioType.BLANK_REFERENCE_ALLOWED,
+                ApVoucherScenarioType.NEG_BLANK_SUBLEDGER_RECOVER, ApVoucherScenarioType.NEG_EXTINCT_VENDOR_NOT_OFFERED,
+                ApVoucherScenarioType.BLANK_REFERENCE_ALLOWED,
                 ApVoucherScenarioType.BOUND_AMOUNT_MIN_VALID, ApVoucherScenarioType.BOUND_AMOUNT_MIN_INVALID,
                 ApVoucherScenarioType.DOC_AMOUNT_NOT_ADJUSTED_INVALID, ApVoucherScenarioType.DOC_AMOUNT_READ_ONLY}) {
             out.add(apRow("DB_" + s.name(), "REGRESSION_PHASE1", s.name() + " (negative / boundary)", s.name()));

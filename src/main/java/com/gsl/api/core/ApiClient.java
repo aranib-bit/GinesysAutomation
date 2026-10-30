@@ -1,11 +1,18 @@
 package com.gsl.api.core;
 
+import com.gsl.config.ConfigFactory;
 import com.gsl.reports.ApiCallReportLogger;
 import com.gsl.reports.ReportLogger;
 import io.restassured.RestAssured;
+import io.restassured.config.JsonConfig;
+import io.restassured.config.RestAssuredConfig;
+import io.restassured.path.json.config.JsonPathConfig;
 import io.restassured.response.Response;
 import io.restassured.specification.RequestSpecification;
 
+import java.util.ArrayList;
+import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Map;
 
 /**
@@ -42,7 +49,111 @@ public abstract class ApiClient {
      * {@code given().spec(spec)} inherits auth headers/base URI but is its own throwaway builder.
      */
     private RequestSpecification fresh() {
-        return RestAssured.given().spec(spec);
+        // JSON numbers are read as BigDecimal: the default (float) turns 667157.99 into 667158.0, which silently corrupts every amount a client reads.
+        return RestAssured.given().spec(spec).config(RestAssuredConfig.config()
+                .jsonConfig(JsonConfig.jsonConfig().numberReturnType(JsonPathConfig.NumberReturnType.BIG_DECIMAL)));
+    }
+
+    /** Safety cap for {@link #getAllPages}. */
+    private static final int MAX_LOOKUP_PAGES = 50;
+
+    /** The Finance API base ({@code financeApiBaseUri}, i.e. {@code .../Finance/api}); overridable so unit tests can point at a local server. */
+    protected String financeBase() {
+        return ConfigFactory.getApiConfig().financeApiBaseUri();
+    }
+
+    /** Prefixes {@code path} with {@link #financeBase()} - the one place a Finance endpoint URL is built. */
+    protected String financeUrl(String path) {
+        return financeBase() + path;
+    }
+
+    /** The URL to call for {@code endpoint}: the path itself for {@link Host#WEB_API} (the session spec carries that base), the Finance base + path otherwise. */
+    protected String endpointUrl(Endpoint endpoint) {
+        return endpoint.host() == Host.FINANCE_API ? financeUrl(endpoint.path()) : endpoint.path();
+    }
+
+    /** {@link #post(String, Object, Class)} for a registered {@link Endpoint}. */
+    protected <T> T post(Endpoint endpoint, Object body, Class<T> responseType) {
+        return post(endpointUrl(endpoint), body, responseType);
+    }
+
+    /** {@link #put(String, Object, Class)} for a registered {@link Endpoint}. */
+    protected <T> T put(Endpoint endpoint, Object body, Class<T> responseType) {
+        return put(endpointUrl(endpoint), body, responseType);
+    }
+
+    /** {@link #delete(String, Object, Class)} for a registered {@link Endpoint}. */
+    protected <T> T delete(Endpoint endpoint, Object body, Class<T> responseType) {
+        return delete(endpointUrl(endpoint), body, responseType);
+    }
+
+    /** {@link #postRaw(String, Object)} for a registered {@link Endpoint}. */
+    protected Response postRaw(Endpoint endpoint, Object body) {
+        return postRaw(endpointUrl(endpoint), body);
+    }
+
+    /** {@link #postRaw(String, Object, Map)} for a registered {@link Endpoint}. */
+    protected Response postRaw(Endpoint endpoint, Object body, Map<String, Object> queryParams) {
+        return postRaw(endpointUrl(endpoint), body, queryParams);
+    }
+
+    /** {@link #getRaw(String, Map)} for a registered {@link Endpoint}. */
+    public Response getRaw(Endpoint endpoint, Map<String, Object> queryParams) {
+        return getRaw(endpointUrl(endpoint), queryParams);
+    }
+
+    /** {@link #getRaw(Endpoint, Map)} with the query given as a POJO ({@link QueryParams}). */
+    public Response getRawQuery(Endpoint endpoint, Object query) {
+        return getRaw(endpointUrl(endpoint), QueryParams.toMap(query));
+    }
+
+    /** {@link #getRawExpectFailure(String, Map)} for a registered {@link Endpoint} with a query POJO. */
+    protected Response getRawQueryExpectFailure(Endpoint endpoint, Object query) {
+        return getRawExpectFailure(endpointUrl(endpoint), QueryParams.toMap(query));
+    }
+
+    /** {@link #getAllPages(String, Map, int, Class)} for a registered {@link Endpoint} with a query POJO. */
+    protected <T> List<T> getAllPages(Endpoint endpoint, Object query, int pageSize, Class<T> type) {
+        return getAllPages(endpointUrl(endpoint), QueryParams.toMap(query), pageSize, type);
+    }
+
+    /** {@link #get(String, Map, Class)} for a registered {@link Endpoint}. */
+    protected <T> T get(Endpoint endpoint, Map<String, Object> queryParams, Class<T> responseType) {
+        return get(endpointUrl(endpoint), queryParams, responseType);
+    }
+
+    /**
+     * GET {@code url} read page by page ({@code page}/{@code start}/{@code limit}) until {@code result.totalCount} items are collected, a page
+     * comes back empty, or a safety cap is hit. The first page is requested exactly as a single call used to be, so a server that already
+     * honours {@code pagingNotRequired}/a big limit costs no extra request; a server that caps the page is followed instead of silently
+     * truncated (qaprod returned 25 of 253 sub-ledgers despite {@code pagingNotRequired=true}). {@code totalCount} vs fetched is logged
+     * whenever they differ. The one paging loop for every lookup/list client.
+     */
+    protected <T> List<T> getAllPages(String url, Map<String, Object> baseParams, int pageSize, Class<T> type) {
+        List<T> all = new ArrayList<>();
+        int total = Integer.MAX_VALUE;
+        for (int page = 1; page <= MAX_LOOKUP_PAGES && all.size() < total; page++) {
+            Map<String, Object> params = new LinkedHashMap<>(baseParams);
+            params.put("page", page);
+            params.put("start", all.size());
+            params.put("limit", pageSize);
+            Response response = getRaw(url, params);
+            List<T> items = response.jsonPath().getList("result.items", type);
+            Integer reported = response.jsonPath().getObject("result.totalCount", Integer.class);
+            if (reported != null) total = reported;
+            if (items == null || items.isEmpty()) break;
+            all.addAll(items);
+            if (reported == null) break; // no totalCount advertised: a single page is all we can trust
+        }
+        if (total != Integer.MAX_VALUE && total != all.size()) {
+            ReportLogger.warn("[" + getClass().getSimpleName() + "] " + url + " totalCount=" + total + " but fetched " + all.size());
+        }
+        return all;
+    }
+
+    /** The response body read as {@code type} whatever its Content-Type says (a response POJO, never a {@code jsonPath()} navigation). */
+    protected static <T> T bodyAs(Response response, Class<T> type) {
+        return response.getBody().as(type, io.restassured.mapper.ObjectMapperType.JACKSON_2);
     }
 
     /** GET {@code endpoint}, validate the response, and deserialize {@code result} into {@code responseType}. */

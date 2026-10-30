@@ -21,7 +21,7 @@ import com.gsl.network.pattern.FinanceApiPattern;
 import com.gsl.pages.Finance.Operations.GeneralVoucherListPage;
 import com.gsl.pages.HomePage;
 import com.gsl.pages.enums.Finance.MainMenuType;
-import com.gsl.pages.enums.Finance.Operations.GeneralVoucher.GeneralVoucherRevertOutcome;
+import com.gsl.pages.enums.Finance.Operations.Common.VoucherRevertOutcome;
 import com.gsl.pages.enums.Finance.Operations.OperationsMenuType;
 import com.gsl.pages.enums.topmenucomponent.MainModuleType;
 import com.gsl.reports.DbGatheringExtentLogger;
@@ -37,6 +37,8 @@ import com.gsl.utils.dataprovider.MergedFinGeneralVoucherDataSupplier;
 import com.gsl.utils.dataprovider.fixture.finance.DocumentSearchStrategy;
 import com.gsl.validation.snapshot.DocumentContext;
 import com.gsl.validation.snapshot.ExpectedChangeSet;
+import com.gsl.validation.api.AuditApiReader;
+import com.gsl.validation.api.GeneralVoucherApiAuditChecks;
 import com.gsl.validation.api.GeneralVoucherApiStateChecks;
 import com.gsl.validation.api.NoDbApiSession;
 import com.gsl.validation.snapshot.SnapshotService;
@@ -116,7 +118,7 @@ public class RevertGeneralVoucher extends WebTest {
         final GeneralVoucherListPage[]        listRef               = new GeneralVoucherListPage[1];
         final String[]                        beforeReleaseStatusRef = new String[1];
         final String[]                        immediateBeforeReleaseStatusRef = new String[1];
-        final GeneralVoucherRevertOutcome[]   revertOutcomeRef      = new GeneralVoucherRevertOutcome[1];
+        final VoucherRevertOutcome[]   revertOutcomeRef      = new VoucherRevertOutcome[1];
         final DocumentContext[]               contextRef            = new DocumentContext[1];
         final VoucherSnapshot[]               beforeSnapshotRef     = new VoucherSnapshot[1];
         final VoucherSnapshot[]               afterSnapshotRef      = new VoucherSnapshot[1];
@@ -137,7 +139,7 @@ public class RevertGeneralVoucher extends WebTest {
 
     private void revertFlow(MergedFinanceGeneralVoucherData testData, boolean noDb, boolean apiValidation,
             GeneralVoucherRootView[] beforeView, GeneralVoucherRootView[] afterView, String[] beforeReleaseStatusRef,
-            String[] immediateBeforeReleaseStatusRef, GeneralVoucherRevertOutcome[] revertOutcomeRef, DocumentContext[] contextRef,
+            String[] immediateBeforeReleaseStatusRef, VoucherRevertOutcome[] revertOutcomeRef, DocumentContext[] contextRef,
             VoucherSnapshot[] beforeSnapshotRef, VoucherSnapshot[] afterSnapshotRef, HomePage[] homeRef, GeneralVoucherListPage[] listRef) {
 
         // ── Step 1: DB Pre-Check — Verify Document Exists ────────────────────────────
@@ -293,6 +295,7 @@ public class RevertGeneralVoucher extends WebTest {
                 if (apiValidation) {
                     beforeView[0] = readVoucher(testData);
                     ReportLogger.business("BEFORE rootview captured for voucher: " + testData.getExistingVoucherNo());
+                    AuditApiReader.captureBefore(testData.getExistingVoucherNo());
                 } else {
                     com.gsl.reports.ExtentLogger.skip("BEFORE snapshot skipped — db.available=no and validation.nodb.mode=SKIP");
                 }
@@ -401,11 +404,11 @@ public class RevertGeneralVoucher extends WebTest {
                     return;
                 }
                 // A blocked Revert (BRS / closed period) leaves the status as it was; otherwise Revert's only legal end-state is Unposted.
-                boolean blocked = revertOutcomeRef[0] == GeneralVoucherRevertOutcome.CANNOT_REVERT_BRS_DONE
-                        || revertOutcomeRef[0] == GeneralVoucherRevertOutcome.CANNOT_REVERT_MONTH_CLOSED;
+                boolean blocked = revertOutcomeRef[0] == VoucherRevertOutcome.CANNOT_REVERT_BRS_DONE
+                        || revertOutcomeRef[0] == VoucherRevertOutcome.CANNOT_REVERT_MONTH_CLOSED;
                 String expectedStatus = blocked ? immediateBeforeReleaseStatusRef[0] : "U";
                 GeneralVoucherApiStateChecks.Result result = GeneralVoucherApiStateChecks.statusChangedOnly(beforeView[0], afterView[0], expectedStatus);
-                com.gsl.reports.ApiValidationReporter.report(result.rows(), null);
+                com.gsl.reports.ApiValidationReporter.report(result.rows(), result.titles(), null);
                 Assert.assertTrue(result.ok(), "[API validation] " + result.failed().size() + " check(s) failed for "
                         + testData.getExistingVoucherNo() + ":\n  " + String.join("\n  ", result.failed()));
                 ReportLogger.pass("API validated — expected status '" + expectedStatus + "', dialog outcome=" + revertOutcomeRef[0]
@@ -435,12 +438,12 @@ public class RevertGeneralVoucher extends WebTest {
             // call covers every outcome uniformly.
             String expectedNewStatus;
             String outcomeNote;
-            if (revertOutcomeRef[0] == GeneralVoucherRevertOutcome.CANNOT_REVERT_BRS_DONE) {
+            if (revertOutcomeRef[0] == VoucherRevertOutcome.CANNOT_REVERT_BRS_DONE) {
                 // BRS (bank reconciliation) blocks Revert entirely — the live app dismisses with a
                 // single-OK "cannot be reverted" info dialog and never changes release_status.
                 expectedNewStatus = immediateBefore;
                 outcomeNote = "BRS correctly blocked Revert";
-            } else if (revertOutcomeRef[0] == GeneralVoucherRevertOutcome.CANNOT_REVERT_MONTH_CLOSED) {
+            } else if (revertOutcomeRef[0] == VoucherRevertOutcome.CANNOT_REVERT_MONTH_CLOSED) {
                 // Same shape as the BRS branch: the document's own accounting year/financial month
                 // is closed, the live app dismisses with a single-OK "already closed" info dialog.
                 expectedNewStatus = immediateBefore;
@@ -483,6 +486,25 @@ public class RevertGeneralVoucher extends WebTest {
                     + "', expected='" + expectedNewStatus + "', dialog outcome=" + revertOutcomeRef[0]
                     + " for voucher: " + testData.getExistingVoucherNo());
         });
+
+        if (noDb && apiValidation) {
+            StepExecutor.step("API Audit Validation", () -> {
+                var before = AuditApiReader.before();
+                if (before == null) {
+                    com.gsl.reports.ExtentLogger.skip("BEFORE audit trail was not captured (voucher not listed)");
+                    return;
+                }
+                boolean blocked = revertOutcomeRef[0] == VoucherRevertOutcome.CANNOT_REVERT_BRS_DONE
+                        || revertOutcomeRef[0] == VoucherRevertOutcome.CANNOT_REVERT_MONTH_CLOSED;
+                var after = AuditApiReader.awaitNewVersion(testData.getExistingVoucherNo(), before.vchcode(), before.from(),
+                        c -> blocked || c.maxVersion() > before.capture().maxVersion());
+                var result = GeneralVoucherApiAuditChecks.reverted(before.capture(), after, blocked, "Unposted");
+                com.gsl.reports.ApiValidationReporter.append(result.rows(), result.titles(), "AuditLog FinVoucher / Finance Site Allocation");
+                Assert.assertTrue(result.ok(), "[API audit] " + result.failed().size() + " check(s) failed for "
+                        + testData.getExistingVoucherNo() + ":\n  " + String.join("\n  ", result.failed()));
+                ReportLogger.pass("API audit validated (" + result.passed().size() + " checks) for voucher: " + testData.getExistingVoucherNo());
+            });
+        }
     }
 
     /**

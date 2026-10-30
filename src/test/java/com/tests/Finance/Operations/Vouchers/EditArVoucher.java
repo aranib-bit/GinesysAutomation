@@ -73,8 +73,8 @@ public class EditArVoucher extends WebTest {
     @FrameworkAnnotation(value = TestAuthor.ARANI, module = MainModuleType.FINANCE, subModule = "FinanceARVoucher", operation = AppOperation.MODIFY)
     @TestCaseId("FIN-AR-EDIT")
     @Test(description = "Edit an existing AR Voucher from the Finance UI",
-            dataProvider = "dataSupplier", dataProviderClass = MergedFinArVoucherDataSupplier.class)
-    public void editArVoucher(MergedFinanceArVoucherData data) {
+            dataProvider = "FinanceArVoucherData", dataProviderClass = MergedFinArVoucherDataSupplier.class)
+    public void editArVoucher(UserCredential user, MergedFinanceArVoucherData data) {
 
         Log.info("Edit AR Voucher: {}", data.getExistingVoucherNo());
         Log.info("Release status: {}", data.getReleaseStatus());
@@ -95,7 +95,10 @@ public class EditArVoucher extends WebTest {
         final VoucherSnapshot[]   beforeRef  = new VoucherSnapshot[1];
         final VoucherSnapshot[]   afterRef   = new VoucherSnapshot[1];
 
-        SnapshotService snapshotService = new SnapshotService(new Aud2SnapshotDao());
+        SnapshotService snapshotService = com.gsl.database.DbAvailability.isAvailable() ? new SnapshotService(new Aud2SnapshotDao()) : null;   // its constructor reads the DB
+        // db.available=no: the document-context resolution and BEFORE/AFTER snapshots need the database, so they are skipped; the edit is
+        // instead validated by reading the voucher header back through the API. The untag step uses the voucher the API source created.
+        final boolean noDb = !com.gsl.database.DbAvailability.isAvailable();
         final VoucherSaveCtx ctx = new VoucherSaveCtx();
 
         // ── Step 1: Login ─────────────────────────────────────────────────────────
@@ -134,14 +137,14 @@ public class EditArVoucher extends WebTest {
         // action (AR has no standalone Unpost button; the old //TODO-unpost-button placeholder
         // never existed), using the dialogs AR shares with AP (ArApVoucherDialogs).
         VoucherEditFlowSteps.untagIfTagged(
-                testData.getExistingVoucherNo(), testData.getReleaseStatus(), new java.util.ArrayList<>());
+                testData.getExistingVoucherNo(), testData.getReleaseStatus(), new java.util.ArrayList<>(), testData.getApiVoucherRef());
         StepExecutor.step("Unpost if Posted (release_status='P') — Actions → Revert", () -> {
             if ("P".equals(testData.getReleaseStatus())) {
                 listRef[0].selectDocumentForAction(testData.getExistingVoucherNo(), DocumentSearchStrategy.EXACT_MATCH);
-                com.gsl.pages.enums.Finance.Operations.ARVoucher.ARVoucherRevertOutcome outcome =
+                com.gsl.pages.enums.Finance.Operations.Common.VoucherRevertOutcome outcome =
                         listRef[0].revertSelectedDocument();
                 org.testng.Assert.assertEquals(outcome,
-                        com.gsl.pages.enums.Finance.Operations.ARVoucher.ARVoucherRevertOutcome.UNPOSTED,
+                        com.gsl.pages.enums.Finance.Operations.Common.VoucherRevertOutcome.UNPOSTED,
                         "[Unpost] Expected the Posted AR voucher to be un-posted by Revert");
                 ReportLogger.business("Voucher unposted via Revert (was release_status='P') for: "
                         + testData.getExistingVoucherNo());
@@ -151,12 +154,12 @@ public class EditArVoucher extends WebTest {
         });
 
         // ── Step 4b: Resolve Document Context ─────────────────────────────────────
-        StepExecutor.step("Resolve Document Context", () -> {
+        if (!noDb) StepExecutor.step("Resolve Document Context", () -> {
             contextRef[0] = new VoucherDocumentContextResolver().resolve(testData.getExistingVoucherNo(), VoucherDomain.AR);
         });
 
         // ── Step 4c: Capture BEFORE Snapshot ───────────────────────────────────────
-        StepExecutor.step("Capture BEFORE Snapshot", () -> beforeRef[0] = snapshotService.capture(contextRef[0]));
+        if (!noDb) StepExecutor.step("Capture BEFORE Snapshot", () -> beforeRef[0] = snapshotService.capture(contextRef[0]));
 
         // ── Step 5: Open for Edit ─────────────────────────────────────────────────
         StepExecutor.step("Open Voucher for Edit", () -> {
@@ -180,13 +183,31 @@ public class EditArVoucher extends WebTest {
         VoucherSaveFlowSteps.deferLogout();
 
         // ── Step 10: Capture AFTER Snapshot ───────────────────────────────────────
-        StepExecutor.step("Capture AFTER Snapshot", () -> afterRef[0] = snapshotService.capture(contextRef[0]));
+        if (!noDb) StepExecutor.step("Capture AFTER Snapshot", () -> afterRef[0] = snapshotService.capture(contextRef[0]));
 
         // ── Step 11: Database Snapshot Validation ─────────────────────────────────
         // Migrated onto the generic before/after DB snapshot → diff → column-rule engine
         // (com.gsl.validation.snapshot), the same one EditGeneralVoucher uses — not the older
         // hand-written ARVoucherDbValidator (which never looked at aud2_* tables at all). Gets
         // field-level audit assertions for AR Edit "for free" via the shared engine.
+        if (noDb) {
+            StepExecutor.step("API Validation — header read back", () -> {
+                com.gsl.testdata.dto.ApiVoucherRef ref = testData.getApiVoucherRef();
+                org.testng.Assert.assertNotNull(ref, "[API-Validate] no API voucher reference on the row; cannot validate the edit without the DB.");
+                java.util.Map<String, Object> header = com.gsl.api.core.ApiSessionFactory.withWebApiSession(session ->
+                        session.getArVoucherApiClient().fetchVoucherHeader(ref.getVchcode(), ref.getOuCode(), Long.parseLong(session.getUserId())));
+                org.testng.Assert.assertFalse(header.isEmpty(), "[API-Validate] voucher " + ctx.docNo + " could not be read back through the API.");
+                org.testng.Assert.assertEquals(String.valueOf(header.get("reference")), testData.getDocumentInformation().getReference(),
+                        "[API-Validate] reference after Edit");
+                org.testng.Assert.assertEquals(String.valueOf(header.get("remarks")), testData.getDocumentInformation().getRemarks(),
+                        "[API-Validate] remarks after Edit");
+                String apiDate = String.valueOf(header.get("voucherDate"));
+                org.testng.Assert.assertTrue(apiDate.startsWith(testData.getDocumentInformation().getDocumentdate().toString()),
+                        "[API-Validate] voucher date after Edit: API='" + apiDate + "', expected " + testData.getDocumentInformation().getDocumentdate());
+                ReportLogger.pass("API validated — reference, remarks and date updated for voucher: " + ctx.docNo);
+            });
+            return;
+        }
         StepExecutor.step("Database Snapshot Validation", () -> {
             if (!com.gsl.validation.ValidationSwitches.run(com.gsl.validation.ValidationSwitches.Area.DB)) {
                 com.gsl.reports.ExtentLogger.skip("DB validation skipped — validation.db.enabled=no");

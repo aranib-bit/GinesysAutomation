@@ -1,12 +1,16 @@
 package com.gsl.api.client;
 
+import com.gsl.api.webapi.model.response.common.StringResultResponse;
 import com.gsl.api.core.ApiClient;
+import com.gsl.api.webapi.WebApiEndpoints;
 import com.gsl.api.model.dc.DcCreateRequest;
 import com.gsl.api.model.dc.DcCreateResponse;
 import com.gsl.api.model.dc.DcLineItem;
 import com.gsl.reports.StepExecutor;
 import io.restassured.response.Response;
 import io.restassured.specification.RequestSpecification;
+
+import java.util.Map;
 
 import java.time.LocalDate;
 
@@ -25,13 +29,13 @@ public class DcApiClient extends ApiClient {
 
     /** GET /DC/GetPacketBarcode — server-issued document code, no collision risk. */
     public String fetchPacketBarcode() {
-        Response response = getRaw("/DC/GetPacketBarcode");
-        return response.jsonPath().getString("result");
+        Response response = getRaw(WebApiEndpoints.Dc.PACKET_BARCODE, Map.of());
+        return bodyAs(response, StringResultResponse.class).getResult();
     }
 
     /** POST DC/Save — the final save call. */
     public DcCreateResponse createDc(DcCreateRequest request) {
-        return post("/DC/Save", request, DcCreateResponse.class);
+        return post(WebApiEndpoints.Dc.SAVE, request, DcCreateResponse.class);
     }
 
     /**
@@ -39,25 +43,7 @@ public class DcApiClient extends ApiClient {
      * incomplete/invalid {@code request}, returns the raw {@link Response} instead of throwing.
      */
     public Response createDcExpectFailure(DcCreateRequest request) {
-        return postRawExpectFailure("/DC/Save", request);
+        return postRawExpectFailure(endpointUrl(WebApiEndpoints.Dc.SAVE), request);
     }
 
-    /** Builds and saves a single-line DC for the given item, matching k6's runCreateDcFlow(). */
-    public DcCreateResponse createDc(String itemCode, int quantity, int rate) {
-        String barcode = StepExecutor.call("Get Packet Barcode for DC", this::fetchPacketBarcode);
-
-        DcLineItem line = DcLineItem.builder()
-                .itemId(itemCode)
-                .quantity(quantity)
-                .rate(rate)
-                .build();
-
-        DcCreateRequest request = DcCreateRequest.builder()
-                .dcDate(LocalDate.now() + "T00:00:00")
-                .packetBarcode(barcode)
-                .item(line)
-                .build();
-
-        return StepExecutor.call("Create DC via API", () -> createDc(request));
-    }
 }

@@ -5,7 +5,7 @@ import com.gsl.database.DocumentReservationRegistry;
 import com.gsl.enums.Finance.Operations.Common.DocumentMessageBoxMessage;
 import com.gsl.enums.PeriodDomain;
 import com.gsl.model.finance.FinVchMain;
-import com.gsl.pages.enums.Finance.Operations.GeneralVoucher.GeneralVoucherRevertOutcome;
+import com.gsl.pages.enums.Finance.Operations.Common.VoucherRevertOutcome;
 import com.gsl.testdata.Finance.Operations.Vouchers.GeneralVoucher.DocumentInformation;
 import com.gsl.testdata.dto.GeneralVoucherOperationMode;
 import com.gsl.testdata.dto.MergedFinanceGeneralVoucherData;
@@ -55,11 +55,8 @@ public class DbGeneralVoucherDeleteDataSource implements TestDataSource<MergedFi
         results.add(resolvePositiveCandidate(jdbi, claimedThisRun));
         resolveClosedPeriodNegativeCandidate(jdbi, claimedThisRun).ifPresent(results::add);
 
+        TestDataSource.stampInvocations(results);
         int total = results.size();
-        for (int i = 0; i < total; i++) {
-            results.get(i).setInvocationIndex(i + 1);
-            results.get(i).setTotalInvocations(total);
-        }
 
         Log.info("[DB] GeneralVoucherDelete emitted {} row(s) for '{}'", results.size(), testMethodName);
         return results;
@@ -174,7 +171,7 @@ public class DbGeneralVoucherDeleteDataSource implements TestDataSource<MergedFi
                 .documentInformation(docInfo)
                 .reservedDocumentKey(String.valueOf(vchcode))
                 .operationMode(GeneralVoucherOperationMode.DELETE)
-                .expectedRevertOutcome(GeneralVoucherRevertOutcome.CANNOT_REVERT_MONTH_CLOSED)
+                .expectedRevertOutcome(VoucherRevertOutcome.CANNOT_REVERT_MONTH_CLOSED)
                 .expenseIncomeDetailList(List.of())
                 .siteAllocationList(List.of())
                 .dbGatheringLog(gatheringLog)

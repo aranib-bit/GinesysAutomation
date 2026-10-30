@@ -58,7 +58,7 @@ public final class ArVoucherApBackfillStrategy implements BackfillStrategy {
     @Override
     public void backfill(ApiPlatform platform, int neededQuantity) {
         ApiSessionBundle session = ApiSessionFactory.create(platform);
-        // No blanket section label here — ArVoucherApiClient.createArVoucherWithDefaults wraps
+        // No blanket section label here — ArVoucherService.createArVoucherWithDefaults wraps
         // each of its own internal calls in its own meaningful, specific StepExecutor.call node
         // (e.g. "Get Doc Scheme Nos for AR Voucher").
         for (int i = 0; i < neededQuantity; i++) {
@@ -94,6 +94,10 @@ public final class ArVoucherApBackfillStrategy implements BackfillStrategy {
      */
     private static void logReleaseStatus(String voucherCode) {
         if (voucherCode == null) return;
+        if (!com.gsl.database.DbAvailability.isAvailable()) {
+            ReportLogger.dataBackfill("[ArVoucherApBackfillStrategy] db.available=no - posting read-back skipped (the next API read of the pending documents confirms it).");
+            return;
+        }
         Jdbi jdbi = DatabaseManager.getJdbi();
         FinPostDao finPostDao = jdbi.onDemand(FinPostDao.class);
         List<FinPost> posts = finPostDao.findByEntCode(voucherCode);

@@ -35,7 +35,7 @@ import com.gsl.model.finance.FinSlGl;
 import com.gsl.model.finance.FinSlGlSite;
 import com.gsl.model.finance.FinVchDet;
 import com.gsl.model.finance.FinVchMain;
-import com.gsl.pages.enums.Finance.Operations.GeneralVoucher.GeneralVoucherRevertOutcome;
+import com.gsl.pages.enums.Finance.Operations.Common.VoucherRevertOutcome;
 import com.gsl.testdata.Finance.Operations.Vouchers.GeneralVoucher.DetailLineEditTarget;
 import com.gsl.testdata.Finance.Operations.Vouchers.GeneralVoucher.DocumentInformation;
 import com.gsl.testdata.Finance.Operations.Vouchers.GeneralVoucher.ExpenseIncomeDetail;
@@ -168,11 +168,8 @@ public class DbGeneralVoucherEditDataSource implements TestDataSource<MergedFina
             results.add(resolveOne(jdbi, variant, claimedThisRun));
         }
 
+        TestDataSource.stampInvocations(results);
         int total = results.size();
-        for (int i = 0; i < total; i++) {
-            results.get(i).setInvocationIndex(i + 1);
-            results.get(i).setTotalInvocations(total);
-        }
 
         Log.info("[DB] GeneralVoucherEdit emitted {} row(s) for '{}' — group filter={}",
                 results.size(), methodName, activeGroup);
@@ -256,7 +253,7 @@ public class DbGeneralVoucherEditDataSource implements TestDataSource<MergedFina
                     .expenseIncomeDetailList(List.of())
                     .siteAllocationList(List.of())
                     .entryMethod(variant.getEntryMethod())
-                    .expectedRevertOutcome(GeneralVoucherRevertOutcome.CANNOT_REVERT_MONTH_CLOSED)
+                    .expectedRevertOutcome(VoucherRevertOutcome.CANNOT_REVERT_MONTH_CLOSED)
                     .dbGatheringLog(gatheringLog)
                     .invocationIndex(1)
                     .totalInvocations(1)

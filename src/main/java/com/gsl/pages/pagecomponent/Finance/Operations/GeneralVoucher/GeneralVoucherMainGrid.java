@@ -10,7 +10,7 @@ import com.gsl.pages.enums.Finance.Operations.Common.CommonVoucherListColumn;
 import com.gsl.pages.enums.Finance.Operations.Common.IVoucherGridAction;
 import com.gsl.pages.enums.Finance.Operations.Common.IVoucherListColumn;
 import com.gsl.pages.enums.Finance.Operations.GeneralVoucher.GeneralVoucherListColumn;
-import com.gsl.pages.enums.Finance.Operations.GeneralVoucher.GeneralVoucherRevertOutcome;
+import com.gsl.pages.enums.Finance.Operations.Common.VoucherRevertOutcome;
 import com.gsl.pages.pagecomponent.Finance.Operations.Common.VoucherMainGridBase;
 import com.gsl.utils.Selenium.JavascriptExecutorUtils;
 import com.gsl.utils.Selenium.SeleniumUtils;
@@ -77,7 +77,7 @@ public class GeneralVoucherMainGrid extends VoucherMainGridBase {
      * the correct expected DB outcome for whichever starting state applies.
      */
     @LogStep("Confirm Revert")
-    public GeneralVoucherRevertOutcome confirmRevert() {
+    public VoucherRevertOutcome confirmRevert() {
         DocumentMessageBox msgBox = new DocumentMessageBox();
         String messageText = msgBox.getMessageText();
 
@@ -101,7 +101,7 @@ public class GeneralVoucherMainGrid extends VoucherMainGridBase {
             if (resultText.contains(DocumentMessageBoxMessage.REVERT_MONTH_ALREADY_CLOSED.getText())) {
                 resultBox.clickOk();
                 JavascriptExecutorUtils.waitForExtJS();
-                return GeneralVoucherRevertOutcome.CANNOT_REVERT_MONTH_CLOSED;
+                return VoucherRevertOutcome.CANNOT_REVERT_MONTH_CLOSED;
             }
             if (!resultText.contains(DocumentMessageBoxMessage.REVERT_SUCCESS_RESULT.getText())) {
                 throw new IllegalStateException(
@@ -112,17 +112,17 @@ public class GeneralVoucherMainGrid extends VoucherMainGridBase {
             }
             resultBox.clickOk();
             JavascriptExecutorUtils.waitForExtJS();
-            return GeneralVoucherRevertOutcome.UNPOSTED;
+            return VoucherRevertOutcome.UNPOSTED;
         }
         if (messageText.contains(DocumentMessageBoxMessage.REVERT_ALREADY_UNPOSTED_INFO.getText())) {
             msgBox.clickOk();
             JavascriptExecutorUtils.waitForExtJS();
-            return GeneralVoucherRevertOutcome.ALREADY_UNPOSTED;
+            return VoucherRevertOutcome.ALREADY_UNPOSTED;
         }
         if (messageText.contains(DocumentMessageBoxMessage.REVERT_BRS_ALREADY_DONE.getText())) {
             msgBox.clickOk();
             JavascriptExecutorUtils.waitForExtJS();
-            return GeneralVoucherRevertOutcome.CANNOT_REVERT_BRS_DONE;
+            return VoucherRevertOutcome.CANNOT_REVERT_BRS_DONE;
         }
         throw new IllegalStateException(
                 "GeneralVoucherMainGrid.confirmRevert(): unrecognized post-Revert dialog text: ["

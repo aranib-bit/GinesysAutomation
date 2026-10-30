@@ -16,7 +16,7 @@ import com.gsl.pages.enums.Finance.Operations.OperationsMenuType;
 import com.gsl.reports.ActualResultsHolder;
 import com.gsl.reports.ApVoucherExtentDescriptionLogger;
 import com.gsl.reports.DbGatheringExtentLogger;
-import com.gsl.utils.dataprovider.source.finance.DbApVoucherDataSource;
+import com.gsl.utils.dataprovider.source.finance.ApVoucherLazyLoader;
 import com.gsl.reports.ReportLogger;
 import com.gsl.reports.StepExecutor;
 import com.gsl.testdata.UserCredential;
@@ -53,7 +53,7 @@ public class CreateApVoucher extends WebTest {
                     || data.getSubLedgerInformationList().isEmpty())) {
             Log.debug("[DB mode] Placeholder detected for scenario={}", data.getScenarioType());
             try {
-                data = DbApVoucherDataSource.loadFreshForScenario(data, "createApVoucherAdvancePayment");
+                data = ApVoucherLazyLoader.forScenario(data, "createApVoucherAdvancePayment");
             } catch (IllegalStateException e) {
                 throw new org.testng.SkipException(
                         "[CreateApVoucher] Skipping — insufficient test data for scenario '"
@@ -127,7 +127,7 @@ public class CreateApVoucher extends WebTest {
                     || data.getSubLedgerInformationList().isEmpty())) {
             Log.debug("[DB mode] Placeholder detected for scenario={}", data.getScenarioType());
             try {
-                data = DbApVoucherDataSource.loadFreshForScenario(data, "createApVoucherDocumentPayment");
+                data = ApVoucherLazyLoader.forScenario(data, "createApVoucherDocumentPayment");
             } catch (IllegalStateException e) {
                 throw new org.testng.SkipException(
                         "[CreateApVoucher] Skipping — insufficient test data for scenario '"
@@ -201,7 +201,7 @@ public class CreateApVoucher extends WebTest {
                 && (data.getSubLedgerInformationList() == null
                     || data.getSubLedgerInformationList().isEmpty())) {
             try {
-                data = DbApVoucherDataSource.loadFreshForScenario(data, "createApVoucherDocumentMismatch");
+                data = ApVoucherLazyLoader.forScenario(data, "createApVoucherDocumentMismatch");
             } catch (IllegalStateException e) {
                 throw new org.testng.SkipException(
                         "[CreateApVoucher] Skipping — insufficient test data for scenario '"
@@ -275,7 +275,7 @@ public class CreateApVoucher extends WebTest {
                     || data.getSubLedgerInformationList().isEmpty())) {
             Log.debug("[DB mode] Placeholder detected for scenario={}", data.getScenarioType());
             try {
-                data = DbApVoucherDataSource.loadFreshForScenario(data, "createApVoucherNegativeBoundary");
+                data = ApVoucherLazyLoader.forScenario(data, "createApVoucherNegativeBoundary");
             } catch (IllegalStateException e) {
                 throw new org.testng.SkipException(
                         "[CreateApVoucher] Skipping — insufficient test data for scenario '"

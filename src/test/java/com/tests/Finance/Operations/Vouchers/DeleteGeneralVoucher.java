@@ -17,7 +17,7 @@ import com.gsl.network.pattern.FinanceApiPattern;
 import com.gsl.pages.Finance.Operations.GeneralVoucherListPage;
 import com.gsl.pages.HomePage;
 import com.gsl.pages.enums.Finance.MainMenuType;
-import com.gsl.pages.enums.Finance.Operations.GeneralVoucher.GeneralVoucherRevertOutcome;
+import com.gsl.pages.enums.Finance.Operations.Common.VoucherRevertOutcome;
 import com.gsl.pages.enums.Finance.Operations.OperationsMenuType;
 import com.gsl.pages.enums.topmenucomponent.MainModuleType;
 import com.gsl.reports.DbGatheringExtentLogger;
@@ -34,6 +34,8 @@ import com.gsl.validation.snapshot.DocumentContext;
 import com.gsl.validation.snapshot.ExpectedChangeSet;
 import com.gsl.validation.snapshot.TableRule;
 import com.gsl.validation.snapshot.TableSnapshot;
+import com.gsl.validation.api.AuditApiReader;
+import com.gsl.validation.api.GeneralVoucherApiAuditChecks;
 import com.gsl.validation.api.GeneralVoucherApiStateChecks;
 import com.gsl.validation.api.NoDbApiSession;
 import com.gsl.validation.snapshot.SnapshotService;
@@ -100,7 +102,7 @@ public class DeleteGeneralVoucher extends WebTest {
         final Map<String, Object>[]    beforeFinvchmainRowRef = new Map[1];
         final VoucherSnapshot[]        beforeSnapshotRef = new VoucherSnapshot[1];
         final VoucherSnapshot[]        afterSnapshotRef = new VoucherSnapshot[1];
-        final GeneralVoucherRevertOutcome[] unpostOutcomeRef = new GeneralVoucherRevertOutcome[1];
+        final VoucherRevertOutcome[] unpostOutcomeRef = new VoucherRevertOutcome[1];
         final String[]                 beforeReleaseStatusRef = new String[1];
         final String[]                 immediateBeforeReleaseStatusRef = new String[1];
 
@@ -237,14 +239,14 @@ public class DeleteGeneralVoucher extends WebTest {
             String actionTaken;
             if ("P".equals(immediateBeforeReleaseStatusRef[0])) {
                 actionTaken = "UNPOST_ATTEMPTED";
-                GeneralVoucherRevertOutcome outcome = listRef[0].revertSelectedDocument();
+                VoucherRevertOutcome outcome = listRef[0].revertSelectedDocument();
                 unpostOutcomeRef[0] = outcome;
-                if (outcome == GeneralVoucherRevertOutcome.CANNOT_REVERT_BRS_DONE) {
+                if (outcome == VoucherRevertOutcome.CANNOT_REVERT_BRS_DONE) {
                     ReportLogger.warn("Voucher's line(s) are already bank-reconciled — Revert (un-post) was "
                             + "blocked; voucher remains Posted. Delete may behave differently against a "
                             + "still-Posted voucher.");
                     resultingStatus = "P";
-                } else if (outcome == GeneralVoucherRevertOutcome.CANNOT_REVERT_MONTH_CLOSED) {
+                } else if (outcome == VoucherRevertOutcome.CANNOT_REVERT_MONTH_CLOSED) {
                     // The negative scenario's actual assertion point — see the early-return below.
                     ReportLogger.warn("Voucher's own accounting year/financial month is already closed — "
                             + "Revert (un-post) was blocked; voucher remains Posted.");
@@ -300,6 +302,7 @@ public class DeleteGeneralVoucher extends WebTest {
             if (noDb) {
                 ReportLogger.business("db.available=no — no persistence-map/audit context; the voucher's pre-delete state is the API read taken "
                         + "by the pre-checks above.");
+                if (apiValidation) AuditApiReader.captureBefore(testData.getExistingVoucherNo());
                 return;
             }
             contextRef[0] = new VoucherDocumentContextResolver().resolve(testData.getExistingVoucherNo(), VoucherDomain.GV);
@@ -368,7 +371,7 @@ public class DeleteGeneralVoucher extends WebTest {
                 NoDbApiSession api = NoDbApiSession.current();
                 GeneralVoucherApiStateChecks.Result result = GeneralVoucherApiStateChecks.deleted(testData.getExistingVoucherNo(),
                         readVoucher(testData), api.listRow(testData.getExistingVoucherNo()) != null);
-                com.gsl.reports.ApiValidationReporter.report(result.rows(), null);
+                com.gsl.reports.ApiValidationReporter.report(result.rows(), result.titles(), null);
                 Assert.assertTrue(result.ok(), "[API validation] " + String.join("; ", result.failed()));
                 ReportLogger.business("Confirmed voucher removed through the API: " + testData.getExistingVoucherNo());
                 return;
@@ -389,6 +392,24 @@ public class DeleteGeneralVoucher extends WebTest {
             com.gsl.reports.StepSummaryBuffer.record("Live row removal confirmed — finvchmain row for voucher "
                     + testData.getExistingVoucherNo() + " no longer present");
         });
+
+        if (noDb && apiValidation) {
+            StepExecutor.step("API Audit Validation", () -> {
+                var before = AuditApiReader.before();
+                if (before == null) {
+                    com.gsl.reports.ExtentLogger.skip("BEFORE audit trail was not captured (voucher not listed)");
+                    return;
+                }
+                var after = AuditApiReader.awaitNewVersion(testData.getExistingVoucherNo(), before.vchcode(), before.from(),
+                        c -> c.maxVersion() > before.capture().maxVersion()
+                                && (before.capture().site().isEmpty() || c.siteMaxVersion() > before.capture().siteMaxVersion()));
+                var result = GeneralVoucherApiAuditChecks.deleted(before.capture(), after);
+                com.gsl.reports.ApiValidationReporter.append(result.rows(), result.titles(), "AuditLog FinVoucher / Finance Site Allocation");
+                Assert.assertTrue(result.ok(), "[API audit] " + result.failed().size() + " check(s) failed for "
+                        + testData.getExistingVoucherNo() + ":\n  " + String.join("\n  ", result.failed()));
+                ReportLogger.pass("API audit validated (" + result.passed().size() + " checks) for voucher: " + testData.getExistingVoucherNo());
+            });
+        }
 
         // ── Step 10: Database Validation — Audit Trail ─────────────────────────────
         // finvchmain's row is confirmed gone from the live table by Step 9b above — this

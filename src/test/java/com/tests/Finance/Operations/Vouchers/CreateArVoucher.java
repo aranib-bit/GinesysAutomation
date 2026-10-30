@@ -23,7 +23,7 @@ import com.gsl.reports.StepExecutor;
 import com.gsl.utils.Log;
 import com.gsl.utils.NavigationUtils;
 import com.gsl.utils.dataprovider.MergedFinArVoucherDataSupplier;
-import com.gsl.utils.dataprovider.source.finance.DbArVoucherDataSource;
+import com.gsl.utils.dataprovider.source.finance.ArVoucherLazyLoader;
 import com.gsl.utils.ui.UiFieldState;
 import com.gsl.validation.ui.UiValidationLevel;
 import com.tests.WebTest;
@@ -51,7 +51,7 @@ public class CreateArVoucher extends WebTest {
             // Data-availability shortfalls are raised as a SkipException inside the data source
             // (DbArVoucherDataSource.loadFreshForScenario, guarded by DataLoadScope) so they render
             // as an amber Skip rather than a red Fail. No try/catch conversion needed here.
-            data = DbArVoucherDataSource.loadFreshForScenario(data, "createArVoucher");
+            data = ArVoucherLazyLoader.forScenario(data, "createArVoucher");
         }
 
         if (data.getScenarioType() != null) {
@@ -133,7 +133,7 @@ public class CreateArVoucher extends WebTest {
                 && (data.getSubLedgerInformationList() == null
                     || data.getSubLedgerInformationList().isEmpty())) {
             Log.debug("[DB mode] Placeholder detected for scenario={}", data.getScenarioType());
-            data = DbArVoucherDataSource.loadFreshForScenario(data, "createArVoucherNegativeBoundary");
+            data = ArVoucherLazyLoader.forScenario(data, "createArVoucherNegativeBoundary");
         }
 
         DbGatheringExtentLogger.log(data);

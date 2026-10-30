@@ -141,6 +141,11 @@ public interface WaitConfig extends Config {
      * it. Confirmed live (FIN-GV-EDIT-HEADER-02, run 20261012_142236): Tab committed a truncated
      * value ('Synergizeebsite' → 'Syner' → 'S') typed while that query was in flight.
      */
+    /** How long to wait, after typing into a picker, before concluding the value is NOT offered (the filtered list renders after a debounce). */
+    @Key("picker.search.settle.ms")
+    @DefaultValue("4000")
+    long pickerSearchSettleMs();
+
     @Key("combo.type.settle.max.attempts")
     @DefaultValue("3")
     int comboTypeSettleMaxAttempts();

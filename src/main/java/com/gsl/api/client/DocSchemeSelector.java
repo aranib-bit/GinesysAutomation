@@ -1,7 +1,7 @@
 package com.gsl.api.client;
 
 import com.gsl.api.core.ApiException;
-import com.gsl.api.model.arvoucher.DocNumberSchemeEntry;
+import com.gsl.api.model.common.DocNumberSchemeEntry;
 
 import java.util.List;
 import java.util.stream.Collectors;
@@ -15,7 +15,7 @@ import java.util.stream.Collectors;
  * from the DB). When no name is supplied the legacy behaviour is kept for DB-free callers: prefer
  * {@code legacyPreferredName}, otherwise the first entry.
  */
-final class DocSchemeSelector {
+public final class DocSchemeSelector {
 
     private DocSchemeSelector() {}
 
@@ -27,7 +27,7 @@ final class DocSchemeSelector {
      * @return the matching entry, or {@code null} only in legacy mode when the list is empty
      * @throws ApiException when {@code requestedName} is set but the API does not offer it
      */
-    static DocNumberSchemeEntry select(List<DocNumberSchemeEntry> schemes, String requestedName,
+    public static DocNumberSchemeEntry select(List<DocNumberSchemeEntry> schemes, String requestedName,
                                        String legacyPreferredName, String voucherLabel) {
         if (requestedName != null && !requestedName.isBlank()) {
             return schemes.stream()

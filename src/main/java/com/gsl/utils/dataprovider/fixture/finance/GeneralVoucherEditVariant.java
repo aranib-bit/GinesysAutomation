@@ -64,7 +64,7 @@ public class GeneralVoucherEditVariant {
      * period-open guard {@link com.gsl.utils.dataprovider.source.finance.DbGeneralVoucherEditDataSource#claimOne}
      * otherwise applies to every other variant. Such a candidate can't even be Unposted (the
      * live app rejects Revert itself with "Finance month is already closed. Cannot be
-     * reverted." — see {@code GeneralVoucherRevertOutcome#CANNOT_REVERT_MONTH_CLOSED}), so
+     * reverted." — see {@code VoucherRevertOutcome#CANNOT_REVERT_MONTH_CLOSED}), so
      * {@code EditGeneralVoucher}'s own "Unpost if Posted" prep step is this scenario's actual,
      * confirmed assertion point — it never reaches Save at all. {@code false} (default) for every
      * other variant, which all require an OPEN period exactly as before.

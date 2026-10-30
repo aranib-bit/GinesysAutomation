@@ -62,7 +62,7 @@ public class ApVoucherDetailLine {
     /** Optimistic-concurrency stamp — {@code 0} for a newly created line. */
     @Builder.Default
     private int dataVersion = 0;
-    /** Always null in both captures — no adjustment (e.g. against a pending AR document) is
-     *  wired up by this client's Customer/Vendor Advance flow. */
-    private Object apVoucherAdjustmentDetail;
+    /** Null for the Customer/Vendor Advance flow; set when the line adjusts pending documents (the voucher is then tagged
+     *  against them) — see {@link ApVoucherAdjustmentDetail}. */
+    private java.util.List<ApVoucherAdjustmentDetail> apVoucherAdjustmentDetail;
 }

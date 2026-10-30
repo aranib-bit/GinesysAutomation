@@ -34,7 +34,7 @@ public class VerifyDcReceiptInWmsAfterApiCreation extends MultiContextTest {
         ItemCreateResponse item = ApiSessionManager.getSession().getItemApiClient()
                 .createItemWithDefaults("WMSPOC", ItemManagementMode.INDIVIDUAL,
                         PricingData.builder().costrate(500).wsp(600).mrp(700).listedMrp(800).build(), 28);
-        DcCreateResponse dc = ApiSessionManager.getSession().getDcApiClient()
+        DcCreateResponse dc = new com.gsl.service.DcService(ApiSessionManager.getSession().getDcApiClient())
                 .createDc(item.getItemCode(), 10, 500);
         Assert.assertNotNull(dc.getDcCode(), "DC should have been created via WEBAPI");
 

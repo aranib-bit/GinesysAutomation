@@ -86,6 +86,10 @@ public final class PendingApDocumentBackfillStrategy implements BackfillStrategy
      */
     private static void logReleaseStatus(String invoiceCode) {
         if (invoiceCode == null) return;
+        if (!com.gsl.database.DbAvailability.isAvailable()) {
+            ReportLogger.dataBackfill("[PendingApDocumentBackfillStrategy] db.available=no - posting read-back skipped (the next API read of the pending documents confirms it).");
+            return;
+        }
         Jdbi jdbi = DatabaseManager.getJdbi();
         FinPostDao finPostDao = jdbi.onDemand(FinPostDao.class);
         List<FinPost> posts = finPostDao.findByEntCode(invoiceCode);

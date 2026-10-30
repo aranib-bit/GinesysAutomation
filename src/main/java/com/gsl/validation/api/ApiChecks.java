@@ -10,6 +10,12 @@ final class ApiChecks {
     final List<String> passed = new ArrayList<>();
     final List<String> failed = new ArrayList<>();
     final List<ApiCheckRow> rows = new ArrayList<>();
+    /** group key ("Row 1") -> report title with the Sub Ledger / Site / Payment tags; absent = plain group name. */
+    final java.util.Map<String, String> titles = new java.util.LinkedHashMap<>();
+
+    void title(String group, String title) {
+        titles.put(group, title);
+    }
 
     void eq(String what, Object expected, Object actual) {
         boolean ok = Objects.equals(expected, actual);

@@ -113,6 +113,57 @@ public final class DocumentReservationRegistry {
     }
 
     /**
+     * As {@link #filterAndReserve}, but reserves at most {@code perSl} documents of each sub-ledger, walking its documents in the order given and
+     * skipping the ones another thread holds. The documents are NOT cut to {@code perSl} before reserving: when the oldest ones are held elsewhere
+     * the next ones are taken, so a sub-ledger only counts as exhausted when it really has fewer than {@code perSl} free documents. Nothing beyond
+     * what the scenario needs is held, which keeps the other threads' pool of documents intact.
+     */
+    public static java.util.Map<String, java.util.List<com.gsl.model.finance.PendingSlDocument>>
+    filterAndReserveUpTo(java.util.Map<String, java.util.List<com.gsl.model.finance.PendingSlDocument>> docsBySlKey, int perSl) {
+        java.util.Map<String, java.util.List<com.gsl.model.finance.PendingSlDocument>> result = new java.util.LinkedHashMap<>();
+        for (java.util.Map.Entry<String, java.util.List<com.gsl.model.finance.PendingSlDocument>> entry : docsBySlKey.entrySet()) {
+            java.util.List<com.gsl.model.finance.PendingSlDocument> taken = new java.util.ArrayList<>();
+            for (com.gsl.model.finance.PendingSlDocument doc : entry.getValue()) {
+                if (taken.size() >= perSl) break;
+                if (tryReserve(doc.getDocumentNo())) taken.add(doc);
+            }
+            if (taken.size() >= perSl) {
+                result.put(entry.getKey(), taken);
+            } else {
+                // Fewer free documents than the scenario needs: hold none of them, so a partial hold never starves another scenario.
+                release(taken.stream().map(com.gsl.model.finance.PendingSlDocument::getDocumentNo).toList());
+                Log.warn("[DocReservation] SL key='{}' has only {} free document(s) of {} needed ({} in total, the rest held by other threads).",
+                        entry.getKey(), taken.size(), perSl, entry.getValue().size());
+            }
+        }
+        return result;
+    }
+
+    /**
+     * Reserves every document of one sub-ledger or none of them: a FIFO / reference-site-wise FIFO set-off lets the UI allocate across the
+     * sub-ledger's whole pending list, so the scenario must hold all of it (a partial hold lets another thread consume a document the UI is about
+     * to pick). Documents are claimed in document-number order so two threads contending for the same sub-ledger back off consistently.
+     *
+     * @return {@code true} when this thread now holds all {@code docs}; {@code false} (nothing held) when any was already held elsewhere
+     */
+    public static boolean reserveAllOrNone(String slKey, java.util.List<com.gsl.model.finance.PendingSlDocument> docs) {
+        java.util.List<String> numbers = docs.stream().map(com.gsl.model.finance.PendingSlDocument::getDocumentNo).sorted().toList();
+        java.util.List<String> got = new java.util.ArrayList<>();
+        for (String number : numbers) {
+            if (tryReserve(number)) {
+                got.add(number);
+            } else {
+                release(got);
+                Log.warn("[DocReservation] SL key='{}': exclusive claim refused, '{}' is held by another thread (released the {} already taken).",
+                        slKey, number, got.size());
+                return false;
+            }
+        }
+        Log.info("[DocReservation] SL key='{}': exclusive claim of all {} document(s) by thread '{}'.", slKey, numbers.size(), Thread.currentThread().getName());
+        return true;
+    }
+
+    /**
      * Releases all documents reserved by the current thread and clears its thread-local set.
      * Call from {@code BaseTest.@AfterMethod} so every test cleans up regardless of pass/fail.
      */

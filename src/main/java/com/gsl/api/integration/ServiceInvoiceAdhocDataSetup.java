@@ -28,7 +28,7 @@ public final class ServiceInvoiceAdhocDataSetup {
             ServiceInvoiceAdhocApiClient client, String vendorSlCode, int ownerSiteCode,
             int quantity, int rate) {
         ServiceInvoiceAdhocCreateResponse response =
-                client.createServiceInvoiceAdhocWithDefaults(vendorSlCode, ownerSiteCode, quantity, rate);
+                new com.gsl.service.ServiceInvoiceAdhocService(client).createServiceInvoiceAdhocWithDefaults(vendorSlCode, ownerSiteCode, quantity, rate);
         ServiceInvoiceAdhocApiValidator.validate(response);
         ReportLogger.business("[ServiceInvoiceAdhocDataSetup] Service Invoice Adhoc created via API — invoiceCode={}, schemeDocno={}",
                 response.getInvoiceCode(), response.getSchemeDocno());

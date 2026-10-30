@@ -5,7 +5,7 @@ import com.gsl.api.core.ApiSessionBundle;
 import com.gsl.api.core.ApiSessionFactory;
 import com.gsl.api.integration.ApVoucherDataSetup;
 import com.gsl.api.model.apvoucher.ApVoucherCreateResponse;
-import com.gsl.api.model.arvoucher.SubLedgerLookupResult;
+import com.gsl.api.model.common.SubLedgerLookupResult;
 import com.gsl.database.BackfillStrategy;
 import com.gsl.database.DatabaseManager;
 import com.gsl.database.dao.finance.FinPostDao;
@@ -50,6 +50,7 @@ public final class ApVoucherArBackfillStrategy implements BackfillStrategy {
     private final int ownerSiteCode;
     private final int ouCode;
     private final long empCode;
+    private final boolean freshSubLedger;
 
     /**
      * @param requiredClsCode the {@code admcls.clscode} the AP Voucher's sub-ledger must belong to
@@ -58,33 +59,61 @@ public final class ApVoucherArBackfillStrategy implements BackfillStrategy {
      * @param empCode         logged-in employee code used to create the AP Voucher
      */
     public ApVoucherArBackfillStrategy(long requiredClsCode, int ownerSiteCode, int ouCode, long empCode) {
+        this(requiredClsCode, ownerSiteCode, ouCode, empCode, false);
+    }
+
+    /**
+     * @param freshSubLedger true when the scenario will claim a whole sub-ledger (FIFO set-off): every record is then raised against a NEW party of the
+     *                       class, because documents added to an existing sub-ledger can never satisfy a claim while another scenario holds one of its documents
+     */
+    public ApVoucherArBackfillStrategy(long requiredClsCode, int ownerSiteCode, int ouCode, long empCode, boolean freshSubLedger) {
         this.requiredClsCode = requiredClsCode;
         this.ownerSiteCode = ownerSiteCode;
         this.ouCode = ouCode;
         this.empCode = empCode;
+        this.freshSubLedger = freshSubLedger && requiredClsCode > 0;   // a fresh party needs a class to be created in
     }
 
     /** Creates {@code neededQuantity} AP Vouchers (Customer Advance, {@code onAccount}) against {@link #requiredClsCode} via {@code platform}; see the class Javadoc for the data shape this produces. */
     @Override
     public void backfill(ApiPlatform platform, int neededQuantity) {
         ApiSessionBundle session = ApiSessionFactory.create(platform);
-        Jdbi jdbi = DatabaseManager.getJdbi();
+        boolean dbAvailable = com.gsl.database.DbAvailability.isAvailable();
+        Jdbi jdbi = dbAvailable ? DatabaseManager.getJdbi() : null;
         String workDate = LocalDate.now() + "T00:00:00";
+
+        if (requiredClsCode > 0 && !freshSubLedger) {
+            StepExecutor.call("Ensure a party of class " + requiredClsCode + " exists", () -> {
+                PartyBackfill.ensurePartyOfClass(session, requiredClsCode, ownerSiteCode, ouCode, empCode, workDate);
+                return null;
+            });
+        }
 
         for (int i = 0; i < neededQuantity; i++) {
             final int idx = i;
             ExtentTest recordNode = StepExecutor.group("Record " + (idx + 1) + "/" + neededQuantity);
 
             SubLedgerLookupResult[] slHolder = new SubLedgerLookupResult[1];
-            StepExecutor.stepUnder(recordNode, "Get Sub Ledger Details for AP Voucher", () ->
-                    slHolder[0] = session.getApVoucherApiClient().resolveSubLedger(
-                            ownerSiteCode, ouCode, (int) empCode, workDate, requiredClsCode));
+            if (freshSubLedger) {
+                StepExecutor.stepUnder(recordNode, "Create a new party of class " + requiredClsCode + " for this scenario", () ->
+                        slHolder[0] = PartyBackfill.createFreshPartyOfClass(session, requiredClsCode, ownerSiteCode, ouCode, empCode, workDate));
+            } else {
+                StepExecutor.stepUnder(recordNode, "Get Sub Ledger Details for AP Voucher", () ->
+                        slHolder[0] = session.getApVoucherApiClient().resolveSubLedger(
+                                ownerSiteCode, ouCode, (int) empCode, workDate, requiredClsCode));
+            }
             SubLedgerLookupResult subLedger = slHolder[0];
 
             // TDS applicability check — DB-only, no API response carries this flag (confirmed via
             // both the TDS and No-TDS HAR captures).
-            FinSl finSl = jdbi.onDemand(FinSlDao.class).findBySlnameAndSlid(subLedger.getSlName(), subLedger.getSlid());
-            boolean tdsApplicable = finSl != null && "Y".equalsIgnoreCase(finSl.getTdsApplicable());
+            // With db.available=no the sub-ledger lookup's own tdsApp field stands in for finsl.tds_app.
+            boolean tdsApplicable;
+            if (dbAvailable) {
+                FinSl finSl = jdbi.onDemand(FinSlDao.class).findBySlnameAndSlid(subLedger.getSlName(), subLedger.getSlid());
+                tdsApplicable = finSl != null && "Y".equalsIgnoreCase(finSl.getTdsApplicable());
+            } else {
+                tdsApplicable = subLedger.isTdsApplicable();
+            }
 
             ReportLogger.dataBackfill(
                     "[ApVoucherArBackfillStrategy] Creating record {}/{} — requiredClsCode={}, subLedger='{}', " +
@@ -115,6 +144,10 @@ public final class ApVoucherArBackfillStrategy implements BackfillStrategy {
      */
     private static void logReleaseStatus(String voucherCode) {
         if (voucherCode == null) return;
+        if (!com.gsl.database.DbAvailability.isAvailable()) {
+            ReportLogger.dataBackfill("[ApVoucherArBackfillStrategy] db.available=no - posting read-back skipped (the next API read of the pending documents confirms it).");
+            return;
+        }
         Jdbi jdbi = DatabaseManager.getJdbi();
         FinPostDao finPostDao = jdbi.onDemand(FinPostDao.class);
         List<FinPost> posts = finPostDao.findByEntCode(voucherCode);
