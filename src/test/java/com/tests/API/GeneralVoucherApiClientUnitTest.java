@@ -4,12 +4,12 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.gsl.api.client.GeneralVoucherApiClient;
 import com.gsl.api.core.ApiException;
-import com.gsl.api.model.arvoucher.CashBankLedgerLookupResult;
+import com.gsl.api.model.common.CashBankLedgerLookupResult;
 import com.gsl.api.model.common.UserSiteContext;
 import com.gsl.api.model.generalvoucher.ChequeLookupResult;
 import com.gsl.api.model.generalvoucher.CostCenterAllocation;
 import com.gsl.api.model.generalvoucher.CostCenterSiteLookupResult;
-import com.gsl.api.model.generalvoucher.GeneralVoucherActionResponse;
+import com.gsl.api.model.common.VoucherActionResponse;
 import com.gsl.api.model.generalvoucher.GeneralVoucherCreateRequest;
 import com.gsl.api.model.generalvoucher.GeneralVoucherCreateResponse;
 import com.gsl.api.model.generalvoucher.GeneralVoucherDetailLine;
@@ -187,7 +187,7 @@ public class GeneralVoucherApiClientUnitTest {
         canned.put("PUT /Finance/api/vouchers/general/revert", ok);
         canned.put("PUT /Finance/api/vouchers/general/release", ok);
 
-        GeneralVoucherActionResponse revert = client.revertGeneralVoucher(List.of(1183324L), 513150, 1);
+        VoucherActionResponse revert = client.revertGeneralVoucher(List.of(1183324L), 513150, 1);
         assertTrue(revert.allSucceeded());
         assertEquals(last().path(), "/Finance/api/vouchers/general/revert");
         JsonNode body = json(last().body());
@@ -195,7 +195,7 @@ public class GeneralVoucherApiClientUnitTest {
         assertEquals(body.get("empCode").asLong(), 513150L);
         assertEquals(body.get("connectedOUCode").asInt(), 1);
 
-        GeneralVoucherActionResponse release = client.releaseGeneralVoucher(List.of(1183324L), 513150, 1);
+        VoucherActionResponse release = client.releaseGeneralVoucher(List.of(1183324L), 513150, 1);
         assertTrue(release.allSucceeded());
         assertEquals(last().path(), "/Finance/api/vouchers/general/release");
     }
@@ -204,7 +204,7 @@ public class GeneralVoucherApiClientUnitTest {
     public void businessFailureInItem3IsReportedEvenThoughHttpIs200() {
         canned.put("PUT /Finance/api/vouchers/general/revert",
                 "{\"status\":0,\"message\":\"\",\"result\":[{\"item1\":1183337,\"item2\":\"AP/00080019/26-27\",\"item3\":\"BRS is done for this transaction. Cannot be reverted.\",\"item4\":11462477}],\"success\":true}");
-        GeneralVoucherActionResponse response = client.revertGeneralVoucher(List.of(1183337L), 513150, 1);
+        VoucherActionResponse response = client.revertGeneralVoucher(List.of(1183337L), 513150, 1);
         assertFalse(response.allSucceeded());
         assertEquals(response.failureMessages(), List.of("BRS is done for this transaction. Cannot be reverted."));
 
@@ -216,7 +216,7 @@ public class GeneralVoucherApiClientUnitTest {
     public void deleteSendsVoucherCodesAndAcceptsCapitalSuccess() throws IOException {
         canned.put("DELETE /Finance/api/vouchers/general",
                 "{\"status\":0,\"message\":\"\",\"result\":[{\"item1\":1183324,\"item2\":\"VG/00410/26-27\",\"item3\":\"Success\"}],\"success\":true}");
-        GeneralVoucherActionResponse response = client.deleteGeneralVouchers(List.of(1183324L), 513150, 1);
+        VoucherActionResponse response = client.deleteGeneralVouchers(List.of(1183324L), 513150, 1);
         assertTrue(response.allSucceeded(), "delete reports a capital-S Success and has no item4");
         assertEquals(last().method(), "DELETE");
         JsonNode body = json(last().body());
@@ -396,11 +396,11 @@ public class GeneralVoucherApiClientUnitTest {
         canned.put("GET /Finance/api/ledgers/cashbankledgers#site1",
                 "{\"success\":true,\"result\":{\"totalCount\":1,\"items\":[{\"glCode\":4,\"glName\":\"HDFC\",\"sourceType\":\"B\"}]}}");
         var ctx = com.gsl.api.model.common.UserSiteContext.builder().sites(List.of(site(42, 1), site(1, 1))).build();
-        var choice = client.findOwnerSiteWithCashBank(ctx, 777001L, "B", "2026-10-16T00:00:00");
+        var choice = new com.gsl.service.GeneralVoucherService(client).findOwnerSiteWithCashBank(ctx, 777001L, "B", "2026-10-16T00:00:00");
         assertEquals(choice.site().getSiteCode(), 1L);
         assertEquals(choice.probed(), List.of("S1(1)=1"));   // ascending order: site 1 first, so site 42 is never probed
         int callsAfterFirst = seen.size();
-        var again = client.findOwnerSiteWithCashBank(ctx, 777001L, "B", "2026-10-16T00:00:00");
+        var again = new com.gsl.service.GeneralVoucherService(client).findOwnerSiteWithCashBank(ctx, 777001L, "B", "2026-10-16T00:00:00");
         assertEquals(again.site().getSiteCode(), 1L);
         assertEquals(seen.size() - callsAfterFirst, 1, "cached site is re-checked with one call, not re-probed");
     }
@@ -410,7 +410,7 @@ public class GeneralVoucherApiClientUnitTest {
         canned.put("GET /Finance/api/ledgers/cashbankledgers", "{\"success\":true,\"result\":{\"totalCount\":0,\"items\":[]}}");
         var ctx = com.gsl.api.model.common.UserSiteContext.builder().sites(List.of(site(5, 1), site(3, 1))).build();
         org.testng.SkipException e = expectThrows(org.testng.SkipException.class,
-                () -> client.findOwnerSiteWithCashBank(ctx, 777002L, "C", "2026-10-16T00:00:00"));
+                () -> new com.gsl.service.GeneralVoucherService(client).findOwnerSiteWithCashBank(ctx, 777002L, "C", "2026-10-16T00:00:00"));
         assertTrue(e.getMessage().contains("S3(3)=0") && e.getMessage().contains("S5(5)=0"), e.getMessage());
     }
 }

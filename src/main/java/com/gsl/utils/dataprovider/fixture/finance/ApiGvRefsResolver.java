@@ -1,14 +1,16 @@
 package com.gsl.utils.dataprovider.fixture.finance;
 
+import com.gsl.utils.dataprovider.source.finance.ApiVoucherSupport;
+
 import com.gsl.api.client.GeneralVoucherApiClient;
 import com.gsl.api.client.LedgerApiClient;
 import com.gsl.api.client.SubLedgerOthersApiClient;
 import com.gsl.api.integration.LedgerDataSetup;
 import com.gsl.api.integration.SubLedgerOthersDataSetup;
 import com.gsl.reports.ReportLogger;
-import com.gsl.api.model.arvoucher.CashBankLedgerLookupResult;
-import com.gsl.api.model.arvoucher.DocNumberSchemeEntry;
-import com.gsl.api.model.arvoucher.SubLedgerLookupResult;
+import com.gsl.api.model.common.CashBankLedgerLookupResult;
+import com.gsl.api.model.common.DocNumberSchemeEntry;
+import com.gsl.api.model.common.SubLedgerLookupResult;
 import com.gsl.api.model.common.UserSiteContext;
 import com.gsl.api.model.generalvoucher.CostCenterSiteLookupResult;
 import com.gsl.api.model.generalvoucher.GlLedgerLookupResult;
@@ -50,24 +52,16 @@ public final class ApiGvRefsResolver {
 
 
 
-    /** Owner site / OU the vouchers are created under. */
-    public record OwnerContext(int siteCode, String siteName, int ouCode, String workDate) {}
-
     /**
      * Resolves the owner site: the user's first {@code OS-OO-CM} site (ascending code) whose Cash/Bank lookup offers a ledger of
      * {@code cashBankType} - most sites own none, so the first assigned site is not usable in general. Every probed site is logged.
      */
-    public static OwnerContext resolveOwner(Caller caller, CashBankType cashBankType, List<String> log) {
-        UserSiteContext ctx = caller.client().fetchUserContext();
-        String workDate = GeneralVoucherApiClient.workDate(LocalDate.now());
-        String wanted = cashBankType == CashBankType.BANK ? "B" : "C";
-        GeneralVoucherApiClient.OwnerSiteChoice choice =
-                caller.client().findOwnerSiteWithCashBank(ctx, caller.empCode(), wanted, workDate);
-        UserSiteContext.Site site = choice.site();
-        OwnerContext owner = new OwnerContext((int) site.getSiteCode(), site.getSiteName(), (int) site.getOuCode(), workDate);
+    public static ApiVoucherSupport.Owner resolveOwner(Caller caller, CashBankType cashBankType, List<String> log) {
+        ApiVoucherSupport.OwnerResolution r = ApiVoucherSupport.resolveOwner(caller.client(), caller.empCode(), cashBankType);
+        ApiVoucherSupport.Owner owner = r.owner();
         log.add("  Resolved API user code=" + caller.empCode() + " → owner site='" + owner.siteName() + "' (code="
-                + owner.siteCode() + ", OU=" + owner.ouCode() + ") offering " + choice.ledgers().size() + " " + cashBankType
-                + " ledger(s)" + (choice.probed().isEmpty() ? " [cached]" : "; probed " + choice.probed()));
+                + owner.siteCode() + ", OU=" + owner.ouCode() + ") offering " + r.choice().ledgers().size() + " " + cashBankType
+                + " ledger(s)" + (r.choice().probed().isEmpty() ? " [cached]" : "; probed " + r.choice().probed()));
         return owner;
     }
 
@@ -76,7 +70,7 @@ public final class ApiGvRefsResolver {
      *
      * @param variant the originating combination, carried into {@link LiveGvDbRefs#getVariant()} for naming/labelling
      */
-    public static LiveGvDbRefs resolve(Caller caller, OwnerContext owner, GeneralVoucherFixtureOptions opts,
+    public static LiveGvDbRefs resolve(Caller caller, ApiVoucherSupport.Owner owner, GeneralVoucherFixtureOptions opts,
                                        GeneralVoucherVariant variant, List<String> log) {
         if (opts.isRequireCrossOuSite()) {
             throw new SkipException("Skipped — NEG_SITE_ALLOCATION_CROSS_OU needs per-site OU data that the API mode does not "
@@ -168,7 +162,7 @@ public final class ApiGvRefsResolver {
     }
 
     /** Filters the lookup to the shape and resolves up to {@code glCount} rows into {@code rows}; returns the shape candidates. */
-    private static List<GlLedgerLookupResult> collectRows(GeneralVoucherApiClient api, Caller caller, OwnerContext owner,
+    private static List<GlLedgerLookupResult> collectRows(GeneralVoucherApiClient api, Caller caller, ApiVoucherSupport.Owner owner,
                                                           List<GlLedgerLookupResult> fetchedGls, GeneralVoucherFixtureOptions opts,
                                                           String typeCode, String siteApp, String slApp, GlLineType lineType,
                                                           int glCount, int siteCount,
@@ -196,7 +190,7 @@ public final class ApiGvRefsResolver {
     }
 
     /** The user's assigned sites in the owner OU ({@code admsite.code}), from the API user context. */
-    private static List<Long> assignedSiteCodes(GeneralVoucherApiClient api, OwnerContext owner) {
+    private static List<Long> assignedSiteCodes(GeneralVoucherApiClient api, ApiVoucherSupport.Owner owner) {
         UserSiteContext ctx = api.fetchUserContext();
         List<Long> codes = new ArrayList<>();
         if (ctx != null && ctx.getSites() != null) {
@@ -211,7 +205,7 @@ public final class ApiGvRefsResolver {
      * Creates a Sub Ledger Others for {@code gl} and waits for it to appear in the {@code /subledgers} lookup (no DB read, so it
      * works with db.available=no). Returns the refreshed lookup, empty when nothing could be created/seen.
      */
-    private static List<SubLedgerLookupResult> backfillSubLedger(GeneralVoucherApiClient api, Caller caller, OwnerContext owner,
+    private static List<SubLedgerLookupResult> backfillSubLedger(GeneralVoucherApiClient api, Caller caller, ApiVoucherSupport.Owner owner,
                                                                  GlLedgerLookupResult gl, List<String> log) {
         if (caller.subLedgerOthersClient() == null) return List.of();
         Long siteCode = null;
@@ -240,7 +234,7 @@ public final class ApiGvRefsResolver {
     }
 
     /** One GL plus its sub-ledger (Type3) and allocation sites; {@code null} when this GL cannot supply what the shape needs. */
-    private static LiveGvDbRefs.ResolvedGlRow tryResolveRow(GeneralVoucherApiClient api, Caller caller, OwnerContext owner,
+    private static LiveGvDbRefs.ResolvedGlRow tryResolveRow(GeneralVoucherApiClient api, Caller caller, ApiVoucherSupport.Owner owner,
                                                             GlLedgerLookupResult gl, GlLineType lineType, int siteCount,
                                                             List<String> log) {
         String subLedgerName = null;

@@ -2,10 +2,7 @@ package com.gsl.utils.dataprovider.fixture.finance;
 
 import com.gsl.config.ConfigFactory;
 import com.gsl.database.DocumentReservationRegistry;
-import com.gsl.database.dialect.DbDialect;
-import com.gsl.database.dialect.DbDialectFactory;
 import com.gsl.database.query.AdmClsQuery;
-import com.gsl.database.query.FinVchRefQuery;
 import com.gsl.utils.DateUtils;
 import com.gsl.utils.Faker.FakerUtils;
 import com.gsl.database.query.PendingAdjQuery;
@@ -105,6 +102,12 @@ public final class ArVoucherTemplateLoader {
      */
     public static MergedFinanceArVoucherData selectDocumentTemplate(
             ArVoucherLiveDbRefs refs, Jdbi jdbi, List<Long> siteCodes, SelectDocumentVariant variant) {
+        return selectDocumentTemplate(refs, ArTemplateLookups.db(jdbi, siteCodes), variant);
+    }
+
+    /** Same template, with its few lookups supplied by {@code lookups} (DB-backed or API-backed). */
+    public static MergedFinanceArVoucherData selectDocumentTemplate(
+            ArVoucherLiveDbRefs refs, ArTemplateLookups lookups, SelectDocumentVariant variant) {
 
         String id = variant.getVariantId();
 
@@ -130,10 +133,10 @@ public final class ArVoucherTemplateLoader {
         LocalDate docDate = resolveDocumentDate(variant);
 
         // ── 2. Reference ──────────────────────────────────────────────────────
-        String reference = generateReference(jdbi, siteCodes, variant);
+        String reference = generateReference(lookups, variant);
 
         // ── 3. Reference site for SL rows (customer-type variants only) ───────
-        String refSite = resolveReferenceSite(variant, refs, jdbi);
+        String refSite = resolveReferenceSite(variant, refs, lookups);
 
         // ── 4. Select documents with amount-mode-adjusted amounts ─────────────
         List<SelectDocument> selectDocs = buildSelectDocumentsWithAmountMode(
@@ -159,7 +162,7 @@ public final class ArVoucherTemplateLoader {
 
         // ── 6a. Resolve SL classification type (Customer/Supplier/etc.) ───────
         for (SubLedgerInformation sl : subLedgers) {
-            sl.setSlType(AdmClsQuery.findClsnameBySlId(jdbi, sl.getId()));
+            sl.setSlType(lookups.slClassName(sl.getId()));
         }
 
         // ── 7. Payment rows (uses resolved mode, not the raw RANDOM enum) ─────
@@ -168,10 +171,9 @@ public final class ArVoucherTemplateLoader {
         // assignChequeBankMatchFlags (an exact-ratio "controlled sequence" over ALL of this run's
         // CHEQUE rows) — buildPayments' 6-arg overload just resolves the actual chqno for
         // whichever outcome variant already carries.
-        long cashBankGlcode = jdbi.onDemand(com.gsl.database.dao.finance.FinGlDao.class)
-                .findByGlName(refs.getCashBankName()).getGlcode();
+        long cashBankGlcode = lookups.cashBankGlcode(refs.getCashBankName());
         List<PaymentInformation> payments = buildPayments(id, subLedgers, effectivePaymentMode,
-                variant.isKnownCheque(), variant.isKnownChequeDifferentBank(), cashBankGlcode);
+                variant.isKnownCheque(), variant.isKnownChequeDifferentBank(), cashBankGlcode, lookups);
 
         // ── 8. Document header ────────────────────────────────────────────────
         DocumentInformation docInfo = new DocumentInformation(
@@ -184,7 +186,7 @@ public final class ArVoucherTemplateLoader {
                 reference);
 
         // Dynamic test case name: shows resolved payment mode (never "RANDOM")
-        String dynamicTestCaseName = buildDynamicTestCaseName(variant, jdbi, effectivePaymentMode);
+        String dynamicTestCaseName = buildDynamicTestCaseName(variant, lookups, effectivePaymentMode);
 
         return MergedFinanceArVoucherData.builder()
                 .masterTestData(buildMaster("createArVoucher", id, dynamicTestCaseName))
@@ -688,7 +690,7 @@ public final class ArVoucherTemplateLoader {
      * </ul>
      */
     private static String generateReference(
-            Jdbi jdbi, List<Long> siteCodes, SelectDocumentVariant variant) {
+            ArTemplateLookups lookups, SelectDocumentVariant variant) {
 
         if (variant.isAllowDuplicateReference()) {
             // Finance module: duplicate reference is accepted — use a fixed repeatable value
@@ -698,7 +700,7 @@ public final class ArVoucherTemplateLoader {
         // Non-Finance: must be unique in finvchmain — retry up to 10 times
         for (int attempt = 0; attempt < 10; attempt++) {
             String candidate = FakerUtils.randomReference();
-            if (!FinVchRefQuery.isReferenceUsed(jdbi, candidate, siteCodes)) {
+            if (!lookups.referenceUsed(candidate)) {
                 return candidate;
             }
         }
@@ -720,13 +722,12 @@ public final class ArVoucherTemplateLoader {
      * </ul>
      */
     private static String resolveReferenceSite(
-            SelectDocumentVariant variant, ArVoucherLiveDbRefs refs, Jdbi jdbi) {
+            SelectDocumentVariant variant, ArVoucherLiveDbRefs refs, ArTemplateLookups lookups) {
 
         if (!variant.isCustomerTypeSl() || variant.getRefSiteMode() == null) {
             return refs.getOwnerSiteName();
         }
 
-        DbDialect d = DbDialectFactory.current();
 
         switch (variant.getRefSiteMode()) {
 
@@ -734,19 +735,7 @@ public final class ArVoucherTemplateLoader {
                 return refs.getOwnerSiteName();
 
             case OS_OO_CM_ALT: {
-                String sql =
-                    "SELECT a.name FROM admsite a " +
-                    "WHERE a.sitetype = 'OS-OO-CM' " +
-                    "  AND a.ext = 'N' " +
-                    "  AND a.name <> :ownerSite " +
-                    "ORDER BY a.code " +
-                    d.limit1();
-                Optional<String> altSite = jdbi.withHandle(handle ->
-                    handle.createQuery(sql)
-                        .bind("ownerSite", refs.getOwnerSiteName())
-                        .mapTo(String.class)
-                        .findFirst()
-                );
+                Optional<String> altSite = lookups.alternativeOwnerSite(refs.getOwnerSiteName());
                 return altSite.orElseGet(() -> {
                     Log.warn("[Template] No alternative OS-OO-CM site found; falling back to ownerSiteName={}",
                             refs.getOwnerSiteName());
@@ -1081,7 +1070,8 @@ public final class ArVoucherTemplateLoader {
             SelectDocumentVariant.PaymentMode paymentMode,
             boolean knownCheque,
             boolean knownChequeDifferentBank,
-            long cashBankGlcode) {
+            long cashBankGlcode,
+            ArTemplateLookups lookups) {
 
         if (paymentMode == SelectDocumentVariant.PaymentMode.NONE || subLedgers.isEmpty()) {
             return List.of();
@@ -1095,9 +1085,7 @@ public final class ArVoucherTemplateLoader {
         String today = LocalDate.now().format(DateUtils.UI_DATE_FORMAT);
         var resolution = !knownCheque
                 ? ChequeInstrumentResolver.resolveUnknown()
-                : knownChequeDifferentBank
-                        ? ChequeInstrumentResolver.resolveKnownDifferentBank(DatabaseManager.getJdbi(), cashBankGlcode)
-                        : ChequeInstrumentResolver.resolveKnownSameBank(DatabaseManager.getJdbi(), cashBankGlcode);
+                : lookups.knownCheque(cashBankGlcode, knownChequeDifferentBank);
         Log.info("[ArVoucherTemplateLoader] Cheque instrument resolved: bankMatch={}, chqno={}",
                 resolution.bankMatch(), resolution.chqno());
         for (int i = 0; i < subLedgers.size(); i++) {
@@ -1159,7 +1147,7 @@ public final class ArVoucherTemplateLoader {
      * @return fully assembled, human-readable test case name
      */
     private static String buildDynamicTestCaseName(
-            SelectDocumentVariant variant, Jdbi jdbi,
+            SelectDocumentVariant variant, ArTemplateLookups lookups,
             SelectDocumentVariant.PaymentMode effectivePaymentMode) {
 
         StringBuilder sb = new StringBuilder("SEL_DOC");
@@ -1176,7 +1164,7 @@ public final class ArVoucherTemplateLoader {
 
         // SL classification segment (only when a specific admcls.clscode is selected)
         if (variant.getSlClsCode() > 0) {
-            AdmCls cls = AdmClsQuery.findByClsCode(jdbi, variant.getSlClsCode()).orElse(null);
+            AdmCls cls = lookups.classification(variant.getSlClsCode()).orElse(null);
             if (cls != null) {
                 sb.append(" | ").append(cls.getClsname())
                   .append("(").append(cls.cmpLabel()).append(")");

@@ -188,11 +188,8 @@ public class DbGeneralVoucherDataSource implements TestDataSource<MergedFinanceG
 
         // Assign sequential invocation indices so TestListener formats FIN-GV-ADD-COMBO-01, -02, … —
         // mirrors DbArVoucherDataSource/DbApVoucherDataSource's own post-loop pass.
+        TestDataSource.stampInvocations(placeholders);
         int total = placeholders.size();
-        for (int i = 0; i < total; i++) {
-            placeholders.get(i).setInvocationIndex(i + 1);
-            placeholders.get(i).setTotalInvocations(total);
-        }
 
         Log.info("[DB] GeneralVoucher emitted {} placeholder(s) for '{}' — group filter={}, tag filter={}",
                 placeholders.size(), methodName, activeGroup, activeTags.isEmpty() ? "ALL" : activeTags);

@@ -115,4 +115,32 @@ public final class DocumentAdjustmentFlow {
                 + "' — response message: '" + response.getMessage() + "'");
         return true;
     }
+
+    /**
+     * {@code db.available=no} counterpart of {@link #untagIfNeeded}: the data source that created the voucher already knows its code,
+     * sub-ledger, amount, OU and whether it was created tagged, so no {@code fintag}/{@code finvchdet} read is needed.
+     *
+     * @return true when the voucher was tagged and the untag call was issued
+     */
+    public static boolean untagViaApi(com.gsl.testdata.dto.ApiVoucherRef ref) {
+        if (!ref.isTagged()) {
+            ReportLogger.business("[DocumentAdjustmentFlow] Voucher '" + ref.getDocNo() + "' was created untagged — untag not required.");
+            return false;
+        }
+        DocumentAdjustmentUntagResponse response = ApiSessionFactory.withWebApiSession(session -> {
+            DocumentAdjustmentUntagRequest request = DocumentAdjustmentUntagRequest.builder()
+                    .connectedUserCode(Long.parseLong(session.getUserId()))
+                    .connectedOUCode(ref.getOuCode())
+                    .baseDocumentType(DocumentAdjustmentApiClient.BASE_DOCUMENT_TYPE_VOUCHER)
+                    .baseDocumentCode(ref.getVchcode())
+                    .baseDocumentNumber(ref.getDocNo())
+                    .baseDocumentActualAmount(ref.getAmount())
+                    .baseDocumentSlCode(ref.getSlCode())
+                    .build();
+            return session.getDocumentAdjustmentApiClient().untagAllAdjustments(request);
+        });
+        ReportLogger.business("[DocumentAdjustmentFlow] API untag completed for '" + ref.getDocNo() + "' — response message: '"
+                + response.getMessage() + "'");
+        return true;
+    }
 }

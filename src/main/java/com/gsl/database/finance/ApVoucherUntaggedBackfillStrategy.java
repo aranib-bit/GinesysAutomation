@@ -4,7 +4,7 @@ import com.gsl.api.core.ApiSessionBundle;
 import com.gsl.api.core.ApiSessionFactory;
 import com.gsl.api.integration.ApVoucherDataSetup;
 import com.gsl.api.model.apvoucher.ApVoucherCreateResponse;
-import com.gsl.api.model.arvoucher.SubLedgerLookupResult;
+import com.gsl.api.model.common.SubLedgerLookupResult;
 import com.gsl.database.BackfillStrategy;
 import com.gsl.database.DatabaseManager;
 import com.gsl.database.dao.finance.FinPostDao;
@@ -24,7 +24,7 @@ import java.util.stream.Collectors;
 /**
  * {@code DbApVoucherRevertDataSource}/{@code DbApVoucherDeleteDataSource}/
  * {@code DbApVoucherEditDataSource}'s {@code UNTAGGED}-cell shortfall backfill: creates one
- * Posted AP Voucher via {@link com.gsl.api.client.ApVoucherApiClient#createApVoucherWithDefaults}
+ * Posted AP Voucher via {@link com.gsl.api.client.com.gsl.service.ApVoucherService#createApVoucherWithDefaults}
  * — the exact same on-account Customer Advance flow {@link ApVoucherArBackfillStrategy} already
  * uses to backfill AR Voucher's own document-payment shortfall (see that class's Javadoc for the
  * full HAR-derived flow this reuses) — when none is free to claim.

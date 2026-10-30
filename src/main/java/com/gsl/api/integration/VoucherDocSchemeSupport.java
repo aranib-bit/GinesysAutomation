@@ -1,6 +1,7 @@
 package com.gsl.api.integration;
 
 import com.gsl.database.DatabaseManager;
+import com.gsl.database.DbAvailability;
 import com.gsl.database.dao.HrEmpOuDao;
 import com.gsl.reports.ReportLogger;
 import com.gsl.utils.dataprovider.source.finance.common.DocSchemeMode;
@@ -16,7 +17,7 @@ import java.util.List;
  * mode: never an exhausted, manual or dedicated-test scheme) and its NAME is handed to the API
  * client, which picks the matching entry from {@code GET docnumberschemes}.
  */
-final class VoucherDocSchemeSupport {
+public final class VoucherDocSchemeSupport {
 
     private VoucherDocSchemeSupport() {}
 
@@ -27,7 +28,13 @@ final class VoucherDocSchemeSupport {
      * @return the chosen {@code admdocscheme.docname}
      * @throws IllegalStateException if no scheme can still generate a number
      */
-    static String resolveSchemeName(String menuShortcode, long ownerSiteCode, long empCode) {
+    public static String resolveSchemeName(String menuShortcode, long ownerSiteCode, long empCode) {
+        if (!DbAvailability.isAvailable()) {
+            // db.available=no: no counter data to read, so return null and let the API client apply its legacy pick
+            // (the preferred auto-numbered scheme, else the first one the scheme list offers).
+            ReportLogger.dataBackfill("[DocScheme] {} → db.available=no, API client picks the scheme from its own list", menuShortcode);
+            return null;
+        }
         Jdbi jdbi = DatabaseManager.getJdbi();
         List<Long> siteCodes = jdbi.onDemand(HrEmpOuDao.class).findSiteCodesByEcode(empCode);
         DocSchemeSelection selection = DocSchemeResolver.resolve(

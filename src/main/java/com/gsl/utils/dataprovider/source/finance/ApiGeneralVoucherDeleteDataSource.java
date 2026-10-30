@@ -28,14 +28,11 @@ public class ApiGeneralVoucherDeleteDataSource implements TestDataSource<MergedF
         List<MergedFinanceGeneralVoucherData> results = new ArrayList<>();
         results.add(ApiSessionFactory.withWebApiSession(session -> {
             long empCode = Long.parseLong(session.getUserId());
-            GeneralVoucherCreateResponse created = session.getGeneralVoucherApiClient()
+            GeneralVoucherCreateResponse created = new com.gsl.service.GeneralVoucherService(session.getGeneralVoucherApiClient())
                     .createGeneralVoucherWithDefaults(GlAccountType.EXPENSE, 0, 0, empCode, false);
-            List<String> log = new ArrayList<>();
-            log.add("═══════════════════════════════════════════════════════════");
-            log.add("  API DATA GATHERING - UNPOSTED VOUCHER CREATED (GENERAL VOUCHER DELETE)");
-            log.add("═══════════════════════════════════════════════════════════");
+            List<String> log = GatheringLog.start("API DATA GATHERING - UNPOSTED VOUCHER CREATED (GENERAL VOUCHER DELETE)");
             log.add("  Created voucher scheme_docno='" + created.getDocScheme() + "' (vchcode=" + created.vchcode() + ")");
-            log.add("═══════════════════════════════════════════════════════════");
+            GatheringLog.end(log);
             DocumentInformation docInfo = new DocumentInformation(
                     "GV_DELETE_POSITIVE", created.getDocScheme(), LocalDate.now(), null, null, null);
             return MergedFinanceGeneralVoucherData.builder()
@@ -60,11 +57,8 @@ public class ApiGeneralVoucherDeleteDataSource implements TestDataSource<MergedF
             Log.warn("[API] GeneralVoucherDelete: closed-period negative row omitted - db.available=no.");
         }
 
+        TestDataSource.stampInvocations(results);
         int total = results.size();
-        for (int i = 0; i < total; i++) {
-            results.get(i).setInvocationIndex(i + 1);
-            results.get(i).setTotalInvocations(total);
-        }
         Log.info("[API] GeneralVoucherDelete emitted {} row(s) for '{}'", total, testMethodName);
         return results;
     }

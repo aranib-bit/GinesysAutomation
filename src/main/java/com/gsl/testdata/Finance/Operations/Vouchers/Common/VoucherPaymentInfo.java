@@ -10,6 +10,7 @@ import com.gsl.enums.PaymentSelectionType;
  */
 public interface VoucherPaymentInfo {
     String getLineNo();
+    String getTestCaseID();
     PaymentSelectionType getPaymentMode();
     String getInstrumentNo();
     String getInstrumentDate();

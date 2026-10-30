@@ -3,6 +3,9 @@ package com.gsl.api.core;
 import com.gsl.config.ConfigFactory;
 import com.gsl.reports.ReportLogger;
 import com.gsl.testdata.UserCredential;
+import com.gsl.api.publicapi.constants.PublicApiAuthDefaults;
+import com.gsl.api.publicapi.model.request.auth.ClientCredentialsTokenRequest;
+import com.gsl.api.publicapi.model.response.auth.OAuthTokenResponse;
 import io.restassured.RestAssured;
 import io.restassured.response.Response;
 import io.restassured.specification.RequestSpecification;
@@ -26,7 +29,7 @@ public final class PublicApiOAuth2Strategy implements ApiAuthStrategy {
         RequestSpecification spec = RestAssured.given()
                 .baseUri(baseUri)
                 .contentType("application/json")
-                .header("authorization", "Bearer " + token);
+                .header("authorization", PublicApiAuthDefaults.BEARER_PREFIX + token);
 
         // OAuth2 client-credentials is app-level, not per-user — no userId/sessionId to track for logout.
         return AuthResult.builder().spec(spec).userId(null).sessionId(null).build();
@@ -42,10 +45,8 @@ public final class PublicApiOAuth2Strategy implements ApiAuthStrategy {
         var apiConfig = ConfigFactory.getApiConfig();
         Response response = RestAssured.given()
                 .baseUri(apiConfig.publicApiTokenUrl())
-                .contentType("application/x-www-form-urlencoded")
-                .formParam("grant_type", "client_credentials")
-                .formParam("client_id", apiConfig.publicApiClientId())
-                .formParam("client_secret", apiConfig.publicApiClientSecret())
+                .contentType(PublicApiAuthDefaults.FORM_CONTENT_TYPE)
+                .formParams(QueryParams.toMap(ClientCredentialsTokenRequest.of(apiConfig.publicApiClientId(), apiConfig.publicApiClientSecret())))
                 .post();
 
         if (response.getStatusCode() >= 400) {
@@ -53,10 +54,11 @@ public final class PublicApiOAuth2Strategy implements ApiAuthStrategy {
                     response.getStatusCode());
         }
 
-        cachedToken = response.jsonPath().getString("access_token");
-        int expiresInSeconds = response.jsonPath().getInt("expires_in");
-        // Refresh 60s early to avoid a request racing right at expiry.
-        cachedTokenExpiryEpochMs = now + Math.max(0, (expiresInSeconds - 60) * 1000L);
+        OAuthTokenResponse token = response.getBody().as(OAuthTokenResponse.class, io.restassured.mapper.ObjectMapperType.JACKSON_2);
+        cachedToken = token.getAccessToken();
+        int expiresInSeconds = token.expiresInSeconds();
+        // Refresh early (publicapi.token.refreshMarginSeconds) so a request never races the expiry.
+        cachedTokenExpiryEpochMs = now + Math.max(0, (expiresInSeconds - apiConfig.publicApiTokenRefreshMarginSeconds()) * 1000L);
 
         ReportLogger.session("[PublicApiOAuth2Strategy] Fetched new PUBLICAPI token, expires in {}s", expiresInSeconds);
         return cachedToken;

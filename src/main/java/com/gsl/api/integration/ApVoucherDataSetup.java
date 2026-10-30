@@ -2,7 +2,7 @@ package com.gsl.api.integration;
 
 import com.gsl.api.client.ApVoucherApiClient;
 import com.gsl.api.model.apvoucher.ApVoucherCreateResponse;
-import com.gsl.api.model.arvoucher.SubLedgerLookupResult;
+import com.gsl.api.model.common.SubLedgerLookupResult;
 import com.gsl.api.validator.ApVoucherApiValidator;
 import com.gsl.enums.VoucherDomain;
 import com.gsl.reports.ReportLogger;
@@ -34,7 +34,7 @@ public final class ApVoucherDataSetup {
         // Scheme chosen from the DB so an exhausted one (e.g. a full "AR/AP Voucher") is never used.
         String docSchemeName = VoucherDocSchemeSupport.resolveSchemeName(
                 VoucherDomain.AP.getMenuShortcode(), ownerSiteCode, empCode);
-        ApVoucherCreateResponse response = client.createApVoucherWithDefaults(
+        ApVoucherCreateResponse response = new com.gsl.service.ApVoucherService(client).createApVoucherWithDefaults(
                 subLedger, ownerSiteCode, ouCode, empCode, quantity, rate, tdsApplicable, docSchemeName);
         ApVoucherApiValidator.validate(response);
         ReportLogger.business("[ApVoucherDataSetup] AP Voucher created via API — voucherCode={}, docScheme={}, tdsApplicable={}",

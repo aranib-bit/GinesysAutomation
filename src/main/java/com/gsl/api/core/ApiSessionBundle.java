@@ -2,12 +2,14 @@ package com.gsl.api.core;
 
 import com.gsl.api.client.ApVoucherApiClient;
 import com.gsl.api.client.ArVoucherApiClient;
+import com.gsl.api.client.CustomerApiClient;
 import com.gsl.api.client.DcApiClient;
 import com.gsl.api.client.DocumentAdjustmentApiClient;
 import com.gsl.api.client.GeneralVoucherApiClient;
 import com.gsl.api.client.GrcApiClient;
 import com.gsl.api.client.ItemApiClient;
 import com.gsl.api.client.LedgerApiClient;
+import com.gsl.api.client.VendorApiClient;
 import com.gsl.api.client.ServiceInvoiceAdhocApiClient;
 import com.gsl.api.client.SubLedgerOthersApiClient;
 import com.gsl.api.client.TransferOutApiClient;
@@ -50,8 +52,12 @@ public final class ApiSessionBundle {
     private final ArVoucherApiClient arVoucherApiClient;
     private final ApVoucherApiClient apVoucherApiClient;
     private final LedgerApiClient ledgerApiClient;
+    private final VendorApiClient vendorApiClient;
+    private final com.gsl.api.client.TdsMasterApiClient tdsMasterApiClient;
+    private final CustomerApiClient customerApiClient;
     private final SubLedgerOthersApiClient subLedgerOthersApiClient;
     private final GeneralVoucherApiClient generalVoucherApiClient;
+    private final com.gsl.api.client.AuditLogApiClient auditLogApiClient;
     /**
      * Generic Document Adjustment ("untag") client — plan: the same {@code fintag}/
      * {@code documentAdjustments} mechanism is used identically by AR and AP voucher flows (see

@@ -1,5 +1,7 @@
 package com.gsl.api.model.arvoucher;
 
+import com.gsl.api.model.common.DocNumberSchemeEntry;
+
 import com.gsl.api.model.serviceinvoiceadhoc.AttachedFiles;
 import com.gsl.api.model.udf.UdfValueEntry;
 import com.fasterxml.jackson.annotation.JsonProperty;

@@ -73,3 +73,12 @@ graphify-out/converted/
 graphify-out/cache/
 graphify-out/.graphify_labels.json.sig
 test-output/
+
+### k6 performance project (performance/) - never commit credentials or generated output ###
+performance/**/node_modules/
+performance/k6/reports/
+performance/k6/data/users/*
+!performance/k6/data/users/users.sample.json
+performance/k6/data/generated/
+performance/k6/data-export/src/config/*.json
+!performance/k6/data-export/src/config/*.sample.json

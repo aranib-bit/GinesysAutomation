@@ -4,7 +4,7 @@ import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import com.fasterxml.jackson.annotation.JsonInclude;
 import com.fasterxml.jackson.annotation.JsonProperty;
 import com.gsl.api.model.apvoucher.ApVoucherAttachment;
-import com.gsl.api.model.arvoucher.CashBankLedgerLookupResult;
+import com.gsl.api.model.common.CashBankLedgerLookupResult;
 import com.gsl.api.model.udf.UdfValueEntry;
 import lombok.AllArgsConstructor;
 import lombok.Builder;

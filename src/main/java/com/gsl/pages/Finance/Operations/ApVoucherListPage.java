@@ -1,6 +1,6 @@
 package com.gsl.pages.Finance.Operations;
 
-import com.gsl.pages.enums.Finance.Operations.APVoucher.APVoucherRevertOutcome;
+import com.gsl.pages.enums.Finance.Operations.Common.VoucherRevertOutcome;
 import com.gsl.pages.pagecomponent.Finance.Operations.APVoucher.APVoucherListFooter;
 import com.gsl.pages.pagecomponent.Finance.Operations.APVoucher.APVoucherListGridHeader;
 import com.gsl.pages.pagecomponent.Finance.Operations.APVoucher.APVoucherMainGrid;
@@ -21,7 +21,7 @@ import com.gsl.utils.dataprovider.fixture.finance.DocumentSearchStrategy;
  * <p>The Revert-flow composites below ({@link #clickRevert()}/{@link #confirmRevert()}/
  * {@link #revertSelectedDocument()}) are new, added for {@code RevertApVoucher} — copied verbatim
  * in shape from {@link GeneralVoucherListPage}'s equivalents, substituting
- * {@link APVoucherRevertOutcome} for {@code GeneralVoucherRevertOutcome}.
+ * {@link VoucherRevertOutcome} for {@code VoucherRevertOutcome}.
  */
 public class ApVoucherListPage extends VoucherListPageBase<
         APVoucherListGridHeader, APVoucherMainGrid, APVoucherListFooter,
@@ -68,7 +68,7 @@ public class ApVoucherListPage extends VoucherListPageBase<
      * Confirms whichever post-Revert dialog appears — step 4 (completes the operation). Returns
      * which case actually happened so the caller can assert the correct expected DB outcome.
      */
-    public APVoucherRevertOutcome confirmRevert() {
+    public VoucherRevertOutcome confirmRevert() {
         return getMainGrid().confirmRevert();
     }
 
@@ -81,7 +81,7 @@ public class ApVoucherListPage extends VoucherListPageBase<
      * {@code EditApVoucher} itself unposts via the API per the user's explicit instruction).
      * Assumes the target document's row is already selected/checked in the list.
      */
-    public APVoucherRevertOutcome revertSelectedDocument() {
+    public VoucherRevertOutcome revertSelectedDocument() {
         clickActions();
         clickRevert();
         return confirmRevert();

@@ -36,6 +36,16 @@ public final class ConfigFactory {
         return ConfigCache.getOrCreate(BrowserConfig.class);
     }
 
+    /** Returns the shared {@link FakerConfig} instance. */
+    public static FakerConfig getFakerConfig() {
+        return ConfigCache.getOrCreate(FakerConfig.class);
+    }
+
+    /** Returns the shared {@link PartyDataConfig} instance. */
+    public static PartyDataConfig getPartyDataConfig() {
+        return ConfigCache.getOrCreate(PartyDataConfig.class);
+    }
+
     /** Returns the shared {@link WaitConfig} instance. */
     public static WaitConfig getWaitConfig() {
         return ConfigCache.getOrCreate(WaitConfig.class);

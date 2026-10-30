@@ -156,7 +156,7 @@ public class EditApVoucher extends WebTest {
         final VoucherSnapshot[]   afterRef   = new VoucherSnapshot[1];
         final VoucherSaveCtx      ctx        = new VoucherSaveCtx();
 
-        SnapshotService snapshotService = new SnapshotService(new Aud2SnapshotDao());
+        SnapshotService snapshotService = com.gsl.database.DbAvailability.isAvailable() ? new SnapshotService(new Aud2SnapshotDao()) : null;   // its constructor reads the DB
 
         // ── Step 1: Login ─────────────────────────────────────────────────────────
         StepExecutor.step("Login to Application", () -> {
@@ -181,19 +181,22 @@ public class EditApVoucher extends WebTest {
         });
 
         // ── Step 4: Capture ALL live tags + untag (shared — capture runs first, tags die on untag) ──
+        // db.available=no: the context resolution, BEFORE/AFTER snapshots and DB validation need the database, so they are skipped; the
+        // header edit is validated by reading the voucher back through the API. Untag/unpost use the voucher the API source created.
+        final boolean noDb = !com.gsl.database.DbAvailability.isAvailable();
         VoucherEditFlowSteps.untagIfTagged(
-                testData.getExistingVoucherNo(), testData.getReleaseStatus(), testData.getCapturedTags());
+                testData.getExistingVoucherNo(), testData.getReleaseStatus(), testData.getCapturedTags(), testData.getApiVoucherRef());
 
         // ── Step 5: Unpost if Posted (API-driven — see class Javadoc) ─────────────
-        VoucherEditFlowSteps.unpostApVoucherViaApi(testData.getExistingVoucherNo(), testData.getReleaseStatus());
+        VoucherEditFlowSteps.unpostApVoucherViaApi(testData.getExistingVoucherNo(), testData.getReleaseStatus(), testData.getApiVoucherRef());
 
         // ── Step 6: Resolve Document Context ──────────────────────────────────────
-        StepExecutor.step("Resolve Document Context", () -> {
+        if (!noDb) StepExecutor.step("Resolve Document Context", () -> {
             contextRef[0] = new VoucherDocumentContextResolver().resolve(testData.getExistingVoucherNo(), VoucherDomain.AP);
         });
 
         // ── Step 7: Capture BEFORE Snapshot ────────────────────────────────────────
-        StepExecutor.step("Capture BEFORE Snapshot", () -> beforeRef[0] = snapshotService.capture(contextRef[0]));
+        if (!noDb) StepExecutor.step("Capture BEFORE Snapshot", () -> beforeRef[0] = snapshotService.capture(contextRef[0]));
 
         // ── Step 8: Open for Edit ──────────────────────────────────────────────────
         StepExecutor.step("Open Voucher for Edit", () -> {
@@ -225,13 +228,28 @@ public class EditApVoucher extends WebTest {
         VoucherSaveFlowSteps.deferLogout();
 
         // ── Step 15: Capture AFTER Snapshot ─────────────────────────────────────────
-        StepExecutor.step("Capture AFTER Snapshot", () -> afterRef[0] = snapshotService.capture(contextRef[0]));
+        if (!noDb) StepExecutor.step("Capture AFTER Snapshot", () -> afterRef[0] = snapshotService.capture(contextRef[0]));
 
         // ── Step 16: Database Validation ──────────────────────────────────────────
         // HEADER_ONLY reuses the snapshot/ExpectedChangeSet engine. Detail-line/payment-info types
         // use a direct DB read-back; Document-mode adjustment scenarios assert the adjustment
         // invariant via AdjustmentTotalsValidator (payment == fintag total, documents as expected).
         // Wiring fintag into the snapshot engine itself is flagged follow-up work.
+        if (noDb) {
+            StepExecutor.step("API Validation — header read back", () -> {
+                com.gsl.testdata.dto.ApiVoucherRef ref = testData.getApiVoucherRef();
+                Assert.assertNotNull(ref, "[API-Validate] no API voucher reference on the row; cannot validate the edit without the DB.");
+                java.util.Map<String, Object> header = com.gsl.api.core.ApiSessionFactory.withWebApiSession(session ->
+                        session.getApVoucherApiClient().fetchVoucherHeader(ref.getVchcode(), ref.getOuCode(), Long.parseLong(session.getUserId())));
+                Assert.assertFalse(header.isEmpty(), "[API-Validate] voucher " + ctx.docNo + " could not be read back through the API.");
+                Assert.assertEquals(String.valueOf(header.get("reference")), testData.getDocumentInformation().getReference(),
+                        "[API-Validate] reference after Edit");
+                Assert.assertEquals(String.valueOf(header.get("remarks")), testData.getDocumentInformation().getRemarks(),
+                        "[API-Validate] remarks after Edit");
+                ReportLogger.pass("API validated — reference and remarks updated for voucher: " + ctx.docNo);
+            });
+            return;
+        }
         StepExecutor.step("Database Validation", () -> {
             if (!com.gsl.validation.ValidationSwitches.run(com.gsl.validation.ValidationSwitches.Area.DB)) {
                 com.gsl.reports.ExtentLogger.skip("DB validation skipped — validation.db.enabled=no");

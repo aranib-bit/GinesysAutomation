@@ -29,7 +29,7 @@ public enum DcApiScenarioType {
     CREATE_DC_POSITIVE("DC/Save", ScenarioKind.POSITIVE,
             (client, ctx) -> {
                 try {
-                    DcCreateResponse response = client.createDc(ctx.getItemCode(), ctx.getQuantity(), ctx.getRate());
+                    DcCreateResponse response = new com.gsl.service.DcService(client).createDc(ctx.getItemCode(), ctx.getQuantity(), ctx.getRate());
                     DcApiValidator.validate(response);
                     return ScenarioOutcome.pass("createDc succeeded — dcCode=" + response.getDcCode());
                 } catch (ApiException e) {

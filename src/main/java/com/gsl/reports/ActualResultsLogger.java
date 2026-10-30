@@ -118,8 +118,12 @@ public final class ActualResultsLogger {
             }
             if (rowsHtml.length() == 0) continue;
             anyShown = true;
-            body.append(FoldableSectionRenderer.sectionOpen("open", "rs-sub", "",
-                    FoldableSectionRenderer.headerLabel(ICO_TABLE, g.getKey(), 6)));
+            long gFailed = g.getValue().stream().filter(r -> !r.passed()).count();
+            String title = h.getApiValidationTitles() != null && h.getApiValidationTitles().get(g.getKey()) != null
+                    ? h.getApiValidationTitles().get(g.getKey()) : g.getKey();
+            // Collapsed unless something in the group failed; header = same title chips / counts / pill as the UI row nodes.
+            body.append(FoldableSectionRenderer.sectionOpen(gFailed > 0 ? "open" : "", "rs-sub", "",
+                    ApiValidationReporter.groupHeader(title, g.getValue().size(), gFailed)));
             body.append(tableOpen()).append(headerRow("Check", "Expected", "Actual", "Status"));
             body.append(rowsHtml).append("</tbody>").append(TABLE_CLOSE).append(FoldableSectionRenderer.sectionClose());
         }

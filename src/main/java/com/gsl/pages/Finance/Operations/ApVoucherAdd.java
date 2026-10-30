@@ -152,6 +152,11 @@ public class ApVoucherAdd implements CashBankParent, VerifiablePage {
         return this;
     }
 
+    /** Whether the Sub Ledger picker lists {@code name} (types it, selects nothing) - see the component's Javadoc. */
+    public boolean isSubLedgerOfferedByPicker(String name, String id) {
+        return apVoucherSubLedgerInformation.isSubLedgerOfferedByPicker(name, id);
+    }
+
     public ApVoucherAdd fillSubLedgerRowsForAdvance(MergedFinanceApVoucherData data, boolean includeRetry) {
         apVoucherSubLedgerInformation.fillSubLedgerRowsForAdvance(data, includeRetry);
         return this;

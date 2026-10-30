@@ -67,8 +67,8 @@ public class DeleteArVoucher extends WebTest {
     @FrameworkAnnotation(value = TestAuthor.ARANI, module = MainModuleType.FINANCE, subModule = "FinanceARVoucher", operation = AppOperation.DELETE)
     @TestCaseId("FIN-AR-DELETE")
     @Test(description = "Delete an existing AR Voucher from the Finance UI",
-            dataProvider = "dataSupplier", dataProviderClass = MergedFinArVoucherDataSupplier.class)
-    public void deleteArVoucher(MergedFinanceArVoucherData data) {
+            dataProvider = "FinanceArVoucherData", dataProviderClass = MergedFinArVoucherDataSupplier.class)
+    public void deleteArVoucher(UserCredential user, MergedFinanceArVoucherData data) {
 
         Log.info("Delete AR Voucher: {}", data.getExistingVoucherNo());
         Log.info("Release status: {}", data.getReleaseStatus());
@@ -132,15 +132,18 @@ public class DeleteArVoucher extends WebTest {
         // are cleared — the previous order here unposted first). Unpost is the Actions → Revert
         // UI action (AR has no standalone Unpost button; the old //TODO-unpost-button placeholder
         // never existed), via the dialogs AR shares with AP (ArApVoucherDialogs).
+        // db.available=no: the pre-delete finvchmain capture and the audit-trail validation need the database, so they are skipped and the
+        // voucher is instead confirmed gone through the API (rootview). The untag step uses the voucher the API data source created.
+        final boolean noDb = !com.gsl.database.DbAvailability.isAvailable();
         VoucherEditFlowSteps.untagIfTagged(
-                testData.getExistingVoucherNo(), testData.getReleaseStatus(), new java.util.ArrayList<>());
+                testData.getExistingVoucherNo(), testData.getReleaseStatus(), new java.util.ArrayList<>(), testData.getApiVoucherRef());
         StepExecutor.step("Unpost if Posted (release_status='P') — Actions → Revert", () -> {
             if ("P".equals(testData.getReleaseStatus())) {
                 listRef[0].selectDocumentForAction(testData.getExistingVoucherNo(), DocumentSearchStrategy.EXACT_MATCH);
-                com.gsl.pages.enums.Finance.Operations.ARVoucher.ARVoucherRevertOutcome outcome =
+                com.gsl.pages.enums.Finance.Operations.Common.VoucherRevertOutcome outcome =
                         listRef[0].revertSelectedDocument();
                 Assert.assertEquals(outcome,
-                        com.gsl.pages.enums.Finance.Operations.ARVoucher.ARVoucherRevertOutcome.UNPOSTED,
+                        com.gsl.pages.enums.Finance.Operations.Common.VoucherRevertOutcome.UNPOSTED,
                         "[Unpost] Expected the Posted AR voucher to be un-posted by Revert");
                 ReportLogger.business("Voucher unposted via Revert (was release_status='P') for: "
                         + testData.getExistingVoucherNo());
@@ -153,7 +156,7 @@ public class DeleteArVoucher extends WebTest {
         // Captured while the row still exists — needed both to resolve the audit table's business
         // key and, per the framework's confirmed design decision, as the ground truth "old" state
         // AuditAssertion.assertAuditDeleted compares the audit trail's DELETE row against.
-        StepExecutor.step("Resolve Document Context + Capture Pre-Delete State", () -> {
+        if (!noDb) StepExecutor.step("Resolve Document Context + Capture Pre-Delete State", () -> {
             contextRef[0] = new VoucherDocumentContextResolver().resolve(testData.getExistingVoucherNo(), VoucherDomain.AR);
             TableSnapshot finvchmainSnapshot = new SnapshotService(auditDao).capture(contextRef[0]).getTable("finvchmain");
             if (finvchmainSnapshot == null || finvchmainSnapshot.getRows().isEmpty()) {
@@ -184,6 +187,19 @@ public class DeleteArVoucher extends WebTest {
         // validates is that aud2_finvchmain recorded a DELETE row whose captured state matches what
         // the record held immediately before deletion, excluding aud2_active_tab_col's housekeeping
         // columns for this table.
+        if (noDb) {
+            StepExecutor.step("API Post-Check — voucher no longer exists", () -> {
+                com.gsl.testdata.dto.ApiVoucherRef ref = testData.getApiVoucherRef();
+                Assert.assertNotNull(ref, "[API-PostCheck] no API voucher reference on the row; cannot confirm the delete without the DB.");
+                String status = com.gsl.api.core.ApiSessionFactory.withWebApiSession(session ->
+                        session.getArVoucherApiClient().fetchDocumentStatus(ref.getVchcode(), ref.getOuCode(), Long.parseLong(session.getUserId())));
+                Assert.assertNull(status, "[API-PostCheck] voucher " + testData.getExistingVoucherNo()
+                        + " is still readable through the API (status='" + status + "') after Delete.");
+                ReportLogger.pass("API validated — voucher " + testData.getExistingVoucherNo() + " no longer exists.");
+            });
+            ReportLogger.business("Audit-trail validation skipped — db.available=no.");
+            return;
+        }
         StepExecutor.step("Database Validation — Audit Trail", () -> {
             TableRule finvchmainRule = contextRef[0].getPersistenceMap().findByTableName("finvchmain");
             AuditAssertion.assertAuditDeleted(contextRef[0], auditDao, finvchmainRule, beforeFinvchmainRowRef[0]);

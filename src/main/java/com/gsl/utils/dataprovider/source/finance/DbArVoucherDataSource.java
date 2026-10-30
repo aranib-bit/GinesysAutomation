@@ -90,7 +90,7 @@ public class DbArVoucherDataSource implements TestDataSource<MergedFinanceArVouc
      */
     @Override
     public List<MergedFinanceArVoucherData> load(String testMethodName) {
-        String loginName = SupplierUser.username();
+        String loginName = placeholderLoginName();
         String loginPwd  = ConfigFactory.getConfig().password();
 
         // Read execution group filter from system property (set by Maven Surefire via -Darv.group=...)
@@ -100,10 +100,7 @@ public class DbArVoucherDataSource implements TestDataSource<MergedFinanceArVouc
         Log.info("[DB] Execution group filter: {}", activeGroup != null ? activeGroup : "ALL (no filter)");
 
         // Discover SL classification types once — reused across all scenario types
-        Jdbi jdbi        = DatabaseManager.getJdbi();
-        List<Long> ouCodes = resolveOuCodesForUser(jdbi, loginName);
-        List<AdmCls> classificationTypes =
-                AdmClsQuery.findDistinctClsCodesInPendingAR(jdbi, ouCodes);
+        List<AdmCls> classificationTypes = discoverClassificationTypes(loginName);
 
         // First system (cmpcode=1) and user-defined (cmpcode=0) clscode with pending AR
         long systemClsCode = classificationTypes.stream()
@@ -205,15 +202,26 @@ public class DbArVoucherDataSource implements TestDataSource<MergedFinanceArVouc
         }
 
         // Assign sequential invocation indices so TestListener formats FIN-AR-ADD-01, -02, -03 …
+        TestDataSource.stampInvocations(placeholders);
         int total = placeholders.size();
-        for (int i = 0; i < total; i++) {
-            placeholders.get(i).setInvocationIndex(i + 1);
-            placeholders.get(i).setTotalInvocations(total);
-        }
 
         Log.info("[DB] Emitting {} placeholder(s) for method='{}'. DB queries deferred to test-execution time.",
                 placeholders.size(), testMethodName);
         return placeholders;
+    }
+
+    /** Login name carried on placeholders. Overridden by the API source, which has no DB to resolve a pool user against. */
+    protected String placeholderLoginName() {
+        return SupplierUser.username();
+    }
+
+    /**
+     * Distinct sub-ledger classifications that currently have pending AR documents (drives the SELECT_DOCUMENT variant matrix). The DB
+     * source reads {@code v_pending_adj}; {@link ApiArVoucherDataSource} overrides this to derive them from the API.
+     */
+    protected List<AdmCls> discoverClassificationTypes(String loginName) {
+        Jdbi jdbi = DatabaseManager.getJdbi();
+        return AdmClsQuery.findDistinctClsCodesInPendingAR(jdbi, resolveOuCodesForUser(jdbi, loginName));
     }
 
     /**
@@ -649,7 +657,7 @@ public class DbArVoucherDataSource implements TestDataSource<MergedFinanceArVouc
      * Resolves the target {@link CashBankType} for GL selection.
      * Priority: variant.glType → opts.glType → random fallback (picks CASH or BANK randomly).
      */
-    private static CashBankType resolveTargetCashBankType(
+    static CashBankType resolveTargetCashBankType(
             ArVoucherFixtureOptions opts, SelectDocumentVariant variant) {
         if (variant != null && variant.getGlType() != null) {
             return variant.getGlType();

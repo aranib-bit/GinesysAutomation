@@ -1,6 +1,7 @@
 package com.gsl.utils.payment;
 
 import com.github.javafaker.Faker;
+import com.gsl.utils.Faker.FakerContext;
 
 import java.util.Locale;
 import java.util.UUID;
@@ -14,19 +15,22 @@ import java.util.UUID;
  */
 public final class PaymentReferenceGenerator {
 
-    private static final Faker faker = new Faker(new Locale("en-IN"));
+    /** The thread's Indian Faker (payment references are always Indian-bank shaped), sharing the seedable context. */
+    private static Faker faker() {
+        return FakerContext.current().indianFaker();
+    }
 
     private PaymentReferenceGenerator() {}
 
     /** IMPS — 12 numeric digits, e.g. "034567891234" */
     public static String generateIMPS() {
-        return faker.number().digits(12);
+        return faker().number().digits(12);
     }
 
     /** UPI — 12–16 numeric digits, e.g. "034567891234567" */
     public static String generateUPI() {
-        int length = faker.number().numberBetween(12, 17);
-        return faker.number().digits(length);
+        int length = faker().number().numberBetween(12, 17);
+        return faker().number().digits(length);
     }
 
     /**
@@ -35,9 +39,9 @@ public final class PaymentReferenceGenerator {
      * e.g. "HDFC202504281234"
      */
     public static String generateNEFT() {
-        String bank = faker.bothify("????").toUpperCase();
+        String bank = faker().bothify("????").toUpperCase();
         String epochSlice = String.valueOf(System.currentTimeMillis()).substring(0, 8);
-        String seq = faker.number().digits(4);
+        String seq = faker().number().digits(4);
         return (bank + epochSlice + seq).substring(0, 16).toUpperCase();
     }
 
@@ -47,8 +51,8 @@ public final class PaymentReferenceGenerator {
      * e.g. "ICICI17032025ABCDE1234"
      */
     public static String generateRTGS() {
-        String prefix = faker.bothify("?????").toUpperCase();
-        String body   = faker.bothify("#################").toUpperCase();
+        String prefix = faker().bothify("?????").toUpperCase();
+        String body   = faker().bothify("#################").toUpperCase();
         return (prefix + body).substring(0, 22).toUpperCase();
     }
 
@@ -59,12 +63,12 @@ public final class PaymentReferenceGenerator {
 
     /** ACH — 15 numeric digits, e.g. "034567891234567" */
     public static String generateACH() {
-        return faker.number().digits(15);
+        return faker().number().digits(15);
     }
 
     /** SEPA — 10–35 alphanumeric chars, e.g. "SEPA1234567890" */
     public static String generateSEPA() {
-        int length = faker.number().numberBetween(10, 36);
-        return faker.bothify("???????????????????????????????????").substring(0, length).toUpperCase();
+        int length = faker().number().numberBetween(10, 36);
+        return faker().bothify("???????????????????????????????????").substring(0, length).toUpperCase();
     }
 }

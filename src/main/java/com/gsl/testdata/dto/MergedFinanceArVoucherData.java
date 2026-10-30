@@ -35,7 +35,7 @@ import java.util.stream.Collectors;
 @Builder
 @AllArgsConstructor
 public class MergedFinanceArVoucherData
-        implements InvocationData,
+        implements com.gsl.testdata.StampableInvocationData,
                    PostSaveDialogHandler.PostSaveSpec,
                    VoucherDbContextBuilder.InvoiceScoped,
                    VoucherReportData {
@@ -95,6 +95,9 @@ public class MergedFinanceArVoucherData
      * Null in Create mode (not relevant).
      */
     private String releaseStatus;
+
+    /** Set by the API-mode Delete/Edit sources (the voucher they created); null otherwise. See {@link ApiVoucherRef}. */
+    private ApiVoucherRef apiVoucherRef;
 
     /**
      * The voucher's date BEFORE this edit, as read from {@code finvchmain.vchdt} at

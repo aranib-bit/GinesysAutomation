@@ -2,7 +2,7 @@ package com.gsl.utils.dataprovider.source.finance;
 
 import com.gsl.api.client.GeneralVoucherApiClient;
 import com.gsl.api.core.ApiSessionFactory;
-import com.gsl.api.model.arvoucher.SubLedgerLookupResult;
+import com.gsl.api.model.common.SubLedgerLookupResult;
 import com.gsl.api.model.generalvoucher.CostCenterAllocation;
 import com.gsl.api.model.generalvoucher.CostCenterSiteLookupResult;
 import com.gsl.api.model.generalvoucher.GeneralVoucherDetailLine;
@@ -95,11 +95,8 @@ public class ApiGeneralVoucherEditDataSource implements TestDataSource<MergedFin
             return rows;
         });
 
+        TestDataSource.stampInvocations(results);
         int total = results.size();
-        for (int i = 0; i < total; i++) {
-            results.get(i).setInvocationIndex(i + 1);
-            results.get(i).setTotalInvocations(total);
-        }
         Log.info("[API] GeneralVoucherEdit emitted {} row(s) for '{}' — group filter={}", total, methodName, activeGroup);
         return results;
     }
@@ -109,10 +106,7 @@ public class ApiGeneralVoucherEditDataSource implements TestDataSource<MergedFin
     private static MergedFinanceGeneralVoucherData buildOrFailRow(GeneralVoucherApiClient api, long empCode, GeneralVoucherEditVariant variant,
                                                                   com.gsl.api.client.LedgerApiClient ledgerClient,
                                                                   com.gsl.api.client.SubLedgerOthersApiClient subLedgerOthersClient) {
-        List<String> log = new ArrayList<>();
-        log.add("═══════════════════════════════════════════════════════════");
-        log.add("  API DATA GATHERING — FRESH VOUCHER CREATED (GENERAL VOUCHER EDIT)");
-        log.add("═══════════════════════════════════════════════════════════");
+        List<String> log = GatheringLog.start("API DATA GATHERING — FRESH VOUCHER CREATED (GENERAL VOUCHER EDIT)");
         log.add("  Variant='" + variant.getVariantId() + "', sourceStatus=" + variant.getSourceStatus()
                 + ", scenarioType=" + variant.getScenarioType() + ", glLineType=" + variant.getGlLineType());
 

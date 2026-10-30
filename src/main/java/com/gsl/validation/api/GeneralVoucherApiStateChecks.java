@@ -33,7 +33,7 @@ public final class GeneralVoucherApiStateChecks {
     private GeneralVoucherApiStateChecks() {}
 
     /** Every check that ran, split by outcome — the caller renders both and fails the step when {@code failed} is non-empty. */
-    public record Result(List<String> passed, List<String> failed, List<ApiCheckRow> rows) {
+    public record Result(List<String> passed, List<String> failed, List<ApiCheckRow> rows, java.util.Map<String, String> titles) {
         public boolean ok() { return failed.isEmpty(); }
     }
 
@@ -43,7 +43,7 @@ public final class GeneralVoucherApiStateChecks {
         ApiChecks c = new ApiChecks();
         if (actual == null) {
             c.fail("The created voucher could not be read back through the API");
-            return new Result(c.passed, c.failed, c.rows);
+            return new Result(c.passed, c.failed, c.rows, c.titles);
         }
         DocumentInformation doc = data.getDocumentInformation();
         if (doc != null) {
@@ -66,6 +66,7 @@ public final class GeneralVoucherApiStateChecks {
             ExpenseIncomeDetail e = expected.get(i);
             GeneralVoucherDetailLine l = lines.get(i);
             String label = "Line " + (i + 1);
+            c.title("Row " + (i + 1), ApiLineTitles.fromExpected(i, e, data.getSiteAllocationsForLine(e.getLineNo()), paymentFor(data, e.getLineNo(), i)));
             c.eq(label + " GL", trim(e.getGeneralLedger()), trim(l.getGlName()));
             if (norm(e.getSubLedger()) != null) c.eq(label + " sub-ledger", trim(e.getSubLedger()), trim(l.getSlName()));
             BigDecimal expAmount = e.isDebit() ? e.getExpenseDr() : e.getIncomeCr();
@@ -84,7 +85,7 @@ public final class GeneralVoucherApiStateChecks {
                 if (norm(pay.getInstrumentNo()) != null) c.eq(label + " instrument number", norm(pay.getInstrumentNo()), norm(l.getInstrumentNumber()));
             }
         }
-        return new Result(c.passed, c.failed, c.rows);
+        return new Result(c.passed, c.failed, c.rows, c.titles);
     }
 
     private static PaymentInformation paymentFor(MergedFinanceGeneralVoucherData data, String lineNo, int index) {
@@ -104,7 +105,7 @@ public final class GeneralVoucherApiStateChecks {
         ApiChecks c = new ApiChecks();
         if (before == null || after == null) {
             c.fail("rootview unavailable (before=" + (before != null) + ", after=" + (after != null) + ")");
-            return new Result(c.passed, c.failed, c.rows);
+            return new Result(c.passed, c.failed, c.rows, c.titles);
         }
         c.eq("Release status", expectedStatus, after.isPosted() ? "P" : "U");
         c.eq("Document date", date(before.getVoucherDate()), date(after.getVoucherDate()));
@@ -117,6 +118,7 @@ public final class GeneralVoucherApiStateChecks {
         c.eq("Number of lines", b.size(), a.size());
         for (int i = 0; i < Math.min(a.size(), b.size()); i++) {
             String label = "Line " + (i + 1);
+            c.title("Row " + (i + 1), ApiLineTitles.fromLine(i, a.get(i)));
             c.eq(label + " GL", b.get(i).getGlCode(), a.get(i).getGlCode());
             c.money(label + " amount", BigDecimal.valueOf(b.get(i).getExpense() + b.get(i).getIncome()),
                     BigDecimal.valueOf(a.get(i).getExpense() + a.get(i).getIncome()));
@@ -125,7 +127,7 @@ public final class GeneralVoucherApiStateChecks {
             c.eq(label + " instrument number", norm(b.get(i).getInstrumentNumber()), norm(a.get(i).getInstrumentNumber()));
             c.eq(label + " site allocation", allocationsOf(b.get(i).getCostCenterAllocations()), allocationsOf(a.get(i).getCostCenterAllocations()));
         }
-        return new Result(c.passed, c.failed, c.rows);
+        return new Result(c.passed, c.failed, c.rows, c.titles);
     }
 
     // ───────────────────────────── Delete ─────────────────────────────
@@ -135,7 +137,7 @@ public final class GeneralVoucherApiStateChecks {
         ApiChecks c = new ApiChecks();
         c.eq("Voucher " + docNo + " readable after Delete", false, rootviewAfter != null);
         c.eq("Voucher " + docNo + " listed after Delete", false, listedAfter);
-        return new Result(c.passed, c.failed, c.rows);
+        return new Result(c.passed, c.failed, c.rows, c.titles);
     }
 
     // ───────────────────────────── helpers ─────────────────────────────

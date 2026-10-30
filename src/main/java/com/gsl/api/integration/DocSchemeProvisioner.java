@@ -36,6 +36,9 @@ import java.util.stream.Collectors;
  */
 public final class DocSchemeProvisioner {
 
+    /** The remarks every automation-created test scheme carries. */
+    public static final String TEST_SCHEME_REMARKS = "Automation test scheme — safe to fill";
+
     private DocSchemeProvisioner() {}
 
     /** One scheme to ensure: its name, number prefix, digit width and the voucher menus it serves. */
@@ -79,7 +82,7 @@ public final class DocSchemeProvisioner {
         if (scheme == null) {
             AccountingPeriod period = client.fetchAccountingPeriod();
             client.createScheme(new NewScheme(spec.docName(), spec.prefix(), spec.width(),
-                    "Automation test scheme — safe to fill"), period);
+                    TEST_SCHEME_REMARKS), period);
             scheme = find(client.listSchemes(workDate), spec.docName());
             if (scheme == null) {
                 throw new IllegalStateException("Created doc scheme '" + spec.docName()

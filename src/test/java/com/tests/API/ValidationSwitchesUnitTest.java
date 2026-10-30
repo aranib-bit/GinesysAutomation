@@ -27,7 +27,7 @@ public class ValidationSwitchesUnitTest {
     @Test
     public void rowGroupsSplitLineLabels() {
         ApiCheckRow line = ApiCheckRow.of("Line 2 payment mode", "H", "H", true);
-        Assert.assertEquals(line.group(), "Line 2");
+        Assert.assertEquals(line.group(), "Row 2");
         Assert.assertEquals(line.check(), "payment mode");
         ApiCheckRow doc = ApiCheckRow.of("Document date", "a", "b", false);
         Assert.assertEquals(doc.group(), "Document");

@@ -4,7 +4,6 @@ import com.gsl.annotations.ApiFlow;
 import com.gsl.annotations.FrameworkAnnotation;
 import com.gsl.annotations.TestCaseId;
 import com.gsl.api.core.ApiSessionFactory;
-import com.gsl.api.model.apvoucher.ApVoucherRevertResponse;
 import com.gsl.database.DatabaseManager;
 import com.gsl.database.dao.HrEmpDao;
 import com.gsl.database.dao.finance.FinVchDetDao;
@@ -102,6 +101,9 @@ public class DeleteApVoucher extends WebTest {
         final VoucherSnapshot[]    afterSnapshotRef  = new VoucherSnapshot[1];
 
         Aud2SnapshotDao auditDao = new Aud2SnapshotDao();
+        // db.available=no: the BEFORE/AFTER snapshot steps and the DB validation need the database, so they are skipped; the voucher
+        // is instead confirmed gone through the API (rootview). The untag/unpost steps use the voucher the API data source created.
+        final boolean noDb = !com.gsl.database.DbAvailability.isAvailable();
 
         // ── Step 1: Login ─────────────────────────────────────────────────────────
         // Was new LoginPage().loginToApplication(...) — a session-unaware fresh login that only
@@ -158,11 +160,11 @@ public class DeleteApVoucher extends WebTest {
         // action at all, same "exact-match filter's own asynchronous settle behavior" DeleteGeneralVoucher's
         // Step 8 already documents — Step 6 below re-selects before clicking Delete to cover this.
         VoucherEditFlowSteps.untagIfTagged(
-                testData.getExistingVoucherNo(), testData.getReleaseStatus(), new java.util.ArrayList<>());
-        VoucherEditFlowSteps.unpostApVoucherViaApi(testData.getExistingVoucherNo(), testData.getReleaseStatus());
+                testData.getExistingVoucherNo(), testData.getReleaseStatus(), new java.util.ArrayList<>(), testData.getApiVoucherRef());
+        VoucherEditFlowSteps.unpostApVoucherViaApi(testData.getExistingVoucherNo(), testData.getReleaseStatus(), testData.getApiVoucherRef());
 
         // ── Step 5: Resolve Document Context + Capture BEFORE Snapshot ────────────
-        StepExecutor.step("Resolve Document Context + Capture BEFORE Snapshot", () -> {
+        if (!noDb) StepExecutor.step("Resolve Document Context + Capture BEFORE Snapshot", () -> {
             contextRef[0] = new VoucherDocumentContextResolver().resolve(testData.getExistingVoucherNo(), VoucherDomain.AP);
             beforeSnapshotRef[0] = new SnapshotService(auditDao).capture(contextRef[0]);
             if (beforeSnapshotRef[0].getTable("finvchmain") == null
@@ -198,7 +200,7 @@ public class DeleteApVoucher extends WebTest {
                 ReportLogger.session("Logout deferred — session may be reused by a later test on this thread."));
 
         // ── Step 8: Capture AFTER Snapshot ────────────────────────────────────────
-        StepExecutor.step("Capture AFTER Snapshot", () -> {
+        if (!noDb) StepExecutor.step("Capture AFTER Snapshot", () -> {
             afterSnapshotRef[0] = new SnapshotService(auditDao).capture(contextRef[0]);
             ReportLogger.business("AFTER snapshot captured for voucher: " + testData.getExistingVoucherNo());
         });
@@ -207,6 +209,19 @@ public class DeleteApVoucher extends WebTest {
         // Full BEFORE/AFTER snapshot-diff validation (row-delete expectations on finvchmain/
         // finvchdet/finpost/fincosttag) via APVoucherDeleteChangeSets — see class Javadoc for why
         // this supersedes AR's own single-table AuditAssertion.assertAuditDeleted check.
+        if (noDb) {
+            StepExecutor.step("API Post-Check — voucher no longer exists", () -> {
+                com.gsl.testdata.dto.ApiVoucherRef ref = testData.getApiVoucherRef();
+                org.testng.Assert.assertNotNull(ref, "[API-PostCheck] no API voucher reference on the row; cannot confirm the delete without the DB.");
+                String status = com.gsl.api.core.ApiSessionFactory.withWebApiSession(session ->
+                        session.getApVoucherApiClient().fetchDocumentStatus(ref.getVchcode(), ref.getOuCode(), Long.parseLong(session.getUserId())));
+                org.testng.Assert.assertNull(status, "[API-PostCheck] voucher " + testData.getExistingVoucherNo()
+                        + " is still readable through the API (status='" + status + "') after Delete.");
+                ReportLogger.pass("API validated — voucher " + testData.getExistingVoucherNo() + " no longer exists.");
+            });
+            ReportLogger.business("DB validation skipped — db.available=no (snapshot diff needs the database).");
+            return;
+        }
         StepExecutor.step("Database Validation", () -> {
             ExpectedChangeSet changeSet = APVoucherDeleteChangeSets.delete(contextRef[0]);
 

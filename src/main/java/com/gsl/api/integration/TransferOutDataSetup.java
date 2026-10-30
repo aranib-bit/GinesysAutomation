@@ -30,7 +30,7 @@ public final class TransferOutDataSetup {
     public static TransferOutCreateResponse setupTransferOutForTest(TransferOutApiClient client,
                                                                        String dcCode, String itemCode,
                                                                        int quantity, int rate) {
-        TransferOutCreateResponse response = client.createTransferOut(dcCode, itemCode, quantity, rate);
+        TransferOutCreateResponse response = new com.gsl.service.TransferOutService(client).createTransferOut(dcCode, itemCode, quantity, rate);
         TransferOutApiValidator.validate(response);
         ReportLogger.business("[TransferOutDataSetup] Transfer Out created via API — siCode={}, schemeDocno={}",
                 response.getSiCode(), response.getSchemeDocno());

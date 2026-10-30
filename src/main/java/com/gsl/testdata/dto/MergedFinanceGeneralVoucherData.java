@@ -1,7 +1,7 @@
 package com.gsl.testdata.dto;
 
 import com.gsl.flow.Finance.Operations.Common.PostSaveDialogHandler;
-import com.gsl.pages.enums.Finance.Operations.GeneralVoucher.GeneralVoucherRevertOutcome;
+import com.gsl.pages.enums.Finance.Operations.Common.VoucherRevertOutcome;
 import com.gsl.reports.GeneralVoucherIncomeExpenseRowView;
 import com.gsl.testdata.Finance.Operations.Vouchers.Common.VoucherPaymentInfo;
 import com.gsl.testdata.Finance.Operations.Vouchers.Common.VoucherSelectDocRow;
@@ -43,7 +43,7 @@ import java.util.Set;
 @Builder
 @AllArgsConstructor
 public class MergedFinanceGeneralVoucherData
-        implements InvocationData, PostSaveDialogHandler.PostSaveSpec, VoucherReportData,
+        implements com.gsl.testdata.StampableInvocationData, PostSaveDialogHandler.PostSaveSpec, VoucherReportData,
         com.gsl.database.ReservedDocumentKeyAware {
 
     private MasterTestData masterTestData;
@@ -77,7 +77,7 @@ public class MergedFinanceGeneralVoucherData
      * validation on whatever outcome happened to occur. {@code null} for every ordinary positive
      * Revert row, where any of the live-confirmed outcomes is legal.
      */
-    private GeneralVoucherRevertOutcome expectedRevertOutcome;
+    private VoucherRevertOutcome expectedRevertOutcome;
 
     /**
      * DB mode scenario label — human-readable variant id/name, set for every DB-mode row

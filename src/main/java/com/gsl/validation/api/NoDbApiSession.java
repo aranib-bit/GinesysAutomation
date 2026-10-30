@@ -96,6 +96,11 @@ public final class NoDbApiSession {
 
     public GeneralVoucherApiClient client() { return client; }
 
+    /** Runs {@code call} against the Audit API client of the shared session (retried once after a re-login on HTTP 401). */
+    public <T> T audit(java.util.function.Function<com.gsl.api.client.AuditLogApiClient, T> call) {
+        return withRelogin(() -> call.apply(session.getAuditLogApiClient()));
+    }
+
     /** The voucher as the application currently holds it. */
     public GeneralVoucherRootView rootView(long vchcode) {
         return withRelogin(() -> client.fetchRootView(vchcode, ouCode, empCode));

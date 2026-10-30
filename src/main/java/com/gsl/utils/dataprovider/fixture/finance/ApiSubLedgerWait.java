@@ -1,7 +1,7 @@
 package com.gsl.utils.dataprovider.fixture.finance;
 
 import com.gsl.api.client.GeneralVoucherApiClient;
-import com.gsl.api.model.arvoucher.SubLedgerLookupResult;
+import com.gsl.api.model.common.SubLedgerLookupResult;
 
 import java.util.List;
 

@@ -47,4 +47,14 @@ public final class DataLoadScope {
     public static boolean isActive() {
         return DEPTH.get() > 0;
     }
+
+    /** Runs {@code load} inside the scope (entered/exited even when it throws) - the one way data sources load under {@link #isActive()}. */
+    public static <T> T run(java.util.function.Supplier<T> load) {
+        enter();
+        try {
+            return load.get();
+        } finally {
+            exit();
+        }
+    }
 }

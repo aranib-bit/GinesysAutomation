@@ -124,7 +124,7 @@ public class DbApVoucherDataSource implements TestDataSource<MergedFinanceApVouc
      */
     @Override
     public List<MergedFinanceApVoucherData> load(String testMethodName) {
-        String loginName = SupplierUser.username();
+        String loginName = placeholderLoginName();
 
         ApVoucherExecutionGroup activeGroup = resolveActiveGroup();
         Set<ApVoucherTag>       activeTags  = resolveActiveTags();
@@ -136,13 +136,10 @@ public class DbApVoucherDataSource implements TestDataSource<MergedFinanceApVouc
 
         List<ApVoucherScenarioType> scenarios = ApVoucherFixtureFactory.scenariosFor(testMethodName);
 
-        Jdbi jdbi        = DatabaseManager.getJdbi();
-        List<Long> ouCodes = resolveOuCodesForUser(jdbi, loginName);
-
         // Only run the AP-pending discovery when document scenarios are present
         boolean hasDocScenarios = scenarios.stream().anyMatch(s -> !s.isOnAccount());
         List<AdmCls> classificationTypes = hasDocScenarios
-                ? findDistinctClsCodesInPendingAP(jdbi, ouCodes)
+                ? discoverClassificationTypes(loginName)
                 : List.of();
 
         long systemClsCode = classificationTypes.stream()
@@ -247,6 +244,7 @@ public class DbApVoucherDataSource implements TestDataSource<MergedFinanceApVouc
                         || scenario == ApVoucherScenarioType.NEG_BLANK_CASHBANK_ADD_ROW_RECOVER
                         || scenario == ApVoucherScenarioType.NEG_BLANK_SUBLEDGER
                         || scenario == ApVoucherScenarioType.NEG_BLANK_SUBLEDGER_RECOVER
+                        || scenario == ApVoucherScenarioType.NEG_EXTINCT_VENDOR_NOT_OFFERED
                         || scenario == ApVoucherScenarioType.BLANK_REFERENCE_ALLOWED
                         || scenario == ApVoucherScenarioType.BOUND_AMOUNT_MIN_VALID
                         || scenario == ApVoucherScenarioType.BOUND_AMOUNT_MIN_INVALID) {
@@ -355,15 +353,26 @@ public class DbApVoucherDataSource implements TestDataSource<MergedFinanceApVouc
         }
 
         // Assign sequential invocation indices (FIN-AP-ADD-01, -02, …)
+        TestDataSource.stampInvocations(placeholders);
         int total = placeholders.size();
-        for (int i = 0; i < total; i++) {
-            placeholders.get(i).setInvocationIndex(i + 1);
-            placeholders.get(i).setTotalInvocations(total);
-        }
 
         Log.info("[DB] Emitting {} AP Voucher placeholder(s) for method='{}'. DB queries deferred to test-execution time.",
                 placeholders.size(), testMethodName);
         return placeholders;
+    }
+
+    /** Login name carried on placeholders. Overridden by the API source, which has no DB to resolve a pool user against. */
+    protected String placeholderLoginName() {
+        return SupplierUser.username();
+    }
+
+    /**
+     * Distinct sub-ledger classifications that currently have pending AP documents (drives the DOC_* variant matrix). The DB
+     * source reads {@code v_pending_adj}; {@link ApiApVoucherDataSource} overrides this to derive them from the API.
+     */
+    protected List<AdmCls> discoverClassificationTypes(String loginName) {
+        Jdbi jdbi = DatabaseManager.getJdbi();
+        return findDistinctClsCodesInPendingAP(jdbi, resolveOuCodesForUser(jdbi, loginName));
     }
 
     // ─── Point 2: Fresh data fetch per scenario, called at test-execution time ─
@@ -390,6 +399,9 @@ public class DbApVoucherDataSource implements TestDataSource<MergedFinanceApVouc
             MergedFinanceApVoucherData placeholder, String methodName) {
 
         ApVoucherScenarioType scenarioType = placeholder.getScenarioType();
+        if (scenarioType == ApVoucherScenarioType.NEG_EXTINCT_VENDOR_NOT_OFFERED) {
+            throw new org.testng.SkipException("Skipped - NEG_EXTINCT_VENDOR_NOT_OFFERED creates/extincts a vendor through the API, so it runs only with testdata.source=API.");
+        }
         ApVoucherFixtureOptions opts = placeholder.getFixtureOptions() != null
                 ? placeholder.getFixtureOptions()
                 : ApVoucherFixtureOptions.defaults();
@@ -1226,11 +1238,24 @@ public class DbApVoucherDataSource implements TestDataSource<MergedFinanceApVouc
                 continue;
             }
 
+            // All pending documents of the candidates (not cut to documentCount): the cut happens while reserving, so documents another
+            // thread holds are skipped in favour of the next ones instead of emptying the sub-ledger.
             Map<String, List<PendingSlDocument>> rawDocs =
-                    findApDocumentsForSlNames(jdbi, d, ouCodes, ownerSiteCodes, candidates, documentCount);
+                    findApDocumentsForSlNames(jdbi, d, ouCodes, ownerSiteCodes, candidates, Integer.MAX_VALUE);
 
-            Map<String, List<PendingSlDocument>> reserved =
-                    DocumentReservationRegistry.filterAndReserve(rawDocs);
+            final Map<String, List<PendingSlDocument>> reservedFirstPass =
+                    DocumentReservationRegistry.filterAndReserveUpTo(rawDocs, documentCount);
+            Map<String, List<PendingSlDocument>> reserved = reservedFirstPass;
+            // Read-then-reserve is not atomic: a document another scenario saved against in between has a lower pending amount now. Re-read
+            // the reserved ones (nobody else can change them from here on) and give back any sub-ledger whose documents changed.
+            if (!reservedFirstPass.isEmpty()) {
+                List<SlNameWithId> reservedSls = candidates.stream()
+                        .filter(c -> reservedFirstPass.containsKey(PendingAdjQuery.compositeKey(c.getSlName(), c.getSlId())))
+                        .collect(Collectors.toList());
+                reserved = dropStaleReservations(reservedFirstPass,
+                        findApDocumentsForSlNames(jdbi, d, ouCodes, ownerSiteCodes, reservedSls, Integer.MAX_VALUE),
+                        DocumentReservationRegistry::release);
+            }
             lastReservedSize = reserved.size();
 
             Map<String, List<PendingSlDocument>> moded = applyMode(reserved, mode);
@@ -1289,6 +1314,39 @@ public class DbApVoucherDataSource implements TestDataSource<MergedFinanceApVouc
             " Ensure v_pending_adj has rows with debit_credit='C' for the user's OU." +
             "\n  Last: candidates=" + lastCandidatesSize + ", reservedSls=" + lastReservedSize +
             "\n" + DocumentReservationRegistry.snapshotAsString());
+    }
+
+    /**
+     * Drops every sub-ledger whose reserved documents are no longer as they were read: a document that is gone from {@code fresh}, or whose pending
+     * amount differs. The documents of a dropped sub-ledger are handed to {@code releaser}. Pure apart from the releaser, so it can be unit-tested.
+     *
+     * @param reserved what the thread reserved, with the pending amounts it read
+     * @param fresh    the same sub-ledgers read again after reserving
+     */
+    public static Map<String, List<PendingSlDocument>> dropStaleReservations(Map<String, List<PendingSlDocument>> reserved,
+                                                                              Map<String, List<PendingSlDocument>> fresh,
+                                                                              java.util.function.Consumer<java.util.Collection<String>> releaser) {
+        Map<String, List<PendingSlDocument>> kept = new LinkedHashMap<>();
+        for (Map.Entry<String, List<PendingSlDocument>> entry : reserved.entrySet()) {
+            Map<String, BigDecimal> now = new LinkedHashMap<>();
+            fresh.getOrDefault(entry.getKey(), List.of()).forEach(doc -> now.put(doc.getDocumentNo(), doc.getPending()));
+            List<String> changed = new ArrayList<>();
+            for (PendingSlDocument doc : entry.getValue()) {
+                BigDecimal current = now.get(doc.getDocumentNo());
+                if (current == null) {
+                    changed.add(doc.getDocumentNo() + " (no longer pending, read " + doc.getPending() + ")");
+                } else if (doc.getPending() == null || current.compareTo(doc.getPending()) != 0) {
+                    changed.add(doc.getDocumentNo() + " (pending " + doc.getPending() + " -> " + current + ")");
+                }
+            }
+            if (changed.isEmpty()) {
+                kept.put(entry.getKey(), entry.getValue());
+            } else {
+                Log.warn("[DocSelectorAP] SL '{}' dropped: reserved document(s) changed since they were read - {}", entry.getKey(), changed);
+                releaser.accept(entry.getValue().stream().map(PendingSlDocument::getDocumentNo).collect(Collectors.toList()));
+            }
+        }
+        return kept;
     }
 
     /**

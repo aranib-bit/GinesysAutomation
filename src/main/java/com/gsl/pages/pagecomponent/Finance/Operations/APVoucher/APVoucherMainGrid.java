@@ -5,7 +5,7 @@ import com.gsl.enums.Finance.Operations.Common.DocumentMessageBoxMessage;
 import com.gsl.enums.VoucherDomain;
 import com.gsl.pages.Common.DocumentMessageBox;
 import com.gsl.pages.enums.Finance.Operations.APVoucher.APVoucherListColumn;
-import com.gsl.pages.enums.Finance.Operations.APVoucher.APVoucherRevertOutcome;
+import com.gsl.pages.enums.Finance.Operations.Common.VoucherRevertOutcome;
 import com.gsl.pages.enums.Finance.Operations.Common.CommonVoucherListColumn;
 import com.gsl.pages.enums.Finance.Operations.Common.IVoucherListColumn;
 import com.gsl.pages.pagecomponent.Finance.Operations.Common.VoucherMainGridBase;
@@ -53,13 +53,13 @@ public class APVoucherMainGrid extends VoucherMainGridBase {
      * and its locator's own Javadoc for the full evidence.
      */
     @LogStep("Confirm Revert")
-    public APVoucherRevertOutcome confirmRevert() {
+    public VoucherRevertOutcome confirmRevert() {
         // Dialog handling is shared with AR Voucher — see ArApVoucherDialogs for the live evidence.
         switch (com.gsl.pages.pagecomponent.Finance.Operations.Common.ArApVoucherDialogs.confirmRevert()) {
-            case UNPOSTED:                   return APVoucherRevertOutcome.UNPOSTED;
-            case ALREADY_UNPOSTED:           return APVoucherRevertOutcome.ALREADY_UNPOSTED;
-            case CANNOT_REVERT_BRS_DONE:     return APVoucherRevertOutcome.CANNOT_REVERT_BRS_DONE;
-            case CANNOT_REVERT_MONTH_CLOSED: return APVoucherRevertOutcome.CANNOT_REVERT_MONTH_CLOSED;
+            case UNPOSTED:                   return VoucherRevertOutcome.UNPOSTED;
+            case ALREADY_UNPOSTED:           return VoucherRevertOutcome.ALREADY_UNPOSTED;
+            case CANNOT_REVERT_BRS_DONE:     return VoucherRevertOutcome.CANNOT_REVERT_BRS_DONE;
+            case CANNOT_REVERT_MONTH_CLOSED: return VoucherRevertOutcome.CANNOT_REVERT_MONTH_CLOSED;
             default: throw new IllegalStateException("Unmapped revert dialog result");
         }
     }

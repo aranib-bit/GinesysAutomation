@@ -64,13 +64,12 @@ public class APVoucherSubLedgerInformation extends VoucherSubLedgerInformationBa
         clickAddRowButton();
     }
 
-    private static final By SUBLEDGERNAMEBLANK = By.xpath(
-            "(//div[contains(@class,'x-window')]//table[contains(@class,'x-grid-item')])" +
-            "[last()]//tr[last()]//td[3]");
-
-    private static final String SUBLEDGERSELECTION_XPATH = "//span[text()='%s']";
-
     private static final String AP_GRID_ITEM_ID = "apvch_grid";
+
+    @Override
+    protected String gridItemId() {
+        return AP_GRID_ITEM_ID;
+    }
 
     // ── Column ID XPaths for native Deduct TDS cell targeting ────────────────────
     // COL_AP_SL / COL_REF_SITE / COL_SL_ID use columnIdXPath() — those columns have auto-generated ExtJS IDs.
@@ -283,37 +282,7 @@ public class APVoucherSubLedgerInformation extends VoucherSubLedgerInformationBa
         }
 
         if (includeRetry) {
-            // ── Pass 2: change reference site only when explicitly requested ──
-            for (int i = 0; i < sls.size(); i++) {
-                final int idx = i;
-                final SubLedgerInformation sl = sls.get(i);
-                final String refSite = sl.getReferenceSite() != null ? sl.getReferenceSite() : "";
-                final String rowKey = SubLedgerRowStepRegistry.key(sl.getLineNo(), idx);
-                if (sl.isChangeReferenceSite()) {
-                    SubLedgerRowStepRegistry.stepUnderRow(rowKey,
-                            "Change Reference Site — " + (refSite.isEmpty() ? "(none)" : refSite),
-                            () -> setSubLedgerReferenceSite(refSite, idx));
-                } else {
-                    ExtentLogger.info("[AP SL RefSite] Row " + (idx + 1)
-                            + ": skipping Pass-2 set (changeReferenceSite=false) — current value kept");
-                }
-            }
-            // Row-0 retry — only if that row opted in
-            {
-                final SubLedgerInformation sl0 = sls.get(0);
-                final String refSite = sl0.getReferenceSite() != null ? sl0.getReferenceSite() : "";
-                final String rowKey = SubLedgerRowStepRegistry.key(sl0.getLineNo(), 0);
-                if (sl0.isChangeReferenceSite()) {
-                    SubLedgerRowStepRegistry.stepUnderRow(rowKey,
-                            "Change Reference Site (row-0 retry) — " + (refSite.isEmpty() ? "(none)" : refSite),
-                            () -> setSubLedgerReferenceSite(refSite, 0));
-                }
-            }
-            // Read back actual values regardless — captures what the app populated
-            for (int i = 0; i < sls.size(); i++) {
-                String actual = getSubLedgerReferenceSite(i);
-                if (actual != null && !actual.isEmpty()) sls.get(i).setReferenceSite(actual);
-            }
+            applyReferenceSitePass(sls);
         }
     }
 
@@ -431,69 +400,6 @@ public class APVoucherSubLedgerInformation extends VoucherSubLedgerInformationBa
     }
 
     /**
-     * NATIVE sub-ledger selection: open the real inline grid combo, type the sub-ledger name,
-     * and click the matching dropdown option — exactly as a user would. This makes the
-     * application run its own combo {@code select} handler, which evaluates TDS applicability
-     * and renders the "Calc. Amount" button (the JS-injection path does not, leaving rows as
-     * "TDS not appl."). Reuses the proven {@code <li role='option'>} picker pattern from
-     * {@link com.gsl.pages.pagecomponent.Finance.Operations.APVoucher.APVoucherTdsAndNetPayable}.
-     */
-    private void setSubLedgerNameNative(String subledgerName, String id, String referenceSite, int rowIndex) {
-        String inputId = JavascriptExecutorUtils.openSubLedgerComboEditor(
-                DriverManager.getDriver(), rowIndex, AP_GRID_ITEM_ID);
-        if (inputId == null || inputId.isEmpty()) {
-            throw new IllegalStateException(
-                    "[SL_NATIVE] Could not open Sub-Ledger combo editor on row " + rowIndex
-                    + " for '" + subledgerName + "'");
-        }
-
-        // Type the name into the real combo input — the app's remote query filters the
-        // grid-style picker (Name | Id | Class Name columns) as we type.
-        // UI validation (read only): what the Sub-Ledger picker shows before and after typing.
-        com.gsl.validation.ui.PickerUi.Snapshot pickerBefore =
-                capturingPickers() ? com.gsl.validation.ui.PickerUi.snapshot() : null;
-        By comboInput = By.id(inputId);
-        SeleniumUtils.clear(comboInput, "SL_COMBO_INPUT");
-        SeleniumUtils.sendKeys(comboInput, WaitType.VISIBLE, subledgerName, "SL_COMBO_INPUT");
-        JavascriptExecutorUtils.waitForExtJS();
-
-        // Click the matching row in the grid picker. Sub-ledger names are NOT unique
-        // (e.g. the same supplier can appear with different Ids), so disambiguate by
-        // Name + Id when an Id is provided. Same picker structure as CashBankPopup.
-        // Pages forward through the picker's own Next-Page control if the exact match isn't on
-        // the currently-rendered page — this is the same paged grid-style boundlist as GV's own
-        // General Ledger/Sub Ledger picker (confirmed live there, run 20260903_100559,
-        // FIN-GV-EDIT-DETAIL-02, and structurally identical here: a live-typed CONTAINS-match
-        // search returning rows across a real First/Previous/Next/Last toolbar). See
-        // SeleniumUtils.clickBoundlistOptionAcrossPages's own Javadoc.
-        By option = subLedgerPickerRow(subledgerName, id);
-        // The filtered list is read when the fill has found the option (it renders after a debounce, so not
-        // right after typing) - see SeleniumUtils.clickBoundlistOptionAcrossPages(..., beforeClick).
-        final com.gsl.validation.ui.PickerUi.Snapshot[] pickerAfter = {com.gsl.validation.ui.PickerUi.Snapshot.none()};
-        SeleniumUtils.clickBoundlistOptionAcrossPages(
-                "//div[contains(@class,'x-boundlist-floating')]", option, "SL_OPTION_" + subledgerName,
-                () -> { if (capturingPickers()) pickerAfter[0] = com.gsl.validation.ui.PickerUi.snapshot(); });
-        if (capturingPickers()) {
-            recordPicker(rowIndex, new com.gsl.validation.ui.PickerUi.Observation("Sub Ledger picker",
-                    subLedgerPickerColumns(), subledgerName, subledgerName, id == null || id.isBlank() ? null : id,
-                    java.util.Map.of(), pickerBefore, pickerAfter[0]));
-        }
-        ReportLogger.fieldEntry(subledgerName + " selected from dropdown");
-        // Let the application's combo select handler run its GL + TDS-applicability evaluation.
-        JavascriptExecutorUtils.waitForExtJS();
-        JavascriptExecutorUtils.waitForPageLoad();
-        JavascriptExecutorUtils.waitForComponentReady();
-
-        Log.debug("[SL_NATIVE] Selected SL='{}' (id='{}') on row {}", subledgerName, id, rowIndex);
-        ReportLogger.trace("[SL_NATIVE] row=" + rowIndex + " selected SL='" + subledgerName
-                + "' id='" + (id.isEmpty() ? "—" : id) + "'");
-
-        if (referenceSite != null && !referenceSite.trim().isEmpty()) {
-            setSubLedgerReferenceSite(referenceSite, rowIndex);
-        }
-    }
-
-    /**
      * NATIVE Deduct TDS selection: double-click the Deduct TDS cell for the given sub-ledger row,
      * click the dropdown trigger arrow, and select Yes/No — exactly as a user would.
      * Row is located by SL name + reference site (+ optional slId), matching the same
@@ -566,72 +472,6 @@ public class APVoucherSubLedgerInformation extends VoucherSubLedgerInformationBa
     }
 
     /**
-     * Build the locator for a row in the Sub-Ledger grid picker (the dropdown opened from the
-     * inline combo). The picker is a paged grid with Name / Id / Class Name columns inside an
-     * {@code x-grid-item-container} — the same structure used by
-     * {@link com.gsl.pages.pagecomponent.Finance.Common.CashBankPopup}.
-     *
-     * <p>When an {@code id} is supplied, match a row that contains BOTH the exact Name and the
-     * exact Id (sub-ledger names are not unique), then click the Name cell within that row.
-     * Otherwise match by Name only.</p>
-     */
-    private By subLedgerPickerRow(String name, String id) {
-        String n = name.trim();
-        // The SL dropdown is an ExtJS boundlist: div.x-boundlist-floating → div.x-boundlist-item
-        // (role=option) → table.combooverflowfinance with one td per column. Each cell carries a
-        // clean @data-qtip value, so matching on data-qtip is highlight-proof (the visible text
-        // wraps the typed substring in a highlight span; the attribute does not). Click the
-        // x-boundlist-item itself (the option element, top layer) to avoid the grid-view interception.
-        String base = "//div[contains(@class,'x-boundlist-floating')]"
-                + "//div[contains(@class,'x-boundlist-item')";
-        if (id != null && !id.trim().isEmpty()) {       // unique: match Name + Id (slid)
-            return By.xpath(base + " and .//td[@data-qtip=\"" + n + "\"]"
-                                 + " and .//td[@data-qtip=\"" + id.trim() + "\"]]");
-        }
-        return By.xpath(base + " and .//td[@data-qtip=\"" + n + "\"]]");   // name only
-    }
-
-    private void addSubLedgerRow() {
-        JavascriptExecutorUtils.addSubLedgerRow(DriverManager.getDriver(), AP_GRID_ITEM_ID);
-    }
-
-    private void setSubLedgerReferenceSite(String referenceSite, int rowIndex) {
-        if (referenceSite == null || referenceSite.trim().isEmpty()) return;
-        // Poll for auto-population before deciding skip vs. native path.
-        // The app asynchronously fills Reference Site after SL selection; reading immediately
-        // returns blank and incorrectly routes to the native editor path, causing TimeoutException.
-        String existing = waitForReferenceSiteAutoPopulation(rowIndex);
-        if (existing != null && !existing.trim().isEmpty()) {
-            ExtentLogger.info("[AP SL RefSite] Row " + (rowIndex + 1) + ": already '" + existing
-                    + "' — not changing (skip).");
-            return;
-        }
-        String inputId = JavascriptExecutorUtils.openReferenceSiteCellEditor(
-                DriverManager.getDriver(), rowIndex, AP_GRID_ITEM_ID);
-        if (inputId == null || inputId.isEmpty()) {
-            ExtentLogger.warning("[AP SL RefSite] Row " + (rowIndex + 1)
-                    + ": native editor did not open — using JS injection fallback for '" + referenceSite + "'");
-            Log.warn("[SL_REFSITE_NATIVE] AP row {} — falling back to JS injection for '{}'", rowIndex + 1, referenceSite);
-            JavascriptExecutorUtils.setSubLedgerReferenceSite(DriverManager.getDriver(), rowIndex, referenceSite, AP_GRID_ITEM_ID);
-            return;
-        }
-        ExtentLogger.info("[AP SL RefSite] Row " + (rowIndex + 1) + ": native path — typing '" + referenceSite + "'");
-        By comboInput = By.id(inputId);
-        SeleniumUtils.clear(comboInput, "SL_REFSITE");
-        SeleniumUtils.sendKeys(comboInput, WaitType.VISIBLE, referenceSite, "SL_REFSITE");
-        JavascriptExecutorUtils.waitForExtJS();
-        By option = By.xpath("//li[@role='option'][normalize-space(.)='" + referenceSite + "']");
-        WaitUtils.fluentWaitBuilder().until(driver -> {
-            driver.findElement(option).click();
-            return true;
-        });
-        ReportLogger.fieldEntry(referenceSite + " selected from dropdown");
-        JavascriptExecutorUtils.waitForExtJS();
-        JavascriptExecutorUtils.waitForPageLoad();
-        ExtentLogger.info("[AP SL RefSite] Row " + (rowIndex + 1) + ": selected '" + referenceSite + "' via native");
-    }
-
-    /**
      * Clicks the Amount (Dr) cell for the given sub-ledger row and returns the resulting dialog.
      * After a document has been adjusted against the SL, clicking the cell raises an Information
      * dialog ("Document is adjusted against the selected sub ledger, amount can not be modified
@@ -659,35 +499,6 @@ public class APVoucherSubLedgerInformation extends VoucherSubLedgerInformationBa
         By cell = SubLedgerRowLocator.amountCell(slName, slId, columnId);
         DriverManager.getDriver().findElement(cell).click();
         return new DocumentPopup();
-    }
-
-    /**
-     * Waits up to {@code shortWaitSeconds} for the UI to auto-populate the Reference Site cell
-     * after a sub-ledger is selected.  Returns the populated value, or {@code ""} on timeout.
-     *
-     * <p>The app fills Reference Site asynchronously via an ExtJS store load after SL selection;
-     * calling {@link #getSubLedgerReferenceSite} immediately after returns blank and causes the
-     * native editor path to fire — leading to a {@code TimeoutException} when the combo option
-     * is never found.  This poll avoids that race condition.
-     */
-    private String waitForReferenceSiteAutoPopulation(int rowIndex) {
-        long timeoutSeconds = ConfigFactory.getWaitConfig().shortWaitSeconds();
-        try {
-            return WaitUtils.webDriverWait(timeoutSeconds).until(driver -> {
-                String val = JavascriptExecutorUtils.getSubLedgerReferenceSiteName(
-                        driver, rowIndex, AP_GRID_ITEM_ID);
-                return (val != null && !val.trim().isEmpty()) ? val : null;
-            });
-        } catch (TimeoutException e) {
-            ExtentLogger.info("[AP SL RefSite] Row " + (rowIndex + 1)
-                    + ": auto-population did not occur within " + timeoutSeconds
-                    + "s — will use native path.");
-            return "";
-        }
-    }
-
-    private String getSubLedgerReferenceSite(int rowIndex) {
-        return JavascriptExecutorUtils.getSubLedgerReferenceSiteName(DriverManager.getDriver(), rowIndex, AP_GRID_ITEM_ID);
     }
 
     /**
@@ -737,66 +548,6 @@ public class APVoucherSubLedgerInformation extends VoucherSubLedgerInformationBa
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
             throw new RuntimeException("Interrupted setting sub-ledger amount on row " + rowIndex, e);
-        }
-    }
-
-    private void setSubLedgerAmount(String subLedgerAmount, int rowIndex) throws InterruptedException {
-        String inputId = JavascriptExecutorUtils.openAmountCellEditor(
-                DriverManager.getDriver(), rowIndex, AP_GRID_ITEM_ID);
-        if (inputId == null || inputId.isEmpty()) {
-            throw new IllegalStateException(
-                    "[SL_AMOUNT_NATIVE] Could not open Amount editor on row " + rowIndex
-                    + " for AP grid [" + AP_GRID_ITEM_ID + "]");
-        }
-        By amountInput = By.id(inputId);
-        SeleniumUtils.clear(amountInput, "SL_AMOUNT");
-        SeleniumUtils.sendKeys(amountInput, WaitType.VISIBLE, subLedgerAmount, "SL_AMOUNT");
-        // Tab commits the value to the ExtJS store record — without it the editor stays open
-        // and the typed amount is never written to the underlying record, causing "Amount is required".
-        SeleniumUtils.pressTab(amountInput, "SL_AMOUNT");
-        JavascriptExecutorUtils.waitForExtJS();
-    }
-
-    private void handlePaymentInformation(
-            List<SubLedgerInformation> subLedgerList,
-            List<PaymentInformation> paymentList) {
-
-        for (SubLedgerInformation subLedger : subLedgerList) {
-            final String slKey = (subLedger.getId() != null && !subLedger.getId().isBlank())
-                    ? subLedger.getId() : subLedger.getSubLedger();
-            com.gsl.reports.ActualResultsHolder.get().getUiPaymentInfoPopupMap().put(slKey, false);
-
-            final String lineNo = subLedger.getLineNo();
-            if (lineNo == null || lineNo.isBlank()) continue;
-
-            final PaymentInformation payment = paymentList.stream()
-                    .filter(p -> p.getLineNo() != null
-                            && p.getLineNo().equalsIgnoreCase(lineNo)
-                            && (subLedger.getTestCaseID() == null || p.getTestCaseID() == null
-                                || p.getTestCaseID().equalsIgnoreCase(subLedger.getTestCaseID())))
-                    .findFirst()
-                    .orElse(null);
-
-            if (payment == null) continue;
-
-            final PaymentSelectionType effectiveType = subLedger.getPaymentSelection() != null
-                    ? subLedger.getPaymentSelection()
-                    : payment.getPaymentMode();
-
-            if (effectiveType == null) continue;
-            if (effectiveType == PaymentSelectionType.CASH) continue;
-
-            final String refSite = subLedger.getReferenceSite() != null ? subLedger.getReferenceSite() : "";
-            final String slid    = subLedger.getId()            != null ? subLedger.getId()            : "";
-            SubLedgerRowStepRegistry.stepUnderRow(lineNo, "Payment — " + effectiveType.label(), () -> {
-                final int rowIdx = subLedgerList.indexOf(subLedger);
-                final PaymentInformationPopup popup = clickPaymentButton(subLedger.getSubLedger(), refSite, slid);
-                notifyFill(l -> l.onPaymentOpened(rowIdx, popup));
-                popup.onBeforeSubmit(() -> notifyFill(l -> l.onPaymentFilled(rowIdx, popup, payment)));
-                popup.fillAndSubmit(payment);
-                JavascriptExecutorUtils.waitForExtJS();
-                com.gsl.reports.ActualResultsHolder.get().getUiPaymentInfoPopupMap().put(slKey, true);
-            });
         }
     }
 }

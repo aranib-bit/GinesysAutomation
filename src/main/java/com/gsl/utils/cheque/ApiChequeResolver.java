@@ -43,7 +43,7 @@ public final class ApiChequeResolver {
     public static boolean ensureLeaves(GeneralVoucherApiClient api, long bankGlCode, long ownerSiteCode, long empCode, String workDate) {
         if (hasUnclaimed(api, bankGlCode, workDate)) return true;
         try {
-            api.chequeBooks().createFreeChequeBook(bankGlCode, ownerSiteCode, empCode, workDate);
+            new com.gsl.api.service.ChequeBookService(api.chequeBooks()).createFreeChequeBook(bankGlCode, ownerSiteCode, empCode, workDate);
         } catch (RuntimeException e) {
             Log.warn("[ApiChequeResolver] Cheque book backfill failed for glcode={}: {}", bankGlCode, e.getMessage());
             return false;

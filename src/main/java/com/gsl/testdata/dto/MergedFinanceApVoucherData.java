@@ -1,7 +1,7 @@
 package com.gsl.testdata.dto;
 
 import com.gsl.flow.Finance.Operations.Common.PostSaveDialogHandler;
-import com.gsl.pages.enums.Finance.Operations.APVoucher.APVoucherRevertOutcome;
+import com.gsl.pages.enums.Finance.Operations.Common.VoucherRevertOutcome;
 import com.gsl.testdata.Finance.Operations.Vouchers.APVoucher.*;
 import com.gsl.testdata.InvocationData;
 import com.gsl.testdata.MasterTestData;
@@ -41,7 +41,7 @@ import java.util.stream.Collectors;
 @Builder
 @AllArgsConstructor
 public class MergedFinanceApVoucherData
-        implements InvocationData,
+        implements com.gsl.testdata.StampableInvocationData,
                    PostSaveDialogHandler.PostSaveSpec,
                    VoucherDbContextBuilder.InvoiceScoped,
                    VoucherReportData {
@@ -146,6 +146,9 @@ public class MergedFinanceApVoucherData
      */
     private String releaseStatus;
 
+    /** Set by the API-mode Revert/Delete/Edit sources (the voucher they created); null otherwise. See {@link ApiVoucherRef}. */
+    private ApiVoucherRef apiVoucherRef;
+
     /**
      * Non-null only for a Revert row that was deliberately claimed to hit a specific non-success
      * dialog outcome (e.g. {@code CANNOT_REVERT_MONTH_CLOSED}) — {@code RevertApVoucher} asserts
@@ -155,7 +158,7 @@ public class MergedFinanceApVoucherData
      * {@code MergedFinanceGeneralVoucherData#getExpectedRevertOutcome()}'s exact semantics/field
      * name, renamed to AP's own outcome type.
      */
-    private APVoucherRevertOutcome expectedRevertOutcome;
+    private VoucherRevertOutcome expectedRevertOutcome;
 
     /**
      * Which tier {@code VoucherListPageBase#selectDocumentFast} starts its cascade at —

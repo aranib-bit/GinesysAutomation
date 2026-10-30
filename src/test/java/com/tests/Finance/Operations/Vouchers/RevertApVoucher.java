@@ -23,7 +23,7 @@ import com.gsl.network.pattern.FinanceApiPattern;
 import com.gsl.pages.Finance.Operations.ApVoucherListPage;
 import com.gsl.pages.HomePage;
 import com.gsl.pages.enums.Finance.MainMenuType;
-import com.gsl.pages.enums.Finance.Operations.APVoucher.APVoucherRevertOutcome;
+import com.gsl.pages.enums.Finance.Operations.Common.VoucherRevertOutcome;
 import com.gsl.pages.enums.Finance.Operations.OperationsMenuType;
 import com.gsl.pages.enums.topmenucomponent.MainModuleType;
 import com.gsl.reports.ApVoucherExtentDescriptionLogger;
@@ -100,13 +100,27 @@ public class RevertApVoucher extends WebTest {
         final ApVoucherListPage[]           listRef                = new ApVoucherListPage[1];
         final String[]                      beforeReleaseStatusRef = new String[1];
         final String[]                      immediateBeforeReleaseStatusRef = new String[1];
-        final APVoucherRevertOutcome[]      revertOutcomeRef       = new APVoucherRevertOutcome[1];
+        final VoucherRevertOutcome[]      revertOutcomeRef       = new VoucherRevertOutcome[1];
         final DocumentContext[]             contextRef             = new DocumentContext[1];
         final VoucherSnapshot[]             beforeSnapshotRef      = new VoucherSnapshot[1];
         final VoucherSnapshot[]             afterSnapshotRef       = new VoucherSnapshot[1];
 
+        // db.available=no: the finvchmain reads and the snapshot diff are replaced by rootview status reads through the API, and the
+        // voucher's identity comes from the API data source that created it (ApiVoucherRef).
+        final boolean noDb = !com.gsl.database.DbAvailability.isAvailable();
+
         // ── Step 1: DB Pre-Check — Verify Document Exists ────────────────────────────
-        StepExecutor.step("DB Pre-Check — Verify Document Exists", () -> {
+        StepExecutor.step(noDb ? "API Pre-Check — Verify Document Exists" : "DB Pre-Check — Verify Document Exists", () -> {
+            if (noDb) {
+                String status = readStatusViaApi(testData);
+                Assert.assertNotNull(status, "[API-PreCheck] voucher " + testData.getExistingVoucherNo()
+                        + " not found through the API — target document does not exist; cannot proceed with Revert.");
+                beforeReleaseStatusRef[0] = status;
+                testData.setDocumentInformation(new DocumentInformation(
+                        testData.getScenarioTypeLabel(), null, testData.getExistingVoucherNo(), null, null, null, null, null));
+                ReportLogger.business("Captured release status='" + status + "' (before Revert) for voucher: " + testData.getExistingVoucherNo());
+                return;
+            }
             DbQueryBuffer.start();
             FinVchMain header;
             try {
@@ -185,10 +199,18 @@ public class RevertApVoucher extends WebTest {
         // DocumentAdjustmentFlow.untagIfNeeded (also used by DeleteApVoucher/EditApVoucher and,
         // for AR, DeleteArVoucher/EditArVoucher).
         VoucherEditFlowSteps.untagIfTaggedRegardlessOfStatus(
-                testData.getExistingVoucherNo(), new java.util.ArrayList<>());
+                testData.getExistingVoucherNo(), new java.util.ArrayList<>(), testData.getApiVoucherRef());
 
         // ── Step 6: DB Check — Release Status Immediately Before Revert ──────────────────
-        StepExecutor.step("DB Check — Release Status Immediately Before Revert", () -> {
+        StepExecutor.step(noDb ? "API Check — Release Status Immediately Before Revert" : "DB Check — Release Status Immediately Before Revert", () -> {
+            if (noDb) {
+                immediateBeforeReleaseStatusRef[0] = readStatusViaApi(testData);
+                Assert.assertNotNull(immediateBeforeReleaseStatusRef[0], "[API-Check] voucher " + testData.getExistingVoucherNo()
+                        + " disappeared before Revert could be clicked.");
+                ReportLogger.business("Release status immediately before Revert action: '" + immediateBeforeReleaseStatusRef[0]
+                        + "' for voucher: " + testData.getExistingVoucherNo());
+                return;
+            }
             DbQueryBuffer.start();
             FinVchMain header;
             try {
@@ -210,7 +232,7 @@ public class RevertApVoucher extends WebTest {
         });
 
         // ── Step 7: Resolve Document Context + Capture BEFORE Snapshot ──────────────────
-        StepExecutor.step("Resolve Document Context + Capture BEFORE Snapshot", () -> {
+        if (!noDb) StepExecutor.step("Resolve Document Context + Capture BEFORE Snapshot", () -> {
             contextRef[0] = new VoucherDocumentContextResolver()
                     .resolve(testData.getExistingVoucherNo(), VoucherDomain.AP);
             beforeSnapshotRef[0] = new SnapshotService(new Aud2SnapshotDao()).capture(contextRef[0]);
@@ -260,13 +282,26 @@ public class RevertApVoucher extends WebTest {
                 ReportLogger.session("Logout deferred — session may be reused by a later test on this thread."));
 
         // ── Step 12: Capture AFTER Snapshot ──────────────────────────────────────────
-        StepExecutor.step("Capture AFTER Snapshot", () -> {
+        if (!noDb) StepExecutor.step("Capture AFTER Snapshot", () -> {
             afterSnapshotRef[0] = new SnapshotService(new Aud2SnapshotDao()).capture(contextRef[0]);
             ReportLogger.business("AFTER snapshot captured for voucher: " + testData.getExistingVoucherNo());
         });
 
         // ── Step 13: Database Validation ──────────────────────────────────────────────
-        StepExecutor.step("Database Validation", () -> {
+        StepExecutor.step(noDb ? "API Validation" : "Database Validation", () -> {
+            if (noDb) {
+                if (revertOutcomeRef[0] == VoucherRevertOutcome.CANNOT_REVERT_BRS_DONE
+                        || revertOutcomeRef[0] == VoucherRevertOutcome.CANNOT_REVERT_MONTH_CLOSED) {
+                    ReportLogger.business("API validation: Revert was blocked as expected (" + revertOutcomeRef[0] + ").");
+                    return;
+                }
+                String after = readStatusViaApi(testData);
+                Assert.assertEquals(after, "U", "[API-Validate] voucher " + testData.getExistingVoucherNo()
+                        + " should be Unposted after Revert (status before='" + immediateBeforeReleaseStatusRef[0] + "').");
+                ReportLogger.pass("API validated — Revert completed: " + immediateBeforeReleaseStatusRef[0] + " -> U for voucher: "
+                        + testData.getExistingVoucherNo());
+                return;
+            }
             if (!com.gsl.validation.ValidationSwitches.run(com.gsl.validation.ValidationSwitches.Area.DB)) {
                 com.gsl.reports.ExtentLogger.skip("DB validation skipped — validation.db.enabled=no");
                 return;
@@ -286,10 +321,10 @@ public class RevertApVoucher extends WebTest {
 
             String expectedNewStatus;
             String outcomeNote;
-            if (revertOutcomeRef[0] == APVoucherRevertOutcome.CANNOT_REVERT_BRS_DONE) {
+            if (revertOutcomeRef[0] == VoucherRevertOutcome.CANNOT_REVERT_BRS_DONE) {
                 expectedNewStatus = immediateBefore;
                 outcomeNote = "BRS correctly blocked Revert";
-            } else if (revertOutcomeRef[0] == APVoucherRevertOutcome.CANNOT_REVERT_MONTH_CLOSED) {
+            } else if (revertOutcomeRef[0] == VoucherRevertOutcome.CANNOT_REVERT_MONTH_CLOSED) {
                 expectedNewStatus = immediateBefore;
                 outcomeNote = "closed period correctly blocked Revert";
             } else {
@@ -317,5 +352,13 @@ public class RevertApVoucher extends WebTest {
                     + "', expected='" + expectedNewStatus + "', dialog outcome=" + revertOutcomeRef[0]
                     + " for voucher: " + testData.getExistingVoucherNo());
         });
+    }
+
+    /** Release status ("P"/"U") of the row's voucher through the API; null when it cannot be read. */
+    private static String readStatusViaApi(MergedFinanceApVoucherData testData) {
+        com.gsl.testdata.dto.ApiVoucherRef ref = testData.getApiVoucherRef();
+        Assert.assertNotNull(ref, "[API] no API voucher reference on the row — cannot read the voucher without the DB.");
+        return com.gsl.api.core.ApiSessionFactory.withWebApiSession(session ->
+                session.getApVoucherApiClient().fetchDocumentStatus(ref.getVchcode(), ref.getOuCode(), Long.parseLong(session.getUserId())));
     }
 }

@@ -1,5 +1,6 @@
 package com.gsl.api.client;
 
+import com.gsl.api.webapi.WebApiEndpoints;
 import com.gsl.api.client.udf.UdfValueBuilder;
 import com.gsl.api.core.ApiClient;
 import com.gsl.api.core.ApiException;
@@ -42,18 +43,18 @@ public class SubLedgerOthersApiClient extends ApiClient {
     /** POST /Shared/GetSubledgerClassLookup?classType=O — resolves the "Others" clscode live. */
     public List<SubledgerClassLookupResult> fetchSubledgerClassLookup(String classType) {
         Map<String, Object> params = Map.of("classType", classType);
-        Response response = postRaw("/Shared/GetSubledgerClassLookup", Map.of(), params);
+        Response response = postRaw(WebApiEndpoints.Party.CLASS_LOOKUP, Map.of(), params);
         return response.jsonPath().getList("result.items", SubledgerClassLookupResult.class);
     }
 
     /** POST /EmployeeMaster/CreateFinanceSubLedgerOther — the final save call. */
     public SimpleResultResponse createFinanceSubLedgerOther(SubLedgerOthersCreateRequest request) {
-        return post("/EmployeeMaster/CreateFinanceSubLedgerOther", request, SimpleResultResponse.class);
+        return post(WebApiEndpoints.Party.OTHERS_CREATE, request, SimpleResultResponse.class);
     }
 
     /**
      * Orchestrates the full flow for a given target GL — same "thread each live response into
-     * the next, never hardcode" principle as {@code ArVoucherApiClient.createArVoucherWithDefaults}.
+     * the next, never hardcode" principle as {@code ArVoucherService.createArVoucherWithDefaults}.
      *
      * @param targetGlcode the {@code fingl.glcode} General Voucher's Type3 combination needs a
      *                     permitted Sub Ledger against (the GV combination's already-resolved GL —

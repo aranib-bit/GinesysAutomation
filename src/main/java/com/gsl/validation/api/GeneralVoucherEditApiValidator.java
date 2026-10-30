@@ -33,7 +33,7 @@ public final class GeneralVoucherEditApiValidator {
     private GeneralVoucherEditApiValidator() {}
 
     /** Every check that ran, split by outcome — the caller renders both and fails the step when {@code failed} is non-empty. */
-    public record Result(List<String> passed, List<String> failed, List<ApiCheckRow> rows) {
+    public record Result(List<String> passed, List<String> failed, List<ApiCheckRow> rows, java.util.Map<String, String> titles) {
         public boolean ok() { return failed.isEmpty(); }
     }
 
@@ -62,6 +62,7 @@ public final class GeneralVoucherEditApiValidator {
         int common = Math.min(b.size(), a.size());
         for (int i = 0; i < common; i++) {
             String label = "Line " + (i + 1);
+            c.title("Row " + (i + 1), ApiLineTitles.fromLine(i, a.get(i)));
             boolean paymentEdited = scenario == GeneralVoucherEditVariant.ScenarioType.PAYMENT_INFO && i == 0;
             if (i == editedIdx) {
                 expectEditedLine(c, label, detail, b.get(i), a.get(i));
@@ -83,7 +84,7 @@ public final class GeneralVoucherEditApiValidator {
             c.eq("Payment mode", np.getPaymentMode().dbCode(), first.getPaymentMode());
             c.eq("Instrument number", norm(np.getInstrumentNo()), norm(first.getInstrumentNumber()));
         }
-        return new Result(c.passed, c.failed, c.rows);
+        return new Result(c.passed, c.failed, c.rows, c.titles);
     }
 
     private static void expectEditedLine(ApiChecks c, String label, DetailLineEditTarget target, GeneralVoucherDetailLine before,

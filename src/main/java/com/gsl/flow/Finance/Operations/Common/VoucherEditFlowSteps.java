@@ -1,7 +1,7 @@
 package com.gsl.flow.Finance.Operations.Common;
 
 import com.gsl.api.core.ApiSessionFactory;
-import com.gsl.api.model.apvoucher.ApVoucherRevertResponse;
+import com.gsl.api.model.common.VoucherActionResponse;
 import com.gsl.database.DatabaseManager;
 import com.gsl.database.dao.HrEmpDao;
 import com.gsl.database.dao.finance.FinPostDao;
@@ -74,6 +74,41 @@ public final class VoucherEditFlowSteps {
         untagStep(docNo, null, false, capturedOut);
     }
 
+    /** {@link #untagIfTagged(String, String, List)} for an API-created voucher: with {@code db.available=no} the untag runs from {@code ref}. */
+    public static void untagIfTagged(String docNo, String releaseStatus, List<CapturedTag> capturedOut,
+                                     com.gsl.testdata.dto.ApiVoucherRef ref) {
+        if (ref != null && !com.gsl.database.DbAvailability.isAvailable()) {
+            untagViaApiStep(docNo, releaseStatus, true, capturedOut, ref);
+            return;
+        }
+        untagStep(docNo, releaseStatus, true, capturedOut);
+    }
+
+    /** {@link #untagIfTaggedRegardlessOfStatus(String, List)} for an API-created voucher. */
+    public static void untagIfTaggedRegardlessOfStatus(String docNo, List<CapturedTag> capturedOut,
+                                                       com.gsl.testdata.dto.ApiVoucherRef ref) {
+        if (ref != null && !com.gsl.database.DbAvailability.isAvailable()) {
+            untagViaApiStep(docNo, null, false, capturedOut, ref);
+            return;
+        }
+        untagStep(docNo, null, false, capturedOut);
+    }
+
+    private static void untagViaApiStep(String docNo, String releaseStatus, boolean requirePosted, List<CapturedTag> capturedOut,
+                                        com.gsl.testdata.dto.ApiVoucherRef ref) {
+        StepExecutor.step("Untag Document Adjustments if Tagged (API)", () -> {
+            capturedOut.clear();
+            if (requirePosted && !"P".equals(releaseStatus)) {
+                ReportLogger.business("Voucher status=" + releaseStatus + " — not Posted, untag check skipped (nothing to unpost).");
+                return;
+            }
+            capturedOut.addAll(ref.getCapturedTags());   // what the DB path reads from fintag before the untag
+            boolean untagged = DocumentAdjustmentFlow.untagViaApi(ref);
+            ReportLogger.business("Untag check for " + docNo + ": "
+                    + (untagged ? "was tagged — untagged via Document Adjustment API" : "not tagged."));
+        });
+    }
+
     private static void untagStep(String docNo, String releaseStatus, boolean requirePosted,
                                   List<CapturedTag> capturedOut) {
         StepExecutor.step("Untag Document Adjustments if Tagged", () -> {
@@ -130,7 +165,7 @@ public final class VoucherEditFlowSteps {
             FinVchMain header = requireHeader(jdbi, docNo, "Unpost");
             long connectedOUCode = AccountingPeriodResolver.resolveOuCode(jdbi, header.getAdmsiteCodeOwner());
 
-            ApVoucherRevertResponse response = ApiSessionFactory.withWebApiSession(session -> {
+            VoucherActionResponse response = ApiSessionFactory.withWebApiSession(session -> {
                 long empCode = jdbi.onDemand(HrEmpDao.class).findEcodeByAbbre(session.getCredential().username())
                         .orElseThrow(() -> new IllegalStateException(
                                 "[Unpost] Could not resolve ecode for self-acquired API user "
@@ -139,6 +174,25 @@ public final class VoucherEditFlowSteps {
             });
             Assert.assertTrue(response.isSuccess(),
                     "[Unpost] API revert for voucher " + docNo + " returned success=false");
+            ReportLogger.business("Voucher unposted via API (was release_status='P') for: " + docNo);
+        });
+    }
+
+    /** {@link #unpostApVoucherViaApi(String, String)} for an API-created voucher: with {@code db.available=no} the call uses {@code ref}. */
+    public static void unpostApVoucherViaApi(String docNo, String releaseStatus, com.gsl.testdata.dto.ApiVoucherRef ref) {
+        if (ref == null || com.gsl.database.DbAvailability.isAvailable()) {
+            unpostApVoucherViaApi(docNo, releaseStatus);
+            return;
+        }
+        StepExecutor.step("Unpost if Posted (release_status='P') — via API", () -> {
+            if (!"P".equals(releaseStatus)) {
+                ReportLogger.business("Voucher status=" + releaseStatus + " — unpost not required");
+                return;
+            }
+            VoucherActionResponse response = ApiSessionFactory.withWebApiSession(session ->
+                    session.getApVoucherApiClient().revertApVoucher(ref.getVchcode(), Long.parseLong(session.getUserId()), ref.getOuCode()));
+            Assert.assertTrue(response.allSucceeded(),
+                    "[Unpost] API revert for voucher " + docNo + " was refused: " + response.firstFailureMessage());
             ReportLogger.business("Voucher unposted via API (was release_status='P') for: " + docNo);
         });
     }

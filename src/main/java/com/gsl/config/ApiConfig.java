@@ -159,6 +159,11 @@ public interface ApiConfig extends Config {
     @Key("publicapi.clientSecret")
     String publicApiClientSecret();
 
+    /** Seconds before a PUBLICAPI token's expiry at which it is fetched again, so a request never races the expiry. */
+    @Key("publicapi.token.refreshMarginSeconds")
+    @DefaultValue("60")
+    int publicApiTokenRefreshMarginSeconds();
+
     // ── Data setup strategy (hybrid API + DB) ────────────────────────────────
 
     /** Data-setup strategy (e.g. HYBRID) for the flow identified by {@code flowKey}. */
@@ -173,10 +178,38 @@ public interface ApiConfig extends Config {
     @DefaultValue("20")
     int smallQuantityThreshold();
 
+    /**
+     * How the TDS of a document is rounded to a whole rupee before it is taken off the pending amount the Select Document popup offers:
+     * {@code CEILING} (the TDS rounds up, so the popup's pending is lower), {@code FLOOR}, {@code HALF_UP} or {@code NONE}.
+     */
+    @Key("api.pending.tdsRoundoff")
+    @DefaultValue("CEILING")
+    String pendingTdsRoundoff();
+
+    /** Rate (percent) of a TDS section (nature) the backfill creates when the environment has too few natures for a scenario. */
+    @Key("backfill.tds.section.rate")
+    @DefaultValue("1")
+    double backfillTdsSectionRate();
+
+    /** ISO date ({@code yyyy-MM-dd}) such a rate is valid from; empty means the first day of the current month. */
+    @Key("backfill.tds.section.rateValidFrom")
+    @DefaultValue("")
+    String backfillTdsSectionRateValidFrom();
+
+    /** The agency the backfill creates is booked to the first ledger of the TDS Agency form whose name contains this text (case-insensitive). */
+    @Key("backfill.tds.agency.ledgerNameContains")
+    @DefaultValue("TDS")
+    String backfillTdsAgencyLedgerNameContains();
+
     /** Ordered platform preference for a small-quantity data-availability backfill. */
     @Key("datafallback.smallQty.preferredOrder")
     @DefaultValue("WEBAPI,PUBLICAPI")
     ApiPlatform[] smallQtyPreferredOrder();
+
+    /** Ordered platform preference for creating a party master (vendor, customer, ...) as a backfill; a platform that cannot do it is skipped. */
+    @Key("backfill.party.platformOrder")
+    @DefaultValue("WEBAPI")
+    ApiPlatform[] partyPlatformOrder();
 
     /** Default mobile platform (ANDROID/IOS) when a test doesn't specify one. */
     @Key("mobile.defaultPlatform")
@@ -240,12 +273,18 @@ public interface ApiConfig extends Config {
     @DefaultValue("k6")
     String k6BinaryPath();
 
-    /** Resolves the k6 scenario script path for a given BackfillStrategy.k6ScriptKey(). */
+    /** Explicit override of the k6 scenario script path for a BackfillStrategy.k6ScriptKey(); blank = derived from {@link #k6Home()} by {@code K6Scripts}. */
     @Key("datafallback.k6.scriptPath.${0}")
+    @DefaultValue("")
     String k6ScriptPathFor(String scriptKey);
 
+    /** The k6 project directory, relative to the project directory (never an absolute D:\ path); holds flows/, lib/, scenarios/, config/. */
+    @Key("k6.home")
+    @DefaultValue("performance/k6")
+    String k6Home();
+
     /**
-     * k6 tenant (a {@code config/environments/<tenant>.json} in the k6 project) the doc-scheme filler runs
+     * k6 tenant (a {@code erp/config/environments/<tenant>.json} in the k6 project) the doc-scheme filler runs
      * against. Must point at the SAME host/DB the UI tests use — {@link #activeTenant()} often names a
      * different host (e.g. {@code clone-staging} keeps {@code stage-ideal}), so the filler has its own
      * setting. Blank falls back to {@link #activeTenant()}.

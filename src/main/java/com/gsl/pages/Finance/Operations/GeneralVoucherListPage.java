@@ -1,7 +1,7 @@
 package com.gsl.pages.Finance.Operations;
 
 import com.gsl.pages.enums.Finance.Operations.Common.CommonVoucherActionsMenu;
-import com.gsl.pages.enums.Finance.Operations.GeneralVoucher.GeneralVoucherRevertOutcome;
+import com.gsl.pages.enums.Finance.Operations.Common.VoucherRevertOutcome;
 import com.gsl.pages.pagecomponent.Finance.Operations.Common.VoucherListPageBase;
 import com.gsl.pages.pagecomponent.Finance.Operations.GeneralVoucher.GeneralVoucherListFooter;
 import com.gsl.pages.pagecomponent.Finance.Operations.GeneralVoucher.GeneralVoucherListGridHeader;
@@ -18,7 +18,7 @@ import com.gsl.utils.dataprovider.fixture.finance.DocumentSearchStrategy;
  * <p>Only what's genuinely GV-specific stays here: the Revert-flow composites
  * ({@link #clickRevert()}/{@link #confirmRevert()}/{@link #revertSelectedDocument()}) —
  * {@code confirmRevert()}'s dialog-text matching is confirmed only against GV's live DOM (plan
- * §12), and its return type ({@link GeneralVoucherRevertOutcome}) is itself a GV-named enum.
+ * §12), and its return type ({@link VoucherRevertOutcome}) is itself a GV-named enum.
  * Everything else ({@code clickAdd}/{@code searchByVoucherNo}/{@code clickEditForVoucher}/
  * {@code clickEditFromActions}/{@code doubleClickToEdit}/{@code clickDeleteForVoucher}/
  * {@code clickUnpost}/{@code confirmDelete}/{@code clickActions}/{@code clickRefresh}/
@@ -69,7 +69,7 @@ public class GeneralVoucherListPage extends VoucherListPageBase<
      * which case actually happened (Posted → un-posted vs. already un-posted, no-op) so the
      * caller can assert the correct expected DB outcome.
      */
-    public GeneralVoucherRevertOutcome confirmRevert() {
+    public VoucherRevertOutcome confirmRevert() {
         return getMainGrid().confirmRevert();
     }
 
@@ -86,7 +86,7 @@ public class GeneralVoucherListPage extends VoucherListPageBase<
      * itself — that test interposes a diagnostic DB re-read between the Actions and Revert
      * clicks for its own race-condition checks, which this collapsed method has no room for.
      */
-    public GeneralVoucherRevertOutcome revertSelectedDocument() {
+    public VoucherRevertOutcome revertSelectedDocument() {
         clickActions();
         clickRevert();
         return confirmRevert();

@@ -13,6 +13,7 @@ import com.gsl.pages.pagecomponent.Finance.Operations.Common.SubLedgerRowLocator
 import com.gsl.reports.ActualResultsHolder;
 import com.gsl.reports.ReportLogger;
 import com.gsl.reports.StepExecutor;
+import com.gsl.utils.dataprovider.source.finance.PendingDocumentRecheck;
 import com.gsl.testdata.Finance.Operations.Vouchers.APVoucher.SelectDocument;
 import com.gsl.testdata.dto.MergedFinanceApVoucherData;
 import com.gsl.model.finance.FinPost;
@@ -174,6 +175,7 @@ public final class ApVoucherPredicateFactory {
                 ActualResultsHolder.get().setUiOnAccount(docInfo.getOnAccount());
             });
 
+            StepExecutor.step("Re-check Reserved Documents (live)", PendingDocumentRecheck::verifyCurrentThread);
             page.beginFillUi(com.gsl.validation.ui.UiValidationLevel.CONTRACT);
             StepExecutor.step("Fill Sub-Ledger Information", () -> {
                 page.fillSubLedgerRowsForDocument(data, true);
@@ -299,6 +301,49 @@ public final class ApVoucherPredicateFactory {
             });
 
             return true;    // test passes when expected error was raised
+        };
+
+    // ─── Extinct vendor must not be offered ───────────────────────────────────
+
+    /**
+     * NEG_EXTINCT_VENDOR_NOT_OFFERED - the data's single sub-ledger row is an extinct vendor. Checks, in this order: (1) the Finance
+     * sub-ledger lookup with the vendor's name as search text does not return it (what the picker calls); (2) the Sub Ledger picker
+     * itself does not list it when its name is typed. Nothing is selected or saved; the form is discarded. If either check finds the
+     * vendor the scenario FAILS naming it - that is the defect it exists to catch.
+     */
+    public static final Supplier<BiPredicate<MergedFinanceApVoucherData, ApVoucherAdd>>
+        NEG_EXTINCT_VENDOR_NOT_OFFERED_BEHAVIOR = () -> (data, page) -> {
+
+            final com.gsl.testdata.Finance.Operations.Vouchers.APVoucher.SubLedgerInformation sl = data.getSubLedgerInformationList().get(0);
+            final String name = sl.getSubLedger();
+            final String slId = sl.getId();
+
+            StepExecutor.step("Fill Document Information", () -> page.fillDocumentHeader(data.getDocumentInformation()));
+
+            StepExecutor.step("API check - sub-ledger lookup must not offer extinct vendor '" + name + "'", () -> {
+                boolean offered = com.gsl.api.core.ApiSessionFactory.withWebApiSession(session -> {
+                    com.gsl.utils.dataprovider.source.finance.ApiVoucherSupport.Owner o =
+                            com.gsl.utils.dataprovider.source.finance.ApiVoucherSupport.resolveOwner(session, com.gsl.enums.CashBankType.BANK);
+                    return session.getApVoucherApiClient()
+                            .fetchSubLedgersMatching(o.siteCode(), o.ouCode(), (int) o.empCode(), o.workDate(), name).stream()
+                            .anyMatch(x -> (slId != null && slId.equals(x.getSlid())) || name.equalsIgnoreCase(x.getSlName()));
+                });
+                org.testng.Assert.assertFalse(offered, "Extinct vendor '" + name + "' (slid=" + slId + ") is offered by the sub-ledger lookup.");
+                ReportLogger.pass("Sub-ledger lookup does not offer extinct vendor '" + name + "'.");
+            });
+
+            StepExecutor.step("UI check - Sub Ledger picker must not list extinct vendor '" + name + "'", () -> {
+                boolean shown = page.isSubLedgerOfferedByPicker(name, slId);
+                org.testng.Assert.assertFalse(shown, "Extinct vendor '" + name + "' (slid=" + slId + ") is listed by the Sub Ledger picker.");
+                ReportLogger.pass("Sub Ledger picker does not list extinct vendor '" + name + "'.");
+            });
+
+            StepExecutor.step("Cancel (Logout deferred)", () -> {
+                page.close().clickYes(ApVoucherListPage::new);
+                ReportLogger.session("Logout deferred - session may be reused by a later test on this thread.");
+            });
+
+            return true;
         };
 
     // ─── Document scheme exhausted ────────────────────────────────────────────

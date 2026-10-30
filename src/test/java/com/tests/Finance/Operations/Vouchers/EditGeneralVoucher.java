@@ -30,7 +30,7 @@ import com.gsl.pages.Finance.Operations.GeneralVoucherAdd;
 import com.gsl.pages.Finance.Operations.GeneralVoucherListPage;
 import com.gsl.pages.HomePage;
 import com.gsl.pages.enums.Finance.MainMenuType;
-import com.gsl.pages.enums.Finance.Operations.GeneralVoucher.GeneralVoucherRevertOutcome;
+import com.gsl.pages.enums.Finance.Operations.Common.VoucherRevertOutcome;
 import com.gsl.pages.enums.Finance.Operations.OperationsMenuType;
 import com.gsl.pages.enums.topmenucomponent.MainModuleType;
 import com.gsl.reports.ActualResultsHolder;
@@ -52,6 +52,8 @@ import com.gsl.utils.dataprovider.fixture.finance.VoucherEditEntryMethod;
 import com.gsl.utils.ui.UiFieldState;
 import com.gsl.validation.snapshot.DocumentContext;
 import com.gsl.validation.snapshot.ExpectedChangeSet;
+import com.gsl.validation.api.AuditApiReader;
+import com.gsl.validation.api.GeneralVoucherApiAuditChecks;
 import com.gsl.validation.api.GeneralVoucherEditApiValidator;
 import com.gsl.validation.api.NoDbApiSession;
 import com.gsl.validation.snapshot.SnapshotService;
@@ -167,7 +169,7 @@ public class EditGeneralVoucher extends WebTest {
         final VoucherSnapshot[]        afterRef   = new VoucherSnapshot[1];
         final String[]                 liveReleaseStatusRef = new String[1];
         final String[]                 immediateBeforeReleaseStatusRef = new String[1];
-        final GeneralVoucherRevertOutcome[] unpostOutcomeRef = new GeneralVoucherRevertOutcome[1];
+        final VoucherRevertOutcome[] unpostOutcomeRef = new VoucherRevertOutcome[1];
 
         // db.available=no: nothing below may touch the database — DB reads/snapshots are replaced by rootview reads (validation.nodb.mode=API)
         // or reported SKIPPED (validation.nodb.mode=SKIP). db.available=yes keeps the original path unchanged.
@@ -300,13 +302,13 @@ public class EditGeneralVoucher extends WebTest {
         // immediate-before read, not Step 0's now-possibly-stale liveReleaseStatusRef[0].
         StepExecutor.step("Unpost if Posted (release_status='P')", () -> {
             if ("P".equals(immediateBeforeReleaseStatusRef[0])) {
-                GeneralVoucherRevertOutcome outcome = listRef[0].revertSelectedDocument();
+                VoucherRevertOutcome outcome = listRef[0].revertSelectedDocument();
                 unpostOutcomeRef[0] = outcome;
-                if (outcome == GeneralVoucherRevertOutcome.CANNOT_REVERT_BRS_DONE) {
+                if (outcome == VoucherRevertOutcome.CANNOT_REVERT_BRS_DONE) {
                     ReportLogger.warn("Voucher's line(s) are already bank-reconciled — Revert (un-post) was "
                             + "blocked; voucher remains Posted. The subsequent Edit steps may behave "
                             + "differently against a still-Posted voucher.");
-                } else if (outcome == GeneralVoucherRevertOutcome.CANNOT_REVERT_MONTH_CLOSED) {
+                } else if (outcome == VoucherRevertOutcome.CANNOT_REVERT_MONTH_CLOSED) {
                     // GV_EDIT_HEADER_POSTED_MONTH_CLOSED_NEGATIVE's actual assertion point — see the
                     // early-return right after this step. Same shape as the BRS branch above: the
                     // live app refused to un-post, so the voucher remains Posted.
@@ -382,6 +384,7 @@ public class EditGeneralVoucher extends WebTest {
                     beforeView[0] = NoDbApiSession.current().rootView(Long.parseLong(testData.getReservedDocumentKey()));
                     ReportLogger.business("BEFORE rootview captured: " + beforeView[0].getExpenseIncomeDetail().size()
                             + " line(s), status=" + beforeView[0].getDocumentStatus());
+                    AuditApiReader.captureBefore(testData.getExistingVoucherNo());
                 } else {
                     ExtentLogger.skip("BEFORE snapshot skipped — db.available=no and validation.nodb.mode=SKIP");
                 }
@@ -584,7 +587,7 @@ public class EditGeneralVoucher extends WebTest {
                 }
                 GeneralVoucherEditApiValidator.Result result = GeneralVoucherEditApiValidator.validate(
                         testData, scenarioType, beforeView[0], afterView[0]);
-                com.gsl.reports.ApiValidationReporter.report(result.rows(), null);
+                com.gsl.reports.ApiValidationReporter.report(result.rows(), result.titles(), null);
                 Assert.assertTrue(result.ok(), "[API validation] " + result.failed().size() + " check(s) failed for "
                         + docNoRef[0] + ":\n  " + String.join("\n  ", result.failed()));
                 ReportLogger.pass("API rootview validation complete (" + result.passed().size() + " checks). Document No: " + docNoRef[0]);
@@ -620,6 +623,23 @@ public class EditGeneralVoucher extends WebTest {
             validator.assertAll();
             ReportLogger.pass("Snapshot validation complete. Document No: " + docNoRef[0]);
         });
+
+        if (noDb && apiValidation) {
+            StepExecutor.step("API Audit Validation", () -> {
+                var before = AuditApiReader.before();
+                if (before == null) {
+                    ExtentLogger.skip("BEFORE audit trail was not captured (voucher not listed)");
+                    return;
+                }
+                var after = AuditApiReader.awaitNewVersion(testData.getExistingVoucherNo(), before.vchcode(), before.from(),
+                        c -> c.maxVersion() > before.capture().maxVersion());
+                var result = GeneralVoucherApiAuditChecks.edited(testData, scenarioType, before.capture(), after);
+                com.gsl.reports.ApiValidationReporter.append(result.rows(), result.titles(), "AuditLog FinVoucher / Finance Site Allocation");
+                Assert.assertTrue(result.ok(), "[API audit] " + result.failed().size() + " check(s) failed for "
+                        + docNoRef[0] + ":\n  " + String.join("\n  ", result.failed()));
+                ReportLogger.pass("API audit validated (" + result.passed().size() + " checks). Document No: " + docNoRef[0]);
+            });
+        }
 
         // ── Step 14b: Verify Site Reallocation (SITE_SPLIT_ONLY only) ─────────────
         // A direct, fresh DB re-query of fincosttag — same idiom as Step 0's DB pre-check — rather

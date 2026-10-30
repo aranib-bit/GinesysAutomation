@@ -64,6 +64,11 @@ public interface FrameworkConfig extends Config {
     @DefaultValue("yes")
     String validationDbEnabled();
 
+    /** Seconds to wait for the audit rows an action wrote to become visible through the Audit API. */
+    @Key("audit.api.wait.seconds")
+    @DefaultValue("15")
+    int auditApiWaitSeconds();
+
     /** App login username used in DB mode (must match hrdemp.abbre in the database). */
     @Key("appusername")
     String username();

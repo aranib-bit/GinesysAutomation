@@ -73,11 +73,8 @@ public class ApiGeneralVoucherRevertDataSource implements TestDataSource<MergedF
                     + "voucher in a closed period.");
         }
 
+        TestDataSource.stampInvocations(results);
         int total = results.size();
-        for (int i = 0; i < total; i++) {
-            results.get(i).setInvocationIndex(i + 1);
-            results.get(i).setTotalInvocations(total);
-        }
         Log.info("[API] GeneralVoucherRevert emitted {} row(s) for '{}' - group filter={}, tag filter={}",
                 total, methodName, activeGroup, activeTags.isEmpty() ? "ALL" : activeTags);
         return results;
@@ -86,14 +83,11 @@ public class ApiGeneralVoucherRevertDataSource implements TestDataSource<MergedF
     private static MergedFinanceGeneralVoucherData createRow(GeneralVoucherApiClient api, long empCode,
                                                              GeneralVoucherVariant variant) {
         GlAccountType accountType = variant.getAccountType();
-        GeneralVoucherCreateResponse created = api.createGeneralVoucherWithDefaults(accountType, 0, 0, empCode);
-        List<String> log = new ArrayList<>();
-        log.add("═══════════════════════════════════════════════════════════");
-        log.add("  API DATA GATHERING - POSTED VOUCHER CREATED (GENERAL VOUCHER REVERT)");
-        log.add("═══════════════════════════════════════════════════════════");
+        GeneralVoucherCreateResponse created = new com.gsl.service.GeneralVoucherService(api).createGeneralVoucherWithDefaults(accountType, 0, 0, empCode);
+        List<String> log = GatheringLog.start("API DATA GATHERING - POSTED VOUCHER CREATED (GENERAL VOUCHER REVERT)");
         log.add("  Combination='" + variant.getVariantId() + "', account type=" + accountType);
         log.add("  Created and released voucher scheme_docno='" + created.getDocScheme() + "' (vchcode=" + created.vchcode() + ")");
-        log.add("═══════════════════════════════════════════════════════════");
+        GatheringLog.end(log);
 
         GeneralVoucherFixtureOptions opts = GeneralVoucherFixtureOptions.of(
                 variant.getAccountType(), variant.getGlLineType(), variant.isDebitSide(), variant.isReversal(),

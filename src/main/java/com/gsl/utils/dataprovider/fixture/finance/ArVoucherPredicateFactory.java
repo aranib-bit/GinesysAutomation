@@ -13,6 +13,7 @@ import com.gsl.pages.pagecomponent.Finance.Operations.Common.SubLedgerRowLocator
 import com.gsl.reports.ActualResultsHolder;
 import com.gsl.reports.ReportLogger;
 import com.gsl.reports.StepExecutor;
+import com.gsl.utils.dataprovider.source.finance.PendingDocumentRecheck;
 import com.gsl.testdata.Finance.Operations.Vouchers.ARVoucher.SelectDocument;
 import com.gsl.testdata.dto.MergedFinanceArVoucherData;
 import com.gsl.utils.Log;
@@ -87,6 +88,7 @@ public final class ArVoucherPredicateFactory {
                 ActualResultsHolder.get().setUiCashBank(docInfo.getCashBank());
             });
 
+            StepExecutor.step("Re-check Reserved Documents (live)", PendingDocumentRecheck::verifyCurrentThread);
             page.beginFillUi(com.gsl.validation.ui.UiValidationLevel.CONTRACT);
             StepExecutor.step("Fill Sub-Ledger Information", () -> {
                 page.fillSubLedgerRows(data, true);

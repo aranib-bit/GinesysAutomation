@@ -1,5 +1,8 @@
 package com.gsl.api.client;
 
+import com.gsl.api.core.QueryParams;
+import com.gsl.api.webapi.WebApiEndpoints;
+import com.gsl.api.webapi.factory.DocSchemeRequestFactory;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -62,13 +65,7 @@ public class DocSchemeAdminApiClient extends ApiClient {
 
     /** POST MenuDocScheme/GetListOfDocScheme (paging off) — every scheme with its tagged menu shortcodes. */
     public List<SchemeRef> listSchemes(String workDate) {
-        Map<String, Object> body = new LinkedHashMap<>();
-        body.put("pagingNotRequired", true);
-        body.put("workDate", workDate);
-        body.put("page", 1);
-        body.put("start", 0);
-        body.put("limit", 25);
-        JsonNode items = json(postRaw("/MenuDocScheme/GetListOfDocScheme", body)).path("result").path("items");
+        JsonNode items = json(postRaw(WebApiEndpoints.DocScheme.LIST, DocSchemeRequestFactory.list(workDate))).path("result").path("items");
         List<SchemeRef> out = new ArrayList<>();
         for (JsonNode item : items) {
             List<String> codes = new ArrayList<>();
@@ -83,7 +80,7 @@ public class DocSchemeAdminApiClient extends ApiClient {
 
     /** GET MenuDocScheme/AccountingPeriodInfo — first (current) period. */
     public AccountingPeriod fetchAccountingPeriod() {
-        JsonNode first = json(getRaw("/MenuDocScheme/AccountingPeriodInfo")).path("result").path(0);
+        JsonNode first = json(getRaw(WebApiEndpoints.DocScheme.ACCOUNTING_PERIOD, Map.of())).path("result").path(0);
         if (first.isMissingNode()) {
             throw new ApiException("MenuDocScheme/AccountingPeriodInfo returned no accounting period", 0);
         }
@@ -95,44 +92,8 @@ public class DocSchemeAdminApiClient extends ApiClient {
      * new scheme's code, so the caller re-lists to find it.
      */
     public void createScheme(NewScheme scheme, AccountingPeriod period) {
-        String sample = scheme.prefix() + "0".repeat(Math.max(0, scheme.width() - 1)) + "1/" + period.fyySuffix();
-        Map<String, Object> body = new LinkedHashMap<>();
-        body.put("isAlreadyUsed", false);
-        body.put("prefill", "0");
-        body.put("width", scheme.width());
-        body.put("starting", 1);
-        body.put("isExcise", "N");
-        body.put("isExtinct", "N");
-        body.put("generationInterval", "Y");
-        body.put("generationBasis", "O");
-        body.put("gstApplBacking", "N");
-        body.put("isDocCodeWise", "N");
-        body.put("basedOn", "S");
-        body.put("docName", scheme.docName());
-        body.put("prefix", scheme.prefix());
-        body.put("defaultSuffix", "");
-        body.put("suffix", "/[FYY]");
-        body.put("defaultSuffixMusk", "");
-        body.put("suffixAttachment", "");
-        body.put("seperator1", "");
-        body.put("seperator2", "");
-        body.put("remarks", scheme.remarks());
-        body.put("isManual", "N");
-        body.put("dateOfCreation", null);
-        body.put("dateOfModification", null);
-        body.put("sampleDocNo", sample);
-        body.put("companyCode", 0);
-        body.put("isSystemGenerated", "");
-        body.put("code", 0);
-        body.put("gstAppl", "");
-        body.put("accPeriodDateFrom", period.dateFrom());
-        body.put("accPeriodDateTo", period.dateTo());
-        body.put("validSampleNo", true);
-        body.put("isMenuTagged", false);
-        body.put("extinct", false);
-        body.put("isExciseApp", false);
-        body.put("isExtinctHidden", true);
-        postRaw("/MenuDocScheme/Create", body);
+        postRaw(WebApiEndpoints.DocScheme.CREATE, DocSchemeRequestFactory.create(scheme.docName(), scheme.prefix(), scheme.width(), scheme.remarks(),
+                period.fyySuffix(), period.dateFrom(), period.dateTo()));
     }
 
     /**
@@ -141,31 +102,15 @@ public class DocSchemeAdminApiClient extends ApiClient {
      * nothing existing is dropped.
      */
     public void tagToMenus(long docCode, List<String> menuShortcodes) {
-        List<Map<String, Object>> body = new ArrayList<>();
-        for (String shortcode : menuShortcodes) {
-            Map<String, Object> entry = new LinkedHashMap<>();
-            entry.put("docCode", docCode);
-            entry.put("menuCode", null);
-            entry.put("menuShCode", shortcode);
-            entry.put("onlyDelete", false);
-            body.add(entry);
-        }
-        postRaw("/MenuDocScheme/SaveDocMenuMap", body);
+        postRaw(WebApiEndpoints.DocScheme.SAVE_MENU_MAP, DocSchemeRequestFactory.tag(docCode, menuShortcodes));
     }
 
     // ── AdmOrganizationSite ──────────────────────────────────────────────────
 
     /** POST AdmOrganizationSite/GetUnTaggedDocumentList — schemes NOT yet tagged to {@code siteCode} (idempotency check). */
     public List<Map<String, Object>> listUntaggedSchemes(long siteCode, String workDate) {
-        Map<String, Object> body = new LinkedHashMap<>();
-        body.put("workDate", workDate);
-        body.put("page", 1);
-        body.put("start", 0);
-        body.put("limit", 25);
-        Map<String, Object> query = new LinkedHashMap<>();
-        query.put("siteCode", siteCode);
-        JsonNode items = json(postRaw("/AdmOrganizationSite/GetUnTaggedDocumentList", body, query))
-                .path("result").path("items");
+        JsonNode items = json(postRaw(WebApiEndpoints.DocScheme.UNTAGGED_FOR_SITE, DocSchemeRequestFactory.untagged(workDate),
+                QueryParams.toMap(DocSchemeRequestFactory.siteCode(siteCode)))).path("result").path("items");
         List<Map<String, Object>> out = new ArrayList<>();
         for (JsonNode item : items) {
             out.add(MAPPER.convertValue(item, new TypeReference<LinkedHashMap<String, Object>>() {}));
@@ -175,9 +120,7 @@ public class DocSchemeAdminApiClient extends ApiClient {
 
     /** GET AdmOrganizationSite/GetOrganizationSite?code= — the full site entity ({@code result}). */
     public Map<String, Object> fetchSite(long siteCode) {
-        Map<String, Object> query = new LinkedHashMap<>();
-        query.put("code", siteCode);
-        JsonNode result = json(getRaw("/AdmOrganizationSite/GetOrganizationSite", query)).path("result");
+        JsonNode result = json(getRawQuery(WebApiEndpoints.DocScheme.SITE_GET, DocSchemeRequestFactory.siteEntity(siteCode))).path("result");
         if (result.isMissingNode() || result.isNull()) {
             throw new ApiException("GetOrganizationSite returned no site for code=" + siteCode, 0);
         }
@@ -191,9 +134,7 @@ public class DocSchemeAdminApiClient extends ApiClient {
 
     /** POST AdmOrganizationSite/Update?code= with a body from {@link #buildSiteUpdateBody}. */
     public void updateSite(long siteCode, Map<String, Object> body) {
-        Map<String, Object> query = new LinkedHashMap<>();
-        query.put("code", siteCode);
-        postRaw("/AdmOrganizationSite/Update", body, query);
+        postRaw(WebApiEndpoints.DocScheme.SITE_UPDATE, body, QueryParams.toMap(DocSchemeRequestFactory.siteEntity(siteCode)));
     }
 
     /**

@@ -9,7 +9,7 @@ import com.gsl.enums.Finance.Operations.Common.DocumentMessageBoxMessage;
 import com.gsl.enums.GlAccountType;
 import com.gsl.enums.PeriodDomain;
 import com.gsl.model.finance.FinVchMain;
-import com.gsl.pages.enums.Finance.Operations.GeneralVoucher.GeneralVoucherRevertOutcome;
+import com.gsl.pages.enums.Finance.Operations.Common.VoucherRevertOutcome;
 import com.gsl.testdata.dto.GeneralVoucherOperationMode;
 import com.gsl.testdata.dto.MergedFinanceGeneralVoucherData;
 import com.gsl.utils.Log;
@@ -123,7 +123,7 @@ public class DbGeneralVoucherRevertDataSource implements TestDataSource<MergedFi
         }
 
         // Negative scenario: a document whose own accounting year/financial month is already
-        // closed — the live app rejects Revert outright (GeneralVoucherRevertOutcome
+        // closed — the live app rejects Revert outright (VoucherRevertOutcome
         // .CANNOT_REVERT_MONTH_CLOSED / DocumentMessageBoxMessage.REVERT_MONTH_ALREADY_CLOSED).
         // Deliberately NOT part of the GeneralVoucherVariant/GeneralVoucherCombinations matrix
         // above (that matrix is entirely GL-shape/side/reversal/payment combinatorics, unrelated
@@ -132,11 +132,8 @@ public class DbGeneralVoucherRevertDataSource implements TestDataSource<MergedFi
         // scenarios stand apart from the positive combination matrix.
         resolveClosedPeriodNegativeCandidate(jdbi, claimedThisRun).ifPresent(results::add);
 
+        TestDataSource.stampInvocations(results);
         int total = results.size();
-        for (int i = 0; i < total; i++) {
-            results.get(i).setInvocationIndex(i + 1);
-            results.get(i).setTotalInvocations(total);
-        }
 
         Log.info("[DB] GeneralVoucherRevert emitted {} row(s) for '{}' — group filter={}, tag filter={}",
                 results.size(), methodName, activeGroup, activeTags.isEmpty() ? "ALL" : activeTags);
@@ -384,7 +381,7 @@ public class DbGeneralVoucherRevertDataSource implements TestDataSource<MergedFi
                 .releaseStatus(header.getReleaseStatus())
                 .reservedDocumentKey(String.valueOf(vchcode))
                 .operationMode(GeneralVoucherOperationMode.REVERT)
-                .expectedRevertOutcome(GeneralVoucherRevertOutcome.CANNOT_REVERT_MONTH_CLOSED)
+                .expectedRevertOutcome(VoucherRevertOutcome.CANNOT_REVERT_MONTH_CLOSED)
                 .expenseIncomeDetailList(List.of())
                 .siteAllocationList(List.of())
                 .dbGatheringLog(gatheringLog)

@@ -7,9 +7,9 @@ import com.gsl.api.integration.LedgerDataSetup;
 import com.gsl.api.integration.SubLedgerOthersDataSetup;
 import com.gsl.utils.dataprovider.fixture.finance.ApiSubLedgerWait;
 import com.gsl.api.core.ApiException;
-import com.gsl.api.model.arvoucher.CashBankLedgerLookupResult;
-import com.gsl.api.model.arvoucher.DocNumberSchemeEntry;
-import com.gsl.api.model.arvoucher.SubLedgerLookupResult;
+import com.gsl.api.model.common.CashBankLedgerLookupResult;
+import com.gsl.api.model.common.DocNumberSchemeEntry;
+import com.gsl.api.model.common.SubLedgerLookupResult;
 import com.gsl.api.model.common.UserSiteContext;
 import com.gsl.api.model.generalvoucher.ChequeLookupResult;
 import com.gsl.api.model.generalvoucher.CostCenterAllocation;
@@ -80,7 +80,7 @@ final class ApiGeneralVoucherEditFixtures {
         CashBankType wanted = variant.getRequiredCashBankType() != null ? variant.getRequiredCashBankType()
                 : paymentVariant ? CashBankType.BANK : null;
 
-        GeneralVoucherApiClient.OwnerSiteChoice choice = chooseSite(api, ctx, empCode, wanted, workDate);
+        com.gsl.service.GeneralVoucherService.OwnerSiteChoice choice = chooseSite(api, ctx, empCode, wanted, workDate);
         UserSiteContext.Site site = choice.site();
         int siteCode = (int) site.getSiteCode();
         int ou = (int) site.getOuCode();
@@ -184,13 +184,13 @@ final class ApiGeneralVoucherEditFixtures {
 
     // ───────────────────────────── helpers ─────────────────────────────
 
-    private static GeneralVoucherApiClient.OwnerSiteChoice chooseSite(GeneralVoucherApiClient api, UserSiteContext ctx, long empCode,
+    private static com.gsl.service.GeneralVoucherService.OwnerSiteChoice chooseSite(GeneralVoucherApiClient api, UserSiteContext ctx, long empCode,
                                                                       CashBankType wanted, String workDate) {
-        if (wanted != null) return api.findOwnerSiteWithCashBank(ctx, empCode, wanted.srcType(), workDate);
+        if (wanted != null) return new com.gsl.service.GeneralVoucherService(api).findOwnerSiteWithCashBank(ctx, empCode, wanted.srcType(), workDate);
         try {
-            return api.findOwnerSiteWithCashBank(ctx, empCode, "C", workDate);
+            return new com.gsl.service.GeneralVoucherService(api).findOwnerSiteWithCashBank(ctx, empCode, "C", workDate);
         } catch (org.testng.SkipException noCash) {
-            return api.findOwnerSiteWithCashBank(ctx, empCode, "B", workDate);
+            return new com.gsl.service.GeneralVoucherService(api).findOwnerSiteWithCashBank(ctx, empCode, "B", workDate);
         }
     }
 
