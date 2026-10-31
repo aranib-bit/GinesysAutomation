@@ -7,7 +7,7 @@
     Run: mvn clean test -Pregression-apvoucher-phase3
 -->
 <!-- data-provider-thread-count MUST be at suite level — TestNG ignores it on <test>. -->
-<suite name="AP Voucher — Regression Phase-3" parallel="none" data-provider-thread-count="4">
+<suite name="AP Voucher — Regression Phase-3" configfailurepolicy="continue" parallel="none" data-provider-thread-count="4">
     <listeners>
         <listener class-name="com.gsl.listeners.RetryAnnotationTransformer"/>
         <listener class-name="com.gsl.listeners.TestListener"/>

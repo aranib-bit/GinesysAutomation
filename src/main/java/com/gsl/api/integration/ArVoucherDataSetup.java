@@ -27,11 +27,19 @@ public final class ArVoucherDataSetup {
     public static ArVoucherCreateResponse setupArVoucherForTest(
             ArVoucherApiClient client, long requiredClsCode, int ownerSiteCode, int ouCode,
             long empCode, int quantity, int rate) {
+        return setupArVoucherForTest(client, requiredClsCode, ownerSiteCode, ouCode, empCode, quantity, rate, sl -> true);
+    }
+
+    /** As above, against a sub-ledger {@code slFilter} accepts (a backfill spreading its vouchers over several sub-ledgers). */
+    public static ArVoucherCreateResponse setupArVoucherForTest(
+            ArVoucherApiClient client, long requiredClsCode, int ownerSiteCode, int ouCode,
+            long empCode, int quantity, int rate,
+            java.util.function.Predicate<com.gsl.api.model.common.SubLedgerLookupResult> slFilter) {
         // Scheme chosen from the DB so an exhausted one (e.g. a full "AR/AP Voucher") is never used.
         String docSchemeName = VoucherDocSchemeSupport.resolveSchemeName(
                 VoucherDomain.AR.getMenuShortcode(), ownerSiteCode, empCode);
         ArVoucherCreateResponse response = new com.gsl.service.ArVoucherService(client).createArVoucherWithDefaults(
-                requiredClsCode, ownerSiteCode, ouCode, empCode, quantity, rate, docSchemeName);
+                requiredClsCode, ownerSiteCode, ouCode, empCode, quantity, rate, docSchemeName, slFilter);
         ArVoucherApiValidator.validate(response);
         ReportLogger.business("[ArVoucherDataSetup] AR Voucher created via API — voucherCode={}, docScheme={}",
                 response.getVoucherCode(), response.getDocScheme());

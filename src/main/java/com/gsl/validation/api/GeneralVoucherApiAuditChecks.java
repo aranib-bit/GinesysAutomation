@@ -35,9 +35,11 @@ public final class GeneralVoucherApiAuditChecks {
     static final String G_DET = "Audit · Voucher Detail (FINVCHDET)";
     static final String G_SITE = "Audit · Site Allocation (FINCOSTTAG)";
 
-    /** Header columns an edit may change on top of the edited ones: who last modified it and the user-defined numeric field the app initialises. */
+    /** Header columns an edit may change on top of the edited ones: who last modified it, the user-defined numeric field the app initialises,
+     *  and the release trio — the edit flow answers Yes to "Document will be released after save" (DocumentPopup#handleReleaseConfirmationIfPresent),
+     *  so Unposted → Posted is expected. The DB-mode VoucherEditChangeSets already ignores the same columns. */
     private static final Set<String> HEADER_EDIT_NOISE = ci("lastmodifiedbY_USERCODE", "lastmodifiedbY_USER", "udfnuM01",
-            "releaseD_USERCODE", "releaseD_USER");
+            "releaseD_USERCODE", "releaseD_USER", "releasE_STATUS");
 
     private GeneralVoucherApiAuditChecks() {}
 
@@ -141,6 +143,7 @@ public final class GeneralVoucherApiAuditChecks {
         AuditRow prior = after.mainAt(before.maxVersion());
         AuditRow last = newMain.isEmpty() ? null : newMain.get(newMain.size() - 1);
         DocumentInformation doc = data.getDocumentInformation();
+        boolean releasedByEdit = false;
         if (last != null && prior != null) {
             Set<String> allowed = new TreeSet<>(String.CASE_INSENSITIVE_ORDER);
             allowed.addAll(HEADER_EDIT_NOISE);
@@ -155,7 +158,13 @@ public final class GeneralVoucherApiAuditChecks {
             unexpected.addAll(changed);
             unexpected.removeAll(allowed);
             c.eq(G_MAIN + " | Unexpected columns changed", "none", unexpected.isEmpty() ? "none" : String.join(", ", unexpected));
-            c.eq(G_MAIN + " | Release status after edit", prior.str("releasE_STATUS"), last.str("releasE_STATUS"));
+            // Unchanged, or released by the edit flow's own "release after save" Yes — never anything else.
+            String before0 = prior.str("releasE_STATUS");
+            String after0 = last.str("releasE_STATUS");
+            boolean unchanged = java.util.Objects.equals(before0, after0);
+            c.eq(G_MAIN + " | Release status after edit", unchanged ? before0 : "Posted (released on save) or unchanged",
+                    unchanged ? after0 : (isPosted(after0) ? "Posted (released on save) or unchanged" : after0));
+            releasedByEdit = !unchanged && isPosted(after0);
         }
         if (last != null && doc != null && scenario == GeneralVoucherEditVariant.ScenarioType.HEADER_ONLY) {
             c.eq(G_MAIN + " | Remarks", norm(doc.getRemarks()), norm(last.str("remarkS_OR_NARRATION")));
@@ -186,9 +195,17 @@ public final class GeneralVoucherApiAuditChecks {
                             && np.getPaymentMode().dbCode().equalsIgnoreCase(r.str("paymenT_MODE"))
                             && java.util.Objects.equals(norm(np.getInstrumentNo()), norm(r.str("instrumenT_NUMBER")))));
         } else if (scenario == GeneralVoucherEditVariant.ScenarioType.HEADER_ONLY) {
-            c.eq(G_DET + " | New versions (header-only edit)", 0L, (long) newDet.size());
+            // Releasing on save posts the voucher, which the Audit API showed re-versioning a detail row once
+            // (qaprod run 20261031_013811, FIN-GV-EDIT-HEADER-04) — allow at most that one, and only then.
+            long allowedDet = releasedByEdit ? 1L : 0L;
+            c.eq(G_DET + " | New versions (header-only edit" + (releasedByEdit ? ", ≤ 1 from release" : "") + ")",
+                    true, (long) newDet.size() <= allowedDet);
         }
         return result(c);
+    }
+
+    private static boolean isPosted(String status) {
+        return status != null && status.trim().equalsIgnoreCase("Posted");
     }
 
     // ───────────────────────────── Delete ─────────────────────────────

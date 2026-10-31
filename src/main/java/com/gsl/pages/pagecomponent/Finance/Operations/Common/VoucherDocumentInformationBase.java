@@ -206,8 +206,45 @@ public abstract class VoucherDocumentInformationBase {
                 () -> {
                     clickCashBankSearch();
                     selectCashBank(cashbank);
+                    failIfUnexpectedPostDatedCashDialog(cashbank);
                 },
                 this::getCashBank);
+    }
+
+    private static final String POST_DATED_CASH_FRAGMENT = "post dated entries are not allowed for cash";
+
+    /**
+     * Stops at once, with the app's own words and a screenshot of the open dialog, when selecting a Cash
+     * ledger raises "Post dated entries are not allowed for cash transactions" although the Document Date
+     * is NOT in the future. Left alone, the dialog's mask blocks the Cash/Bank picker click on the retry
+     * below and the test dies ~2 minutes later as an {@code ElementClickInterceptedException} that hides
+     * the real reason (runs 20261031: AP/AR/GV cash scenarios between 01:39 and 05:09 IST).
+     *
+     * <p>Deliberately no date workaround: in those runs the app's own default Document Date already read
+     * the test's date, yet its post-dated check still fired, so the inconsistency is the app's to explain.
+     * A genuinely future Document Date (the NEG_CASH_POST_DATED scenario) is left to its own flow.
+     */
+    private void failIfUnexpectedPostDatedCashDialog(String cashbank) {
+        com.gsl.popup.PopupResult popup = com.gsl.popup.PopupHandler.detectPopup();
+        if (popup == null || popup.message() == null
+                || !popup.message().toLowerCase().contains(POST_DATED_CASH_FRAGMENT)) {
+            return;
+        }
+        String docDate = SeleniumUtils.getAttribute(documentDate, "value", "DOCUMENT_DATE");
+        try {
+            LocalDate parsed = LocalDate.parse(docDate.trim(), DateTimeFormatter.ofPattern("dd/MM/yyyy"));
+            if (parsed.isAfter(LocalDate.now())) return;
+        } catch (RuntimeException unparsable) {
+            // Cannot tell whether the date is in the future — treat as the unexplained case below.
+        }
+        String msg = "App rejected Cash/Bank '" + cashbank + "' as post-dated although Document Date is '"
+                + docDate + "' (test machine date " + LocalDate.now().format(DateTimeFormatter.ofPattern("dd/MM/yyyy"))
+                + ", " + java.time.ZonedDateTime.now().getZone() + ", " + java.time.LocalTime.now().withNano(0)
+                + "). App message: \"" + popup.message() + "\". Not retried: the dialog's mask would block the "
+                + "next click. If this only happens shortly after midnight IST, the app's post-dated check and "
+                + "its default Document Date use different clocks.";
+        com.gsl.reports.ExtentLogger.fail(msg);   // screenshot is taken now, dialog still open
+        throw new IllegalStateException(msg);
     }
 
     /** Sets the Reference field via {@link SeleniumUtils#fillAndVerifyCommit} (type → Tab to force

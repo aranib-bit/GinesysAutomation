@@ -26,4 +26,13 @@ public class AdmSite {
      *  data to display" for it). Nullable — not every admsite row is guaranteed to carry one. */
     @ColumnName("admou_code")
     private Long admouCode;
+
+    /** {@code admsite.ext}: 'Y' = extinct. An extinct site is never listed by the Allocate Sites picker (GV-P2 run 20261031_033251 timed out
+     *  searching for "Extinct Site Test", code 51, ext='Y'). Nullable; only read when the query selected it. */
+    private String ext;
+
+    /** Whether this site can still be offered by the app's pickers (not marked extinct). */
+    public boolean isActiveSite() {
+        return ext == null || !"Y".equalsIgnoreCase(ext.trim());
+    }
 }

@@ -14,10 +14,11 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
-import java.util.concurrent.LinkedBlockingQueue;
-import java.util.concurrent.Semaphore;
+import java.util.LinkedList;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicLong;
+import java.util.concurrent.locks.Condition;
+import java.util.concurrent.locks.ReentrantLock;
 
 /**
  * Thread-safe user pool for distributing credentials across parallel test threads.
@@ -66,17 +67,21 @@ import java.util.concurrent.atomic.AtomicLong;
  */
 public final class UserPool {
 
-    /** Live pool — users are removed on acquire and returned on release. */
-    private static final EnumMap<UserType, LinkedBlockingQueue<UserCredential>> SET1_QUEUES =
-            new EnumMap<>(UserType.class);
-
     /**
-     * Fair semaphore per user type — ensures waiting threads are served FIFO.
-     * {@code LinkedBlockingQueue.take()} uses a non-fair lock internally, so without
-     * this gate a later thread can steal a user from an earlier one.
-     * Initialised (or re-initialised) in {@link #initialize} once the user count is known.
+     * Guards the queues below and the held-user bookkeeping. Fair, so threads waiting for a user are served in arrival order (the property the
+     * old per-type fair semaphores gave). One lock for all types is what lets a {@code [UI, WEBAPI]} user, which sits in two queues, be handed out
+     * once: taking it removes it from every queue it is in, in one critical section.
      */
-    private static final EnumMap<UserType, Semaphore> SET1_PERMITS =
+    private static final ReentrantLock LOCK = new ReentrantLock(true);
+
+    /** Signalled (per type) whenever a user of that type becomes free again. */
+    private static final EnumMap<UserType, Condition> FREED = new EnumMap<>(UserType.class);
+
+    /** Which type a held user was acquired as, by username (needed at release: a shared user was acquired as UI or as WEBAPI, not both). Guarded by {@link #LOCK}. */
+    private static final Map<String, UserType> ACQUIRED_AS = new HashMap<>();
+
+    /** Live pool — the FREE users of each type: removed (from every queue they are in) on acquire, put back on release. Guarded by {@link #LOCK}. */
+    private static final EnumMap<UserType, LinkedList<UserCredential>> SET1_QUEUES =
             new EnumMap<>(UserType.class);
 
     /**
@@ -122,7 +127,8 @@ public final class UserPool {
 
     static {
         for (UserType type : UserType.values()) {
-            SET1_QUEUES.put(type, new LinkedBlockingQueue<>());
+            SET1_QUEUES.put(type, new LinkedList<>());
+            FREED.put(type, LOCK.newCondition());
             INITIAL_COUNTS.put(type, 0);
             ACTIVE_USERS.put(type, new ConcurrentHashMap<>());
             LAST_ACTIVITY_MS.put(type, new ConcurrentHashMap<>());
@@ -143,35 +149,47 @@ public final class UserPool {
      * {@link UserCredential#groupId()} into {@link #SET2_GROUPS}.
      */
     public static synchronized void initialize(List<UserCredential> credentials) {
-        SET1_QUEUES.values().forEach(LinkedBlockingQueue::clear);
-        SET2_GROUPS.clear();
-        Map<UserType, List<UserCredential>> roster = new EnumMap<>(UserType.class);
-        for (UserType type : UserType.values()) {
-            INITIAL_COUNTS.put(type, 0);
-            ACTIVE_USERS.get(type).clear();
-            LAST_ACTIVITY_MS.get(type).clear();
-            roster.put(type, new java.util.ArrayList<>());
-        }
-
-        for (UserCredential cred : credentials) {
-            if (cred.executionSet() == ExecutionSet.SET1) {
-                SET1_QUEUES.get(cred.userType()).offer(cred);
-                INITIAL_COUNTS.merge(cred.userType(), 1, Integer::sum);
-                roster.get(cred.userType()).add(cred);
-            } else {
-                SET2_GROUPS
-                        .computeIfAbsent(cred.groupId(), k -> new java.util.ArrayList<>())
-                        .add(cred);
+        LOCK.lock();
+        try {
+            SET1_QUEUES.values().forEach(LinkedList::clear);
+            ACQUIRED_AS.clear();
+            SET2_GROUPS.clear();
+            Map<UserType, List<UserCredential>> roster = new EnumMap<>(UserType.class);
+            for (UserType type : UserType.values()) {
+                INITIAL_COUNTS.put(type, 0);
+                ACTIVE_USERS.get(type).clear();
+                LAST_ACTIVITY_MS.get(type).clear();
+                roster.put(type, new java.util.ArrayList<>());
             }
-        }
-        roster.forEach((type, users) -> ALL_SET1_USERS.put(type, List.copyOf(users)));
 
-        for (Map.Entry<UserType, Integer> e : INITIAL_COUNTS.entrySet()) {
-            Log.info("[UserPool] Initialized — SET1 {}={} user(s)", e.getKey(), e.getValue());
-            // Fair semaphore: permits == user count; fair=true guarantees FIFO wake-up order
-            SET1_PERMITS.put(e.getKey(), new Semaphore(e.getValue(), true));
+            int shared = 0;
+            for (UserCredential cred : credentials) {
+                if (cred.executionSet() == ExecutionSet.SET1) {
+                    // A [UI, WEBAPI] user is in the queue and the count of BOTH types (one login, held for one use at a time).
+                    for (UserType type : cred.types()) {
+                        SET1_QUEUES.get(type).offer(cred);
+                        INITIAL_COUNTS.merge(type, 1, Integer::sum);
+                        roster.get(type).add(cred);
+                    }
+                    if (cred.isShared()) shared++;
+                } else {
+                    SET2_GROUPS
+                            .computeIfAbsent(cred.groupId(), k -> new java.util.ArrayList<>())
+                            .add(cred);
+                }
+            }
+            roster.forEach((type, users) -> ALL_SET1_USERS.put(type, List.copyOf(users)));
+
+            for (Map.Entry<UserType, Integer> e : INITIAL_COUNTS.entrySet()) {
+                Log.info("[UserPool] Initialized — SET1 {}={} user(s)", e.getKey(), e.getValue());
+            }
+            if (shared > 0) {
+                Log.info("[UserPool] {} user(s) are [UI, WEBAPI]: counted in both pools, held for one use at a time.", shared);
+            }
+            Log.info("[UserPool] Initialized — SET2 groups={}", SET2_GROUPS.keySet());
+        } finally {
+            LOCK.unlock();
         }
-        Log.info("[UserPool] Initialized — SET2 groups={}", SET2_GROUPS.keySet());
     }
 
     // ─── Queries ──────────────────────────────────────────────────────────────
@@ -240,7 +258,7 @@ public final class UserPool {
         if (configured == 0) {
             throw new org.testng.SkipException(
                     "[UserPool] No SET1 " + type + " users are configured in UsersList.xlsx. " +
-                    "Add rows with userType=" + type + ", executionSet=SET1.");
+                    "Add rows with usertype=[" + type + "], executionset=SET1.");
         }
 
         ExecutionConfig cfg  = ConfigFactory.getExecutionConfig();
@@ -248,34 +266,16 @@ public final class UserPool {
         long timeoutMs       = timeoutSeconds          * 1000L;
         long startMs         = System.currentTimeMillis();
         boolean warnSent     = false;
-        Semaphore sem        = SET1_PERMITS.get(type);
         String label         = (testLabel == null || testLabel.isBlank()) ? "<unknown>" : testLabel;
 
         while (true) {
-            try {
-                boolean acquired = sem.tryAcquire(500, TimeUnit.MILLISECONDS);
-                if (acquired) {
-                    UserCredential cred = SET1_QUEUES.get(type).poll();
-                    long now = System.currentTimeMillis();
-                    ACTIVE_USERS.get(type).put(
-                            cred.username(),
-                            new ActiveUserEntry(
-                                    label,
-                                    Thread.currentThread().getName(),
-                                    now
-                            )
-                    );
-                    LAST_ACTIVITY_MS.get(type).put(cred.username(), new AtomicLong(now));
-                    Log.info("[UserPool] [T-{}] Acquired SET1 {} user '{}' for '{}'.",
-                            Thread.currentThread().getId(), type, cred.username(), label);
-                    ReportLogger.session("[T-{}] Acquired {} user '{}' for '{}'.",
-                            Thread.currentThread().getId(), type, cred.username(), label);
-                    return cred;
-                }
-            } catch (InterruptedException e) {
-                Thread.currentThread().interrupt();
-                throw new IllegalStateException(
-                        "[UserPool] Interrupted while waiting for a SET1 " + type + " user.", e);
+            UserCredential cred = takeFree(type, label, 500);
+            if (cred != null) {
+                Log.info("[UserPool] [T-{}] Acquired SET1 {} user '{}' for '{}'.",
+                        Thread.currentThread().getId(), type, cred.username(), label);
+                ReportLogger.session("[T-{}] Acquired {} user '{}' for '{}'.",
+                        Thread.currentThread().getId(), type, cred.username(), label);
+                return cred;
             }
 
             // Heartbeat-based stall accounting: a holder is silent only if no browser
@@ -326,6 +326,54 @@ public final class UserPool {
                         + "Active users at timeout:\n" + snapshot);
             }
         }
+    }
+
+    /**
+     * Takes a free user of {@code type}, waiting up to {@code waitMs} for one to be released; {@code null} when none became free. A user that serves
+     * only this type is preferred over a shared {@code [UI, WEBAPI]} one, so shared logins stay available for the other use. The user is removed from
+     * EVERY queue it is in and recorded as held (as {@code type}) before the lock is released, so it cannot be handed out a second time.
+     */
+    private static UserCredential takeFree(UserType type, String label, long waitMs) {
+        LOCK.lock();
+        try {
+            UserCredential cred = pickFree(type);
+            if (cred == null) {
+                FREED.get(type).await(waitMs, TimeUnit.MILLISECONDS);
+                cred = pickFree(type);
+            }
+            if (cred == null) return null;
+            for (UserType t : cred.types()) SET1_QUEUES.get(t).remove(cred);
+            long now = System.currentTimeMillis();
+            ACQUIRED_AS.put(cred.username(), type);
+            ACTIVE_USERS.get(type).put(cred.username(), new ActiveUserEntry(label, Thread.currentThread().getName(), now));
+            LAST_ACTIVITY_MS.get(type).put(cred.username(), new AtomicLong(now));
+            return cred;
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            throw new IllegalStateException("[UserPool] Interrupted while waiting for a SET1 " + type + " user.", e);
+        } finally {
+            LOCK.unlock();
+        }
+    }
+
+    /** The first free user of {@code type} that serves only that type, else the first free shared one; {@code null} when none is free. Caller holds {@link #LOCK}. */
+    private static UserCredential pickFree(UserType type) {
+        LinkedList<UserCredential> free = SET1_QUEUES.get(type);
+        for (UserCredential c : free) {
+            if (!c.isShared()) return c;
+        }
+        return free.peekFirst();
+    }
+
+    /**
+     * Acquires the account for a WEBAPI session: a user listed for WEBAPI ({@code [WEBAPI]} or {@code [UI, WEBAPI]}) when the workbook has any, else - for
+     * workbooks that have not been given the {@code usertype} column yet - a UI user, exactly as before (a warning is logged once per call).
+     */
+    public static UserCredential acquireForWebApi(String testLabel) {
+        if (hasUsersOfType(UserType.WEBAPI)) return acquireSet1User(UserType.WEBAPI, testLabel);
+        Log.warn("[UserPool] No WEBAPI users configured in UsersList.xlsx - borrowing a UI user for the WEBAPI session (legacy behaviour). "
+                + "Mark the accounts to use as usertype=[UI, WEBAPI] (or [WEBAPI]).");
+        return acquireSet1User(UserType.UI, testLabel);
     }
 
     /** Largest idle time (ms since last heartbeat) among {@code type}'s currently-active holders; {@code 0} if none. */
@@ -394,17 +442,32 @@ public final class UserPool {
         if (cred == null) return;
         if (cred.executionSet() != ExecutionSet.SET1) return;
 
-        ActiveUserEntry entry = ACTIVE_USERS.get(cred.userType()).remove(cred.username());
-        LAST_ACTIVITY_MS.get(cred.userType()).remove(cred.username());
-        SET1_QUEUES.get(cred.userType()).offer(cred);
-        SET1_PERMITS.get(cred.userType()).release(); // unblocks the next waiting thread (FIFO)
+        ActiveUserEntry entry;
+        UserType heldAs;
+        LOCK.lock();
+        try {
+            heldAs = ACQUIRED_AS.remove(cred.username());
+            if (heldAs == null) {
+                // Not held (already released, or never acquired from the pool): putting it back would hand the same login out twice.
+                Log.warn("[UserPool] Release of '{}' ignored - it is not currently held.", cred.username());
+                return;
+            }
+            entry = ACTIVE_USERS.get(heldAs).remove(cred.username());
+            LAST_ACTIVITY_MS.get(heldAs).remove(cred.username());
+            for (UserType t : cred.types()) {
+                SET1_QUEUES.get(t).offer(cred);
+                FREED.get(t).signalAll(); // wakes the waiting threads of this type (arrival order)
+            }
+        } finally {
+            LOCK.unlock();
+        }
 
         long heldSeconds = entry != null ? (System.currentTimeMillis() - entry.startMs()) / 1000 : -1;
         String lastTest  = entry != null ? entry.testName() : "unknown";
-        Log.info("[UserPool] [T-{}] RELEASED SET1 {} user '{}' — held {}s (was running '{}'). Pool now has a free permit.",
-                Thread.currentThread().getId(), cred.userType(), cred.username(), heldSeconds, lastTest);
-        ReportLogger.session("[UserPool RELEASED] {} user '{}' — held {}s (was running '{}'). Pool now has a free permit.",
-                cred.userType(), cred.username(), heldSeconds, lastTest);
+        Log.info("[UserPool] [T-{}] RELEASED SET1 {} user '{}' — held {}s (was running '{}'). Pool now has a free user.",
+                Thread.currentThread().getId(), heldAs, cred.username(), heldSeconds, lastTest);
+        ReportLogger.session("[UserPool RELEASED] {} user '{}' — held {}s (was running '{}'). Pool now has a free user.",
+                heldAs, cred.username(), heldSeconds, lastTest);
         if (entry != null && heldSeconds >= 0) {
             // lastTest is class-qualified ("ClassSimpleName.methodName" — see WebTest.setUp()),
             // letting the suite/class-level summary attribute pool-hold time by test class.

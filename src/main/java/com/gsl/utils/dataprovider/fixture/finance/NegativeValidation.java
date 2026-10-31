@@ -85,7 +85,8 @@ public enum NegativeValidation {
     ZERO_AMOUNT_TOOLTIP_STOP_BOLD("<b>Stop:</b>"),
 
     /** Inline row tooltip: blocking line — amount must not be zero or null. */
-    ZERO_AMOUNT_TOOLTIP_AMOUNT("Amount cannot be 0 or null."),
+    // Verified live (AR run 20261031_030341): the tip reads "Stop: 1:- Amount can not be 0. 2:- ...".
+    ZERO_AMOUNT_TOOLTIP_AMOUNT("Amount can not be 0"),
 
     /** Inline tooltip (On Account No): sub-ledger row has no document adjustment performed. */
     DOC_NOT_ADJUSTED_TOOLTIP_AMOUNT(

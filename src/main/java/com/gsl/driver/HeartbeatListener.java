@@ -33,7 +33,7 @@ public final class HeartbeatListener implements WebDriverListener {
         UserCredential user = DriverManager.getCurrentUser();
         if (user == null) return;
         if (user.executionSet() != ExecutionSet.SET1) return;
-        if (user.userType() != UserType.UI) return;
+        if (!user.has(UserType.UI)) return;
         UserPool.heartbeat(UserType.UI, user.username());
     }
 }

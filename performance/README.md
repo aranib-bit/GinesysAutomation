@@ -11,7 +11,7 @@ performance/k6/
 ├── scenarios/
 │   ├── backfill/          BULK DATA ENTRY: creates documents/masters/users (TARGET_DOCS, VUs) - launched from Java backfill
 │   └── performance/       PERFORMANCE TESTING: smoke, load, login/logout, chain load - thresholds, ramping profiles
-├── data/                  business/, pools/, attachments/, users/ (credentials, not in git)
+├── data/                  business/, pools/, attachments/, generated/ (written by Java: users, bulk data files)
 ├── data-export/           TypeScript tool that exports item/service-invoice data from a tenant DB (npm install first)
 ├── monitoring/ scripts/
 ```
@@ -26,7 +26,7 @@ setting (default `performance/k6`) by `K6Scripts`, never from an absolute path. 
 ## Files that are NOT in git (create them locally)
 | File | What | How |
 |---|---|---|
-| `k6/data/users/<tenant>.users.json` (and `*.billingimport.users.json`) | the perf-test credential pools | copy from the old folder or generate with `k6/scripts/*.ps1`; shape in `users.sample.json` |
+| `k6/data/generated/users-<tenant>.json` | the perf-test users (PERF rows of the environment's `UsersList.xlsx`) | written by Java before every launch; standalone: `mvn -o test -Dtest=K6UsersExportTest -Dk6.users.write=true -Denv=<env>`, then `-e USERS_FILE=data/generated/users-<tenant>.json` |
 | `k6/data-export/src/config/<tenant>.json` | DB connection of a tenant for the export tool | shape in `db.sample.json` |
 | `k6/reports/` | k6 run output | created by k6 |
 | `k6/data/generated/` | data files the Java side hands to k6 | created by Java |

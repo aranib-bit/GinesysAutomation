@@ -120,8 +120,19 @@ public final class DocumentReservationRegistry {
      */
     public static java.util.Map<String, java.util.List<com.gsl.model.finance.PendingSlDocument>>
     filterAndReserveUpTo(java.util.Map<String, java.util.List<com.gsl.model.finance.PendingSlDocument>> docsBySlKey, int perSl) {
+        return filterAndReserveUpTo(docsBySlKey, perSl, Integer.MAX_VALUE);
+    }
+
+    /**
+     * As {@link #filterAndReserveUpTo(java.util.Map, int)}, but stops once {@code maxSls} sub-ledgers are held. Walking every candidate held
+     * documents of sub-ledgers the scenario would then hand back (AP-P2 run 20261031_062600 showed ~72 documents held at once), which made
+     * concurrent scenarios see "no free documents". Callers pass the sub-ledgers they need plus a little headroom for ones rejected afterwards.
+     */
+    public static java.util.Map<String, java.util.List<com.gsl.model.finance.PendingSlDocument>>
+    filterAndReserveUpTo(java.util.Map<String, java.util.List<com.gsl.model.finance.PendingSlDocument>> docsBySlKey, int perSl, int maxSls) {
         java.util.Map<String, java.util.List<com.gsl.model.finance.PendingSlDocument>> result = new java.util.LinkedHashMap<>();
         for (java.util.Map.Entry<String, java.util.List<com.gsl.model.finance.PendingSlDocument>> entry : docsBySlKey.entrySet()) {
+            if (result.size() >= maxSls) break;
             java.util.List<com.gsl.model.finance.PendingSlDocument> taken = new java.util.ArrayList<>();
             for (com.gsl.model.finance.PendingSlDocument doc : entry.getValue()) {
                 if (taken.size() >= perSl) break;

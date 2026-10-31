@@ -27,6 +27,7 @@ public class K6RunnerUnitTest {
     private Path home;
     private Path script;
     private K6Runner runner;
+    private Path binaryPath;
 
     @BeforeClass
     public void setUp() throws IOException {
@@ -35,7 +36,8 @@ public class K6RunnerUnitTest {
         script = Files.createDirectories(home.resolve("scenarios").resolve("backfill")).resolve("stub.js");
         Files.writeString(script, "// stub");
         Files.writeString(Files.createDirectories(home.resolve("erp").resolve("config").resolve("environments")).resolve("t1.json"), "{}");
-        runner = new K6Runner(stubBinary().toString(), home);
+        binaryPath = stubBinary();
+        runner = new K6Runner(binaryPath.toString(), home);
     }
 
     /** A fake k6: answers {@code version}, otherwise prints a wrapped log line and a summary and exits with STUB_EXIT. */
@@ -46,6 +48,7 @@ public class K6RunnerUnitTest {
                     "@echo off",
                     "if \"%1\"==\"version\" (echo k6 v0.0.0 & exit /b 0)",
                     "echo time=\"2026-10-30T10:00:00+05:30\" level=info msg=\"FillVoucher [VU 1 iter 0] OK type=GV\" source=console",
+                    "echo USERS=%USERS_FILE%",
                     "echo K6_SUMMARY created=%STUB_CREATED% failed=1",
                     "exit /b %STUB_EXIT%"));
             return cmd;
@@ -55,6 +58,7 @@ public class K6RunnerUnitTest {
                 "#!/bin/sh",
                 "[ \"$1\" = version ] && { echo k6 v0.0.0; exit 0; }",
                 "echo 'time=\"2026-10-30T10:00:00+05:30\" level=info msg=\"FillVoucher [VU 1 iter 0] OK type=GV\" source=console'",
+                "echo \"USERS=$USERS_FILE\"",
                 "echo \"K6_SUMMARY created=$STUB_CREATED failed=1\"",
                 "exit $STUB_EXIT"));
         sh.toFile().setExecutable(true);
@@ -83,6 +87,24 @@ public class K6RunnerUnitTest {
         assertEquals(result.getFailed(), 1);
         assertTrue(lines.contains("FillVoucher [VU 1 iter 0] OK type=GV"), lines.toString());
         assertEquals(result.getOutputTail().size(), lines.size());
+    }
+
+    @Test
+    public void theUsersFileIsExportedAndPassedOnlyWhenTheCallerDidNotNameOne() {
+        List<String> asked = new ArrayList<>();
+        K6Runner withUsers = new K6Runner(binaryPath.toString(), home, tenant -> {
+            asked.add(tenant);
+            return Path.of("target", "users-" + tenant + ".json");
+        });
+        List<String> lines = new ArrayList<>();
+        withUsers.run(script, Map.of("STUB_EXIT", "0", "STUB_CREATED", "1", "TENANT", "t1"), lines::add);
+        assertEquals(asked, List.of("t1"));
+        assertTrue(lines.stream().anyMatch(l -> l.startsWith("USERS=") && l.contains("users-t1.json") && Path.of(l.substring(6)).isAbsolute()), lines.toString());
+
+        List<String> own = new ArrayList<>();
+        withUsers.run(script, Map.of("STUB_EXIT", "0", "STUB_CREATED", "1", "TENANT", "t1", "USERS_FILE", "mine.json"), own::add);
+        assertEquals(asked.size(), 1, "an explicit USERS_FILE is never replaced");
+        assertTrue(own.contains("USERS=mine.json"), own.toString());
     }
 
     @Test

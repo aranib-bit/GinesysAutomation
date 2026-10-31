@@ -500,8 +500,8 @@ public final class SessionPool {
                     "[SessionPool] No SET1 UI user available for '" + qualifiedLabel + "'.");
         }
         try {
-            UserCredential api = UserPool.hasUsersOfType(UserType.API)
-                    ? UserPool.acquireSet1User(UserType.API, qualifiedLabel)
+            UserCredential api = UserPool.hasUsersOfType(UserType.WEBAPI)
+                    ? UserPool.acquireSet1User(UserType.WEBAPI, qualifiedLabel)
                     : null;
             try {
                 ExecutionContext ctx = ExecutionContext.newSessionContext();

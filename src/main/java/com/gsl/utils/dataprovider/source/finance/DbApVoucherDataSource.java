@@ -504,7 +504,8 @@ public class DbApVoucherDataSource implements TestDataSource<MergedFinanceApVouc
                                 "clsCode={} (clstype={}, not Supplier → AR Voucher backfill), ownerSite={} (code={}), ouCode={}, empCode={}",
                         neededQty, opts.getSubLedgerCount(), opts.getDocumentCount(), slClsCode, clstype,
                         ownerSiteName, ownerSite.code, ouCode, ecode);
-                backfillStrategy = new ArVoucherApBackfillStrategy(slClsCode, (int) ownerSite.code, ouCode, ecode);
+                backfillStrategy = new ArVoucherApBackfillStrategy(slClsCode, (int) ownerSite.code, ouCode, ecode,
+                        opts.getSubLedgerCount());
             } else {
                 String vendorSlForBackfill = findFirstUsableVendorSl(jdbi, d, slClsCode);
                 ReportLogger.dataBackfill(
@@ -1244,7 +1245,7 @@ public class DbApVoucherDataSource implements TestDataSource<MergedFinanceApVouc
                     findApDocumentsForSlNames(jdbi, d, ouCodes, ownerSiteCodes, candidates, Integer.MAX_VALUE);
 
             final Map<String, List<PendingSlDocument>> reservedFirstPass =
-                    DocumentReservationRegistry.filterAndReserveUpTo(rawDocs, documentCount);
+                    DocumentReservationRegistry.filterAndReserveUpTo(rawDocs, documentCount, subLedgerCount + 2);
             Map<String, List<PendingSlDocument>> reserved = reservedFirstPass;
             // Read-then-reserve is not atomic: a document another scenario saved against in between has a lower pending amount now. Re-read
             // the reserved ones (nobody else can change them from here on) and give back any sub-ledger whose documents changed.

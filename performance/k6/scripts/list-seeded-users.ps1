@@ -13,7 +13,7 @@
 # scenarios/backfill/seedPerfUsers.js supports that flag like every other scenario).
 #
 # Writes reports/<tenant>/seededUsers.json (or alongside -ConsoleLogPath if
-# -Tenant wasn't given) - merging that into data/users/<tenant>.users.json is
+# -Tenant wasn't given) - adding it to UsersList.xlsx (see seeded-users-to-workbook-csv.ps1) is
 # a manual, reviewed step, not automatic, so the existing real accounts in
 # that file are never at risk of being clobbered by a script bug.
 
@@ -61,7 +61,7 @@ foreach ($u in $users) {
 # even at 0 or 1 elements, instead of collapsing to a bare object/nothing.
 # Written via .NET UTF8Encoding($false) rather than Set-Content -Encoding
 # utf8 (which always emits a BOM in Windows PowerShell 5.1) - a BOM here
-# would propagate into data/users/<tenant>.users.json via merge-seeded-
+# would propagate into UsersList.xlsx via seeded-users-to-workbook-csv
 # users.ps1, and k6's JSON.parse(open(...)) refuses to parse a leading BOM.
 $jsonText = ConvertTo-Json -InputObject $users
 [System.IO.File]::WriteAllText($OutPath, $jsonText, (New-Object System.Text.UTF8Encoding($false)))

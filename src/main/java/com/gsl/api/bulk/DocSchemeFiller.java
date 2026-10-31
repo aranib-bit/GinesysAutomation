@@ -92,7 +92,7 @@ public final class DocSchemeFiller {
         ExtentTest root = reporting
                 ? StepExecutor.group("🧰 Fill Doc Scheme — " + docName + " (doccode " + before.getDoccode() + ")")
                 : null;
-        String tenant = cfg.docSchemeFillK6Tenant().isBlank() ? cfg.activeTenant() : cfg.docSchemeFillK6Tenant();
+        String tenant = cfg.docSchemeFillK6Tenant().isBlank() ? K6Scripts.tenant() : cfg.docSchemeFillK6Tenant();
         int vus = Math.max(1, cfg.docSchemeFillVus());
 
         List<String> plan = List.of(

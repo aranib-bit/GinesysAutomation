@@ -293,6 +293,23 @@ public interface ApiConfig extends Config {
     @DefaultValue("")
     String docSchemeFillK6Tenant();
 
+    /**
+     * k6 tenant ({@code performance/k6/erp/config/environments/<tenant>.json}) every k6 launch of this environment runs against, and the name of
+     * the generated users file. Must be the SAME host/DB the environment's UI tests use ({@link #activeTenant()} often names another host: clone-staging
+     * keeps {@code stage-ideal}). Blank falls back to {@link #activeTenant()}; {@link #docSchemeFillK6Tenant()} still overrides it for the filler.
+     */
+    @Key("k6.tenant")
+    @DefaultValue("")
+    String k6Tenant();
+
+    /**
+     * Single-sign-on login URL used for users whose {@code logintype} is SSO (API mode and k6). Blank = no SSO configured; an SSO user then
+     * fails fast with a clear message instead of falling back to the ERP login.
+     */
+    @Key("webapi.sso.loginUrl")
+    @DefaultValue("")
+    String ssoLoginUrl();
+
     /** Parallel k6 users (VUs) the filler uses; capped at the number of documents still needed. */
     @Key("docscheme.fill.vus")
     @DefaultValue("5")

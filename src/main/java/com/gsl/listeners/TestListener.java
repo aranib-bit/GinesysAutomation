@@ -518,8 +518,11 @@ public class TestListener implements ITestListener, ISuiteListener {
                     com.gsl.driver.SessionPool.currentTestCaseIdsByUsername();
 
             List<UserPoolStatusRow> rows = new java.util.ArrayList<>();
-            for (UserType type : UserType.values()) {
+            // Only the pools Selenium tests draw from: PERF accounts belong to k6 (there can be thousands) and a [UI, WEBAPI] user sits in two pools but is one row.
+            java.util.Set<String> listed = new java.util.HashSet<>();
+            for (UserType type : List.of(UserType.UI, UserType.WEBAPI)) {
                 for (String username : UserPool.allUsernamesOfType(type)) {
+                    if (!listed.add(username)) continue;
                     String liveTestCaseId = liveTestCaseIdsByUsername.get(username);
                     rows.add(liveTestCaseId != null
                             ? new UserPoolStatusRow(username, UserPoolStatusRow.USED, liveTestCaseId)

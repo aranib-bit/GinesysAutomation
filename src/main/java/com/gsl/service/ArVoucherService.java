@@ -61,7 +61,14 @@ public final class ArVoucherService {
     public ArVoucherCreateResponse createArVoucherWithDefaults(
             long requiredClsCode, int ownerSiteCode, int ouCode, long empCode, int quantity, int rate,
             String docSchemeName) {
-        ArVoucherRequestFactory.Inputs inputs = resolve(requiredClsCode, ownerSiteCode, ouCode, empCode, quantity, rate, docSchemeName);
+        return createArVoucherWithDefaults(requiredClsCode, ownerSiteCode, ouCode, empCode, quantity, rate, docSchemeName, sl -> true);
+    }
+
+    /** As above, raised against a sub-ledger {@code slFilter} accepts — lets a backfill spread its vouchers over several sub-ledgers. */
+    public ArVoucherCreateResponse createArVoucherWithDefaults(
+            long requiredClsCode, int ownerSiteCode, int ouCode, long empCode, int quantity, int rate,
+            String docSchemeName, java.util.function.Predicate<SubLedgerLookupResult> slFilter) {
+        ArVoucherRequestFactory.Inputs inputs = resolve(requiredClsCode, ownerSiteCode, ouCode, empCode, quantity, rate, docSchemeName, slFilter);
         ArVoucherCreateRequest request = ArVoucherRequestFactory.create(inputs, String.valueOf(System.nanoTime()));
 
         ReportLogger.dataBackfill(
@@ -87,6 +94,11 @@ public final class ArVoucherService {
     /** Runs every lookup an AR Voucher create needs (doc scheme, Cash/Bank, sub-ledger, reference site, date check, UDFs) and returns the resolved values. */
     private ArVoucherRequestFactory.Inputs resolve(long requiredClsCode, int ownerSiteCode, int ouCode, long empCode, int quantity, int rate,
                                                     String docSchemeName) {
+        return resolve(requiredClsCode, ownerSiteCode, ouCode, empCode, quantity, rate, docSchemeName, sl -> true);
+    }
+
+    private ArVoucherRequestFactory.Inputs resolve(long requiredClsCode, int ownerSiteCode, int ouCode, long empCode, int quantity, int rate,
+                                                    String docSchemeName, java.util.function.Predicate<SubLedgerLookupResult> slFilter) {
 
         String workDate = LocalDate.now() + "T00:00:00";
 
@@ -105,7 +117,7 @@ public final class ArVoucherService {
         CashBankLedgerLookupResult cashBankLedger = cashBankLedgers.get(0);
 
         SubLedgerLookupResult subLedger = StepExecutor.call("Get Sub Ledger Details for AR Voucher",
-                () -> client.resolveSubLedger(ownerSiteCode, ouCode, (int) empCode, workDate, requiredClsCode));
+                () -> client.resolveSubLedger(ownerSiteCode, ouCode, (int) empCode, workDate, requiredClsCode, slFilter));
 
         List<ReferenceSiteLookupResult> refSites = StepExecutor.call("Get Reference Sites for AR Voucher",
                 () -> client.fetchReferenceSites(ouCode, subLedger.getSlCode(), ownerSiteCode, workDate));

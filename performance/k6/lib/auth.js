@@ -32,6 +32,13 @@ function debugLog(method, url, res) {
 }
 
 function performLogin(credential) {
+  if (credential.loginType === 'SSO') {
+    // Never fall back to the ERP login for an SSO user: it would fail with a misleading bad-credentials error.
+    throw new Error(
+      `User ${credential.username} has loginType SSO, but the SSO login flow is not implemented yet (the ERP-via-SSO request/response `
+        + `has not been captured - an HAR of an SSO user logging in to the ERP is needed). SSO URL from the users file: ${credential.ssoLoginUrl || '(none configured)'}.`
+    );
+  }
   const body = `grant_type=password&username=${encodeURIComponent(
     credential.username
   )}&password=${encodeURIComponent(credential.password)}`;

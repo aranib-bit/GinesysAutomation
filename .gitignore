@@ -78,7 +78,6 @@ test-output/
 performance/**/node_modules/
 performance/k6/reports/
 performance/k6/data/users/*
-!performance/k6/data/users/users.sample.json
 performance/k6/data/generated/
 performance/k6/data-export/src/config/*.json
 !performance/k6/data-export/src/config/*.sample.json

@@ -23,10 +23,11 @@ public final class UiKnownIssues {
     private UiKnownIssues() {}
 
     private static final List<UiKnownIssue> ENTRIES = List.of(
-            // Grid row "Site" / "Cheque/RTGS" buttons are unstyled native <button>s (the app's CSS sets no
-            // background), so the colour is the browser default: Windows 240, Linux 239 (observed run
-            // 20261003_235401). Exact value only — any other colour still FAILS.
-            new UiKnownIssue("GRID_ROW_BUTTON_(SITE|CHEQUE_RTGS)_ROW_\\d+", "background-color",
+            // Grid row "Site" / "Cheque/RTGS" / "Adjust" buttons are unstyled native <button>s (the app's
+            // CSS sets no background), so the colour is the browser default: Windows 240, Linux 239
+            // (observed run 20261003_235401; Adjust seen in the 20261031 clone-staging/qaprod runs).
+            // Exact value only — any other colour still FAILS.
+            new UiKnownIssue("GRID_ROW_BUTTON_(SITE|CHEQUE_RTGS|ADJUST)_ROW_\\d+", "background-color",
                     "rgb(239, 239, 239)",
                     "Unstyled native button: browser default differs by OS (Windows 240 / Linux 239); "
                             + "app should set an explicit background. Awaiting app-team fix.",

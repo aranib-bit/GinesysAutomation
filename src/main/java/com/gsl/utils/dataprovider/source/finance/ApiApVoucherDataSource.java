@@ -233,7 +233,7 @@ public class ApiApVoucherDataSource extends DbApVoucherDataSource {
         ReportLogger.dataBackfill("[API] AP backfill combination if shortfall: neededQty={}, clsCode={} (clstype={}), ownerSite={} (code={})",
                 neededQty, clsCode, clstype, owner.siteName(), owner.siteCode());
         if (useArVoucherBackfill) {
-            return new ArVoucherApBackfillStrategy(clsCode, owner.siteCode(), owner.ouCode(), owner.empCode());
+            return new ArVoucherApBackfillStrategy(clsCode, owner.siteCode(), owner.ouCode(), owner.empCode(), opts.getSubLedgerCount());
         }
         String vendorSlid = classScoped.stream().findFirst().map(SubLedgerLookupResult::getSlid)
                 .orElseThrow(() -> new SkipException("Skipped due to lack of data: no vendor sub-ledger available to backfill an AP document against."));

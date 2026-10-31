@@ -48,6 +48,13 @@ public final class K6Scripts {
         return configured.isAbsolute() ? configured : Path.of(System.getProperty("user.dir")).resolve(configured).normalize();
     }
 
+    /** The k6 tenant of this environment: {@code k6.tenant}, else the API tenant ({@code api.tenant.active}). */
+    public static String tenant() {
+        ApiConfig cfg = ConfigFactory.getApiConfig();
+        String k6 = cfg.k6Tenant();
+        return k6 == null || k6.isBlank() ? cfg.activeTenant() : k6.trim();
+    }
+
     /** The scenario file for {@code scriptKey}: the configured override if any, else the default under {@link #home()}. */
     public static Path resolve(String scriptKey) {
         ApiConfig cfg = ConfigFactory.getApiConfig();

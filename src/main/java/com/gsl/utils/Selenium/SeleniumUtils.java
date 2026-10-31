@@ -904,6 +904,21 @@ public class SeleniumUtils {
                     throw e;
                 }
 
+                // A message box on screen is not a loading mask: nothing clears it by waiting, so each
+                // retry just burns ~41s (runs 20261031: qaprod GV edit + clone-staging cash scenarios sat
+                // behind "Post dated entries are not allowed for cash transactions" for 3 retries and
+                // then failed as a bare ElementClickInterceptedException). Name the dialog and stop.
+                com.gsl.popup.PopupResult dialog = com.gsl.popup.PopupHandler.detectPopup();
+                if (dialog != null && dialog.popupType() != com.gsl.enums.PopupType.SUCCESS
+                        && dialog.popupType() != com.gsl.enums.PopupType.INFO) {
+                    String text = "Click on '" + elementName + "' is blocked by an open application dialog ("
+                            + dialog.popupType() + " | " + dialog.header() + " | \"" + dialog.message() + "\"). "
+                            + "Waiting cannot clear it, so the overlay retries were skipped.";
+                    Log.error("[OVERLAY-RETRY] {}", text);
+                    ExtentLogger.fail(text);   // screenshot with the dialog still open
+                    throw e;
+                }
+
                 Log.warn("[OVERLAY-RETRY] Click on '{}' intercepted{} — attempt {}/{}. Scrolling into view and waiting for overlay to clear…",
                         elementName, overlayTag, attempt, maxRetries);
                 ExtentLogger.warning(String.format(

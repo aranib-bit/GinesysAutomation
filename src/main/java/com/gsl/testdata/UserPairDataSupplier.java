@@ -28,10 +28,10 @@ public class UserPairDataSupplier {
     public Stream<Object[]> set1UserPairs() {
         List<UserCredential> all = UserCredentialLoader.loadAll();
         List<UserCredential> uiUsers = all.stream()
-                .filter(u -> u.executionSet() == ExecutionSet.SET1 && u.userType() == UserType.UI)
+                .filter(u -> u.executionSet() == ExecutionSet.SET1 && u.has(UserType.UI))
                 .toList();
         List<UserCredential> apiUsers = all.stream()
-                .filter(u -> u.executionSet() == ExecutionSet.SET1 && u.userType() == UserType.API)
+                .filter(u -> u.executionSet() == ExecutionSet.SET1 && u.has(UserType.WEBAPI))
                 .toList();
         int count = Math.min(uiUsers.size(), apiUsers.size());
         if (count == 0) {

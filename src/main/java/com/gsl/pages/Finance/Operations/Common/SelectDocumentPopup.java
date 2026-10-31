@@ -217,9 +217,15 @@ public class SelectDocumentPopup {
             }
 
             if (checkbox == null) {
+                String diagnostics = String.valueOf(JavascriptExecutorUtils.getGridDiagnostics());
+                // The store held the document (storeCount > 0, jump landed) yet no row ever rendered while a
+                // load mask was still up — run 20261031_082255 (AP-P3). Say that instead of implying the
+                // document is absent from the list, which sends the reader to the wrong place.
+                String hint = diagnostics.contains("x-mask")
+                        ? " [grid still masked / rows not rendered — not evidence the document is missing]" : "";
                 throw new NoSuchElementException(
-                    "SelectDocumentPopup: Checkbox for [" + documentNumber + "] not found after direct jump + mouse-wheel scroll to end-of-list + focusRow fallback. Final diagnostics: "
-                            + JavascriptExecutorUtils.getGridDiagnostics());
+                    "SelectDocumentPopup: Checkbox for [" + documentNumber + "] not found after direct jump + mouse-wheel scroll to end-of-list + focusRow fallback."
+                            + hint + " Final diagnostics: " + diagnostics);
             }
         }
 

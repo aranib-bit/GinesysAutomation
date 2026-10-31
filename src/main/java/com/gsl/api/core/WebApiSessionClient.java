@@ -152,11 +152,48 @@ public final class WebApiSessionClient {
     /** POSTs the raw {@code grant_type=password} login request — no response handling, just the HTTP call. */
     private static Response performLogin(UserCredential credential) {
         ApiConfig cfg = ConfigFactory.getApiConfig();
-        return RestAssured.given()
+        return withConnectRetry("Create Token", () -> RestAssured.given()
                 .baseUri(cfg.webApiBaseUri())
                 .contentType(AuthDefaults.FORM_CONTENT_TYPE)
                 .formParams(QueryParams.toMap(PasswordTokenRequest.of(credential.username(), credential.password())))
-                .post(cfg.webApiLoginPath());
+                .post(cfg.webApiLoginPath()));
+    }
+
+    private static final int CONNECT_ATTEMPTS = 3;
+
+    /**
+     * Retries only when the TCP connection itself could not be made ({@link java.net.ConnectException}
+     * / connect timeout) — no request reached the server, so repeating a login or a kill is safe.
+     * Run 20261031_060853 (AR-P2) lost two tests to a ~21s "Connection timed out: connect" on the token
+     * endpoint while three threads logged in together. Any HTTP response, even an error, is returned as-is.
+     */
+    private static Response withConnectRetry(String what, java.util.function.Supplier<Response> call) {
+        RuntimeException last = null;
+        for (int attempt = 1; attempt <= CONNECT_ATTEMPTS; attempt++) {
+            try {
+                return call.get();
+            } catch (RuntimeException e) {
+                Throwable root = e;
+                while (root.getCause() != null && root.getCause() != root) root = root.getCause();
+                boolean connectFailure = root instanceof java.net.ConnectException
+                        || root instanceof java.net.NoRouteToHostException
+                        || (root instanceof java.net.SocketTimeoutException
+                                && String.valueOf(root.getMessage()).toLowerCase().contains("connect"));
+                if (!connectFailure) throw e;
+                last = e;
+                com.gsl.utils.Log.warn("[WebApiSessionClient] {} could not connect (attempt {}/{}): {}",
+                        what, attempt, CONNECT_ATTEMPTS, root.getMessage());
+                if (attempt < CONNECT_ATTEMPTS) {
+                    try {
+                        Thread.sleep(2000L * attempt);
+                    } catch (InterruptedException ie) {
+                        Thread.currentThread().interrupt();
+                        throw e;
+                    }
+                }
+            }
+        }
+        throw last;
     }
 
     /** GET {apiPrefix}/Session/KillUser?userId=<tag> — forces the stale session (from code 012) to end. */
@@ -165,10 +202,10 @@ public final class WebApiSessionClient {
         String path = cfg.webApiApiPrefix() + WebApiEndpoints.Auth.KILL_USER.path();
         String url = cfg.webApiBaseUri() + path + "?userId=" + userId;
         long start = System.currentTimeMillis();
-        Response response = RestAssured.given()
+        Response response = withConnectRetry("Kill Token", () -> RestAssured.given()
                 .baseUri(cfg.webApiBaseUri())
                 .queryParams(QueryParams.toMap(KillSessionQuery.of(userId)))
-                .get(path);
+                .get(path));
         logRedactedCall("GET", url, "(none)", response, System.currentTimeMillis() - start);
     }
 

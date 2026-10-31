@@ -67,11 +67,15 @@ public class FinTagApValidator {
 
         BigDecimal totalTagged = finTagDao.sumTaggedAmountByEntCode1(vchcode);
 
+        // "I will adjust more" steps add SelectDocument adjustments that are not in selectDocumentList —
+        // each one is a legitimate extra fintag row (run 20261031_062600, DOC-MISMATCH-03: expected 1, found 2).
+        int expectedTagCount = selectDocs.size() + extraSelectDocumentCount(data);
+
         SoftAssertions.assertSoftly(soft -> {
             soft.assertThat(tags.size())
                     .as("[Level 4a] fintag count for entcode1 [" + vchcode
-                            + "]: expected " + selectDocs.size() + " found " + tags.size())
-                    .isEqualTo(selectDocs.size());
+                            + "]: expected " + expectedTagCount + " found " + tags.size())
+                    .isEqualTo(expectedTagCount);
 
             // AP: credit side carries the payment total
             soft.assertThat(totalTagged)
@@ -88,6 +92,20 @@ public class FinTagApValidator {
         ReportLogger.infoLabeledTable("fintag rows", buildTagTable(tags));
         ReportLogger.infoHtml(buildLevel4aSummary(tags.size(), totalTagged, header.getCamount()));
         ReportLogger.db("Level 4a — PASSED for voucherNo [" + voucherNo + "]");
+    }
+
+    /** Documents added through "I will adjust more" SELECT_DOCUMENT steps of the scenario's mismatch plan. */
+    private static int extraSelectDocumentCount(MergedFinanceApVoucherData data) {
+        var plan = data.getAdjustmentMismatchPlan();
+        if (plan == null) return 0;
+        int extra = 0;
+        for (var step : plan.getSteps()) {
+            if (step.getExtra() != null && step.getExtra().getType() == com.gsl.enums.AdjustmentType.SELECT_DOCUMENT
+                    && step.getExtra().getDocs() != null) {
+                extra += step.getExtra().getDocs().size();
+            }
+        }
+        return extra;
     }
 
     /** Builds the Level 4a green-checklist HTML box (tagged entry count, tagged total vs. camount). */

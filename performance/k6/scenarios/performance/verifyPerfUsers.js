@@ -44,7 +44,7 @@ export default function () {
       verifiedCount++;
       // Same "SeededUser: user|pass" line format createUser.js uses, so the
       // existing list-seeded-users.ps1 / merge-seeded-users.ps1 tooling can
-      // be reused unchanged to fold these into data/users/<tenant>.users.json.
+      // be reused unchanged to turn these into UsersList.xlsx rows (scripts/seeded-users-to-workbook-csv.ps1).
       console.log(`SeededUser: ${username}|${username}`);
     } else {
       console.log(`VerifyLoginFailed: ${username} (exists but password!=username or account not usable)`);

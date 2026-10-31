@@ -48,10 +48,40 @@ public final class ArVoucherApBackfillStrategy implements BackfillStrategy {
      * @param empCode         logged-in employee code used to create the AR Voucher
      */
     public ArVoucherApBackfillStrategy(long requiredClsCode, int ownerSiteCode, int ouCode, long empCode) {
+        this(requiredClsCode, ownerSiteCode, ouCode, empCode, 1);
+    }
+
+    /**
+     * @param distinctSubLedgers how many different sub-ledgers the vouchers must be spread over. A scenario needing 2 sub-ledgers x 2 documents
+     *                           used to get all 4 vouchers on one sub-ledger (the lookup always returns the first match), so the retry still
+     *                           found a single sub-ledger and skipped (run 20261031_062600, AP-P2 DOC-05/06). 1 keeps the old behaviour.
+     */
+    public ArVoucherApBackfillStrategy(long requiredClsCode, int ownerSiteCode, int ouCode, long empCode, int distinctSubLedgers) {
         this.requiredClsCode = requiredClsCode;
         this.ownerSiteCode = ownerSiteCode;
         this.ouCode = ouCode;
         this.empCode = empCode;
+        this.distinctSubLedgers = Math.max(1, distinctSubLedgers);
+    }
+
+    private final int distinctSubLedgers;
+
+    /** The sub-ledgers to spread over: the first {@code distinctSubLedgers} of the required classification the lookup offers. */
+    private List<Long> targetSubLedgerCodes(ApiSessionBundle session) {
+        if (distinctSubLedgers <= 1) return List.of();
+        String workDate = LocalDate.now() + "T00:00:00";
+        List<Long> codes = session.getArVoucherApiClient()
+                .fetchSubLedgers(ownerSiteCode, ouCode, (int) empCode, workDate).stream()
+                .filter(sl -> requiredClsCode <= 0 || sl.getClassCode() == requiredClsCode)
+                .map(sl -> (long) sl.getSlCode())
+                .distinct()
+                .limit(distinctSubLedgers)
+                .collect(Collectors.toList());
+        if (codes.size() < distinctSubLedgers) {
+            ReportLogger.dataBackfillWarn("[ArVoucherApBackfillStrategy] Only {} sub-ledger(s) of classCode={} offered, {} wanted — spreading over what exists.",
+                    codes.size(), requiredClsCode, distinctSubLedgers);
+        }
+        return codes.size() <= 1 ? List.of() : codes;
     }
 
     /** Creates {@code neededQuantity} AR Vouchers against {@link #requiredClsCode} via {@code platform}; see the class Javadoc for the data shape this produces. */
@@ -61,8 +91,12 @@ public final class ArVoucherApBackfillStrategy implements BackfillStrategy {
         // No blanket section label here — ArVoucherService.createArVoucherWithDefaults wraps
         // each of its own internal calls in its own meaningful, specific StepExecutor.call node
         // (e.g. "Get Doc Scheme Nos for AR Voucher").
+        List<Long> targets = targetSubLedgerCodes(session);
         for (int i = 0; i < neededQuantity; i++) {
             final int idx = i;
+            final java.util.function.Predicate<com.gsl.api.model.common.SubLedgerLookupResult> slFilter = targets.isEmpty()
+                    ? sl -> true
+                    : sl -> sl.getSlCode() == targets.get(idx % targets.size());
             ExtentTest recordNode = StepExecutor.group("Record " + (idx + 1) + "/" + neededQuantity);
             String documentDate = LocalDate.now().toString();
             ReportLogger.dataBackfill(
@@ -75,7 +109,7 @@ public final class ArVoucherApBackfillStrategy implements BackfillStrategy {
             StepExecutor.stepUnder(recordNode, BackfillStepLabel.CREATE_AR_VOUCHER.label(), () ->
                     voucherHolder[0] = ArVoucherDataSetup.setupArVoucherForTest(
                             session.getArVoucherApiClient(), requiredClsCode, ownerSiteCode, ouCode, empCode,
-                            DEFAULT_QTY, DEFAULT_RATE));
+                            DEFAULT_QTY, DEFAULT_RATE, slFilter));
             ArVoucherCreateResponse voucher = voucherHolder[0];
 
             ReportLogger.dataBackfill("[ArVoucherApBackfillStrategy] Backfilled record {}/{} — voucherCode={}, docScheme={}",

@@ -1,18 +1,16 @@
 import { sleep } from 'k6';
 import exec from 'k6/execution';
-import { SharedArray } from 'k6/data';
+import { credentials as allCredentials } from '../../lib/userPool.js';
 import { testLoginLogout } from '../../flows/loginLogoutTest.js';
 import { buildRampingVusProfile } from '../../lib/loadProfile.js';
-import { insecureSkipTLSVerify, TENANT, usersFileName } from '../../lib/config.js';
+import { insecureSkipTLSVerify, TENANT } from '../../lib/config.js';
 export { handleSummary } from '../../lib/report.js';
 
-// Every credential currently in data/users/<tenant>.users.json - not a
+// Every PERF credential of the generated users file (UsersList.xlsx) - not a
 // sample, the whole pool - since the point of this scenario is to prove
 // (or disprove) each one live, including the ones added on the assumption
 // password===username without an individual login check at seed time.
-const allCredentials = new SharedArray('allCredentials', function () {
-  return JSON.parse(open(`../../data/users/${usersFileName}`));
-});
+// (allCredentials: every PERF user of the generated users file, via lib/userPool.js)
 
 // TEST_LIMIT: optional smoke-test override to run against only the first N
 // credentials instead of the whole pool - does not touch the pool file.

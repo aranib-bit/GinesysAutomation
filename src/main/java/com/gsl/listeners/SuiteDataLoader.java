@@ -173,7 +173,7 @@ public class SuiteDataLoader implements ISuiteListener {
      */
     private static void validateUserPoolAgainstThreadCount(ISuite suite) {
         int uiCount  = UserPool.initialCountOf(UserType.UI);
-        int apiCount = UserPool.initialCountOf(UserType.API);
+        int apiCount = UserPool.initialCountOf(UserType.WEBAPI);
 
         // ── UI user count check ───────────────────────────────────────────────
         if (uiCount == 0) {

@@ -31,11 +31,11 @@ public final class ApiSessionFactory {
     private ApiSessionFactory() {}
 
     /**
-     * Acquires a fresh {@code UserType.UI} credential from UserPool and builds a WEBAPI session —
-     * WEBAPI login is the same account a browser login would use, drawn from UsersList.xlsx's
-     * UI users, not a separate API-type pool (confirmed: this environment has zero SET1 API
-     * users configured, so acquiring UserType.API here always threw a SkipException). The
-     * session releases this credential back to UserPool on logout() since it self-acquired it.
+     * Acquires a fresh WEBAPI credential from UserPool ({@link UserPool#acquireForWebApi}: a user listed
+     * {@code [WEBAPI]} or {@code [UI, WEBAPI]} in UsersList.xlsx, else - for workbooks without the usertype
+     * column - a UI user as before) and builds a WEBAPI session. A {@code [UI, WEBAPI]} user is one shared
+     * login, so it is never held by a browser test at the same time. The session releases this credential
+     * back to UserPool on logout() since it self-acquired it.
      *
      * <p>Uses the framework's normal pool-acquire timeout (same as every other caller —
      * {@code pool.acquire.timeout.seconds}, 600s default) rather than a short backfill-specific
@@ -45,7 +45,7 @@ public final class ApiSessionFactory {
      * {@code SuiteDataLoader.validateUserPoolAgainstThreadCount()}'s headroom check.
      */
     public static ApiSessionBundle createForWebApi() {
-        UserCredential uiUser = UserPool.acquireSet1User(UserType.UI, "ApiSessionFactory.createForWebApi");
+        UserCredential uiUser = UserPool.acquireForWebApi("ApiSessionFactory.createForWebApi");
         try {
             return createForWebApi(uiUser, true);
         } catch (RuntimeException loginFailed) {
@@ -68,9 +68,14 @@ public final class ApiSessionFactory {
         // handled inside WebApiTokenAuthStrategy/WebApiSessionClient), so only the spec the flow
         // clients end up using needs the prefix baked in here.
         var cfg = ConfigFactory.getApiConfig();
-        AuthResult auth = new WebApiTokenAuthStrategy()
+        AuthResult auth = strategyFor(credential)
                 .authenticate(cfg.webApiBaseUri() + cfg.webApiApiPrefix(), credential);
         return build(ApiPlatform.WEBAPI, auth, credential, releaseOnLogout);
+    }
+
+    /** The WEBAPI login for this user: the application's own ({@code ERP}) or the single-sign-on one ({@code SSO}); an SSO user is never logged in the ERP way. */
+    public static ApiAuthStrategy strategyFor(UserCredential credential) {
+        return credential.loginType() == com.gsl.testdata.LoginType.SSO ? new WebApiSsoAuthStrategy() : new WebApiTokenAuthStrategy();
     }
 
     /** Builds a PUBLICAPI session — OAuth2 client-credentials, no UserPool involvement. */

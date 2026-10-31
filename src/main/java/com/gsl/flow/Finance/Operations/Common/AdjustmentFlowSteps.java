@@ -54,7 +54,9 @@ public final class AdjustmentFlowSteps {
                 }
                 BigDecimal ui = BigDecimalUtils.safeParse(entry.getAdjustedAmountForDocument(d.getDocumentNumber()));
                 if (amount.compareTo(ui) != 0) {
-                    entry.setAdjustedAmountForDocument(d.getDocumentNumber(), amount.toPlainString());
+                    BigDecimal pending = readPending(entry, d.getDocumentNumber());
+                    boolean overPending = pending != null && pending.signum() > 0 && amount.compareTo(pending) > 0;
+                    entry.setAdjustedAmountForDocument(d.getDocumentNumber(), amount.toPlainString(), overPending);
                 }
             }
         } else if (type == AdjustmentType.REFERENCE_SITEWISE_FIFO_SETOFF) {

@@ -11,4 +11,5 @@ if "%ROWS%"=="" set ROWS=1000
 set TENANT=%3
 if "%TENANT%"=="" set TENANT=qafeature
 if not exist reports\%TENANT% mkdir reports\%TENANT%
-k6 run -e TENANT=%TENANT% -e USERS_FILE=%TENANT%.billingimport.users.json -e VUS=%VUS% -e ROWS=%ROWS% --console-output=reports\%TENANT%\billing-import.log scenarios\backfill\importEcommerceBilling.js
+rem users: the PERF users of UsersList.xlsx, exported by Java first:  mvn -o test -Dtest=K6UsersExportTest -Dk6.users.write=true -Denv=<env>
+k6 run -e TENANT=%TENANT% -e USERS_FILE=data/generated/users-%TENANT%.json -e VUS=%VUS% -e ROWS=%ROWS% --console-output=reports\%TENANT%\billing-import.log scenarios\backfill\importEcommerceBilling.js

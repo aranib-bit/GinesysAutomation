@@ -7,9 +7,11 @@ import org.apache.poi.ss.usermodel.*;
 
 import java.io.InputStream;
 import java.util.ArrayList;
+import java.util.EnumSet;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 
 /**
  * Reads UsersList.xlsx using Apache POI directly.
@@ -32,7 +34,8 @@ import java.util.Map;
  *     <li>First sheet in the workbook, defaulting to UI, with a loud warning — last resort only,
  *     for workbooks that use neither of the above shapes.</li>
  * </ol>
- * Column headers are matched case-insensitively.
+ * Column headers are matched case-insensitively. Columns: {@code username}, {@code password}, {@code usertype} (e.g. {@code [UI, WEBAPI]}, see
+ * {@link #parseTypes}), {@code logintype} ({@code ERP} default or {@code SSO}), {@code executionset}, {@code groupid}.
  */
 public final class UserCredentialLoader {
 
@@ -57,14 +60,7 @@ public final class UserCredentialLoader {
             }
 
             try (Workbook workbook = WorkbookFactory.create(is)) {
-                List<UserCredential> credentials = new ArrayList<>();
-                for (SheetResolution resolution : resolveSheets(workbook)) {
-                    List<UserCredential> fromSheet = parseSheet(resolution.sheet, resolution.defaultUserType);
-                    credentials.addAll(fromSheet);
-                    Log.info("[UserCredentialLoader] Loaded {} credential(s) from sheet '{}' (default userType={}).",
-                            fromSheet.size(), resolution.sheet.getSheetName(), resolution.defaultUserType);
-                }
-                return credentials;
+                return fromWorkbook(workbook);
             }
         } catch (Exception e) {
             String hint = (e.getMessage() != null && e.getMessage().contains("forward slash"))
@@ -72,6 +68,63 @@ public final class UserCredentialLoader {
                     : "";
             Log.error("[UserCredentialLoader] Failed to read '{}': {}{}", path, e.getMessage(), hint, e);
             return List.of();
+        }
+    }
+
+    /** Every credential of an already-open workbook, per the sheet-resolution order documented on this class (also the entry point for unit tests). */
+    public static List<UserCredential> fromWorkbook(Workbook workbook) {
+        List<UserCredential> credentials = new ArrayList<>();
+        for (SheetResolution resolution : resolveSheets(workbook)) {
+            List<UserCredential> fromSheet = parseSheet(resolution.sheet, resolution.defaultUserType);
+            credentials.addAll(fromSheet);
+            Log.info("[UserCredentialLoader] Loaded {} credential(s) from sheet '{}' (default userType={}).",
+                    fromSheet.size(), resolution.sheet.getSheetName(), resolution.defaultUserType);
+        }
+        return credentials;
+    }
+
+    /**
+     * Parses a {@code usertype} cell: {@code [UI, WEBAPI]} with brackets, or a bare value ({@code UI}). The legacy value {@code API} reads as
+     * {@code WEBAPI}. A user has ONE type, except {@code UI} + {@code WEBAPI} together (either order), the only allowed combination because those two
+     * uses share one login; {@code PERF} and {@code PUBLICAPI} are always alone.
+     *
+     * @throws IllegalArgumentException naming the row, for an unknown value, a duplicate, an empty entry or bracket pair, an unclosed bracket, or a
+     *                                  combination other than UI + WEBAPI
+     */
+    public static Set<UserType> parseTypes(String cell, int rowNumber) {
+        String where = "row " + rowNumber + ": usertype '" + cell + "'";
+        String raw = cell == null ? "" : cell.trim();
+        if (raw.startsWith("[") || raw.endsWith("]")) {
+            if (!(raw.startsWith("[") && raw.endsWith("]"))) throw new IllegalArgumentException(where + " has an unmatched bracket");
+            raw = raw.substring(1, raw.length() - 1).trim();
+        }
+        if (raw.isEmpty()) throw new IllegalArgumentException(where + " is empty");
+        EnumSet<UserType> types = EnumSet.noneOf(UserType.class);
+        for (String part : raw.split(",", -1)) {
+            String name = part.trim().toUpperCase(java.util.Locale.ROOT);
+            if (name.isEmpty()) throw new IllegalArgumentException(where + " has an empty entry");
+            if (name.equals("API")) name = UserType.WEBAPI.name();
+            UserType type;
+            try {
+                type = UserType.valueOf(name);
+            } catch (IllegalArgumentException e) {
+                throw new IllegalArgumentException(where + " has unknown type '" + part.trim() + "' (allowed: UI, WEBAPI, PUBLICAPI, PERF)");
+            }
+            if (!types.add(type)) throw new IllegalArgumentException(where + " lists " + type + " twice");
+        }
+        if (types.size() > 1 && !types.equals(EnumSet.of(UserType.UI, UserType.WEBAPI))) {
+            throw new IllegalArgumentException(where + " combines " + types + "; the only allowed combination is [UI, WEBAPI]");
+        }
+        return types;
+    }
+
+    /** Parses a {@code logintype} cell: blank means {@link LoginType#ERP}. @throws IllegalArgumentException for an unknown value */
+    public static LoginType parseLoginType(String cell, int rowNumber) {
+        if (cell == null || cell.isBlank()) return LoginType.ERP;
+        try {
+            return LoginType.valueOf(cell.trim().toUpperCase(java.util.Locale.ROOT));
+        } catch (IllegalArgumentException e) {
+            throw new IllegalArgumentException("row " + rowNumber + ": logintype '" + cell + "' is unknown (allowed: ERP, SSO)");
         }
     }
 
@@ -102,7 +155,7 @@ public final class UserCredentialLoader {
         Sheet uiSheet = findSheetByName(workbook, "UIUsers");
         if (uiSheet != null) typed.add(new SheetResolution(uiSheet, UserType.UI));
         Sheet apiSheet = findSheetByName(workbook, "APIUsers");
-        if (apiSheet != null) typed.add(new SheetResolution(apiSheet, UserType.API));
+        if (apiSheet != null) typed.add(new SheetResolution(apiSheet, UserType.WEBAPI));
         if (!typed.isEmpty()) return typed;
 
         // 3. First sheet fallback — last resort only.
@@ -183,13 +236,13 @@ public final class UserCredentialLoader {
             }
 
             try {
-                UserType     userType = UserType.valueOf(userTypeStr.trim().toUpperCase());
-                ExecutionSet execSet  = ExecutionSet.valueOf(execSetStr.trim().toUpperCase());
-                String       gid      = (groupId == null || groupId.isBlank()) ? null : groupId.trim();
-                result.add(new UserCredential(username.trim(), resolvePassword(username.trim(), password), userType, execSet, gid));
+                Set<UserType> types    = inferUserType ? Set.of(defaultUserType) : parseTypes(userTypeStr, r + 1);
+                LoginType     login    = parseLoginType(cellValue(row, colIndex, fmt, "logintype"), r + 1);
+                ExecutionSet  execSet  = ExecutionSet.valueOf(execSetStr.trim().toUpperCase());
+                String        gid      = (groupId == null || groupId.isBlank()) ? null : groupId.trim();
+                result.add(new UserCredential(username.trim(), resolvePassword(username.trim(), password), types, login, execSet, gid));
             } catch (IllegalArgumentException e) {
-                Log.warn("[UserCredentialLoader] Skipping row {} — unknown userType='{}' or executionSet='{}': {}",
-                        r + 1, userTypeStr, execSetStr, e.getMessage());
+                Log.error("[UserCredentialLoader] Skipping row {} ({}): {}", r + 1, username.trim(), e.getMessage());
             }
         }
         return result;

@@ -91,7 +91,7 @@ public abstract class WebTest extends BaseTest {
             TestContextManager.setUiUser(uiUser.username());
 
             // ── Resolve API user (optional) ───────────────────────────────────────
-            UserCredential apiFromParam = extractCredential(testParams, UserType.API);
+            UserCredential apiFromParam = extractCredential(testParams, UserType.WEBAPI);
             UserCredential apiUser      = null;
 
             if (apiFromParam != null) {
@@ -99,9 +99,9 @@ public abstract class WebTest extends BaseTest {
                 apiUserFromPool.set(false);
                 Log.info("[WebTest] [T-{}] API user '{}' supplied by DataSupplier.",
                         Thread.currentThread().getId(), apiUser.username());
-            } else if (UserPool.hasUsersOfType(UserType.API)) {
+            } else if (UserPool.hasUsersOfType(UserType.WEBAPI)) {
                 // Only acquire from pool when API users are actually configured
-                apiUser = UserPool.acquireSet1User(UserType.API, qualifiedLabel);
+                apiUser = UserPool.acquireSet1User(UserType.WEBAPI, qualifiedLabel);
                 apiUserFromPool.set(true);
             } else {
                 // No API users configured — this is normal for UI-only tests
@@ -267,7 +267,7 @@ public abstract class WebTest extends BaseTest {
     private static UserCredential extractCredential(Object[] params, UserType type) {
         if (params == null) return null;
         for (Object p : params) {
-            if (p instanceof UserCredential uc && uc.userType() == type) return uc;
+            if (p instanceof UserCredential uc && uc.has(type)) return uc;
         }
         return null;
     }

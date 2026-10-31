@@ -16,7 +16,7 @@ public interface AdmSiteDao {
     /** Returns the {@link AdmSite} row for the given {@code code}. */
     // Round 15: admou_code added so callers (GV's site-resolution OU-consistency check) can read
     // a site's own Organizational Unit off the same row they already fetch — no second query.
-    @SqlQuery("SELECT code, name, shrtname, admou_code FROM admsite WHERE code = :code")
+    @SqlQuery("SELECT code, name, shrtname, admou_code, ext FROM admsite WHERE code = :code")
     AdmSite findByCode(@Bind("code") long code);
 
     /** Reverse lookup — resolves a site's DB row from its UI-facing name (e.g. the "Owner Site"

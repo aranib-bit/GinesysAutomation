@@ -3,9 +3,7 @@ export const TENANT = __ENV.TENANT || 'stage-ideal';
 const env = JSON.parse(open(`../erp/config/environments/${TENANT}.json`));
 
 export const baseUrl = env.baseUrl;
-// USERS_FILE lets a scenario run against a dedicated credential pool (e.g. the
-// 20-user billing-import pool) without touching the tenant's main user file.
-export const usersFileName = __ENV.USERS_FILE || env.usersFile;
+// Users are not configured here: lib/userPool.js reads the USERS_FILE the Java side writes from UsersList.xlsx.
 export const businessDataFileName = env.businessDataFile;
 // "singleTenant" (each client has its own app instance, e.g. stage-ideal) vs
 // "multiTenant" (multiple client orgs share one app instance/DB-routing

@@ -7,7 +7,7 @@
     Run: mvn clean test -Par-regression-phase1
 -->
 <!-- data-provider-thread-count MUST be at suite level — TestNG ignores it on <test>. -->
-<suite name="AR Voucher — Regression Phase-1" parallel="tests" thread-count="2" data-provider-thread-count="6">
+<suite name="AR Voucher — Regression Phase-1" configfailurepolicy="continue" parallel="tests" thread-count="2" data-provider-thread-count="6">
     <listeners>
         <listener class-name="com.gsl.listeners.RetryAnnotationTransformer"/>
         <listener class-name="com.gsl.listeners.TestListener"/>

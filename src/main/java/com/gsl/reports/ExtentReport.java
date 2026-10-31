@@ -294,14 +294,37 @@ public final class ExtentReport {
      *  {@code reports/latest/index.html} for CI pickup (see {@link #copyToLatest()}). Called
      *  directly by {@link #recordTestResult}'s batching logic; safe to call more often. */
     public static void flushReports() {
-        extent.flush();
-        SHARD_EXTENTS.values().forEach(e -> {
-            try { e.flush(); } catch (Exception ignored) {}
-        });
+        // Serialised: data-provider threads all reach here via recordTestResult. Extent walks its
+        // internal HashMaps while flushing, so a concurrent flush or test/attribute add surfaces as a
+        // ConcurrentModificationException — run 20261031_031748 (AP-P1) lost a SKIP to it because it
+        // was thrown out of TestListener.onTestSkipped and aborted that method's data-provider pool.
+        // A reporting hiccup must never change a test's outcome, so it is retried once and then logged.
+        synchronized (FLUSH_LOCK) {
+            flushQuietly(extent, "main");
+            SHARD_EXTENTS.values().forEach(e -> flushQuietly(e, "shard"));
+        }
         // Phase0: every flush (per-test, batched, or suite-end) also republishes
         // reports/latest/index.html, so the fixed-path file CI publishes/serves stays
         // live throughout the run instead of only updating once at suite finish.
         copyToLatest();
+    }
+
+    private static final Object FLUSH_LOCK = new Object();
+
+    private static void flushQuietly(ExtentReports target, String label) {
+        for (int attempt = 1; attempt <= 2; attempt++) {
+            try {
+                target.flush();
+                return;
+            } catch (java.util.ConcurrentModificationException e) {
+                if (attempt == 2) {
+                    Log.warn("[ExtentReport] {} flush skipped after a concurrent modification; the next flush will pick it up", label);
+                }
+            } catch (Exception e) {
+                Log.warn("[ExtentReport] {} flush failed: {}", label, e.toString());
+                return;
+            }
+        }
     }
 
     // ── Phase 0: copy run report to reports/latest/ for CI pickup ──────────────

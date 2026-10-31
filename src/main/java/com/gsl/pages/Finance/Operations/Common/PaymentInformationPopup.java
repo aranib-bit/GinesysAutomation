@@ -129,10 +129,52 @@ public abstract class PaymentInformationPopup {
         return this;
     }
 
-    public PaymentInformationPopup selectPaymentMode(PaymentSelectionType mode) {
+    /** Extra trigger clicks allowed when the Payment Mode list did not open (first click not counted). */
+    private static final int PAYMENT_MODE_REOPEN_ATTEMPTS = 2;
+
+    /**
+     * Clicks the Payment Mode trigger and makes sure the option list is actually showing. The click is
+     * sometimes reported successful while the list stays closed (the ExtJS combo drops it again), and the
+     * test then died 30s later waiting for the option — seen in runs 20261031_123502 (AP), _124927 (AR) and
+     * _135940 (GV edit PaymentInfo) with no mask or popup in the way. Only a CLOSED list is re-clicked: a
+     * click on an open one would close it. Every re-click is logged (log file + report warning) so the
+     * flake stays visible, and if the list still will not open the original wait fails as before.
+     */
+    private void openPaymentModeList(By option, String optionLabel) {
+        long probeSeconds = com.gsl.config.ConfigFactory.getWaitConfig().shortWaitSeconds();
         SeleniumUtils.click(PAYMENT_MODE_TRIGGER, WaitType.CLICKABLE, "PAYMENT_MODE_TRIGGER");
         JavascriptExecutorUtils.waitForExtJS();
+        for (int retry = 1; retry <= PAYMENT_MODE_REOPEN_ATTEMPTS; retry++) {
+            if (isOptionShowing(option, probeSeconds)) return;
+            String msg = "[PaymentInformationPopup] Payment Mode list did not open after the trigger click "
+                    + "('" + optionLabel + "' not visible within " + probeSeconds + "s) — clicking the trigger again, "
+                    + "re-open " + retry + "/" + PAYMENT_MODE_REOPEN_ATTEMPTS;
+            com.gsl.utils.Log.warn(msg);
+            com.gsl.reports.ExtentLogger.warning(msg);
+            SeleniumUtils.click(PAYMENT_MODE_TRIGGER, WaitType.CLICKABLE, "PAYMENT_MODE_TRIGGER_REOPEN_" + retry);
+            JavascriptExecutorUtils.waitForExtJS();
+        }
+        if (!isOptionShowing(option, probeSeconds)) {
+            String msg = "[PaymentInformationPopup] Payment Mode list still closed after "
+                    + PAYMENT_MODE_REOPEN_ATTEMPTS + " re-clicks — '" + optionLabel + "' is not visible.";
+            com.gsl.utils.Log.error(msg);
+            com.gsl.reports.ExtentLogger.warning(msg);
+        }
+    }
+
+    /** Whether the option is displayed within {@code seconds}; never throws. */
+    private static boolean isOptionShowing(By option, long seconds) {
+        try {
+            return com.gsl.utils.Selenium.WaitUtils.webDriverWait(seconds).until(d ->
+                    d.findElements(option).stream().anyMatch(org.openqa.selenium.WebElement::isDisplayed));
+        } catch (org.openqa.selenium.TimeoutException e) {
+            return false;
+        }
+    }
+
+    public PaymentInformationPopup selectPaymentMode(PaymentSelectionType mode) {
         By option = By.xpath(String.format(PAYMENT_MODE_OPTION, mode.label()));
+        openPaymentModeList(option, mode.label());
         SeleniumUtils.click(option, WaitType.CLICKABLE, "PAYMENT_MODE_OPTION_" + mode.label());
         JavascriptExecutorUtils.waitForExtJS();
         return this;
@@ -140,7 +182,16 @@ public abstract class PaymentInformationPopup {
 
     public PaymentInformationPopup setInstrumentDate(String instrumentDate) {
         if (instrumentDate == null || instrumentDate.isBlank()) return this;
-        SeleniumUtils.waitForInputReady(INSTRUMENT_DATE);
+        // The app greys Instrument Date out for an instrument number it does not know and sets it to the
+        // Document Date itself on save (see ChequeRegisterPaymentInformationPopup). A hard 10s wait on a
+        // field that stays disabled failed AR/GV cash-bank payment rows with a bare TimeoutException
+        // (runs 20261031, 01:39-05:00 IST) — say so and carry on instead; the saved value is still verified
+        // by the later UI/DB/API validation.
+        if (!isInstrumentDateReady()) {
+            com.gsl.reports.ExtentLogger.warning("[PaymentInformationPopup] Instrument Date stayed disabled/read-only — "
+                    + "not set to '" + instrumentDate + "'; the app fills it from the Document Date on save.");
+            return this;
+        }
         String currentDate = SeleniumUtils.getDomProperty(INSTRUMENT_DATE, "value", "INSTRUMENT_DATE");
         if (instrumentDate.trim().equalsIgnoreCase(currentDate != null ? currentDate.trim() : "")) {
             System.out.println("ℹ️ Instrument Date already matches: " + instrumentDate + " — skipping.");
@@ -151,6 +202,16 @@ public abstract class PaymentInformationPopup {
         SeleniumUtils.sendKeys(INSTRUMENT_DATE, WaitType.CLICKABLE, instrumentDate, "INSTRUMENT_DATE");
         JavascriptExecutorUtils.waitForExtJS();
         return this;
+    }
+
+    /** Whether Instrument Date is displayed, enabled and editable within the interaction wait. */
+    private boolean isInstrumentDateReady() {
+        try {
+            SeleniumUtils.waitForInputReady(INSTRUMENT_DATE);
+            return true;
+        } catch (org.openqa.selenium.TimeoutException e) {
+            return false;
+        }
     }
 
     public PaymentInformationPopup setReference(String reference) {

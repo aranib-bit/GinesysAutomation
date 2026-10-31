@@ -413,17 +413,32 @@ public class DbGeneralVoucherDataSource implements TestDataSource<MergedFinanceG
                             // (when present) to match one of the user's assigned sites — an empty
                             // override falls back to the GL's own fingl_site, which step 3 already
                             // guaranteed matches.
+                            // It must also leave enough usable sites — assigned to the user, in the owner
+                            // site's OU, not extinct — for the sites this row needs. Checked with the very
+                            // same resolver the row uses afterwards, and over EVERY pair, so a later pair is
+                            // taken when the first falls short; before, only pair #1 was ever tried and a
+                            // 1-site pair skipped a 3-site row (run 20261031_033251, GV-P2: 11 skips).
                             found = found.stream()
                                     .filter(pair -> {
                                         List<FinSlGlSite> narrowSites = slGlSiteDao.findByFinslGlCode(pair.getCode());
                                         return narrowSites.isEmpty()
                                                 || narrowSites.stream().anyMatch(s -> siteCodeSet.contains(s.getAdmsiteCode()));
                                     })
+                                    .filter(pair -> {
+                                        try {
+                                            resolveType3Sites(jdbi, gl, pair, siteCodeSet, ownerSite.admouCode, siteCount,
+                                                    new ArrayList<>());
+                                            return true;
+                                        } catch (SkipException tooFewSites) {
+                                            return false;
+                                        }
+                                    })
                                     .collect(Collectors.toList());
                             if (found.isEmpty()) {
                                 throw new SkipException("Skipped due to lack of data: no finsl_gl rows for GL '"
                                         + gl.getGlname() + "' (glcode=" + gl.getGlcode() + ") matching any of the "
-                                        + "logged-in user's assigned sites " + siteCodeSet + " — no Sub Ledger is "
+                                        + "logged-in user's assigned sites " + siteCodeSet + " (and giving the "
+                                        + siteCount + " active, same-OU site(s) this row needs) — no Sub Ledger is "
                                         + "permitted against this GL for the current user, so it cannot be used for "
                                         + "a Type3 row.");
                             }
@@ -737,6 +752,7 @@ public class DbGeneralVoucherDataSource implements TestDataSource<MergedFinanceG
                 .distinct()
                 .map(admSiteDao::findByCode)
                 .filter(Objects::nonNull)
+                .filter(AdmSite::isActiveSite)
                 .filter(site -> ownerSiteAdmouCode == null
                         || Objects.equals(site.getAdmouCode(), ownerSiteAdmouCode))
                 .limit(siteCount)
@@ -786,6 +802,7 @@ public class DbGeneralVoucherDataSource implements TestDataSource<MergedFinanceG
                     .distinct()
                     .map(admSiteDao::findByCode)
                     .filter(Objects::nonNull)
+                    .filter(AdmSite::isActiveSite)
                     .filter(site -> ownerSiteAdmouCode == null
                             || Objects.equals(site.getAdmouCode(), ownerSiteAdmouCode))
                     .limit(siteCount)
@@ -799,6 +816,7 @@ public class DbGeneralVoucherDataSource implements TestDataSource<MergedFinanceG
                     .distinct()
                     .map(admSiteDao::findByCode)
                     .filter(Objects::nonNull)
+                    .filter(AdmSite::isActiveSite)
                     .filter(site -> ownerSiteAdmouCode == null
                             || Objects.equals(site.getAdmouCode(), ownerSiteAdmouCode))
                     .limit(siteCount)

@@ -62,6 +62,13 @@ public class ArVoucherApiClient extends FinanceVoucherLookupClient {
         return resolveSubLedger(connectedSite, connectedOUCode, connectedUserCode, workDate, requiredClsCode, sl -> true, "usable (live)");
     }
 
+    /** As above, narrowed to the sub-ledgers {@code slFilter} accepts (e.g. one specific sub-ledger, to spread a backfill across several). */
+    public SubLedgerLookupResult resolveSubLedger(
+            int connectedSite, int connectedOUCode, int connectedUserCode, String workDate, long requiredClsCode,
+            java.util.function.Predicate<SubLedgerLookupResult> slFilter) {
+        return resolveSubLedger(connectedSite, connectedOUCode, connectedUserCode, workDate, requiredClsCode, slFilter, "usable (live, filtered)");
+    }
+
     /** POST Finance/api/vouchers/ar — the final save call. */
     public ArVoucherCreateResponse createArVoucher(ArVoucherCreateRequest request) {
         return post(WebApiEndpoints.Voucher.root("ar"), request, ArVoucherCreateResponse.class);

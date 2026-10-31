@@ -82,7 +82,7 @@ public final class K6ProcessBulkDataProvisioner implements BulkDataProvisioner {
         // TARGET_DOCS is the name the k6 scenarios actually read (scenarios/backfill/targetDocs.js,
         // itemGrcDcTransferOutChainTargetDocs.js, fillDocScheme.js). This used to be sent as
         // TARGET_DOC_COUNT, which no k6 script reads, so the requested quantity was silently ignored.
-        Map<String, String> env = Map.of("TARGET_DOCS", String.valueOf(quantity), "TENANT", cfg.activeTenant());
+        Map<String, String> env = Map.of("TARGET_DOCS", String.valueOf(quantity), "TENANT", K6Scripts.tenant());
         ReportLogger.dataBackfillWarn("[K6ProcessBulkDataProvisioner] Launching k6 '{}' for {} record(s) (env {})", scriptKey, quantity, env);
 
         K6Result result = K6Runner.configured().run(K6Scripts.resolve(scriptKey), env, reportLineHandler());

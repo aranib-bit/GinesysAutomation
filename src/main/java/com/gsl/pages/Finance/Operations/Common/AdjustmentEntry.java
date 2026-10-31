@@ -335,6 +335,16 @@ public class AdjustmentEntry {
     }
 
     public AdjustmentEntry setAdjustedAmountForDocument(String documentNumber, String amount) {
+        return setAdjustedAmountForDocument(documentNumber, amount, false);
+    }
+
+    /**
+     * @param appMayClamp {@code true} when the amount typed deliberately exceeds the document's pending
+     *                    (DOC_AMOUNT_OVER_PENDING_NEGATIVE): the app keeping a lower amount is then the
+     *                    behaviour under test, not a data conflict (run 20261031_082255, AP-P3: typed
+     *                    1020.00, app kept the 20.00 pending), so it is recorded and the flow continues.
+     */
+    public AdjustmentEntry setAdjustedAmountForDocument(String documentNumber, String amount, boolean appMayClamp) {
         By cellDiv = By.xpath(String.format(Loc.ADJUSTED_AMOUNT_BY_DOC_XPATH, documentNumber));
         ActionUtils.doubleClick(cellDiv);
         By cellInput = By.xpath(String.format(Loc.ADJUSTED_AMOUNT_CELL_BASE_XPATH + "//input", documentNumber));
@@ -371,6 +381,12 @@ public class AdjustmentEntry {
             // document's pending - run 20261009_152746: typed 20.00, kept 10.00). Continuing only ends in an
             // unanswered mismatch Confirmation and an unrelated blocked click minutes later, so stop here.
             java.math.BigDecimal kept = parseAmount(shown);
+            if (appMayClamp && kept != null && kept.compareTo(want) < 0) {
+                ReportLogger.business("[Adjustment] App clamped the over-pending Adjusted Amount for " + documentNumber
+                        + ": typed " + amount + ", kept " + shown.trim() + " (document Pending Amount in the popup: "
+                        + pendingAmountShown(documentNumber) + ") — expected for an over-pending scenario.");
+                return this;
+            }
             if (kept != null && kept.compareTo(want) != 0) {
                 throw new IllegalStateException("[Adjustment] Test data conflict on " + documentNumber
                         + ": typed Adjusted Amount " + amount + " but the app kept " + shown.trim()
@@ -398,7 +414,10 @@ public class AdjustmentEntry {
             return com.gsl.database.query.PendingAdjQuery.livePendingForDiagnostics(
                     com.gsl.database.DatabaseManager.getJdbi(), documentNumber);
         } catch (RuntimeException e) {
-            return "unavailable (" + e.getClass().getSimpleName() + ")";
+            Throwable root = e;
+            while (root.getCause() != null && root.getCause() != root) root = root.getCause();
+            return "unavailable (" + e.getClass().getSimpleName() + ": " + root.getClass().getSimpleName()
+                    + " - " + String.valueOf(root.getMessage()).split("\n")[0] + ")";
         }
     }
 

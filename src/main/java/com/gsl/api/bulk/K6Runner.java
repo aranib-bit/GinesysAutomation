@@ -30,22 +30,30 @@ public final class K6Runner {
     private static final Pattern SUMMARY_LINE = Pattern.compile("^K6_SUMMARY created=(\\d+) failed=(\\d+).*$");
     private static final int TAIL_LINES = 40;
     private static final String TENANT_ENV = "TENANT";
+    private static final String USERS_ENV = "USERS_FILE";
 
     /** Binaries whose {@code k6 version} already answered in this JVM. */
     private static final Set<String> VERIFIED_BINARIES = ConcurrentHashMap.newKeySet();
 
     private final String binary;
     private final Path home;
+    /** Writes the users file for a tenant and returns its path; null = the caller always supplies {@code USERS_FILE} itself (unit tests). */
+    private final java.util.function.Function<String, Path> usersProvider;
 
     public K6Runner(String binary, Path home) {
+        this(binary, home, null);
+    }
+
+    public K6Runner(String binary, Path home, java.util.function.Function<String, Path> usersProvider) {
         this.binary = binary;
         this.home = home;
+        this.usersProvider = usersProvider;
     }
 
     /** A runner for the configured binary and k6 project directory. */
     public static K6Runner configured() {
         ApiConfig cfg = ConfigFactory.getApiConfig();
-        return new K6Runner(cfg.k6BinaryPath(), K6Scripts.home());
+        return new K6Runner(cfg.k6BinaryPath(), K6Scripts.home(), K6UsersExport::exportFor);
     }
 
     /**
@@ -57,7 +65,7 @@ public final class K6Runner {
     public K6Result run(Path script, Map<String, String> env, Consumer<String> lineHandler) {
         preflight(script, env.get(TENANT_ENV));
         ProcessBuilder pb = new ProcessBuilder(binary, "run", script.toString());
-        pb.environment().putAll(env);
+        pb.environment().putAll(withUsersFile(env));
         pb.redirectErrorStream(true);
         Deque<String> tail = new ArrayDeque<>();
         int[] totals = {-1, -1};
@@ -85,6 +93,15 @@ public final class K6Runner {
             if (e instanceof InterruptedException) Thread.currentThread().interrupt();
             throw new DataSetupException("[K6Runner] Failed to run k6 (" + script.getFileName() + ")", e);
         }
+    }
+
+    /** {@code env} plus {@code USERS_FILE} (the environment's PERF users, exported from UsersList.xlsx) when the caller did not name one. */
+    private Map<String, String> withUsersFile(Map<String, String> env) {
+        String tenant = env.get(TENANT_ENV);
+        if (usersProvider == null || env.containsKey(USERS_ENV) || tenant == null || tenant.isBlank()) return env;
+        Map<String, String> withUsers = new java.util.LinkedHashMap<>(env);
+        withUsers.put(USERS_ENV, usersProvider.apply(tenant).toAbsolutePath().toString());
+        return withUsers;
     }
 
     private void preflight(Path script, String tenant) {
