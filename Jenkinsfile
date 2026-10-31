@@ -54,17 +54,19 @@ def effectiveBrowser() {
     return (params.BROWSER ?: 'chrome').toString().trim().toLowerCase()
 }
 
-// Folder the whole build (checkout, target/, reports/) runs in: <GINESYS_HOME>\<env>\<job>. GINESYS_HOME is an
+// Folder the whole build (checkout, target/, reports/) runs in: <GINESYS_HOME>\<env>. GINESYS_HOME is an
 // optional Jenkins global environment variable (e.g. D:\GinesysAutomation on one machine, E:\... on another).
-// When it is unset the relative path GinesysAutomation\<env>\<job> is used, which Jenkins resolves under its own
+// When it is unset the relative path GinesysAutomation\<env> is used, which Jenkins resolves under its own
 // workspace root, so no drive letter is ever written here. The env name is checked against the allowed list
 // before it becomes part of a path (an invalid value fails later in 'Init' with a clear message).
+// There is deliberately NO per-job level: every job on one environment shares this folder, so all of that
+// environment's reports land together in <GINESYS_HOME>\<env>\reports\runs\<runId>. Builds on the same
+// environment never overlap because the 'Environment' stage holds that environment's lock.
 def workspaceDir() {
     def e = effectiveEnv()
     def safeEnv = allowedEnvs().contains(e) ? e : 'invalid-env'
-    def job = (env.JOB_NAME ?: 'job').replaceAll('[^A-Za-z0-9._-]', '_')
     def base = (env.GINESYS_HOME ?: 'GinesysAutomation').toString().replaceAll('[\\\\/]+$', '')
-    return "${base}\\${safeEnv}\\${job}"
+    return "${base}\\${safeEnv}"
 }
 
 // Lockable Resource that guards an environment AND its Selenium Grid. Resource names are the
@@ -91,7 +93,7 @@ def gridIndexFor(envName) {
 }
 
 pipeline {
-    // Runs in GINESYS_HOME\<env>\<job> (see workspaceDir above), not in Jenkins' default per-job workspace.
+    // Runs in GINESYS_HOME\<env> (see workspaceDir above), not in Jenkins' default per-job workspace.
     agent {
         node {
             label ''
@@ -211,7 +213,7 @@ pipeline {
                         script {
                             // The job's git SCM is github.com/aranib-bit/GinesysAutomation (see Jenkins job
                             // config; credentials id gsl-github-ginesys). The workspace itself is
-                            // GINESYS_HOME\<env>\<job> (agent block above), so reports\ is already in place.
+                            // GINESYS_HOME\<env> (agent block above), so reports\ is already in place.
                             checkout scm
                         }
                     }
@@ -294,29 +296,27 @@ pipeline {
             }
             post {
                 always {
+                    // Publishing runs here, under the environment lock: the workspace (GINESYS_HOME\<env>) is
+                    // shared by every job on this environment, so once the lock is released the next build's
+                    // 'mvn clean' / reports\latest overwrite could remove what these steps read.
+                    // No report copy-back is needed: reports\runs\<runId>\... is written straight into
+                    // GINESYS_HOME\<env>\reports (same layout as a local run).
+                    junit allowEmptyResults: true, testResults: 'target/surefire-reports/*.xml'
+                    archiveArtifacts artifacts: 'reports/**', allowEmptyArchive: true
+                    publishHTML(target: [
+                        allowMissing: true,
+                        alwaysLinkToLastBuild: true,
+                        keepAll: true,
+                        reportDir: 'reports/latest',
+                        reportFiles: 'index.html',
+                        reportName: 'Extent Report'
+                    ])
                     // Teardown of THIS environment's Grid only (compose project grid-<env>), run while the
                     // environment lock is still held so another build on the same environment cannot
                     // start a Grid that this step then removes.
                     bat "\"%DOCKER_EXE%\" compose -p %GRID_PROJECT% -f %GRID_COMPOSE_FILE% down"
                 }
             }
-        }
-    }
-
-    post {
-        always {
-            junit allowEmptyResults: true, testResults: 'target/surefire-reports/*.xml'
-            archiveArtifacts artifacts: 'reports/**', allowEmptyArchive: true
-            publishHTML(target: [
-                allowMissing: true,
-                alwaysLinkToLastBuild: true,
-                keepAll: true,
-                reportDir: 'reports/latest',
-                reportFiles: 'index.html',
-                reportName: 'Extent Report'
-            ])
-            // No report copy-back is needed: the build runs in GINESYS_HOME\<env>\<job>, so
-            // reports\runs\<runId>\... is written there directly (same layout as a local run).
         }
     }
 }
