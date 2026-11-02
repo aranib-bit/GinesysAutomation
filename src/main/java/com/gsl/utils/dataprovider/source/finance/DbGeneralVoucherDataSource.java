@@ -189,6 +189,14 @@ public class DbGeneralVoucherDataSource implements TestDataSource<MergedFinanceG
         // Assign sequential invocation indices so TestListener formats FIN-GV-ADD-COMBO-01, -02, … —
         // mirrors DbArVoucherDataSource/DbApVoucherDataSource's own post-loop pass.
         TestDataSource.stampInvocations(placeholders);
+        // Optional re-run selector: -Dgv.onlyIndexes=52,55,56 keeps just those FIN-GV-ADD-COMBO-<n> rows. The ids were
+        // stamped above over the FULL filtered list, so they stay the ones the original run reported.
+        String only = System.getProperty("gv.onlyIndexes");
+        if (only != null && !only.isBlank()) {
+            Set<Integer> keep = java.util.Arrays.stream(only.split(",")).map(String::trim).filter(x -> !x.isEmpty())
+                    .map(Integer::valueOf).collect(Collectors.toSet());
+            placeholders.removeIf(ph -> !keep.contains(ph.getInvocationIndex()));
+        }
         int total = placeholders.size();
 
         Log.info("[DB] GeneralVoucher emitted {} placeholder(s) for '{}' — group filter={}, tag filter={}",
@@ -315,6 +323,10 @@ public class DbGeneralVoucherDataSource implements TestDataSource<MergedFinanceG
         // vet what a non-empty query result actually contains).
         FinGlDao glDao = jdbi.onDemand(FinGlDao.class);
         FinGlSiteDao glSiteDao = jdbi.onDemand(FinGlSiteDao.class);
+        AdmSiteDao admSiteDao = jdbi.onDemand(AdmSiteDao.class);
+        // Site count - the "N sites" sub-axis (mirrors AR's docs-per-SL) - fixed at 1 unless this variant is
+        // a N_SITES/MULTI_GL_N_SITES regression row. Needed by the GL candidate filter below as well as step 4.
+        int siteCount = Math.max(1, opts.getSiteCount());
         String slapp = opts.getGlLineType().isSubLedgerApplicable() ? "Y" : "N";
         String costapp = opts.getGlLineType().isSiteApplicable() ? "Y" : "N";
         boolean siteApplicable = opts.getGlLineType().isSiteApplicable();
@@ -325,9 +337,22 @@ public class DbGeneralVoucherDataSource implements TestDataSource<MergedFinanceG
                 () -> {
                     List<FinGl> found = glDao.findByTypeAndApplicability(opts.getAccountType().code(), slapp, costapp);
                     if (siteApplicable) {
+                        // A candidate must offer at least siteCount sites the Allocate Sites picker can show -
+                        // assigned to the user, active and in the Owner Site's OU - not merely one assigned site.
+                        // Otherwise a GL that can never serve this row is selected, and the row skips later
+                        // (run 20261031_193939: COMBO-52/55/63/64/69/70) instead of a fresh, correctly sited GL
+                        // being backfilled. The cross-OU negative scenario deliberately needs the opposite OU
+                        // mix, so it keeps the plain "any assigned site" test.
+                        boolean strictSites = !opts.isRequireCrossOuSite();
                         found = found.stream()
-                                .filter(candidate -> glSiteDao.findByGlcode(candidate.getGlcode()).stream()
-                                        .anyMatch(s -> siteCodeSet.contains(s.getAdmsiteCode())))
+                                .filter(candidate -> {
+                                    List<Long> glSites = glSiteDao.findByGlcode(candidate.getGlcode()).stream()
+                                            .map(FinGlSite::getAdmsiteCode).collect(Collectors.toList());
+                                    return strictSites
+                                            ? usableSiteCodes(glSites, siteCodeSet, ownerSite.admouCode,
+                                                    code -> admSiteDao.findByCode(code), siteCount).size() >= siteCount
+                                            : glSites.stream().anyMatch(siteCodeSet::contains);
+                                })
                                 .collect(Collectors.toList());
                     }
                     // GeneralVoucherFixtureOptions#requireAmbiguousSubLedger — only set by the
@@ -369,7 +394,10 @@ public class DbGeneralVoucherDataSource implements TestDataSource<MergedFinanceG
                 },
                 glCount,
                 new LedgerMasterBackfillStrategy(opts.getAccountType(),
-                        opts.getGlLineType().isSubLedgerApplicable(), siteApplicable, assignedSiteCodes));
+                        opts.getGlLineType().isSubLedgerApplicable(), siteApplicable,
+                        siteApplicable ? backfillSitePool(admSiteDao, ownerSite.admouCode, siteCodeSet, assignedSiteCodes)
+                                : assignedSiteCodes,
+                        siteCount));
         List<FinGl> selectedGls = candidates.subList(0, glCount);
         gatheringLog.add("  Selected " + glCount + " GL(s) for type=" + opts.getAccountType()
                 + " (" + opts.getGlLineType() + "): "
@@ -379,7 +407,6 @@ public class DbGeneralVoucherDataSource implements TestDataSource<MergedFinanceG
         // its Site(s); Type2 resolves Site(s) only. Site count — the "N sites" sub-axis (mirrors
         // AR's docs-per-SL) — is fixed at 1 unless this variant is a N_SITES/MULTI_GL_N_SITES
         // regression row. Sub Ledger selection itself always stays at exactly 1 per GL, unchanged.
-        int siteCount = Math.max(1, opts.getSiteCount());
         List<LiveGvDbRefs.ResolvedGlRow> resolvedRows = new ArrayList<>();
 
         for (FinGl gl : selectedGls) {
@@ -392,17 +419,21 @@ public class DbGeneralVoucherDataSource implements TestDataSource<MergedFinanceG
                 // above), and step 3's candidate filter already guarantees gl carries a fingl_site row
                 // matching one of the user's assigned sites — reuse that same site as targetSiteCode to
                 // backfill a new finsl_gl row with, rather than re-deriving it ambiguously.
-                Long targetSiteCode = gl.isSiteApplicable()
-                        ? glSiteDao.findByGlcode(gl.getGlcode()).stream()
-                                .map(FinGlSite::getAdmsiteCode)
-                                .filter(siteCodeSet::contains)
-                                .findFirst()
-                                .map(Long::valueOf)
-                                .orElseThrow(() -> new SkipException("Skipped due to lack of data: GL '" + gl.getGlname()
-                                        + "' (glcode=" + gl.getGlcode() + ") has no fingl_site row matching any of the "
-                                        + "logged-in user's assigned sites " + siteCodeSet + " — step 3's candidate "
-                                        + "filter should have guaranteed this."))
-                        : null;
+                // Sites to narrow a backfilled finsl_gl row to: EVERY one the row needs (siteCount), each assigned,
+                // active and in the Owner Site's OU. Narrowing to a single, unvetted "first assigned" site (the old
+                // behaviour) produced a pair that failed the very filter below on retry (COMBO-74: site 43 gave 0
+                // usable sites) and could never carry the 3 sites of an N_SITES row.
+                List<Long> targetSiteCodes = gl.isSiteApplicable()
+                        ? usableSiteCodes(glSiteDao.findByGlcode(gl.getGlcode()).stream()
+                                        .map(FinGlSite::getAdmsiteCode).collect(Collectors.toList()),
+                                siteCodeSet, ownerSite.admouCode, code -> admSiteDao.findByCode(code), siteCount)
+                        : List.of();
+                if (gl.isSiteApplicable() && targetSiteCodes.size() < siteCount) {
+                    throw new SkipException("Skipped due to lack of data: GL '" + gl.getGlname() + "' (glcode="
+                            + gl.getGlcode() + ") has only " + targetSiteCodes.size() + " active, same-OU (admou_code="
+                            + ownerSite.admouCode + ") fingl_site row(s) among the logged-in user's assigned sites "
+                            + siteCodeSet + " - need " + siteCount + "; no Sub Ledger backfill can add sites to the GL.");
+                }
 
                 FinSlGlDao slGlDao = jdbi.onDemand(FinSlGlDao.class);
                 FinSlGlSiteDao slGlSiteDao = jdbi.onDemand(FinSlGlSiteDao.class);
@@ -440,12 +471,13 @@ public class DbGeneralVoucherDataSource implements TestDataSource<MergedFinanceG
                                         + "logged-in user's assigned sites " + siteCodeSet + " (and giving the "
                                         + siteCount + " active, same-OU site(s) this row needs) — no Sub Ledger is "
                                         + "permitted against this GL for the current user, so it cannot be used for "
-                                        + "a Type3 row.");
+                                        + "a Type3 row. Pairs examined: " + describePairs(slGlDao.findByGlcode(gl.getGlcode()),
+                                                slGlSiteDao, siteCodeSet, admSiteDao, ownerSite.admouCode));
                             }
                             return found;
                         },
                         1,
-                        new SubLedgerOthersBackfillStrategy(gl.getGlcode(), gl.getGlname(), targetSiteCode));
+                        new SubLedgerOthersBackfillStrategy(gl.getGlcode(), gl.getGlname(), targetSiteCodes));
                 FinSlGl chosenPair = pairs.get(0);
                 FinSl subLedger = jdbi.onDemand(FinSlDao.class).findBySlcode(chosenPair.getSlcode());
                 subLedgerName = subLedger.getSlname();
@@ -717,6 +749,47 @@ public class DbGeneralVoucherDataSource implements TestDataSource<MergedFinanceG
         throw new SkipException("Skipped due to lack of data: no Site-only GL has a site that user '" + loginName
                 + "' can pick (configured for the GL, assigned to the user, same OU as owner site '" + owner.name
                 + "' OU=" + owner.admouCode + "). GLs ruled out: " + ruledOut);
+    }
+
+    /**
+     * The sites among {@code candidateSiteCodes} the app's Allocate Sites picker can actually offer for a
+     * voucher owned by a site in OU {@code ownerOu}: assigned to the user, not extinct, and in that OU
+     * ({@code ownerOu == null} skips the OU test). Distinct, in candidate order, at most {@code limit}.
+     * Shared by the GL candidate filter and the Type3 backfill's target sites, so "a candidate
+     * qualifies" and "the row can resolve its sites" never disagree.
+     */
+    public static List<Long> usableSiteCodes(java.util.Collection<Long> candidateSiteCodes, Set<Long> assigned, Long ownerOu,
+            java.util.function.LongFunction<AdmSite> lookup, int limit) {
+        return candidateSiteCodes.stream()
+                .filter(Objects::nonNull)
+                .filter(assigned::contains)
+                .distinct()
+                .filter(code -> {
+                    AdmSite site = lookup.apply(code);
+                    return site != null && site.isActiveSite()
+                            && (ownerOu == null || Objects.equals(site.getAdmouCode(), ownerOu));
+                })
+                .limit(limit)
+                .collect(Collectors.toList());
+    }
+
+    /** Sites a Site-applicable GL backfill may attach: the user's assigned sites that are active and in the Owner Site's OU. */
+    private static List<Long> backfillSitePool(AdmSiteDao admSiteDao, Long ownerOu, Set<Long> assigned,
+            List<Long> assignedFallback) {
+        if (ownerOu == null) return assignedFallback;
+        return admSiteDao.findActiveCodesByOu(ownerOu).stream().filter(assigned::contains).collect(Collectors.toList());
+    }
+
+    /** One entry per pair for the "no usable finsl_gl row" skip, so the report shows WHY each pair fell short. */
+    private static String describePairs(List<FinSlGl> pairs, FinSlGlSiteDao slGlSiteDao, Set<Long> assigned,
+            AdmSiteDao admSiteDao, Long ownerOu) {
+        if (pairs.isEmpty()) return "none exist";
+        return pairs.stream().map(pair -> {
+            List<Long> narrow = slGlSiteDao.findByFinslGlCode(pair.getCode()).stream()
+                    .map(FinSlGlSite::getAdmsiteCode).collect(Collectors.toList());
+            return "[pair=" + pair.getCode() + " slcode=" + pair.getSlcode() + " finsl_gl_site=" + narrow
+                    + " usable=" + usableSiteCodes(narrow, assigned, ownerOu, c -> admSiteDao.findByCode(c), Integer.MAX_VALUE) + "]";
+        }).collect(Collectors.joining(" "));
     }
 
     /**

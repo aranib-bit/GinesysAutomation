@@ -105,6 +105,8 @@ public final class Driver {
         ReportLogger.framework("[Driver.initDriver] Network capture started in {}ms",
                 System.currentTimeMillis() - networkStartMs);
         NetworkCaptureManager.set(capture);
+        // Keep the browser login's WEBAPI tokens so data backfills reuse this user's session (Part C).
+        com.gsl.network.SessionTokenCapture.attach(DriverManager.getDriver());
     }
 
     /**

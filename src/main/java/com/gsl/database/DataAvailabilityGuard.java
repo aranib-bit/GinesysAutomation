@@ -86,9 +86,17 @@ public final class DataAvailabilityGuard {
                 }
 
                 // One retry after backfill. If STILL short, the shortfall is real — let it skip.
-                T retryResult = selectionAttempt.get();
-                ReportLogger.dataBackfill("[DataAvailabilityGuard] Retry after backfill — resolved");
-                return retryResult;
+                try {
+                    T retryResult = selectionAttempt.get();
+                    ReportLogger.dataBackfill("[DataAvailabilityGuard] Retry after backfill — resolved");
+                    return retryResult;
+                } catch (SkipException stillShort) {
+                    // Say it in the report: the backfill ran (and may have "confirmed" its rows) yet the very same
+                    // selection still falls short - the message carries the per-candidate evidence.
+                    ReportLogger.dataBackfillWarn("[DataAvailabilityGuard] Retry after backfill — STILL short: {}",
+                            stillShort.getMessage());
+                    throw stillShort;
+                }
             } finally {
                 ExtentManager.setExtentTest(previousTest);
             }

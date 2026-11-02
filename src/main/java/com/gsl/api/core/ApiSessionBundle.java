@@ -43,6 +43,11 @@ public final class ApiSessionBundle {
      * themselves and release it in their own tearDown) — releasing it here too would double-release.
      */
     private final boolean releaseCredentialOnLogout;
+    /**
+     * True when this session runs on tokens borrowed from a browser's login ({@link SessionTokens}): the
+     * browser still owns that server-side session, so {@link #logout()} must not end it or release anything.
+     */
+    private final boolean borrowedSession;
 
     private final ItemApiClient itemApiClient;
     private final GrcApiClient grcApiClient;
@@ -73,6 +78,7 @@ public final class ApiSessionBundle {
      * and releases the UserPool credential back to its pool if this session self-acquired it.
      */
     public void logout() {
+        if (borrowedSession) return;
         if (platform == ApiPlatform.WEBAPI) {
             WebApiSessionClient.logout(this);
         }

@@ -25,8 +25,15 @@ public final class SubLedgerOthersDataSetup {
      */
     public static SubLedgerOthersCreationOutcome createSubLedgerOthersForTest(
             SubLedgerOthersApiClient client, long targetGlcode, String targetGlname, Long targetSiteCode) {
+        return createSubLedgerOthersForTest(client, targetGlcode, targetGlname,
+                targetSiteCode == null ? java.util.List.<Long>of() : java.util.List.of(targetSiteCode));
+    }
+
+    /** Multi-site variant: narrows the new {@code finsl_gl} row to every code in {@code targetSiteCodes}. */
+    public static SubLedgerOthersCreationOutcome createSubLedgerOthersForTest(
+            SubLedgerOthersApiClient client, long targetGlcode, String targetGlname, java.util.List<Long> targetSiteCodes) {
         SubLedgerOthersCreationOutcome outcome =
-                client.createSubLedgerOthersWithDefaults(targetGlcode, targetGlname, targetSiteCode);
+                client.createSubLedgerOthersWithDefaults(targetGlcode, targetGlname, targetSiteCodes);
         if (!outcome.getResponse().isSuccess() || !outcome.getResponse().isResult()) {
             throw new ApiException("CreateFinanceSubLedgerOther returned success=" + outcome.getResponse().isSuccess()
                     + ", result=" + outcome.getResponse().isResult() + ", error=" + outcome.getResponse().getError(), 0);

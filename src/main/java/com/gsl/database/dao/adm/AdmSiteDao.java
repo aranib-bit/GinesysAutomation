@@ -36,4 +36,10 @@ public interface AdmSiteDao {
     @SqlQuery("SELECT code, name, shrtname, admou_code FROM admsite WHERE name = :name "
             + "AND sitetype = 'OS-OO-CM' AND ext = 'N' ORDER BY code")
     java.util.List<AdmSite> findByName(@Bind("name") String name);
+
+    /** Codes of every non-extinct site in Organizational Unit {@code ou} — the pool a Site-applicable
+     *  GL/Sub Ledger backfill may attach sites from, since the Allocate Sites picker only shows
+     *  active sites of the Owner Site's own OU. */
+    @SqlQuery("SELECT code FROM admsite WHERE admou_code = :ou AND (ext IS NULL OR ext <> 'Y') ORDER BY code")
+    java.util.List<Long> findActiveCodesByOu(@Bind("ou") long ou);
 }

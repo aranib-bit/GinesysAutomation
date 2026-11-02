@@ -69,6 +69,18 @@ public class SubLedgerOthersApiClient extends ApiClient {
      */
     public SubLedgerOthersCreationOutcome createSubLedgerOthersWithDefaults(
             long targetGlcode, String targetGlname, Long targetSiteCode) {
+        return createSubLedgerOthersWithDefaults(targetGlcode, targetGlname,
+                targetSiteCode == null ? List.<Long>of() : List.of(targetSiteCode));
+    }
+
+    /**
+     * Same flow as the single-site overload, narrowing {@code finSLGLs[0].finSLGLSites} to ALL of
+     * {@code targetSiteCodes} — needed when a General Voucher row allocates across several Sites
+     * and the new Sub Ledger pair must itself permit that many. An empty list means "no narrowing"
+     * (non-Site-Applicable GL).
+     */
+    public SubLedgerOthersCreationOutcome createSubLedgerOthersWithDefaults(
+            long targetGlcode, String targetGlname, List<Long> targetSiteCodes) {
 
         List<SubledgerClassLookupResult> classes = StepExecutor.call("Get Sub Ledger Class for Others",
                 () -> fetchSubledgerClassLookup(OTHERS_CLASS_TYPE));
@@ -86,9 +98,9 @@ public class SubLedgerOthersApiClient extends ApiClient {
         List<UdfValueEntry> udfValues = StepExecutor.call("Get UDF Metadata for Sub Ledger Others",
                 () -> UdfValueBuilder.fetchAndBuild(this, "FINSL"));
 
-        List<FinSlGlSiteInfo> finSlGlSites = (targetSiteCode != null)
-                ? List.of(FinSlGlSiteInfo.builder().siteCode(targetSiteCode).build())
-                : List.of();
+        List<FinSlGlSiteInfo> finSlGlSites = targetSiteCodes.stream()
+                .map(code -> FinSlGlSiteInfo.builder().siteCode(code).build())
+                .collect(java.util.stream.Collectors.toList());
 
         FinSlGlEntry glEntry = FinSlGlEntry.builder()
                 .glcode(targetGlcode)
@@ -108,8 +120,8 @@ public class SubLedgerOthersApiClient extends ApiClient {
                 .build();
 
         ReportLogger.dataBackfill(
-                "[SubLedgerOthersApiClient] Creating Sub Ledger Others — slname='{}', slid='{}', clscode={}, targetGlcode={}, targetSiteCode={}",
-                slname, slid, clscode, targetGlcode, targetSiteCode);
+                "[SubLedgerOthersApiClient] Creating Sub Ledger Others — slname='{}', slid='{}', clscode={}, targetGlcode={}, targetSiteCodes={}",
+                slname, slid, clscode, targetGlcode, targetSiteCodes);
 
         SimpleResultResponse response = StepExecutor.call("Create Sub Ledger Others via API",
                 () -> createFinanceSubLedgerOther(request));

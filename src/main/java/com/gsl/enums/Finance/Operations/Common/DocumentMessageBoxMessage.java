@@ -190,6 +190,29 @@ public enum DocumentMessageBoxMessage {
     ),
 
     /**
+     * "Send Approval Request" dialog shown after Save when the document goes through an approval
+     * workflow (config/role-dependent, so detected defensively) — confirmed live (run
+     * 20261102_135110, AP Add). Buttons: "Send Request" / "Keep as Draft"; the framework always
+     * clicks "Send Request", after which the normal "Document No: … saved" Result appears.
+     */
+    SEND_APPROVAL_REQUEST_CONFIRMATION(
+            "Are you sure you want to submit the document for Approval?",
+            PopupType.CONFIRM
+    ),
+
+    /**
+     * "Warning" shown after the payment-info step when the voucher cannot go through Bank
+     * Integration (cheque mode, multiple sub-ledgers, missing vendor bank details, reversal or
+     * future date) — confirmed live (run 20261102_152814, FIN-AP-ADD-DOC-05). Buttons: Yes / No.
+     * Optional/data-dependent, so detected defensively; currently always answered Yes (per-scenario
+     * choice to be added later).
+     */
+    BANK_INTEGRATION_WARNING(
+            "This voucher cannot be processed via Bank Integration",
+            PopupType.CONFIRM
+    ),
+
+    /**
      * "Confirmation" raised by Adjustment Entry's OK button for a non-advance (On Account = No)
      * AP voucher when the adjusted total differs from the row's payment amount — confirmed live
      * in both Add and Edit (user screenshots, 2026-09-30). Buttons: "Update payment amount" /

@@ -26,7 +26,7 @@ public final class SubLedgerOthersBackfillStrategy implements BackfillStrategy {
 
     private final long targetGlcode;
     private final String targetGlname;
-    private final Long targetSiteCode;
+    private final java.util.List<Long> targetSiteCodes;
 
     /**
      * @param targetGlcode   the already-resolved {@code fingl.glcode} the new Sub Ledger must be linked to
@@ -50,9 +50,20 @@ public final class SubLedgerOthersBackfillStrategy implements BackfillStrategy {
      *                       root-cause writeup.
      */
     public SubLedgerOthersBackfillStrategy(long targetGlcode, String targetGlname, Long targetSiteCode) {
+        this(targetGlcode, targetGlname, targetSiteCode == null ? java.util.List.<Long>of() : java.util.List.of(targetSiteCode));
+    }
+
+    /**
+     * Multi-site form: the new {@code finsl_gl} row is narrowed to EVERY code in
+     * {@code targetSiteCodes}. The caller passes sites that already satisfy the same filter the
+     * pair is later re-checked with (assigned to the user, active, same OU as the owner site) and
+     * at least as many as the row will allocate — a pair narrowed to fewer, or to a site the
+     * Allocate Sites picker can't show, can never satisfy the post-backfill retry.
+     */
+    public SubLedgerOthersBackfillStrategy(long targetGlcode, String targetGlname, java.util.List<Long> targetSiteCodes) {
         this.targetGlcode = targetGlcode;
         this.targetGlname = targetGlname;
-        this.targetSiteCode = targetSiteCode;
+        this.targetSiteCodes = java.util.List.copyOf(targetSiteCodes);
     }
 
     /** Creates {@code neededQuantity} "Others"-classified Sub Ledgers linked to {@link #targetGlcode} via {@code platform}, verifying each landing row's {@code finsl_gl} linkage. */
@@ -62,12 +73,12 @@ public final class SubLedgerOthersBackfillStrategy implements BackfillStrategy {
         try {
             for (int i = 0; i < neededQuantity; i++) {
                 ReportLogger.dataBackfill(
-                        "[SubLedgerOthersBackfillStrategy] Creating record {}/{} — targetGlcode={}, targetGlname='{}', targetSiteCode={}",
-                        i + 1, neededQuantity, targetGlcode, targetGlname, targetSiteCode);
+                        "[SubLedgerOthersBackfillStrategy] Creating record {}/{} — targetGlcode={}, targetGlname='{}', targetSiteCodes={}",
+                        i + 1, neededQuantity, targetGlcode, targetGlname, targetSiteCodes);
 
                 SubLedgerOthersCreationOutcome outcome = StepExecutor.call("Create Sub Ledger Others", () ->
                         SubLedgerOthersDataSetup.createSubLedgerOthersForTest(
-                                session.getSubLedgerOthersApiClient(), targetGlcode, targetGlname, targetSiteCode));
+                                session.getSubLedgerOthersApiClient(), targetGlcode, targetGlname, targetSiteCodes));
 
                 StepExecutor.call("Verify Sub Ledger Others Landed in DB", () -> {
                     verifyLanded(outcome.getRequest().getSlname(), outcome.getRequest().getSlid());

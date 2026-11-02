@@ -186,6 +186,16 @@ public interface ApiConfig extends Config {
     @DefaultValue("CEILING")
     String pendingTdsRoundoff();
 
+    /**
+     * Who a data backfill authenticates as: {@code SESSION_TOKENS} - the tokens the browser login of the calling test
+     * returned (strict: fails when none were captured); {@code SECOND_USER} - a separate WEBAPI user from UserPool
+     * (logs in, may have to kill that user's session, and acts as a different user than the test); {@code AUTO} -
+     * session tokens when captured, else a second user.
+     */
+    @Key("backfill.auth.mode")
+    @DefaultValue("AUTO")
+    String backfillAuthMode();
+
     /** Rate (percent) of a TDS section (nature) the backfill creates when the environment has too few natures for a scenario. */
     @Key("backfill.tds.section.rate")
     @DefaultValue("1")

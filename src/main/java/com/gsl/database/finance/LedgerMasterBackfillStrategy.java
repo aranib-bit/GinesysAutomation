@@ -31,6 +31,7 @@ public final class LedgerMasterBackfillStrategy implements BackfillStrategy {
     private final boolean subLedgerApplicable;
     private final boolean siteApplicable;
     private final Collection<Long> assignedSiteCodes;
+    private final int siteCount;
 
     /**
      * @param type                the required {@link GlAccountType} for the new GL
@@ -51,6 +52,16 @@ public final class LedgerMasterBackfillStrategy implements BackfillStrategy {
      */
     public LedgerMasterBackfillStrategy(GlAccountType type, boolean subLedgerApplicable, boolean siteApplicable,
             Collection<Long> assignedSiteCodes) {
+        this(type, subLedgerApplicable, siteApplicable, assignedSiteCodes, 1);
+    }
+
+    /**
+     * @param siteCount how many sites the new Site-applicable GL must carry (the rows that will use it
+     *                  allocate across that many); ignored when {@code siteApplicable} is false
+     */
+    public LedgerMasterBackfillStrategy(GlAccountType type, boolean subLedgerApplicable, boolean siteApplicable,
+            Collection<Long> assignedSiteCodes, int siteCount) {
+        this.siteCount = Math.max(1, siteCount);
         this.type = type;
         this.subLedgerApplicable = subLedgerApplicable;
         this.siteApplicable = siteApplicable;
@@ -64,12 +75,12 @@ public final class LedgerMasterBackfillStrategy implements BackfillStrategy {
         try {
             for (int i = 0; i < neededQuantity; i++) {
                 ReportLogger.dataBackfill(
-                        "[LedgerMasterBackfillStrategy] Creating record {}/{} — type={}, slapp={}, costapp={}, assignedSiteCodes={}",
-                        i + 1, neededQuantity, type, subLedgerApplicable ? "Y" : "N", siteApplicable ? "Y" : "N", assignedSiteCodes);
+                        "[LedgerMasterBackfillStrategy] Creating record {}/{} — type={}, slapp={}, costapp={}, assignedSiteCodes={}, siteCount={}",
+                        i + 1, neededQuantity, type, subLedgerApplicable ? "Y" : "N", siteApplicable ? "Y" : "N", assignedSiteCodes, siteCount);
 
                 LedgerCreationOutcome outcome = StepExecutor.call("Create Ledger", () ->
                         LedgerDataSetup.createLedgerForTest(session.getLedgerApiClient(), type, subLedgerApplicable,
-                                siteApplicable, assignedSiteCodes));
+                                siteApplicable, assignedSiteCodes, siteCount));
 
                 StepExecutor.call("Verify Ledger Landed in DB", () -> {
                     verifyLanded(outcome.getRequest().getGlname());

@@ -45,6 +45,8 @@ public final class ApiSessionFactory {
      * {@code SuiteDataLoader.validateUserPoolAgainstThreadCount()}'s headroom check.
      */
     public static ApiSessionBundle createForWebApi() {
+        ApiSessionBundle borrowed = borrowBrowserSession();
+        if (borrowed != null) return borrowed;
         UserCredential uiUser = UserPool.acquireForWebApi("ApiSessionFactory.createForWebApi");
         try {
             return createForWebApi(uiUser, true);
@@ -53,6 +55,33 @@ public final class ApiSessionFactory {
             UserPool.releaseSet1User(uiUser);
             throw loginFailed;
         }
+    }
+
+    /**
+     * Builds a WEBAPI session on the tokens the calling test's own browser login returned
+     * ({@link SessionTokens}, see {@code backfill.auth.mode}), or returns {@code null} when the second-user path
+     * applies. No login happens, so no pooled user is taken, no code-012 "KillUser" is needed, and the data is
+     * created as the very user the test runs (and resolves its sites) as. {@code logout()} on the result is a no-op:
+     * the browser still owns that server-side session.
+     */
+    private static ApiSessionBundle borrowBrowserSession() {
+        String mode = ConfigFactory.getApiConfig().backfillAuthMode().trim().toUpperCase();
+        if (mode.equals("SECOND_USER")) return null;
+        SessionTokens.Captured tokens = SessionTokens.forCurrentThread();
+        if (tokens == null) {
+            if (mode.equals("SESSION_TOKENS")) {
+                throw new IllegalStateException("backfill.auth.mode=SESSION_TOKENS but no WEBAPI tokens were captured from "
+                        + "the calling thread's browser login (no browser bound, a non-CDP browser, or an SSO login).");
+            }
+            return null;
+        }
+        var cfg = ConfigFactory.getApiConfig();
+        AuthResult auth = WebApiTokenAuthStrategy.authResultFor(cfg.webApiBaseUri() + cfg.webApiApiPrefix(),
+                WebApiLoginResult.builder().authorizationToken(tokens.authorizationToken())
+                        .ginesysAuthToken(tokens.ginesysAuthToken()).userId(tokens.userId()).sessionId(null).build());
+        com.gsl.reports.ReportLogger.session("[ApiSessionFactory] Reusing the browser session's WEBAPI tokens (userId={}) - no second user, no login.",
+                tokens.userId());
+        return build(ApiPlatform.WEBAPI, auth, com.gsl.driver.DriverManager.getCurrentUser(), false, true);
     }
 
     /** Builds a WEBAPI session using an already-acquired credential (e.g. one APITest already holds). Caller retains release ownership. */
@@ -70,7 +99,7 @@ public final class ApiSessionFactory {
         var cfg = ConfigFactory.getApiConfig();
         AuthResult auth = strategyFor(credential)
                 .authenticate(cfg.webApiBaseUri() + cfg.webApiApiPrefix(), credential);
-        return build(ApiPlatform.WEBAPI, auth, credential, releaseOnLogout);
+        return build(ApiPlatform.WEBAPI, auth, credential, releaseOnLogout, false);
     }
 
     /** The WEBAPI login for this user: the application's own ({@code ERP}) or the single-sign-on one ({@code SSO}); an SSO user is never logged in the ERP way. */
@@ -82,7 +111,7 @@ public final class ApiSessionFactory {
     public static ApiSessionBundle createForPublicApi() {
         AuthResult auth = new PublicApiOAuth2Strategy()
                 .authenticate(ConfigFactory.getApiConfig().publicApiBaseUri(), null);
-        return build(ApiPlatform.PUBLICAPI, auth, null, false);
+        return build(ApiPlatform.PUBLICAPI, auth, null, false, false);
     }
 
     /** Dispatches to the right builder for any switchable platform (WEBAPI or PUBLICAPI; not K6BULK). */
@@ -121,7 +150,7 @@ public final class ApiSessionFactory {
 
     /** Assembles the {@link ApiSessionBundle} common to both platforms — auth result, credential-release flag, and all ten flow clients built against {@code auth}'s spec. */
     private static ApiSessionBundle build(ApiPlatform platform, AuthResult auth,
-                                           UserCredential credential, boolean releaseOnLogout) {
+                                           UserCredential credential, boolean releaseOnLogout, boolean borrowedSession) {
         RequestSpecification spec = auth.getSpec();
         return ApiSessionBundle.builder()
                 .platform(platform)
@@ -130,6 +159,7 @@ public final class ApiSessionFactory {
                 .sessionId(auth.getSessionId())
                 .credential(credential)
                 .releaseCredentialOnLogout(releaseOnLogout)
+                .borrowedSession(borrowedSession)
                 .itemApiClient(new ItemApiClient(spec))
                 .grcApiClient(new GrcApiClient(spec))
                 .dcApiClient(new DcApiClient(spec))

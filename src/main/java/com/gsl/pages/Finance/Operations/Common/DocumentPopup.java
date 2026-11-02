@@ -34,6 +34,8 @@ public class DocumentPopup {
         /** AP Voucher's Adjustment-amount-mismatch Confirmation — confirmed live (user screenshots). */
         UPDATE_PAYMENT_AMOUNT ("Update payment amount"),
         I_WILL_ADJUST_MORE    ("I will adjust more"),
+        /** "Send Approval Request" dialog after Save — confirmed live (run 20261102_135110). */
+        SEND_REQUEST          ("Send Request"),
         CLOSE              ("Close");
 
         private final String label;
@@ -316,6 +318,8 @@ public class DocumentPopup {
         // If the (role-dependent) release-after-save confirmation is showing, click No —
         // see DocumentMessageBoxMessage.RELEASE_AFTER_SAVE_CONFIRMATION's Javadoc.
         handleReleaseConfirmationIfPresent(driver);
+        handleBankIntegrationWarningIfPresent(driver);
+        handleSendApprovalRequestIfPresent(driver);
 
         // If the app unexpectedly shows the payment-info-check warning dialog,
         // auto-detect AR vs AP variant and click the appropriate proceed button.
@@ -348,6 +352,10 @@ public class DocumentPopup {
 
         // If TDS Auto Journal prompt is showing, click Continue and wait for success popup.
         handleTdsAutoJournalPromptIfPresent(wait, driver);
+
+        // Approval-workflow documents: "Send Approval Request" may follow any of the above.
+        handleBankIntegrationWarningIfPresent(driver);
+        handleSendApprovalRequestIfPresent(driver);
 
         return new DocumentMessageBox();
     }
@@ -389,6 +397,10 @@ public class DocumentPopup {
 
         // If TDS Auto Journal prompt is showing next, click Continue and wait for success popup.
         handleTdsAutoJournalPromptIfPresent(wait, driver);
+
+        // Approval-workflow documents: "Send Approval Request" may follow any of the above.
+        handleBankIntegrationWarningIfPresent(driver);
+        handleSendApprovalRequestIfPresent(driver);
 
         return new DocumentMessageBox();
     }
@@ -575,6 +587,57 @@ public class DocumentPopup {
                     if (now.isEmpty() || !now.get(0).isDisplayed()) return false;
                     String t = now.get(0).getText();
                     return t != null && !t.isBlank() && !t.equals(alertText);
+                });
+    }
+
+    /**
+     * If the "Send Approval Request" dialog is showing (approval-workflow documents), clicks
+     * "Send Request" and waits for the message box text to change to the save Result; otherwise
+     * a no-op. Without this the dialog's text was read as the save Result and "Document number was
+     * not found" failed the test (run 20261102_135110).
+     */
+    private void handleSendApprovalRequestIfPresent(WebDriver driver) {
+        List<WebElement> els = driver.findElements(Loc.MESSAGE_TEXT);
+        if (els.isEmpty() || !els.get(0).isDisplayed()) return;
+        final String priorText = els.get(0).getText();
+        if (priorText == null
+                || !priorText.contains(DocumentMessageBoxMessage.SEND_APPROVAL_REQUEST_CONFIRMATION.getText())) {
+            return;
+        }
+        ReportLogger.business("Send Approval Request dialog detected — clicking 'Send Request'");
+        SeleniumUtils.click(ButtonText.SEND_REQUEST.locator(), WaitType.CLICKABLE, "SEND_APPROVAL_REQUEST");
+        WaitUtils.fluentWaitBuilder()
+                .withMessage("the message box to change from the Send Approval Request dialog to the save result")
+                .until(d -> {
+                    List<WebElement> now = d.findElements(Loc.MESSAGE_TEXT);
+                    if (now.isEmpty() || !now.get(0).isDisplayed()) return false;
+                    String t = now.get(0).getText();
+                    return t != null && !t.isBlank() && !t.equals(priorText);
+                });
+    }
+
+    /**
+     * If the optional "cannot be processed via Bank Integration" warning is showing, clicks Yes
+     * (proceed) and waits for the message box text to change; otherwise a no-op. Always Yes for now —
+     * a per-scenario choice is to be added later (FIN-AP-ADD-DOC-05, run 20261102_152814).
+     */
+    private void handleBankIntegrationWarningIfPresent(WebDriver driver) {
+        List<WebElement> els = driver.findElements(Loc.MESSAGE_TEXT);
+        if (els.isEmpty() || !els.get(0).isDisplayed()) return;
+        final String priorText = els.get(0).getText();
+        if (priorText == null
+                || !priorText.contains(DocumentMessageBoxMessage.BANK_INTEGRATION_WARNING.getText())) {
+            return;
+        }
+        ReportLogger.business("Bank Integration warning detected — clicking 'Yes' to proceed");
+        SeleniumUtils.click(CommonButton.YES.locator(), WaitType.CLICKABLE, "BANK_INTEGRATION_WARNING_YES");
+        WaitUtils.fluentWaitBuilder()
+                .withMessage("the message box to change from the Bank Integration warning to the next dialog")
+                .until(d -> {
+                    List<WebElement> now = d.findElements(Loc.MESSAGE_TEXT);
+                    if (now.isEmpty() || !now.get(0).isDisplayed()) return false;
+                    String t = now.get(0).getText();
+                    return t != null && !t.isBlank() && !t.equals(priorText);
                 });
     }
 

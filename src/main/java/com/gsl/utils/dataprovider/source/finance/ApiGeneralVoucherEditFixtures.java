@@ -293,7 +293,7 @@ final class ApiGeneralVoucherEditFixtures {
                 return null;
             }
             for (int i = 0; i < 2; i++) {
-                SubLedgerOthersDataSetup.createSubLedgerOthersForTest(subLedgerOthersClient, gl.getGlCode(), gl.getGlName(), null);
+                SubLedgerOthersDataSetup.createSubLedgerOthersForTest(subLedgerOthersClient, gl.getGlCode(), gl.getGlName(), (Long) null);
             }
             List<SubLedgerLookupResult> sls = ApiSubLedgerWait.awaitAtLeast(api, gl.getGlCode(), siteCode, empCode, ou, workDate, 2);
             if (sls.size() < 2) {

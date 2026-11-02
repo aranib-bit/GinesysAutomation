@@ -354,6 +354,21 @@ public class DbApVoucherDataSource implements TestDataSource<MergedFinanceApVouc
 
         // Assign sequential invocation indices (FIN-AP-ADD-01, -02, …)
         TestDataSource.stampInvocations(placeholders);
+        // Optional re-run selector: -Dapv.only=createApVoucherDocumentPayment:5,7 keeps just those
+        // FIN-AP-ADD-DOC-<n> rows of that test method (every other method keeps all its rows). The ids
+        // were stamped above over the FULL filtered list, so they stay the ones the original run reported.
+        String only = System.getProperty("apv.only");
+        if (only != null && only.contains(":")) {
+            String onlyMethod = only.substring(0, only.indexOf(':')).trim();
+            if (onlyMethod.equals(testMethodName)) {
+                Set<Integer> keep = Arrays.stream(only.substring(only.indexOf(':') + 1).split(","))
+                        .map(String::trim).filter(x -> !x.isEmpty()).map(Integer::valueOf)
+                        .collect(Collectors.toSet());
+                placeholders.removeIf(ph -> !keep.contains(ph.getInvocationIndex()));
+            } else {
+                placeholders.clear();
+            }
+        }
         int total = placeholders.size();
 
         Log.info("[DB] Emitting {} AP Voucher placeholder(s) for method='{}'. DB queries deferred to test-execution time.",
@@ -1040,6 +1055,14 @@ public class DbApVoucherDataSource implements TestDataSource<MergedFinanceApVouc
             throw new IllegalStateException(
                     "No active " + type.label() + " GL (srctype='" + type.srcType()
                     + "', ext='N') found in fingl for sites: " + siteCodes);
+        }
+        // Optional re-run override: -Dapv.cashBank="HDFC Bank" forces that GL when it is among the candidates
+        // (reproduces a bank-specific popup). Absent / not a candidate → the usual random pick.
+        String forced = System.getProperty("apv.cashBank");
+        if (forced != null && !forced.isBlank()) {
+            if (results.contains(forced.trim())) return forced.trim();
+            Log.warn("[DB] apv.cashBank='{}' is not a {} candidate for sites {} — picking randomly.",
+                    forced, type.label(), siteCodes);
         }
         return FakerUtils.randomElement(results);
     }

@@ -28,7 +28,11 @@ public final class WebApiTokenAuthStrategy implements ApiAuthStrategy {
      */
     @Override
     public AuthResult authenticate(String baseUri, UserCredential credential) {
-        WebApiLoginResult login = WebApiSessionClient.login(credential);
+        return authResultFor(baseUri, WebApiSessionClient.login(credential));
+    }
+
+    /** Builds the authenticated spec from tokens already in hand - a fresh login's, or ones captured from a browser session. */
+    public static AuthResult authResultFor(String baseUri, WebApiLoginResult login) {
         ApiConfig cfg = ConfigFactory.getApiConfig();
         boolean multiTenant = TenantUtils.isMultiTenant(cfg, cfg.activeTenant());
 

@@ -290,6 +290,11 @@ public final class WebApiSessionClient {
     }
 
     /** Decodes a JWT's payload segment (base64url, unverified) and returns the named claim's value, or null if absent/unparseable. */
+    /** The numeric internal user id carried by a login's {@code access_token2} JWT, or null when there is none. */
+    public static String userIdFromToken(String ginesysAuthToken) {
+        return ginesysAuthToken != null ? extractClaim(ginesysAuthToken, AuthDefaults.NAME_IDENTIFIER_CLAIM) : null;
+    }
+
     private static String extractClaim(String jwt, String claimUri) {
         try {
             String[] parts = jwt.split("\\.");
