@@ -151,6 +151,42 @@ public final class DocumentReservationRegistry {
     }
 
     /**
+     * Drops every sub-ledger whose reserved documents are no longer as they were read: a document that is gone from {@code fresh}, or whose pending
+     * amount differs (read-then-reserve is not atomic, so another scenario may have saved against it in between). The documents of a dropped
+     * sub-ledger are handed to {@code releaser}. Pure apart from the releaser, so it can be unit-tested.
+     *
+     * @param reserved what the thread reserved, with the pending amounts it read
+     * @param fresh    the same sub-ledgers read again after reserving
+     */
+    public static java.util.Map<String, java.util.List<com.gsl.model.finance.PendingSlDocument>> dropStaleReservations(
+            java.util.Map<String, java.util.List<com.gsl.model.finance.PendingSlDocument>> reserved,
+            java.util.Map<String, java.util.List<com.gsl.model.finance.PendingSlDocument>> fresh,
+            java.util.function.Consumer<java.util.Collection<String>> releaser) {
+        java.util.Map<String, java.util.List<com.gsl.model.finance.PendingSlDocument>> kept = new java.util.LinkedHashMap<>();
+        for (java.util.Map.Entry<String, java.util.List<com.gsl.model.finance.PendingSlDocument>> entry : reserved.entrySet()) {
+            java.util.Map<String, java.math.BigDecimal> now = new java.util.LinkedHashMap<>();
+            fresh.getOrDefault(entry.getKey(), java.util.List.of()).forEach(doc -> now.put(doc.getDocumentNo(), doc.getPending()));
+            java.util.List<String> changed = new java.util.ArrayList<>();
+            for (com.gsl.model.finance.PendingSlDocument doc : entry.getValue()) {
+                java.math.BigDecimal current = now.get(doc.getDocumentNo());
+                if (current == null) {
+                    changed.add(doc.getDocumentNo() + " (no longer pending, read " + doc.getPending() + ")");
+                } else if (doc.getPending() == null || current.compareTo(doc.getPending()) != 0) {
+                    changed.add(doc.getDocumentNo() + " (pending " + doc.getPending() + " -> " + current + ")");
+                }
+            }
+            if (changed.isEmpty()) {
+                kept.put(entry.getKey(), entry.getValue());
+            } else {
+                Log.warn("[DocReservation] SL '{}' dropped: reserved document(s) changed since they were read - {}", entry.getKey(), changed);
+                releaser.accept(entry.getValue().stream().map(com.gsl.model.finance.PendingSlDocument::getDocumentNo)
+                        .collect(java.util.stream.Collectors.toList()));
+            }
+        }
+        return kept;
+    }
+
+    /**
      * Reserves every document of one sub-ledger or none of them: a FIFO / reference-site-wise FIFO set-off lets the UI allocate across the
      * sub-ledger's whole pending list, so the scenario must hold all of it (a partial hold lets another thread consume a document the UI is about
      * to pick). Documents are claimed in document-number order so two threads contending for the same sub-ledger back off consistently.

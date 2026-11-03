@@ -16,6 +16,7 @@ import com.gsl.model.finance.FinSl;
 import com.gsl.reports.BackfillStepLabel;
 import com.gsl.reports.ReportLogger;
 import com.gsl.reports.StepExecutor;
+import com.gsl.workflow.approval.ApprovalBackfillSupport;
 import org.jdbi.v3.core.Jdbi;
 
 import java.time.LocalDate;
@@ -131,6 +132,13 @@ public final class ApVoucherArBackfillStrategy implements BackfillStrategy {
             ReportLogger.dataBackfill("[ApVoucherArBackfillStrategy] Backfilled record {}/{} — voucherCode={}, docScheme={}",
                     idx + 1, neededQuantity, voucher.getVoucherCode(), voucher.getDocScheme());
 
+            // With approval enabled the voucher waits for its approvers before it posts: approve it (when approval.autoapprove.enabled is on)
+            // so the read-back below - and the AR test that needs it as a pending document - see a posted voucher.
+            if (ApprovalBackfillSupport.enabled()) {
+                StepExecutor.stepUnder(recordNode, "Approve the AP Voucher (approval workflow)", () ->
+                        ApprovalBackfillSupport.approveApVoucher(session, voucher, subLedger.getSlCode(), ownerSiteCode, ouCode, empCode,
+                                java.math.BigDecimal.valueOf((long) DEFAULT_QTY * DEFAULT_RATE)));
+            }
             StepExecutor.stepUnder(recordNode, BackfillStepLabel.VERIFY_POSTED.label(), () ->
                     logReleaseStatus(voucher.getVoucherCode()));
         }

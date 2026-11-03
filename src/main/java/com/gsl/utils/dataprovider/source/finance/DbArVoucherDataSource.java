@@ -203,6 +203,13 @@ public class DbArVoucherDataSource implements TestDataSource<MergedFinanceArVouc
 
         // Assign sequential invocation indices so TestListener formats FIN-AR-ADD-01, -02, -03 …
         TestDataSource.stampInvocations(placeholders);
+        // Optional re-run selector (as gv.onlyIndexes): -Darv.onlyIndexes=2,5 keeps just those FIN-AR-ADD-DOC-<n> rows; ids stay the original ones.
+        String only = System.getProperty("arv.onlyIndexes");
+        if (only != null && !only.isBlank()) {
+            java.util.Set<Integer> keep = java.util.Arrays.stream(only.split(",")).map(String::trim).filter(x -> !x.isEmpty())
+                    .map(Integer::valueOf).collect(java.util.stream.Collectors.toSet());
+            placeholders.removeIf(ph -> !keep.contains(ph.getInvocationIndex()));
+        }
         int total = placeholders.size();
 
         Log.info("[DB] Emitting {} placeholder(s) for method='{}'. DB queries deferred to test-execution time.",

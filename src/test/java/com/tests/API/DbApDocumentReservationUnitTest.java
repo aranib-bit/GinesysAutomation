@@ -54,6 +54,25 @@ public class DbApDocumentReservationUnitTest {
     }
 
     @Test
+    public void arSelectorCaseBackfilledDocumentIsReachedWhenTheOldestIsHeldAndSharedStaleCheckKeepsIt() throws Exception {
+        // FIN-AR-ADD-DOC-02: VP/02681 held by another thread, backfill added VP/02724 - the selector must see all documents, not the oldest only
+        Thread other = new Thread(() -> DocumentReservationRegistry.tryReserve("VP/02681"));
+        other.start();
+        other.join();
+        try {
+            Map<String, List<PendingSlDocument>> all = one("AESHNA|C002", doc("VP/02681", "100"), doc("VP/02724", "100"));
+            Map<String, List<PendingSlDocument>> reserved = DocumentReservationRegistry.filterAndReserveUpTo(all, 1, 3);
+            assertEquals(reserved.get("AESHNA|C002").get(0).getDocumentNo(), "VP/02724");
+            List<String> released = new ArrayList<>();
+            Map<String, List<PendingSlDocument>> kept = DocumentReservationRegistry.dropStaleReservations(reserved, all, released::addAll);
+            assertEquals(kept.size(), 1);
+            assertTrue(released.isEmpty(), released.toString());
+        } finally {
+            DocumentReservationRegistry.release("VP/02681");
+        }
+    }
+
+    @Test
     public void onlyTheNeededNumberOfDocumentsIsHeld() {
         Map<String, List<PendingSlDocument>> got = DocumentReservationRegistry.filterAndReserveUpTo(
                 one("S|1", doc("D1", "10"), doc("D2", "10"), doc("D3", "10")), 2);

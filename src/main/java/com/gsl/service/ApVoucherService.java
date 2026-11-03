@@ -79,6 +79,12 @@ public final class ApVoucherService {
             boolean tdsApplicable, String docSchemeName, List<ApVoucherAdjustmentDetail> adjustments) {
         ApVoucherRequestFactory.Inputs inputs = resolve(subLedger, ownerSiteCode, ouCode, empCode, quantity, rate, tdsApplicable, docSchemeName, adjustments);
         ApVoucherCreateRequest request = ApVoucherRequestFactory.create(inputs, String.valueOf(System.nanoTime()));
+        if ("yes".equalsIgnoreCase(com.gsl.config.ConfigFactory.getApiConfig().approvalAutoApproveEnabled().trim())) {
+            // The UI sends isAutoReleaseApplied=true (the user's auto-release profile) and then the save itself submits the voucher for approval
+            // ("Document sent for approval (Rule ... -> Hierarchy ...)", HAR: APSave). With false the voucher is only saved unposted and no
+            // approval request exists, so the approval workflow would find nothing in any inbox.
+            request.setAutoReleaseApplied(true);
+        }
 
         ReportLogger.dataBackfill(
                 "[ApVoucherService] Creating AP Voucher — subLedger='{}' (classCode={}), ownerSiteCode={}, cashBankGLCode={}, tdsApplicable={}, amount={}",

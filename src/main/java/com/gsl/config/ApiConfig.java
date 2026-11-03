@@ -196,6 +196,19 @@ public interface ApiConfig extends Config {
     @DefaultValue("AUTO")
     String backfillAuthMode();
 
+    /**
+     * Whether data setup and flows approve a saved document through the approval workflow when its entity has approval enabled. Off by
+     * default: with it off nothing calls the approval APIs, so an environment that has approval switched on still behaves as before.
+     */
+    @Key("approval.autoapprove.enabled")
+    @DefaultValue("no")
+    String approvalAutoApproveEnabled();
+
+    /** Rows per page when the approval workflow reads the user directory and the approval inbox. */
+    @Key("approval.page.size")
+    @DefaultValue("50")
+    int approvalPageSize();
+
     /** Rate (percent) of a TDS section (nature) the backfill creates when the environment has too few natures for a scenario. */
     @Key("backfill.tds.section.rate")
     @DefaultValue("1")

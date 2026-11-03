@@ -152,6 +152,9 @@ public final class ApiSessionFactory {
     private static ApiSessionBundle build(ApiPlatform platform, AuthResult auth,
                                            UserCredential credential, boolean releaseOnLogout, boolean borrowedSession) {
         RequestSpecification spec = auth.getSpec();
+        if (platform == ApiPlatform.WEBAPI && !borrowedSession) {
+            LiveApiSessions.register(auth.getUserId(), spec);   // removed again by ApiSessionBundle.logout()
+        }
         return ApiSessionBundle.builder()
                 .platform(platform)
                 .baseSpec(spec)

@@ -20,6 +20,40 @@ public final class WebApiEndpoints {
         public static final Endpoint CREATE = Endpoint.finance("/cheques/create");
     }
 
+    /** Approval workflow (WebAPI): entity approval switch, and later rules, hierarchy and the approver inbox. */
+    public static final class Approval {
+        private Approval() {}
+
+        /** Every approval-capable entity with its {@code approvalEnabled} flag (HTTP 200, paged body). */
+        public static final Endpoint ENTITY_CONFIGS = Endpoint.webApi("/ApprovalEntityConfig/GetEntityConfigs");
+        /** Whether the approval workflow is on for one entity ({@code ?entityCode=}). */
+        public static final Endpoint IS_WORKFLOW_ENABLED = Endpoint.webApi("/ApprovalAction/IsWorkflowEnabled");
+        /** The active rule priority set of an entity, rules in priority order ({@code ?entityCode=}). */
+        public static final Endpoint ACTIVE_RULE_SET = Endpoint.webApi("/ApprovalRulePriority/GetActiveVersion");
+        /** One rule with its hierarchy and conditions ({@code ?id=}). */
+        public static final Endpoint RULE_GET = Endpoint.webApi("/ApprovalRule/Get");
+        /** One hierarchy with its levels and approvers ({@code ?id=}). */
+        public static final Endpoint HIERARCHY_GET = Endpoint.webApi("/ApprovalHierarchy/Get");
+        /** The approver's pending approval tasks (paged body, filter by {@code entityCode}). */
+        public static final Endpoint INBOX_PENDING = Endpoint.webApi("/ApprovalInbox/GetPending");
+        /** The approver's finished approval tasks (paged body, filter by {@code entityCode}). */
+        public static final Endpoint INBOX_ARCHIVE = Endpoint.webApi("/ApprovalInbox/GetArchive");
+        /** The approval state of one document ({@code ?entityCode=&refCode=}): status, current level. */
+        public static final Endpoint STATUS = Endpoint.webApi("/ApprovalAction/GetStatus");
+        /** The approval path of one document ({@code ?entityCode=&refCode=}): rule, hierarchy, each level's quorum, approvals so far and approvers' task codes. */
+        public static final Endpoint APPROVAL_PATH = Endpoint.webApi("/ApprovalAction/GetApprovalPath");
+        /** Approves one pending task as the logged-in approver. */
+        public static final Endpoint APPROVE = Endpoint.webApi("/ApprovalAction/Approve");
+    }
+
+    /** The application user directory (WebAPI). */
+    public static final class GlobalUser {
+        private GlobalUser() {}
+
+        /** One page of the users with their code, login name and role (HTTP 200, paged body). */
+        public static final Endpoint LIST = Endpoint.webApi("/GlobalUser/GetListOfGlobalAppEmpUsers");
+    }
+
     /** Party masters (WebAPI): the Vendor Master family (Supplier, Jobber, Agent, Transporter, Channel, Staff) and Customer. */
     public static final class Party {
         private Party() {}

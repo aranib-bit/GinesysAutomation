@@ -80,6 +80,7 @@ public final class ApiSessionBundle {
     public void logout() {
         if (borrowedSession) return;
         if (platform == ApiPlatform.WEBAPI) {
+            LiveApiSessions.unregister(userId);
             WebApiSessionClient.logout(this);
         }
         if (releaseCredentialOnLogout && credential != null) {

@@ -1340,37 +1340,11 @@ public class DbApVoucherDataSource implements TestDataSource<MergedFinanceApVouc
             "\n" + DocumentReservationRegistry.snapshotAsString());
     }
 
-    /**
-     * Drops every sub-ledger whose reserved documents are no longer as they were read: a document that is gone from {@code fresh}, or whose pending
-     * amount differs. The documents of a dropped sub-ledger are handed to {@code releaser}. Pure apart from the releaser, so it can be unit-tested.
-     *
-     * @param reserved what the thread reserved, with the pending amounts it read
-     * @param fresh    the same sub-ledgers read again after reserving
-     */
+    /** Delegates to the shared {@link DocumentReservationRegistry#dropStaleReservations} (also used by the AR selector). */
     public static Map<String, List<PendingSlDocument>> dropStaleReservations(Map<String, List<PendingSlDocument>> reserved,
                                                                               Map<String, List<PendingSlDocument>> fresh,
                                                                               java.util.function.Consumer<java.util.Collection<String>> releaser) {
-        Map<String, List<PendingSlDocument>> kept = new LinkedHashMap<>();
-        for (Map.Entry<String, List<PendingSlDocument>> entry : reserved.entrySet()) {
-            Map<String, BigDecimal> now = new LinkedHashMap<>();
-            fresh.getOrDefault(entry.getKey(), List.of()).forEach(doc -> now.put(doc.getDocumentNo(), doc.getPending()));
-            List<String> changed = new ArrayList<>();
-            for (PendingSlDocument doc : entry.getValue()) {
-                BigDecimal current = now.get(doc.getDocumentNo());
-                if (current == null) {
-                    changed.add(doc.getDocumentNo() + " (no longer pending, read " + doc.getPending() + ")");
-                } else if (doc.getPending() == null || current.compareTo(doc.getPending()) != 0) {
-                    changed.add(doc.getDocumentNo() + " (pending " + doc.getPending() + " -> " + current + ")");
-                }
-            }
-            if (changed.isEmpty()) {
-                kept.put(entry.getKey(), entry.getValue());
-            } else {
-                Log.warn("[DocSelectorAP] SL '{}' dropped: reserved document(s) changed since they were read - {}", entry.getKey(), changed);
-                releaser.accept(entry.getValue().stream().map(PendingSlDocument::getDocumentNo).collect(Collectors.toList()));
-            }
-        }
-        return kept;
+        return DocumentReservationRegistry.dropStaleReservations(reserved, fresh, releaser);
     }
 
     /**

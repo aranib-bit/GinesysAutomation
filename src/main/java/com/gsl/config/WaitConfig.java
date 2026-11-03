@@ -23,6 +23,14 @@ public interface WaitConfig extends Config {
     @DefaultValue("200")
     long pollingMillis();
 
+    /**
+     * How long (seconds) the approval workflow polls for the application to move on after an approval - the next level's task to appear, the
+     * document to post. A bound on a poll that normally ends at once, not a delay.
+     */
+    @Key("approval.poll.timeout.seconds")
+    @DefaultValue("30")
+    long approvalPollTimeoutSeconds();
+
     /** Timeout (seconds) for a full page-load wait. */
     @Key("pageload.timeout.seconds")
     @DefaultValue("30")

@@ -35,6 +35,17 @@ public final class SessionTokens {
         if (driver != null) BY_DRIVER.remove(driver);
     }
 
+    /**
+     * The tokens of ANY live browser whose login belongs to {@code userId}, or {@code null}: lets another flow (the approval workflow acting as
+     * an approver) reuse a user who is already logged in, instead of logging them in a second time and ending the first session (code 012).
+     */
+    public static Captured findByUserId(String userId) {
+        if (userId == null) return null;
+        synchronized (BY_DRIVER) {
+            return BY_DRIVER.values().stream().filter(c -> userId.equals(c.userId())).findFirst().orElse(null);
+        }
+    }
+
     /** The tokens of the browser bound to the calling thread, or {@code null} when there is no browser or it has captured none. */
     public static Captured forCurrentThread() {
         try {

@@ -86,13 +86,27 @@ public final class DocumentSelector {
                 continue;
             }
 
+            // All pending documents of the candidates (not cut to documentCount): the cut happens while reserving, so documents another
+            // thread holds are skipped in favour of the next ones instead of emptying the sub-ledger.
             Map<String, List<PendingSlDocument>> rawDocs =
                     PendingAdjQuery.findDocumentsForSlNames(
                             req.getJdbi(), req.getOuCodes(), req.getOwnerSiteCodes(),
-                            candidates, req.getDocumentCount());
+                            candidates, Integer.MAX_VALUE);
 
-            Map<String, List<PendingSlDocument>> reserved =
-                    DocumentReservationRegistry.filterAndReserve(rawDocs);
+            final Map<String, List<PendingSlDocument>> reservedFirstPass =
+                    DocumentReservationRegistry.filterAndReserveUpTo(rawDocs, req.getDocumentCount(), req.getSubLedgerCount() + 2);
+            Map<String, List<PendingSlDocument>> reserved = reservedFirstPass;
+            // Read-then-reserve is not atomic: re-read what was reserved (nobody else can take it now) and give back any sub-ledger whose
+            // documents changed in between.
+            if (!reservedFirstPass.isEmpty()) {
+                List<SlNameWithId> reservedSls = candidates.stream()
+                        .filter(c -> reservedFirstPass.containsKey(PendingAdjQuery.compositeKey(c.getSlName(), c.getSlId())))
+                        .collect(Collectors.toList());
+                reserved = DocumentReservationRegistry.dropStaleReservations(reservedFirstPass,
+                        PendingAdjQuery.findDocumentsForSlNames(req.getJdbi(), req.getOuCodes(), req.getOwnerSiteCodes(),
+                                reservedSls, Integer.MAX_VALUE),
+                        DocumentReservationRegistry::release);
+            }
             lastReservedSize = reserved.size();
 
             Map<String, List<PendingSlDocument>> moded = applyMode(reserved, req.getMode());

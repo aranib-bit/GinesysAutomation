@@ -28,6 +28,8 @@ public class ApVoucherCreateResponse {
     public String getVoucherCode() { return result != null ? result.code : null; }
     /** The voucher's human-facing document scheme string (e.g. {@code "VP/02453/26-27"}). Null when {@link #result} is null. */
     public String getDocScheme()   { return result != null ? result.docScheme : null; }
+    /** The server's note on the save (it says when the document was sent for approval). Null when absent. */
+    public String getSaveMessage() { return result != null ? result.message : null; }
 
     @Data
     @Builder
@@ -38,5 +40,7 @@ public class ApVoucherCreateResponse {
         private String docScheme;
         /** The created voucher's own record code, despite the generic JSON field name — see {@link #getVoucherCode()}. */
         private String code;
+        /** The server's note on the save, e.g. {@code Document sent for approval (Rule: Below 10L -> Hierarchy: AP Voucher < 10L).} */
+        private String message;
     }
 }

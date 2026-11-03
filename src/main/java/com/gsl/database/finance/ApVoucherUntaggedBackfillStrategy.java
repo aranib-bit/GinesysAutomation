@@ -15,6 +15,7 @@ import com.gsl.model.finance.FinPost;
 import com.gsl.model.finance.FinSl;
 import com.gsl.reports.ReportLogger;
 import com.gsl.reports.StepExecutor;
+import com.gsl.workflow.approval.ApprovalBackfillSupport;
 import org.jdbi.v3.core.Jdbi;
 
 import java.time.LocalDate;
@@ -81,6 +82,11 @@ public final class ApVoucherUntaggedBackfillStrategy implements BackfillStrategy
                 ReportLogger.dataBackfill("[ApVoucherUntaggedBackfillStrategy] Backfilled record {}/{} — voucherCode={}, docScheme={}",
                         idx + 1, neededQuantity, response.getVoucherCode(), response.getDocScheme());
 
+                // With approval enabled the voucher waits for its approvers before it posts (see ApVoucherArBackfillStrategy).
+                if (ApprovalBackfillSupport.enabled()) {
+                    StepExecutor.call("Approve the AP Voucher (approval workflow)", () -> ApprovalBackfillSupport.approveApVoucher(session, response,
+                            subLedger.getSlCode(), ownerSiteCode, ouCode, empCode, java.math.BigDecimal.valueOf((long) DEFAULT_QTY * DEFAULT_RATE)));
+                }
                 StepExecutor.call("Verify AP Voucher Landed Posted and Untagged in DB", () -> {
                     verifyLandedPostedAndUntagged(jdbi, response);
                     return null;

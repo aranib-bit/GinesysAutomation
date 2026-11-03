@@ -42,6 +42,7 @@ public class ApVoucherCreateRequest {
     /** Accounting year code — kept at the HAR-observed default of {@code 0} in every captured
      *  request; compare {@code VoucherDateValidationRequest}'s {@code OldYCODE} field, the same
      *  concept used elsewhere in this module. */
+    @JsonProperty("yCode")
     @Builder.Default
     private int yCode = 0;
     private String remarks;
@@ -53,8 +54,14 @@ public class ApVoucherCreateRequest {
     private boolean onAccount = true;
     @Builder.Default
     private List<ApVoucherDetailLine> apVoucherDetail = List.of();
+    @JsonProperty("isReadOnlyInstance")
     @Builder.Default
     private boolean isReadOnlyInstance = false;
+    /**
+     * The user's auto-release setting as the UI sends it. Pinned to the HAR's name: Lombok would serialize this as {@code autoReleaseApplied}, a
+     * field the server does not know, so setting it had no effect. {@code true} makes the save release the voucher, which is also what sends it for approval.
+     */
+    @JsonProperty("isAutoReleaseApplied")
     @Builder.Default
     private boolean isAutoReleaseApplied = false;
     /**
